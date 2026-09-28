@@ -1,5 +1,8 @@
+import { releasePtBR } from './release.pt-BR.js';
+
 // Source catalog: every key exists here first; en.ts must have exactly the same keys.
 export const messages = {
+  ...releasePtBR,
   'app.loading': 'Carregando…',
   'app.beta': 'beta',
 

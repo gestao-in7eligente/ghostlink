@@ -1,7 +1,9 @@
 import type { messages as ptBR } from './pt-BR.js';
+import { releaseEn } from './release.en.js';
 
 // Typed against pt-BR: a missing or extra key fails the typecheck (contract §5).
 export const messages: Record<keyof typeof ptBR, string> = {
+  ...releaseEn,
   'app.loading': 'Loading…',
   'app.beta': 'beta',
 

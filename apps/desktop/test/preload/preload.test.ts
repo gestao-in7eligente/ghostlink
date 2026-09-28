@@ -19,11 +19,12 @@ describe('preload bridge', () => {
   it('exposes exactly the contract API as window.ghostlink', () => {
     expect(Object.keys(electron.exposed)).toEqual(['ghostlink']);
     expect(electron.exposed.ghostlink).toBe(api);
-    expect(Object.keys(api).sort()).toEqual(['app', 'identity', 'join', 'onConnectionState', 'onServerEvent', 'servers', 'settings']);
+    expect(Object.keys(api).sort()).toEqual(['app', 'identity', 'join', 'onConnectionState', 'onServerEvent', 'servers', 'settings', 'updates']);
     expect(Object.keys(api.identity).sort()).toEqual(['create', 'replaceKeepingBackup', 'retry', 'status']);
     expect(Object.keys(api.join).sort()).toEqual(['connect', 'parse', 'probe']);
     expect(Object.keys(api.servers).sort()).toEqual(['connect', 'disconnect', 'list', 'remove']);
     expect(Object.keys(api.settings).sort()).toEqual(['get', 'set']);
+    expect(Object.keys(api.updates).sort()).toEqual(['onState', 'restart', 'setAutoCheck', 'state']);
   });
 
   const req = { addresses: ['10.0.0.1:7700'], serverKeyId: 'k'.repeat(43), nickname: 'Ana' };
@@ -42,6 +43,9 @@ describe('preload bridge', () => {
     ['servers.connect', () => api.servers.connect('s1'), IPC.serversConnect, ['s1']],
     ['servers.disconnect', () => api.servers.disconnect(), IPC.serversDisconnect, []],
     ['servers.remove', () => api.servers.remove('s1'), IPC.serversRemove, ['s1']],
+    ['updates.state', () => api.updates.state(), IPC.updatesState, []],
+    ['updates.setAutoCheck', () => api.updates.setAutoCheck(false), IPC.updatesSetAutoCheck, [false]],
+    ['updates.restart', () => api.updates.restart(), IPC.updatesRestart, []],
   ])('%s invokes its channel and unwraps the value', async (_name, call, channel, args) => {
     electron.ipcRenderer.invoke.mockResolvedValueOnce({ ok: true, value: 'VALUE' });
     await expect(call()).resolves.toBe('VALUE');
@@ -67,5 +71,7 @@ describe('preload bridge', () => {
 
     api.onServerEvent(() => {});
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.server);
+    api.updates.onState(() => {});
+    expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.updates);
   });
 });

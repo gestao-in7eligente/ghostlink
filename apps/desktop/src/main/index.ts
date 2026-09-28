@@ -1,6 +1,6 @@
 // Main-process bootstrap (contract §5). Everything testable lives in the modules it
 // wires together; this file is the thin glue that needs a real Electron.
-import { BrowserWindow, app, safeStorage, session } from 'electron';
+import { BrowserWindow, app, net, safeStorage, session } from 'electron';
 import { mkdtempSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +16,8 @@ import { SavedServersStore } from './savedServers.js';
 import { installSecurity, originOf } from './security.js';
 import { SettingsStore } from './settings.js';
 import { runSmoke } from './smoke.js';
+import { Updater, createUpdaterBackend } from './updater.js';
+import { createSignatureFetcher } from './updaterSignature.js';
 
 const smoke = process.env.GHOSTLINK_SMOKE === '1';
 // Dev only: electron-vite serves the renderer and passes its URL.
@@ -76,14 +78,27 @@ function start(): BrowserWindow {
     emitServerEvent: (event) => send(IPC_EVENTS.server, event),
     clientName: `ghostlink/${app.getVersion()} (${process.platform})`,
   });
+  // Spec §15: Windows installs only, never in development or smoke mode; the setting can turn it off.
+  const updater = Updater.load({
+    backend: createUpdaterBackend({ packaged: app.isPackaged, smoke, platform: process.platform, resourcesPath: process.resourcesPath }),
+    userDataDir: userData,
+    currentVersion: app.getVersion(),
+    fetchSignature: createSignatureFetcher((url, init) => net.fetch(url, init)),
+    emit: (state) => send(IPC_EVENTS.updates, state),
+  });
   registerIpc({
     appOrigin,
     identity,
     settings,
     controller,
+    updates: updater,
     appInfo: () => ({ version: app.getVersion(), platform: process.platform as Platform, locale: app.getLocale() }),
   });
-  app.on('before-quit', () => void controller.disconnect());
+  updater.start();
+  app.on('before-quit', () => {
+    updater.dispose();
+    void controller.disconnect();
+  });
 
   // 6. Smoke mode (spec §14): listeners first, then the page load.
   if (smoke) startSmoke(window);

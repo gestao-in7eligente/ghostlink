@@ -7,6 +7,7 @@ import type { ClientController } from './controller.js';
 import type { IdentityStore } from './identity.js';
 import { originOf } from './security.js';
 import { LOCALES, type SettingsStore } from './settings.js';
+import type { Updater } from './updater.js';
 
 export interface IpcDeps {
   /** app://ghostlink, or the dev server origin in development. */
@@ -15,6 +16,7 @@ export interface IpcDeps {
   identity: Pick<IdentityStore, 'status' | 'create' | 'retry' | 'replaceKeepingBackup'>;
   settings: Pick<SettingsStore, 'get' | 'set'>;
   controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove'>;
+  updates: Pick<Updater, 'state' | 'setAutoCheck' | 'restart'>;
 }
 
 // Renderer input is untrusted: strict schemas, bounded sizes. The deeper rules
@@ -48,12 +50,15 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.serversConnect]: z.tuple([serverId]),
   [IPC.serversDisconnect]: z.tuple([]),
   [IPC.serversRemove]: z.tuple([serverId]),
+  [IPC.updatesState]: z.tuple([]),
+  [IPC.updatesSetAutoCheck]: z.tuple([z.boolean()]),
+  [IPC.updatesRestart]: z.tuple([]),
 };
 
 type Handlers = { [C in IpcChannel]: (...args: IpcArgs<C>) => IpcReturn<C> | Promise<IpcReturn<C>> };
 
 export function createIpcHandlers(deps: IpcDeps): Handlers {
-  const { identity, settings, controller } = deps;
+  const { identity, settings, controller, updates } = deps;
   return {
     [IPC.appInfo]: () => deps.appInfo(),
     [IPC.identityStatus]: () => identity.status,
@@ -69,6 +74,9 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     [IPC.serversConnect]: (id) => controller.connectSaved(id),
     [IPC.serversDisconnect]: () => controller.disconnect(),
     [IPC.serversRemove]: (id) => controller.remove(id),
+    [IPC.updatesState]: () => updates.state(),
+    [IPC.updatesSetAutoCheck]: (enabled) => updates.setAutoCheck(enabled),
+    [IPC.updatesRestart]: () => updates.restart(),
   };
 }
 

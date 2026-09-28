@@ -3,6 +3,7 @@
 // dependencies, so the sandboxed preload bundle stays tiny.
 import type { Envelope, ParsedJoinInput, WelcomePayload } from '@ghostlink/shared';
 import type { AppErrorCode } from './appErrors.js';
+import type { UpdateState, UpdatesApi } from './updates.js';
 
 export type IdentityStatus = 'none' | 'ready' | 'locked';
 export type ConnState = 'idle' | 'connecting' | 'authenticating' | 'connected' | 'reconnecting' | 'failed';
@@ -77,6 +78,7 @@ export interface GhostlinkApi {
   };
   onConnectionState(cb: (s: ConnectionStateEvent) => void): () => void;
   onServerEvent(cb: (e: Envelope) => void): () => void;
+  updates: UpdatesApi;
 }
 
 /** Invoke channels: `ghostlink:<namespace>.<method>`. */
@@ -95,12 +97,16 @@ export const IPC = {
   serversConnect: 'ghostlink:servers.connect',
   serversDisconnect: 'ghostlink:servers.disconnect',
   serversRemove: 'ghostlink:servers.remove',
+  updatesState: 'ghostlink:updates.state',
+  updatesSetAutoCheck: 'ghostlink:updates.setAutoCheck',
+  updatesRestart: 'ghostlink:updates.restart',
 } as const;
 
 /** Events pushed from main to the renderer. */
 export const IPC_EVENTS = {
   connectionState: 'ghostlink:event.connectionState',
   server: 'ghostlink:event.server',
+  updates: 'ghostlink:event.updates',
 } as const;
 
 /** Arguments and result of every invoke channel; main's handlers and the preload are both typed from it. */
@@ -119,6 +125,9 @@ export interface IpcContract {
   [IPC.serversConnect]: { args: [id: string]; result: RendererWelcome };
   [IPC.serversDisconnect]: { args: []; result: void };
   [IPC.serversRemove]: { args: [id: string]; result: void };
+  [IPC.updatesState]: { args: []; result: UpdateState };
+  [IPC.updatesSetAutoCheck]: { args: [enabled: boolean]; result: UpdateState };
+  [IPC.updatesRestart]: { args: []; result: void };
 }
 
 export type IpcChannel = keyof IpcContract;

@@ -34,13 +34,14 @@ describe('apps/desktop/electron-builder.yml', () => {
     expect(config.extraMetadata).toEqual({ name: 'ghostlink', productName: APP_NAME });
   });
 
-  it('packages only the build output, in an integrity-checked asar, without rebuilding or publishing', () => {
+  it('packages only the build output, in an integrity-checked asar, without rebuilding or uploading', () => {
     expect(config.directories).toEqual({ output: 'dist', buildResources: 'build' });
     expect(config.files).toEqual(['out/**', 'package.json']);
     expect(pkg.main.replace(/^\.\//, '')).toMatch(/^out\//);
     expect(config.asar).toBe(true);
     expect(config.npmRebuild).toBe(false); // spec §15: @electron/rebuild would try MSVC
-    expect(config.publish).toBeNull();
+    // The build never uploads (release.yml does), but the feed config becomes app-update.yml (spec §15).
+    expect(config.publish).toEqual({ provider: 'github', owner: 'gestao-in7eligente', repo: 'ghostlink', releaseType: 'release' });
     expect(pkg.scripts.dist).toBe('npm run build && electron-builder --config electron-builder.yml --publish never');
   });
 
@@ -56,7 +57,12 @@ describe('apps/desktop/electron-builder.yml', () => {
   });
 
   it('builds a per-user one-click NSIS installer that keeps user data on uninstall', () => {
-    expect(config.win).toEqual({ target: [{ target: 'nsis', arch: ['x64'] }] });
+    expect(config.win).toEqual({
+      target: [{ target: 'nsis', arch: ['x64'] }],
+      // Lands in app-update.yml; without it electron-updater would skip the Ed25519 check (spec §15).
+      signtoolOptions: { publisherName: 'GhostLink contributors' },
+    });
+    expect(config.win).not.toHaveProperty('verifyUpdateCodeSignature');
     expect(config.nsis).toEqual({
       oneClick: true,
       perMachine: false,
@@ -97,7 +103,7 @@ describe('apps/desktop/package.json (packaging)', () => {
   // These are exactly the packages the main-process bundles import at run time (plan 1b's
   // build.test.ts checks that ws and zod stay external and that reflect-metadata loads before x509).
   // Add one only for a package that must stay external (a native module, electron-updater…).
-  const RUNTIME_DEPENDENCIES = ['@peculiar/x509', 'reflect-metadata', 'ws', 'zod'];
+  const RUNTIME_DEPENDENCIES = ['@peculiar/x509', 'electron-updater', 'reflect-metadata', 'ws', 'zod'];
 
   it('ships only the packages the bundles load at run time', () => {
     expect(Object.keys(pkg.dependencies ?? {}).sort()).toEqual(RUNTIME_DEPENDENCIES);
@@ -119,6 +125,8 @@ describe('apps/desktop/package.json (packaging)', () => {
   it('keeps the build toolchain out of the packaged app', () => {
     for (const tool of ['electron', 'electron-builder', 'electron-vite']) expect(pkg.dependencies?.[tool], tool).toBeUndefined();
     expect(pkg.devDependencies).toMatchObject({ electron: '44.4.5', 'electron-builder': '26.15.3', 'electron-vite': '5.0.0' });
+    // Pinned (spec §15): the version matching electron-builder 26 (npm dist-tag v26).
+    expect(pkg.dependencies).toMatchObject({ 'electron-updater': '6.8.10' });
   });
 
   it('names an author, which becomes the Windows CompanyName instead of Electron\'s "GitHub, Inc."', () => {

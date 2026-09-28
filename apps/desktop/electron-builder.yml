@@ -20,7 +20,13 @@ files:
 asar: true
 # Mandatory: @electron/rebuild would try to compile native modules with MSVC (spec §15).
 npmRebuild: false
-publish: null
+# electron-updater's feed (spec §15). Builds run with --publish never (release.yml uploads the files);
+# this still writes latest.yml, the blockmap and resources/app-update.yml.
+publish:
+  provider: github
+  owner: gestao-in7eligente
+  repo: ghostlink
+  releaseType: release
 electronFuses:
   runAsNode: false
   enableNodeCliInspectArguments: false
@@ -32,6 +38,11 @@ win:
   target:
     - target: nsis
       arch: [x64]
+  # Written into app-update.yml. Without a publisher name electron-updater skips
+  # verifyUpdateCodeSignature, which is where the Ed25519 release check runs (spec §15).
+  # The installer itself is not Authenticode-signed (paid signing is out of the MVP).
+  signtoolOptions:
+    publisherName: GhostLink contributors
 nsis:
   oneClick: true
   perMachine: false

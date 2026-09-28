@@ -12,6 +12,7 @@ import {
   type IpcResult,
   type IpcReturn,
 } from '../shared/ipcTypes.js';
+import type { UpdateState } from '../shared/updates.js';
 
 /** Invokes a channel and turns `{ ok: false, code }` into `Error(code)` (contract §5: the message is the code). */
 async function invoke<C extends IpcChannel>(channel: C, ...args: IpcArgs<C>): Promise<IpcReturn<C>> {
@@ -54,6 +55,12 @@ export const api: GhostlinkApi = {
   },
   onConnectionState: (cb) => subscribe<ConnectionStateEvent>(IPC_EVENTS.connectionState, cb),
   onServerEvent: (cb) => subscribe<Envelope>(IPC_EVENTS.server, cb),
+  updates: {
+    state: () => invoke(IPC.updatesState),
+    setAutoCheck: (enabled) => invoke(IPC.updatesSetAutoCheck, enabled),
+    restart: () => invoke(IPC.updatesRestart),
+    onState: (cb) => subscribe<UpdateState>(IPC_EVENTS.updates, cb),
+  },
 };
 
 contextBridge.exposeInMainWorld('ghostlink', api);

@@ -20,11 +20,14 @@ describe('IPC channel names (contract §5)', () => {
       'ghostlink:servers.remove',
       'ghostlink:settings.get',
       'ghostlink:settings.set',
+      'ghostlink:updates.restart',
+      'ghostlink:updates.setAutoCheck',
+      'ghostlink:updates.state',
     ]);
   });
 
   it('keeps the two event channels apart from the invoke channels', () => {
-    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server']);
+    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server', 'ghostlink:event.updates']);
     for (const event of Object.values(IPC_EVENTS)) expect(Object.values(IPC)).not.toContain(event);
   });
 });
