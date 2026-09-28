@@ -1,9 +1,8 @@
 import { defineConfig } from 'vitest/config';
 
-// Plan 1b appends 'apps/desktop' once that directory exists:
-// Vitest 5 refuses to start when a listed project directory is missing.
 export default defineConfig({
   test: {
-    projects: ['packages/shared', 'apps/server'],
+    // 'scripts' is the tooling project: smoke runner, packaging and CI policy tests.
+    projects: ['packages/shared', 'apps/server', 'apps/desktop', 'scripts'],
   },
 });

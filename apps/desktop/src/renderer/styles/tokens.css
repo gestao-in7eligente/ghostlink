@@ -1,0 +1,34 @@
+/* Design tokens (spec §11): near-black dark theme, spectral cyan accent, red for destructive actions. */
+:root {
+  color-scheme: dark;
+
+  --bg-0: #0b0d10; /* window */
+  --bg-1: #10141a; /* cards */
+  --bg-2: #161a20; /* inputs, raised surfaces */
+  --border: #242b35;
+  --border-strong: #334050;
+
+  --text: #e6edf3;
+  --text-muted: #8b98a8;
+
+  --accent: #5eead4;
+  --accent-hover: #99f6e4;
+  --accent-ink: #042f2a; /* text on the accent */
+  --danger: #f87171;
+  --danger-bg: #3b1215;
+  --warning: #fbbf24;
+  --warning-bg: #3a2a07;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
+  --shadow: 0 12px 40px rgb(0 0 0 / 45%);
+}

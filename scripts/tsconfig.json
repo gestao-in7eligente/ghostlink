@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": true
+  },
+  "include": ["smoke.mjs", "lib/**/*.mjs", "test/**/*.ts", "test/fixtures/**/*.mjs", "vitest.config.ts"]
+}
