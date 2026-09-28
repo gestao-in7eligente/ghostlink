@@ -57,6 +57,28 @@ export class Access {
     return has(bits, PERMISSIONS.VIEW_CHANNEL) ? bits : 0;
   }
 
+  /**
+   * Who may see a channel, for one event: the owner, `@everyone` and the channel's
+   * allowed roles are read once, each recipient's membership and roles once.
+   */
+  audience(channel: ChannelRow): (userId: string) => boolean {
+    const access = this.channelAccess(channel);
+    const ownerId = this.ownerId();
+    const everyone = Number(this.repo.everyoneRole()?.permissions ?? 0);
+    const seen = new Map<string, boolean>();
+    return (userId) => {
+      let ok = seen.get(userId);
+      if (ok === undefined) {
+        const roles = this.repo.isMember(userId)
+          ? this.repo.userRoles(userId).map((r) => ({ id: r.id, permissions: Number(r.permissions), position: Number(r.position) }))
+          : null;
+        ok = roles !== null && has(permissionsFor({ isOwner: userId === ownerId, everyone, roles }, access), PERMISSIONS.VIEW_CHANNEL);
+        seen.set(userId, ok);
+      }
+      return ok;
+    };
+  }
+
   canView(userId: string, channel: ChannelRow, access?: ChannelAccess): boolean {
     return has(this.channelPerms(this.subject(userId), channel, access), PERMISSIONS.VIEW_CHANNEL);
   }

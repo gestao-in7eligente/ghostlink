@@ -49,6 +49,9 @@ function content(raw: string): string {
  */
 function resolveMentions(core: TextCore, author: string, bits: number, channel: ChannelRow, text: string): { shown: MessageMentions; recipients: string[] } {
   const parsed = extractMentions(text);
+  if (parsed.users.length === 0 && parsed.roles.length === 0 && !parsed.everyone) {
+    return { shown: { users: [], roles: [], everyone: false }, recipients: [] };
+  }
   const members = new Set(core.repo.memberIds());
   const canEveryone = has(bits, PERMISSIONS.MENTION_EVERYONE);
   const users = parsed.users.filter((u) => members.has(u));
@@ -60,8 +63,8 @@ function resolveMentions(core: TextCore, author: string, bits: number, channel: 
   const targets = new Set(everyone ? members : users);
   for (const roleId of roles) for (const u of core.repo.roleMembers(roleId)) targets.add(u);
   targets.delete(author);
-  const access = core.access.channelAccess(channel);
-  const recipients = [...targets].filter((u) => core.access.canView(u, channel, access));
+  const canView = core.access.audience(channel);
+  const recipients = [...targets].filter(canView);
   return { shown: { users, roles, everyone }, recipients };
 }
 

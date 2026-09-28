@@ -94,9 +94,15 @@ const remove: Handler = (core, ctx, payload) => {
   if (role.is_default === 1) throw new ProtocolError('BAD_REQUEST', '@everyone cannot be deleted');
   if (!canManageRole(actor, { position: Number(role.position) })) throw new ProtocolError('HIERARCHY');
   const members = core.repo.roleMembers(role.id);
+  const listedIn = core.db.all<{ channel_id: string }>('SELECT channel_id FROM channel_allowed_roles WHERE role_id = ?', role.id).map((r) => r.channel_id);
   // user_roles and channel_allowed_roles rows go with it (ON DELETE CASCADE).
   core.withVisibility(() => core.db.tx(() => core.db.run('DELETE FROM roles WHERE id = ?', role.id)));
   core.broadcastAll({ t: 'role.deleted', d: { id: role.id } });
+  // Private channels that listed the role: their viewers get the shorter allowed list.
+  for (const channelId of listedIn) {
+    const row = core.repo.channel(channelId);
+    if (row) core.broadcastChannel(row, { t: 'channel.updated', d: { channel: core.repo.toChannel(row) } });
+  }
   core.events.emit('access.changed', { userIds: members });
   return {};
 };

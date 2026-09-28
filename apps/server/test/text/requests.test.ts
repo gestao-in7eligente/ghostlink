@@ -57,6 +57,14 @@ describe('every privileged request is refused to a plain member (forbidden path)
   });
 });
 
+describe('channel limit', () => {
+  it('refuses channels past the limit, so channel.reorder always fits', async () => {
+    const f = await textFixture({ text: { maxChannels: 3 } });
+    await f.owner.ok('channel.create', { name: 'terceiro', type: 'text' });
+    expect(await f.owner.fail('channel.create', { name: 'quarto', type: 'text' })).toBe('BAD_REQUEST');
+  });
+});
+
 describe('strict payloads (spec §5.1: unknown keys → BAD_REQUEST)', () => {
   it.each<[string, unknown]>([
     ['channel.create', { name: 'x', type: 'text', position: 0 }],

@@ -99,6 +99,17 @@ describe('roles and hierarchy (spec §6)', () => {
       expect(db.get('SELECT 1 AS x FROM channel_allowed_roles WHERE role_id = ?', role.id)).toBeUndefined();
     });
   });
+
+  it('deleting a role tells who still sees a private channel that it left the allowed list', async () => {
+    const f = await textFixture();
+    const keep = await makeRole(f, 'Staff');
+    const gone = await makeRole(f, 'Temp');
+    const { channel } = await f.owner.ok<{ channel: { id: string } }>('channel.create', { name: 'equipe', type: 'text', private: true, allowedRoleIds: [keep.id, gone.id] });
+    f.owner.clear();
+    await f.owner.ok('role.delete', { id: gone.id });
+    const updated = await f.owner.event<{ channel: { id: string; allowedRoleIds: string[] } }>('channel.updated', (d) => d.channel.id === channel.id);
+    expect(updated.channel.allowedRoleIds).toEqual([keep.id]);
+  });
 });
 
 describe('kick (spec §7)', () => {

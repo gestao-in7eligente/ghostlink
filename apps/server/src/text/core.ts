@@ -1,4 +1,4 @@
-import { ProtocolError, type MemberLeftReason, type ServerSettings } from '@ghostlink/shared';
+import { CHAT_LIMITS, ProtocolError, type MemberLeftReason, type ServerSettings } from '@ghostlink/shared';
 import { getMeta } from '../db/serverMeta.js';
 import type { ModuleContext, ServerEvent, SessionInfo } from '../modules.js';
 import { Access, type Subject } from './access.js';
@@ -69,6 +69,7 @@ export class TextCore {
   /** Current members as last announced, to tell a (re)join apart from a reconnect. */
   readonly knownMembers = new Set<string>();
   port = 0;
+  maxChannels: number = CHAT_LIMITS.maxChannels;
 
   constructor(
     readonly ctx: ModuleContext,
@@ -113,9 +114,8 @@ export class TextCore {
    * Channel events reach only members with VIEW_CHANNEL in that channel,
    * computed per recipient at send time (spec §5.3).
    */
-  broadcastChannel(channel: ChannelRow, event: ServerEvent, except?: string): void {
-    const access = this.access.channelAccess(channel);
-    this.ctx.sessions.broadcast(event, (s) => s.userId !== except && this.access.canView(s.userId, channel, access));
+  broadcastChannel(channel: ChannelRow, event: ServerEvent, except?: string, audience = this.access.audience(channel)): void {
+    this.ctx.sessions.broadcast(event, (s) => s.userId !== except && audience(s.userId));
   }
 
   /**

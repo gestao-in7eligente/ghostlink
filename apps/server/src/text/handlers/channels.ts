@@ -45,6 +45,8 @@ const create: Handler = (core, ctx, payload) => {
   if (name === '') throw new ProtocolError('BAD_REQUEST', 'empty channel name');
   if (p.type === 'text' && (p.userLimit ?? 0) !== 0) throw new ProtocolError('BAD_REQUEST', 'userLimit is for voice channels');
   const allowed = checkAllowedRoles(core, p.allowedRoleIds ?? []);
+  const count = core.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM channels');
+  if (Number(count?.n ?? 0) >= core.maxChannels) throw new ProtocolError('BAD_REQUEST', 'too many channels');
   const id = newEntityId();
   const { db } = core;
   // A new channel is "gained" by everyone who can see it: withVisibility announces channel.created.

@@ -18,6 +18,7 @@ import {
 import type { RequestContext } from '../../modules.js';
 import { ipKey } from '../../ratelimit/limiter.js';
 import type { TextCore } from '../core.js';
+import type { ChannelRow } from '../repo.js';
 import { softDeleteMessage } from './messages.js';
 
 type Handler = (core: TextCore, ctx: RequestContext, payload: unknown) => unknown;
@@ -153,14 +154,24 @@ const leave: Handler = (core, ctx, payload) => {
     dropMembership(core, userId);
     core.db.run('UPDATE users SET removed_at = ?, rejoin_blocked_until = NULL, last_ip = NULL, avatar_file_id = NULL WHERE id = ?', core.now(), userId);
   });
+  // One audience per channel, however many messages it had (a big leave stays cheap).
+  const audiences = new Map<string, { channel: ChannelRow; audience: (userId: string) => boolean } | null>();
+  const target = (messageId: number) => {
+    const channelId = channelOf.get(messageId) ?? '';
+    if (!audiences.has(channelId)) {
+      const channel = core.repo.channel(channelId);
+      audiences.set(channelId, channel ? { channel, audience: core.access.audience(channel) } : null);
+    }
+    return audiences.get(channelId) ?? null;
+  };
   for (const id of mine) {
-    const channel = core.repo.channel(channelOf.get(id) ?? '');
-    if (channel) core.broadcastChannel(channel, { t: 'msg.deleted', d: { id, channelId: channel.id } });
+    const to = target(id);
+    if (to) core.broadcastChannel(to.channel, { t: 'msg.deleted', d: { id, channelId: to.channel.id } }, undefined, to.audience);
   }
   for (const id of reacted) {
     if (deleted.has(id)) continue;
-    const channel = core.repo.channel(channelOf.get(id) ?? '');
-    if (channel) core.broadcastChannel(channel, { t: 'msg.reactions', d: { id, channelId: channel.id, reactions: core.repo.reactions(id) } });
+    const to = target(id);
+    if (to) core.broadcastChannel(to.channel, { t: 'msg.reactions', d: { id, channelId: to.channel.id, reactions: core.repo.reactions(id) } }, undefined, to.audience);
   }
   finishRemoval(core, userId, 'left', null);
   // The response goes out first; then the (now non-member) session ends.

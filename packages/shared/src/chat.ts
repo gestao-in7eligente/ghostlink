@@ -13,6 +13,8 @@ export const CHAT_LIMITS = {
   messageMaxLength: 4000,
   historyPageMax: 50,
   channelNameMax: 100,
+  /** Channels per server; channel.reorder names them all, so its schema caps the list at the same size. */
+  maxChannels: 500,
   topicMax: 1024,
   maxReactionsPerMessage: 20,
   maxAttachments: 10,
@@ -249,7 +251,7 @@ export const channelUpdateSchema = z.strictObject({
 });
 
 export const channelDeleteSchema = z.strictObject({ id: entityIdSchema });
-export const channelReorderSchema = z.strictObject({ ids: z.array(entityIdSchema).min(1).max(500) });
+export const channelReorderSchema = z.strictObject({ ids: z.array(entityIdSchema).min(1).max(CHAT_LIMITS.maxChannels) });
 
 export const msgHistorySchema = z.strictObject({
   channelId: entityIdSchema,

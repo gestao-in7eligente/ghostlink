@@ -1,4 +1,4 @@
-import type { TextWelcome } from '@ghostlink/shared';
+import { CHAT_LIMITS, type TextWelcome } from '@ghostlink/shared';
 import type { ModuleContext, RequestContext, RequestHandler, ServerModule, SessionInfo } from '../modules.js';
 import { TextCore, TextEmitter, type TextEvents } from './core.js';
 import { channelHandlers } from './handlers/channels.js';
@@ -39,6 +39,8 @@ export interface TextModule extends ServerModule {
 export interface TextModuleOptions {
   /** Tests only: shrink the spec §13 limits. */
   rateLimits?: Partial<TextRateLimits>;
+  /** Tests only: fewer channels than CHAT_LIMITS.maxChannels. */
+  maxChannels?: number;
 }
 
 /** The Voice track's entry point: `getVoiceAccess(ctx)` inside its own init/handlers. */
@@ -110,6 +112,7 @@ export function createTextModule(opts: TextModuleOptions = {}): TextModule {
       seedDefaults(ctx.db, ctx.now());
       const repo = new TextRepo(ctx.db);
       core = new TextCore(ctx, repo, new TextLimiters({ ...DEFAULT_TEXT_RATE_LIMITS, ...opts.rateLimits }, ctx.now), events);
+      core.maxChannels = opts.maxChannels ?? CHAT_LIMITS.maxChannels;
       for (const id of repo.memberIds()) core.knownMembers.add(id);
       const limiters = core.limiters;
       sweep = setInterval(() => limiters.sweep(), SWEEP_INTERVAL_MS);
