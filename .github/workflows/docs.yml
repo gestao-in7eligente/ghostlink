@@ -1,0 +1,81 @@
+# Site (spec §16): builds the VitePress site in docs-site/ and deploys it to GitHub Pages
+# (https://gestao-in7eligente.github.io/ghostlink/) on every push to main, or on demand.
+# The Pages source is "GitHub Actions"; the github-pages environment only accepts main.
+# Actions are pinned by commit SHA; scripts/test/docsWorkflow.test.ts enforces the rules below.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+# One deployment at a time; a newer push waits instead of cancelling a deployment in progress.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # Flaky networks: npm retries each request before failing the whole install.
+  npm_config_fetch_retries: '6'
+  npm_config_fetch_retry_mintimeout: '5000'
+  npm_config_audit: 'false'
+  npm_config_fund: 'false'
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: read # configure-pages reads the Pages settings
+    env:
+      # The site needs no Electron binary and no native module: skip every install script.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.x
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            npm ci --ignore-scripts && exit 0
+            echo "::warning::npm ci failed (attempt ${attempt} of 3), retrying in 20 s"
+            sleep 20
+          done
+          exit 1
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - name: Build
+        run: npm run docs:build
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs-site/.vitepress/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write # deploy-pages proves this run's identity to Pages
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
