@@ -77,6 +77,7 @@ export const host = {
   'host.address.radmin': 'VPN Radmin',
   'host.address.tailscale': 'VPN Tailscale',
   'host.address.zerotier': 'VPN ZeroTier',
+  'host.address.virtual': 'Adaptador virtual',
 
   'host.indicator.running': 'Hospedando {name}',
   'host.indicator.starting': 'Iniciando {name}…',

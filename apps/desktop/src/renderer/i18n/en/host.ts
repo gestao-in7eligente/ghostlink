@@ -76,6 +76,7 @@ export const host: Record<keyof typeof ptBR, string> = {
   'host.address.radmin': 'Radmin VPN',
   'host.address.tailscale': 'Tailscale VPN',
   'host.address.zerotier': 'ZeroTier VPN',
+  'host.address.virtual': 'Virtual adapter',
 
   'host.indicator.running': 'Hosting {name}',
   'host.indicator.starting': 'Starting {name}…',

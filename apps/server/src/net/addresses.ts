@@ -3,8 +3,12 @@
 import { networkInterfaces, type NetworkInterfaceInfo } from 'node:os';
 import { LIMITS, formatHostPort } from '@ghostlink/shared';
 
-/** `public` = a routable IP sitting directly on an interface (typically a VPS). */
-export type LocalAddressKind = 'public' | 'lan' | 'radmin' | 'tailscale' | 'zerotier';
+/**
+ * `public` = a routable IP sitting directly on an interface (typically a VPS).
+ * `virtual` = a VM/container host adapter (VMware, Hyper-V/WSL, VirtualBox, Docker):
+ * reachable only from this machine's VMs, so it is listed but never advertised.
+ */
+export type LocalAddressKind = 'public' | 'lan' | 'radmin' | 'tailscale' | 'zerotier' | 'virtual';
 
 export interface LocalAddress {
   ip: string;
@@ -37,6 +41,9 @@ function isRfc1918(n: number): boolean {
 }
 
 const ZEROTIER_INTERFACE = /zerotier|^zt[0-9a-z]+$/i;
+/** Loopback adapters can carry public-looking IPs (e.g. banking "Topaz Loopback"): never usable. */
+const LOOPBACK_INTERFACE = /loopback|pseudo-interface/i;
+const VIRTUAL_INTERFACE = /vmware|vmnet|virtualbox|vbox|hyper-v|vethernet|wsl|docker|^br-|^veth|^virbr|^lxc|^lxd|^cni|^flannel/i;
 
 /**
  * What kind of address `ip` is, or null for addresses nobody else can use
@@ -48,14 +55,16 @@ export function classifyIPv4(ip: string, interfaceName: string): LocalAddressKin
   const n = toInt(ip);
   if (n === null) return null;
   if (inRange(n, '0.0.0.0', 8) || inRange(n, '127.0.0.0', 8) || inRange(n, '169.254.0.0', 16) || n >= toInt('224.0.0.0')!) return null;
+  if (LOOPBACK_INTERFACE.test(interfaceName)) return null;
   if (ZEROTIER_INTERFACE.test(interfaceName)) return 'zerotier';
+  if (VIRTUAL_INTERFACE.test(interfaceName)) return 'virtual';
   if (inRange(n, '26.0.0.0', 8)) return 'radmin';
   if (inRange(n, '100.64.0.0', 10)) return 'tailscale';
   if (isRfc1918(n)) return 'lan';
   return 'public';
 }
 
-const KIND_ORDER: readonly LocalAddressKind[] = ['public', 'lan', 'radmin', 'tailscale', 'zerotier'];
+const KIND_ORDER: readonly LocalAddressKind[] = ['public', 'lan', 'radmin', 'tailscale', 'zerotier', 'virtual'];
 
 /** External IPv4 addresses of this machine, deduplicated, ordered public → LAN → Radmin → Tailscale → ZeroTier. */
 export function localIPv4Addresses(interfaces: NodeJS.Dict<NetworkInterfaceInfo[]> = networkInterfaces()): LocalAddress[] {
@@ -88,7 +97,9 @@ function usableWan(wanIp: string | null | undefined): string | null {
  * `host:port`, deduplicated, at most LIMITS.inviteMaxAddresses.
  */
 export function buildPublicAddresses(input: { port: number; wanIp?: string | null; local: readonly LocalAddress[] }): string[] {
-  const ips = [usableWan(input.wanIp), ...input.local.map((l) => l.ip)].filter((ip): ip is string => ip !== null);
+  const ips = [usableWan(input.wanIp), ...input.local.filter((l) => l.kind !== 'virtual').map((l) => l.ip)].filter(
+    (ip): ip is string => ip !== null,
+  );
   const out: string[] = [];
   for (const ip of ips) {
     const address = formatHostPort(ip, input.port);
@@ -106,5 +117,5 @@ export function resolveNodeIp(input: { explicit?: string | null; wanIp?: string 
     if (toInt(input.explicit) === null) throw new Error(`the node IP must be an IPv4 address, got "${input.explicit}"`);
     return input.explicit;
   }
-  return usableWan(input.wanIp) ?? input.local[0]?.ip ?? null;
+  return usableWan(input.wanIp) ?? input.local.find((l) => l.kind !== 'virtual')?.ip ?? null;
 }

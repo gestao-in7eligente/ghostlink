@@ -16,7 +16,7 @@ export interface HostConfig {
 export type HostState = 'stopped' | 'starting' | 'running' | 'stopping' | 'failed';
 
 /** Where people can reach the hosted server; `loopback` is this computer only. */
-export type HostAddressKind = 'loopback' | 'public' | 'lan' | 'radmin' | 'tailscale' | 'zerotier';
+export type HostAddressKind = 'loopback' | 'public' | 'lan' | 'radmin' | 'tailscale' | 'zerotier' | 'virtual';
 
 export interface HostAddress {
   address: string; // host:port

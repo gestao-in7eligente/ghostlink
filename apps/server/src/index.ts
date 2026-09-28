@@ -11,6 +11,7 @@ import { resolveLimits, type ServerLimits } from './limits.js';
 import { consoleLogger, type Logger } from './logger.js';
 import { ModuleHost } from './moduleHost.js';
 import type { ServerModule } from './modules.js';
+import { allLocalIPv4, guardAddresses, isWildcardHost, portInUseError, probeTcpPort } from './net/ports.js';
 import { loadOrCreateCertificate } from './tls/certificate.js';
 import { SERVER_VERSION } from './version.js';
 import { Gateway } from './ws/gateway.js';
@@ -33,6 +34,7 @@ export { defaultModules } from './defaultModules.js';
 export { consoleLogger, silentLogger } from './logger.js';
 export { SERVER_VERSION, WEB_SITE_BASE } from './version.js';
 export * from './net/addresses.js';
+export * from './net/ports.js';
 
 export interface StartServerOptions {
   dataDir: string; // created if missing
@@ -98,6 +100,12 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
   }
   // Validates module names and request types before anything touches the disk.
   const modules = new ModuleHost([coreModule, ...(opts.modules ?? [])], logger);
+  const host = opts.host ?? '0.0.0.0';
+  if (opts.port !== 0) {
+    // spec §8.5: a port held by another program on ANY relevant address is busy (see net/ports.ts).
+    const probe = await probeTcpPort(opts.port, { bindHost: host });
+    if (!probe.free) throw portInUseError(opts.port, host, probe.busyOn);
+  }
   const paths = ensureDataDirs(opts.dataDir);
   const certificate = await loadOrCreateCertificate(opts.dataDir);
 
@@ -136,8 +144,10 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     moduleUpgrade: (req, socket, head) => modules.upgrade(req, socket, head),
   });
 
+  let guards: Array<{ close(cb: () => void): unknown }> = [];
   /** Order matters: sessions end (modules still see onSessionClosed), then HTTP, then modules stop, then the DB. */
   const shutdown = async (): Promise<void> => {
+    await Promise.all(guards.map((g) => new Promise<void>((resolve) => g.close(() => resolve()))));
     await gateway.close();
     if (http.listening) {
       await new Promise<void>((resolve) => {
@@ -153,7 +163,7 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     await modules.init({ db, now, logger, limits, dataDir: opts.dataDir, serverKeyId: certificate.serverKeyId, sessions: gateway.sessions.api });
     await new Promise<void>((resolve, reject) => {
       http.once('error', reject);
-      http.listen(opts.port, opts.host ?? '0.0.0.0', () => {
+      http.listen(opts.port, host, () => {
         http.off('error', reject);
         resolve();
       });
@@ -163,6 +173,10 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     throw e;
   }
   const port = (http.address() as AddressInfo).port;
+  if (process.platform === 'win32' && isWildcardHost(host)) {
+    // Windows would let another program bind 127.0.0.1:port (or a LAN IP) over our wildcard listener.
+    guards = await guardAddresses(http, port, ['127.0.0.1', ...allLocalIPv4()]);
+  }
   try {
     await modules.start({ port });
   } catch (e) {

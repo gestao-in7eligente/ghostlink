@@ -40,6 +40,22 @@ describe('classifyIPv4 (spec §8.5)', () => {
     },
   );
 
+  it.each([
+    ['54.232.189.113', 'Topaz Loopback'],
+    ['217.216.91.34', 'Loopback Pseudo-Interface 1'],
+  ])('skips %s on %s (a loopback adapter, even with a public-looking IP)', (ip, iface) => {
+    expect(classifyIPv4(ip, iface)).toBeNull();
+  });
+
+  it.each([
+    ['192.168.51.1', 'VMware Network Adapter VMnet8'],
+    ['172.26.160.1', 'vEthernet (WSL (Hyper-V firewall))'],
+    ['192.168.56.1', 'VirtualBox Host-Only Network'],
+    ['172.17.0.1', 'docker0'],
+  ])('marks %s on %s as virtual (never advertised)', (ip, iface) => {
+    expect(classifyIPv4(ip, iface)).toBe('virtual');
+  });
+
   it('does not mistake 172.32/12 neighbours or 100.128 for private or Tailscale ranges', () => {
     expect(classifyIPv4('172.32.0.1', 'eth0')).toBe('public');
     expect(classifyIPv4('100.128.0.1', 'eth0')).toBe('public');
@@ -53,6 +69,8 @@ describe('localIPv4Addresses', () => {
       'Loopback Pseudo-Interface 1': [v4('127.0.0.1', true)],
       Tailscale: [v4('100.101.102.103'), v6('fd7a:115c:a1e0::1')],
       'Radmin VPN': [v4('26.1.2.3')],
+      'VMware Network Adapter VMnet1': [v4('192.168.119.1')],
+      'Topaz Loopback': [v4('54.232.189.113')],
       Ethernet: [v4('192.168.0.10'), v6('fe80::1'), v4('169.254.1.1')],
       'Wi-Fi': [v4('192.168.0.10')],
     });
@@ -60,6 +78,7 @@ describe('localIPv4Addresses', () => {
       { ip: '192.168.0.10', interface: 'Ethernet', kind: 'lan' },
       { ip: '26.1.2.3', interface: 'Radmin VPN', kind: 'radmin' },
       { ip: '100.101.102.103', interface: 'Tailscale', kind: 'tailscale' },
+      { ip: '192.168.119.1', interface: 'VMware Network Adapter VMnet1', kind: 'virtual' },
     ]);
   });
 
@@ -89,6 +108,13 @@ const local: LocalAddress[] = [
 ];
 
 describe('buildPublicAddresses (spec §3.5)', () => {
+  it('never advertises virtual adapters', () => {
+    const withVirtual: LocalAddress[] = [{ ip: '192.168.51.1', interface: 'VMware Network Adapter VMnet8', kind: 'virtual' }, ...local];
+    expect(buildPublicAddresses({ port: 7700, local: withVirtual })).toEqual(['192.168.0.10:7700', '26.1.2.3:7700', '100.101.102.103:7700']);
+    expect(resolveNodeIp({ local: withVirtual })).toBe('192.168.0.10');
+    expect(resolveNodeIp({ local: withVirtual.slice(0, 1) })).toBeNull();
+  });
+
   it('puts a real WAN first, then LAN, then VPNs', () => {
     expect(buildPublicAddresses({ port: 7700, wanIp: '203.0.113.7', local })).toEqual([
       '203.0.113.7:7700',
