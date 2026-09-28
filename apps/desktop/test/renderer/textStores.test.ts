@@ -212,6 +212,36 @@ describe('messages', () => {
     expect(run(same, ev({ t: 'msg.reactions', id: 99, channelId: GERAL, reactions })).messages).toBe(same.messages);
   });
 
+  it('an older page that arrives after the log was trimmed is dropped (no gap in the history)', () => {
+    const many = Array.from({ length: INACTIVE_KEEP + 30 }, (_, i) => message(i + 101));
+    let s = run(start(), { type: 'history.done', channelId: GERAL, older: false, messages: many, hasMore: true });
+    s = run(s, { type: 'history.start', channelId: GERAL, older: true }); // before = 101
+    s = run(s, { type: 'select', channelId: RANDOM }); // trimmed: the first message is now 131
+    s = run(s, { type: 'history.done', channelId: GERAL, older: true, before: 101, messages: [message(90), message(100)], hasMore: true });
+    expect(ids(s)[0]).toBe(131);
+    expect(ids(s)).not.toContain(100);
+    expect(log(s).older).toBe('idle');
+  });
+
+  it('a rejected channel switch never trims the open channel', () => {
+    const many = Array.from({ length: INACTIVE_KEEP + 30 }, (_, i) => message(i + 1));
+    let s = run(start(), { type: 'history.done', channelId: GERAL, older: false, messages: many, hasMore: false });
+    s = run(s, { type: 'select', channelId: 'Q'.repeat(26) }, { type: 'select', channelId: VOICE });
+    expect(s.channels.activeId).toBe(GERAL);
+    expect(log(s).items).toHaveLength(INACTIVE_KEEP + 30);
+  });
+
+  it('a reconnect keeps unsent messages; the channel reloads its history', () => {
+    const pending = { clientMsgId: 'x1', channelId: GERAL, content: 'não perca isto', replyTo: null, createdAt: NOW, error: 'CONNECTION_LOST' as const };
+    let s = run(loaded(), { type: 'pending.add', pending }, { type: 'reset', snapshot: snapshot() });
+    expect(log(s)).toMatchObject({ items: [], status: 'stale', pending: [pending] });
+    expect(s.messages.logs[RANDOM]).toBeUndefined();
+    s = run(s, { type: 'history.start', channelId: GERAL, older: false }, { type: 'history.done', channelId: GERAL, older: false, messages: [message(10)], hasMore: false });
+    expect(log(s)).toMatchObject({ status: 'ready', pending: [pending] });
+    // Another server's welcome drops them.
+    expect(run(s, { type: 'reset', snapshot: snapshot({}, 'srv-2') }).messages.logs).toEqual({});
+  });
+
   it('leaving a channel trims its log to the newest messages', () => {
     const many = Array.from({ length: INACTIVE_KEEP + 30 }, (_, i) => message(i + 1));
     let s = run(start(), { type: 'history.done', channelId: GERAL, older: false, messages: many, hasMore: false });

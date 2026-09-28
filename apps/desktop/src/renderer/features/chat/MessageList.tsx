@@ -165,7 +165,7 @@ export function MessageList({
 /** The first row: a loader while older history exists, otherwise a little space above the first date. */
 function ListTop({ channel, log }: { channel: Channel; log: ChannelLog | undefined }) {
   const t = useT();
-  if (!log || log.status === 'loading') return <p className={c.listNote}>{t('chat.loadingHistory')}</p>;
+  if (!log || log.status === 'loading' || log.status === 'stale') return <p className={c.listNote}>{t('chat.loadingHistory')}</p>;
   if (log.status === 'error') {
     return (
       <div className={c.listNote}>

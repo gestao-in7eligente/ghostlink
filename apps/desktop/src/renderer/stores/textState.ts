@@ -48,7 +48,8 @@ export interface ChannelLog {
   items: readonly Message[];
   /** More history exists before items[0]. */
   hasMore: boolean;
-  status: 'loading' | 'ready' | 'error';
+  /** 'stale': kept only for the unsent messages after a reconnect; the history must be loaded again. */
+  status: 'loading' | 'ready' | 'error' | 'stale';
   older: 'idle' | 'loading' | 'error';
   pending: readonly PendingMessage[];
 }
@@ -78,7 +79,8 @@ export type TextAction =
   | { type: 'stage'; channelId: string | null }
   | { type: 'attention'; attentive: boolean }
   | { type: 'history.start'; channelId: string; older: boolean }
-  | { type: 'history.done'; channelId: string; older: boolean; messages: readonly Message[]; hasMore: boolean }
+  /** `before`: the oldest loaded message the older page was asked for; a page for a trimmed log is dropped. */
+  | { type: 'history.done'; channelId: string; older: boolean; messages: readonly Message[]; hasMore: boolean; before?: number }
   | { type: 'history.fail'; channelId: string; older: boolean }
   | { type: 'pending.add'; pending: PendingMessage }
   | { type: 'pending.fail'; channelId: string; clientMsgId: string; error: AppErrorCode }

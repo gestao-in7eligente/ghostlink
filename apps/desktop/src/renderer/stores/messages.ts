@@ -80,11 +80,21 @@ function mapPending(s: MessagesState, channelId: string, clientMsgId: string, f:
 /** Pure reducer of the messages slice. `root` is the whole state before this action. */
 export function messagesSlice(s: MessagesState, a: TextAction, root: TextState): MessagesState {
   switch (a.type) {
-    case 'reset':
-      // Every open channel reloads its last page after a (re)connect (spec §13).
-      return initialMessages;
+    case 'reset': {
+      // Every open channel reloads its last page after a (re)connect (spec §13); on the same
+      // server, messages still unsent (or failed) stay so they can be retried.
+      if (root.server.serverId !== a.snapshot.serverId) return initialMessages;
+      const visible = new Set(a.snapshot.text.channels.map((c) => c.id));
+      const logs: Record<string, ChannelLog> = {};
+      for (const [channelId, log] of Object.entries(s.logs)) {
+        if (log.pending.length > 0 && visible.has(channelId)) logs[channelId] = { ...EMPTY_LOG, status: 'stale', pending: log.pending };
+      }
+      return { logs, typing: {} };
+    }
     case 'select': {
-      // The channel we leave keeps only its newest messages.
+      // The channel we leave keeps only its newest messages (only when the switch really happens).
+      const target = Object.hasOwn(root.channels.byId, a.channelId) ? root.channels.byId[a.channelId] : undefined;
+      if (!target || target.type !== 'text') return s;
       const previous = root.channels.activeId;
       const log = previous === null || previous === a.channelId ? undefined : logOf(s, previous);
       if (!log || log.items.length <= INACTIVE_KEEP) return s;
@@ -97,6 +107,8 @@ export function messagesSlice(s: MessagesState, a: TextAction, root: TextState):
     }
     case 'history.done': {
       const log = logOf(s, a.channelId) ?? EMPTY_LOG;
+      // The log was trimmed (or reloaded) while the older page was on its way: merging it would leave a gap.
+      if (a.older && a.before !== undefined && log.items[0]?.id !== a.before) return withLog(s, a.channelId, { ...log, older: 'idle' });
       const items = mergeById(a.messages, log.items); // live events that raced the page win
       if (a.older) return withLog(s, a.channelId, { ...log, items, hasMore: a.hasMore, older: 'idle' });
       return withLog(s, a.channelId, { ...log, items, hasMore: a.hasMore, status: 'ready', older: 'idle' });

@@ -17,7 +17,7 @@ import { EmojiPicker } from './EmojiPicker.js';
 import type { MarkdownContext } from './markdownRender.js';
 import { MessageList, type MessageListHandle } from './MessageList.js';
 import type { MessageEnv } from './MessageItem.js';
-import { memberName } from './notify.js';
+import { memberName, plainContent } from './notify.js';
 
 /** The open text channel: header, messages, "digitando…" and the composer. */
 export function ChatView() {
@@ -65,7 +65,7 @@ function OpenChannel({ channel }: { channel: Channel }) {
 
   // First visit, or after a reconnect dropped the loaded messages: load the newest page.
   // (Only when the log appears or disappears; a failed load is retried from the list.)
-  const missing = log === undefined;
+  const missing = log === undefined || log.status === 'stale';
   useEffect(() => {
     if (missing) void loadHistory(channel.id);
   }, [channel.id, missing]);
@@ -121,6 +121,7 @@ function OpenChannel({ channel }: { channel: Channel }) {
       canReact,
       md,
       name: (id) => memberName({ members }, id, t('chat.formerMember')),
+      plain: (content) => plainContent({ members, server }, content, t),
       pingsMe: (m) => m.authorId !== selfId && mentionsUser(m, selfId, myRoleIds),
       highlightId: highlight,
       onReply: (m) => useComposerStore.getState().startReply({ channelId: m.channelId, messageId: m.id }),
@@ -132,7 +133,7 @@ function OpenChannel({ channel }: { channel: Channel }) {
       onRetry: (p) => void retryMessage(p.channelId, p.clientMsgId),
       onDrop: (p) => dropMessage(p.channelId, p.clientMsgId),
     }),
-    [t, locale, selfId, canManageMessages, canReact, md, members, myRoleIds, highlight],
+    [t, locale, selfId, canManageMessages, canReact, md, members, server, myRoleIds, highlight],
   );
 
   const onAttention = useCallback((bottom: boolean) => setAtBottom(bottom), []);

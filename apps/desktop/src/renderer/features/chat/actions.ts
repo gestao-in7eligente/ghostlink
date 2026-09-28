@@ -71,7 +71,7 @@ export async function loadHistory(channelId: string, older = false): Promise<voi
   try {
     const page = await request('msg.history', { channelId, limit: CHAT_LIMITS.historyPageMax, ...(before ? { before } : {}) }, historySchema);
     if (!current()) return;
-    dispatchText({ type: 'history.done', channelId, older, messages: page.messages.filter((m) => m.channelId === channelId), hasMore: page.hasMore });
+    dispatchText({ type: 'history.done', channelId, older, before, messages: page.messages.filter((m) => m.channelId === channelId), hasMore: page.hasMore });
   } catch {
     if (current()) dispatchText({ type: 'history.fail', channelId, older });
   }

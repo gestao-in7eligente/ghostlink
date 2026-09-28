@@ -19,6 +19,8 @@ export interface MessageEnv {
   md: MarkdownContext;
   /** A member's nickname, or "ex-membro". */
   name(userId: string | null): string;
+  /** Message text without markup, mentions shown as names (reply previews). */
+  plain(content: string): string;
   /** True when the message pings the current user (a mention, their role or @everyone). */
   pingsMe(message: Message): boolean;
   highlightId: number | null;
@@ -50,7 +52,7 @@ function Header({ name, at, env }: { name: string; at: number; env: MessageEnv }
 
 function ReplyPreview({ message, env }: { message: Message; env: MessageEnv }) {
   const reply = message.replyTo!;
-  const text = reply.deleted ? env.t('chat.deletedMessage') : reply.content;
+  const text = reply.deleted ? env.t('chat.deletedMessage') : env.plain(reply.content);
   return (
     <button type="button" className={c.replyBar} onClick={() => !reply.deleted && env.onJumpTo(reply.id)} disabled={reply.deleted}>
       <CornerUpLeft size={14} className={c.replyIcon} aria-hidden="true" />

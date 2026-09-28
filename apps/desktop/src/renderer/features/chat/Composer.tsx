@@ -89,8 +89,10 @@ export function Composer({ channel, canSend, onSent }: { channel: Channel; canSe
   // "Mencionar" in the member menu: append the mention and focus the box.
   const mention = useComposerStore((s) => s.mention);
   useEffect(() => {
-    if (!mention || !canSend) return;
+    if (!mention) return;
+    // Always consumed, so a request made over a read-only channel never lands in another one later.
     useComposerStore.getState().requestMention(null);
+    if (!canSend) return;
     const current = area.current?.value ?? '';
     const next = `${current}${current === '' || /\s$/u.test(current) ? '' : ' '}${mention.display} `;
     setText(next);
