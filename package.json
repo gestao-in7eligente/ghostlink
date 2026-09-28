@@ -15,7 +15,10 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "cross-env NODE_OPTIONS=--disable-warning=ExperimentalWarning vitest run",
     "lint": "eslint .",
-    "build": "npm run typecheck && npm run build -w @ghostlink/server"
+    "build": "npm run typecheck && npm run build -w @ghostlink/server && npm run build -w @ghostlink/desktop",
+    "build:desktop": "npm run build -w @ghostlink/desktop",
+    "dev": "npm run dev -w @ghostlink/desktop",
+    "smoke:dev": "npm run smoke:dev -w @ghostlink/desktop"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
