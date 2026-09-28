@@ -7,6 +7,7 @@ describe('IPC channel names (contract §5)', () => {
   it('are exactly the contract channels, named ghostlink:<namespace>.<method>', () => {
     expect(Object.values(IPC).sort()).toEqual([
       'ghostlink:app.info',
+      'ghostlink:deepLink.take',
       'ghostlink:host.copyText',
       'ghostlink:host.firewall',
       'ghostlink:host.fixFirewall',
@@ -39,7 +40,7 @@ describe('IPC channel names (contract §5)', () => {
   });
 
   it('keeps the event channels apart from the invoke channels', () => {
-    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server', 'ghostlink:event.host']);
+    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server', 'ghostlink:event.host', 'ghostlink:event.deepLink']);
     for (const event of Object.values(IPC_EVENTS)) expect(Object.values(IPC)).not.toContain(event);
   });
 });

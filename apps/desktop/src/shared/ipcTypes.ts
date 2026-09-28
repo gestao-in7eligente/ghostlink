@@ -98,6 +98,9 @@ export interface GhostlinkApi {
   onConnectionState(cb: (s: ConnectionStateEvent) => void): () => void;
   onServerEvent(cb: (e: Envelope) => void): () => void;
   onHostStatus(cb: (s: HostStatus) => void): () => void;
+  /** spec §12: a ghostlink:// link that arrived before the page listened (then null). */
+  deepLink: { take(): Promise<ParsedJoinInput | null> };
+  onDeepLink(cb: (link: ParsedJoinInput) => void): () => void;
 }
 
 /** Invoke channels: `ghostlink:<namespace>.<method>`. */
@@ -111,6 +114,7 @@ export const IPC = {
   identityPickBackup: 'ghostlink:identity.pickBackup',
   identityImportBackup: 'ghostlink:identity.importBackup',
   identityDelete: 'ghostlink:identity.delete',
+  deepLinkTake: 'ghostlink:deepLink.take',
   settingsGet: 'ghostlink:settings.get',
   settingsSet: 'ghostlink:settings.set',
   joinParse: 'ghostlink:join.parse',
@@ -138,6 +142,7 @@ export const IPC_EVENTS = {
   connectionState: 'ghostlink:event.connectionState',
   server: 'ghostlink:event.server',
   host: 'ghostlink:event.host',
+  deepLink: 'ghostlink:event.deepLink',
 } as const;
 
 /** Arguments and result of every invoke channel; main's handlers and the preload are both typed from it. */
@@ -151,6 +156,7 @@ export interface IpcContract {
   [IPC.identityPickBackup]: { args: []; result: BackupPickResult };
   [IPC.identityImportBackup]: { args: [password: string, replace: boolean]; result: IdentityStatus };
   [IPC.identityDelete]: { args: []; result: IdentityStatus };
+  [IPC.deepLinkTake]: { args: []; result: ParsedJoinInput | null };
   [IPC.settingsGet]: { args: []; result: Settings };
   [IPC.settingsSet]: { args: [patch: Partial<Settings>]; result: Settings };
   [IPC.joinParse]: { args: [input: string]; result: ParsedJoinInput };

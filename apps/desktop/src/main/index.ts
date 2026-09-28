@@ -9,6 +9,7 @@ import { IPC_EVENTS, type Platform } from '../shared/ipcTypes.js';
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges } from './appProtocol.js';
 import { ClientController } from './controller.js';
 import { GHOSTKEY_EXTENSION, IdentityBackup } from './backup.js';
+import { DeepLinks, extractDeepLink, registerProtocolClient } from './deeplink.js';
 import { HostFirewall, firewallPrograms } from './hostFirewall.js';
 import { HostManager } from './hostManager.js';
 import { forkServer, hostedServerLogging } from './hostProcess.js';
@@ -33,6 +34,8 @@ const appOrigin = (devRendererUrl && originOf(devRendererUrl)) || APP_ORIGIN;
 // Dev/test hook (never honoured when packaged): Host mode binds here instead of 0.0.0.0,
 // so automated runs do not trigger the Windows firewall prompt.
 const hostBind = app.isPackaged ? undefined : process.env.GHOSTLINK_HOST_BIND || undefined;
+/** ghostlink:// links (spec §12), created with the single-instance lock. */
+let deepLinks: DeepLinks | null = null;
 
 // 1. Test hook (never honoured when packaged): one profile per instance.
 if (!app.isPackaged && process.env.GHOSTLINK_USER_DATA) {
@@ -50,7 +53,21 @@ if (!app.requestSingleInstanceLock()) {
   app.exit(smoke ? 1 : 0);
 } else {
   let mainWindow: BrowserWindow | null = null;
-  app.on('second-instance', () => {
+  // spec §12: ghostlink:// links from argv (Windows) and open-url (macOS); the page confirms them.
+  const links = new DeepLinks({
+    send: (invite) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC_EVENTS.deepLink, invite);
+    },
+    log: (message) => mainLog.warn(message),
+  });
+  deepLinks = links;
+  links.handle(extractDeepLink(process.argv));
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    links.handle(url);
+  });
+  app.on('second-instance', (_event, argv) => {
+    links.handle(extractDeepLink(argv));
     if (mainWindow?.isMinimized()) mainWindow.restore();
     mainWindow?.show(); // it may be hidden in the tray while hosting
     mainWindow?.focus();
@@ -71,6 +88,7 @@ if (!app.requestSingleInstanceLock()) {
 
 function start(): BrowserWindow {
   registerAppProtocol(fileURLToPath(new URL('../renderer/', import.meta.url)));
+  if (!smoke) registerProtocolClient(app, { argv: process.argv, execPath: process.execPath, env: process.env });
   installSecurity({ appOrigin });
   installRendererPinning(session.defaultSession);
 
@@ -101,6 +119,7 @@ function start(): BrowserWindow {
     appInfo: () => ({ version: app.getVersion(), platform: process.platform as Platform, locale: app.getLocale() }),
     host: { manager: host, copyText: (text) => clipboard.writeText(text), firewall: hostFirewall(host) },
     backup: identityBackup(window, identity, controller),
+    deepLinks: deepLinks ?? undefined,
   });
   app.on('before-quit', () => void controller.disconnect());
 

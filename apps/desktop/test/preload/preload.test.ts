@@ -19,7 +19,7 @@ describe('preload bridge', () => {
   it('exposes exactly the contract API as window.ghostlink', () => {
     expect(Object.keys(electron.exposed)).toEqual(['ghostlink']);
     expect(electron.exposed.ghostlink).toBe(api);
-    expect(Object.keys(api).sort()).toEqual(['app', 'host', 'identity', 'join', 'onConnectionState', 'onHostStatus', 'onServerEvent', 'servers', 'settings']);
+    expect(Object.keys(api).sort()).toEqual(['app', 'deepLink', 'host', 'identity', 'join', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onServerEvent', 'servers', 'settings']);
     expect(Object.keys(api.host).sort()).toEqual(['copyText', 'firewall', 'fixFirewall', 'invite', 'join', 'logs', 'recoverOwnership', 'restart', 'start', 'status', 'stop']);
     expect(Object.keys(api.identity).sort()).toEqual(['create', 'delete', 'exportBackup', 'importBackup', 'pickBackup', 'replaceKeepingBackup', 'retry', 'status']);
     expect(Object.keys(api.join).sort()).toEqual(['connect', 'parse', 'probe']);
@@ -58,6 +58,7 @@ describe('preload bridge', () => {
     ['host.logs', () => api.host.logs(), IPC.hostLogs, []],
     ['host.copyText', () => api.host.copyText('GL1-x'), IPC.hostCopyText, ['GL1-x']],
     ['host.firewall', () => api.host.firewall(), IPC.hostFirewall, []],
+    ['deepLink.take', () => api.deepLink.take(), IPC.deepLinkTake, []],
     ['host.fixFirewall', () => api.host.fixFirewall(), IPC.hostFixFirewall, []],
   ])('%s invokes its channel and unwraps the value', async (_name, call, channel, args) => {
     electron.ipcRenderer.invoke.mockResolvedValueOnce({ ok: true, value: 'VALUE' });
@@ -86,5 +87,7 @@ describe('preload bridge', () => {
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.server);
     api.onHostStatus(() => {});
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.host);
+    api.onDeepLink(() => {});
+    expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.deepLink);
   });
 });

@@ -5,16 +5,25 @@ import { ErrorLine, Screen } from '../components/Screen.js';
 import ui from '../components/ui.module.css';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 import { useSettingsStore } from '../stores/settings.js';
-import { buildConnectRequest, initialJoin, joinReducer } from './joinFlow.js';
+import { buildConnectRequest, initialJoin, joinReducer, type JoinState } from './joinFlow.js';
 
 /**
  * spec §11.1 "Entrar": paste a link, a GL1- code or host:port → confirm the invite
  * or the TOFU fingerprint → nickname (+ password or invite when the server asks) → connect.
  */
-export function Join({ onCancel, onJoined }: { onCancel: () => void; onJoined: (welcome: RendererWelcome) => void }) {
+export function Join({
+  onCancel,
+  onJoined,
+  start,
+}: {
+  onCancel: () => void;
+  onJoined: (welcome: RendererWelcome) => void;
+  /** Where to begin, e.g. at the invite confirmation of a ghostlink:// link (spec §12). */
+  start?: JoinState;
+}) {
   const t = useT();
   const nickname = useSettingsStore((s) => s.settings?.nickname ?? '');
-  const [s, dispatch] = useReducer(joinReducer, nickname, initialJoin);
+  const [s, dispatch] = useReducer(joinReducer, nickname, (n) => start ?? initialJoin(n));
   const api = window.ghostlink;
 
   const submitInput = async (event: FormEvent) => {

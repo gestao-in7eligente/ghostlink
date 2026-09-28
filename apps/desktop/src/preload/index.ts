@@ -1,7 +1,7 @@
 // Sandboxed preload (spec §12): the whole renderer API, nothing else. It imports
 // only `electron` and type-only modules, so the bundle stays a single CJS file.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { Envelope } from '@ghostlink/shared';
+import type { Envelope, ParsedJoinInput } from '@ghostlink/shared';
 import {
   IPC,
   IPC_EVENTS,
@@ -73,6 +73,8 @@ export const api: GhostlinkApi = {
   onConnectionState: (cb) => subscribe<ConnectionStateEvent>(IPC_EVENTS.connectionState, cb),
   onServerEvent: (cb) => subscribe<Envelope>(IPC_EVENTS.server, cb),
   onHostStatus: (cb) => subscribe<HostStatus>(IPC_EVENTS.host, cb),
+  deepLink: { take: () => invoke(IPC.deepLinkTake) },
+  onDeepLink: (cb) => subscribe<ParsedJoinInput>(IPC_EVENTS.deepLink, cb),
 };
 
 contextBridge.exposeInMainWorld('ghostlink', api);

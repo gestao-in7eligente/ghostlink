@@ -7,6 +7,8 @@ import { HostIndicator } from './features/host/HostIndicator.js';
 import { HostScreens } from './features/host/HostScreens.js';
 import { openHostFlow } from './features/host/hostUi.js';
 import { useHostStatusSync } from './features/host/useHostStatusSync.js';
+import { joinStartFromLink, useDeepLinkStore } from './features/deeplink/deepLinkStore.js';
+import { useDeepLinkSync } from './features/deeplink/useDeepLinkSync.js';
 import { IdentityScreens } from './features/identity/IdentityScreens.js';
 import { openIdentitySettings } from './features/identity/identityModel.js';
 import { DEFAULT_LOCALE, errorCodeOf, errorMessage, useT } from './i18n/index.js';
@@ -53,6 +55,8 @@ export function App() {
   }, [attempt]);
 
   useHostStatusSync(attempt);
+  useDeepLinkSync(attempt);
+  const deepLink = useDeepLinkStore((s) => s.pending);
 
   useEffect(() => {
     document.documentElement.lang = settings?.locale ?? DEFAULT_LOCALE;
@@ -111,6 +115,24 @@ export function App() {
   }
   // Host mode (spec §9): its dialogs open over any screen; the pill shows while hosting.
   const host = <><HostIndicator /><HostScreens onJoined={joined} />{identityDialogs}</>;
+  if (deepLink) {
+    // A ghostlink:// link: its invite waits for "Aceitar convite" (spec §12); new links are ignored meanwhile.
+    const clearLink = () => useDeepLinkStore.getState().clear();
+    return (
+      <>
+        <Join
+          key={`${deepLink.serverKeyId}-${deepLink.inviteCode ?? ''}`}
+          start={joinStartFromLink(settings.nickname, deepLink)}
+          onCancel={clearLink}
+          onJoined={(welcome) => {
+            clearLink();
+            joined(welcome);
+          }}
+        />
+        {host}
+      </>
+    );
+  }
   if (connection.welcome && connection.state !== 'idle') {
     return <><Connected welcome={connection.welcome} onLeave={leave} />{host}</>;
   }
