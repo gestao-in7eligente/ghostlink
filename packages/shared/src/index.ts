@@ -6,5 +6,6 @@ export * from './schemas.js';
 export * from './auth.js';
 export * from './fingerprint.js';
 export * from './invite.js';
+export * from './permissions.js';
 export * from './text.js';
 export * from './version.js';
