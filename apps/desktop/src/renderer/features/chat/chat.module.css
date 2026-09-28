@@ -589,6 +589,9 @@
 
 .input::placeholder {
   color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .counter {

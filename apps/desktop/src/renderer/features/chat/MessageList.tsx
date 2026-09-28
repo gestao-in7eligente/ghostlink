@@ -119,7 +119,8 @@ export function MessageList({
     const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
     stick.current = bottom;
     setAtBottom(bottom);
-    if (el.scrollTop < PREFETCH_PX) void loadHistory(channel.id, true);
+    // After a failed page the list shows "try again" instead of retrying on every scroll.
+    if (el.scrollTop < PREFETCH_PX && log?.older === 'idle') void loadHistory(channel.id, true);
   };
 
   // Jump to a quoted message when it is loaded.

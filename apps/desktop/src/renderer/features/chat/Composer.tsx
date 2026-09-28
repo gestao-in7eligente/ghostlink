@@ -100,6 +100,8 @@ export function Composer({ channel, canSend, onSent }: { channel: Channel; canSe
     const el = area.current;
     if (!el) return;
     el.style.height = 'auto';
+    // Empty: one line (a long placeholder is cut with an ellipsis instead of growing the box).
+    if (text === '') return;
     el.style.height = `${Math.min(el.scrollHeight, window.innerHeight * MAX_HEIGHT_RATIO)}px`;
   }, [text]);
 

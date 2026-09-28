@@ -161,10 +161,11 @@ function onMessage(s: ChannelsState, m: Message, root: TextState): ChannelsState
   const mine = m.authorId === root.server.selfId;
   const watching = s.activeId === m.channelId && s.stageId === null && s.attentive;
   let next = mark;
-  if (mine || watching) {
-    // Your own message is read by definition (the server agrees); one on screen is read now.
+  if (mine) {
+    // Your own message is read by definition (the server stores that too).
     if (m.id > mark.lastReadMessageId) next = { ...mark, lastReadMessageId: m.id };
-  } else if (isNew && countsAsMention(root, s, m)) {
+  } else if (!watching && isNew && countsAsMention(root, s, m)) {
+    // A mention on screen never counts; the chat sends channel.read for it, which moves the mark.
     next = { ...mark, mentionCount: mark.mentionCount + 1 };
   }
   if (byId === s.byId && next === mark) return s;

@@ -240,11 +240,15 @@ describe('unread and mentions', () => {
     expect(isUnread(s.channels.byId[GERAL]!, readMark(s.channels, GERAL))).toBe(false);
   });
 
-  it('a message on screen (open, focused, at the bottom) is read at once', () => {
+  it('a mention on screen (open, focused, at the bottom) does not count; channel.read moves the mark', () => {
     let s = run(start(), { type: 'attention', attentive: true }, ev({ t: 'msg.new', message: message(20, { mentions: { users: [ME], roles: [], everyone: false } }) }));
-    expect(readMark(s.channels, GERAL)).toEqual({ lastReadMessageId: 20, mentionCount: 0 });
-    s = run(s, { type: 'attention', attentive: false }, ev({ t: 'msg.new', message: message(21) }));
-    expect(isUnread(s.channels.byId[GERAL]!, readMark(s.channels, GERAL))).toBe(true);
+    // The mark stays for the UI to send channel.read (so the server learns it), which then moves it.
+    expect(readMark(s.channels, GERAL)).toEqual({ lastReadMessageId: 10, mentionCount: 0 });
+    expect(s.channels.byId[GERAL]!.lastMessageId).toBe(20);
+    s = run(s, { type: 'read', readState: { channelId: GERAL, lastReadMessageId: 20, mentionCount: 0 } });
+    expect(isUnread(s.channels.byId[GERAL]!, readMark(s.channels, GERAL))).toBe(false);
+    s = run(s, { type: 'attention', attentive: false }, ev({ t: 'msg.new', message: message(21, { mentions: { users: [ME], roles: [], everyone: false } }) }));
+    expect(readMark(s.channels, GERAL)).toEqual({ lastReadMessageId: 20, mentionCount: 1 });
   });
 
   it('the voice stage over the chat means the chat is not on screen', () => {
