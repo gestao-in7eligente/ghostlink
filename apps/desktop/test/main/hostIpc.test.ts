@@ -14,6 +14,7 @@ const CONFIG = { name: 'Casa do Zé', port: 7700, joinMode: 'invite', maxMembers
 
 let manager: Record<'refresh' | 'start' | 'stop' | 'restart' | 'join' | 'recoverOwnership' | 'invite' | 'logs', ReturnType<typeof vi.fn>>;
 let copied: string[];
+let firewall: { status: ReturnType<typeof vi.fn>; fix: ReturnType<typeof vi.fn> };
 
 beforeEach(() => {
   electron.ipcMain.handle.mockReset();
@@ -28,7 +29,8 @@ beforeEach(() => {
     logs: vi.fn(() => ['line']),
   };
   copied = [];
-  registerIpc({ appOrigin: APP, host: { manager, copyText: (t: string) => copied.push(t) } } as unknown as Deps);
+  firewall = { status: vi.fn(async () => ({ state: 'missing', activeProfiles: ['Public'] })), fix: vi.fn(async () => ({ result: 'done', status: { state: 'allowed', activeProfiles: ['Public'] } })) };
+  registerIpc({ appOrigin: APP, host: { manager, copyText: (t: string) => copied.push(t), firewall } } as unknown as Deps);
 });
 
 function invoke(channel: string, frame: unknown, ...args: unknown[]): Promise<IpcResult<unknown>> {
@@ -50,6 +52,14 @@ describe('host IPC (spec §9, §12)', () => {
     }
     expect(await invoke(IPC.hostCopyText, TOP, 'https://site/j/#GL1-abc')).toEqual({ ok: true });
     expect(copied).toEqual(['https://site/j/#GL1-abc']);
+  });
+
+  it('checks and fixes the firewall without any renderer input', async () => {
+    expect(await invoke(IPC.hostFirewall, TOP)).toEqual({ ok: true, value: { state: 'missing', activeProfiles: ['Public'] } });
+    expect(await invoke(IPC.hostFixFirewall, TOP)).toEqual({ ok: true, value: { result: 'done', status: { state: 'allowed', activeProfiles: ['Public'] } } });
+    expect(await invoke(IPC.hostFixFirewall, TOP, { program: 'C:\\evil.exe' })).toEqual({ ok: false, code: 'BAD_REQUEST' });
+    expect(await invoke(IPC.hostFixFirewall, { url: 'https://evil.example/', parent: null })).toEqual({ ok: false, code: 'FORBIDDEN' });
+    expect(firewall.fix).toHaveBeenCalledTimes(1);
   });
 
   it('refuses other frames before touching the server or the clipboard', async () => {

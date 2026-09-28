@@ -24,6 +24,42 @@ export const host: Record<keyof typeof ptBR, string> = {
   'host.form.invalid.port': 'Use a port between 1024 and 65535.',
   'host.form.invalid.maxMembers': 'Use a number between 1 and 10000.',
   'host.form.portInUse': 'Port {port} is already in use by another program. Choose another one, for example 7710.',
+  'host.form.portInUseShort': 'Port {port} is already in use by another program.',
+  'host.form.useSuggested': 'Use port {port}',
+  'host.form.portChangeWarning': 'If this server already had invites, they stop working when the port changes. Create new invites afterwards.',
+
+  'host.net.title': 'Network',
+  'host.net.upnp.off': 'UPnP is off: the server only accepts connections from this computer.',
+  'host.net.upnp.searching': 'Looking for the router (UPnP)…',
+  'host.net.upnp.mapped': 'The router opened the ports automatically (UPnP).',
+  'host.net.upnp.partial': 'The router opened only some of the ports (UPnP). Failed: {ports}.',
+  'host.net.upnp.failed': 'The router refused to open the ports (UPnP).',
+  'host.net.upnp.unavailable': 'The router did not answer UPnP (or UPnP is disabled on it).',
+  'host.net.wan': 'Router public IP: {ip}',
+  'host.net.forward':
+    'For people outside your network: on the router, forward TCP {port}, TCP 7881 and UDP 7882 to {lanIp}. Or use a VPN (Radmin, Tailscale, ZeroTier) or a VPS.',
+  'host.net.forwardNoLan':
+    'For people outside your network: on the router, forward TCP {port}, TCP 7881 and UDP 7882 to this computer. Or use a VPN (Radmin, Tailscale, ZeroTier) or a VPS.',
+  'host.net.cgnat':
+    'Your provider uses CGNAT or double NAT (the router got the IP {ip}). People outside your network cannot join directly: use a VPN (Radmin, Tailscale, ZeroTier) or a VPS.',
+  'host.net.mediaBusy': 'Another program already uses {ports}. Voice may not work: close that program and restart the server.',
+  'host.net.bandwidth': 'Bandwidth: 13 people on camera need about 20–25 Mbps of upload from this computer. For groups like that, a VPS is recommended.',
+
+  'host.firewall.checking': 'Checking Windows Firewall…',
+  'host.firewall.allowed': 'Windows Firewall: GhostLink is allowed on this network.',
+  'host.firewall.blocked': 'Windows Firewall is blocking GhostLink. Nobody outside this computer can join.',
+  'host.firewall.missing':
+    'Windows Firewall has not allowed GhostLink on this network yet ({profiles}). If Windows asked, tick private and public networks; or use "Fix firewall".',
+  'host.firewall.off': 'Windows Firewall is off on this network.',
+  'host.firewall.unknown': 'Could not check Windows Firewall.',
+  'host.firewall.fix': 'Fix firewall',
+  'host.firewall.fixHint': 'Windows will ask for administrator permission to create the rules.',
+  'host.firewall.done': 'Firewall rules created.',
+  'host.firewall.cancelled': 'Administrator permission was denied. Nothing changed.',
+  'host.firewall.failed': 'Could not create the firewall rules.',
+  'host.firewall.profile.Public': 'public network',
+  'host.firewall.profile.Private': 'private network',
+  'host.firewall.profile.DomainAuthenticated': 'domain network',
 
   'host.state.stopped': 'Stopped',
   'host.state.starting': 'Starting…',

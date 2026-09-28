@@ -56,12 +56,54 @@ export interface HostStatus {
   error: AppErrorCode | null;
   /** The port that was busy, with PORT_IN_USE. */
   errorPort: number | null;
+  /** spec §8.5: the next free port (7710, 7720, …) to offer after PORT_IN_USE, or null. */
+  suggestedPort: number | null;
   /** Why the automatic owner join failed; the server keeps running. */
   joinError: AppErrorCode | null;
   /** The last invite created in this session. */
   invite: HostInvite | null;
   startedAt: number | null;
+  /** UPnP, CGNAT and node_ip while the server runs (spec §8.5). */
+  network: HostNetwork | null;
+  /** LiveKit's public ports another program held when the server started, e.g. "UDP 7882". */
+  busyMediaPorts: string[];
 }
+
+export type UpnpState = 'off' | 'searching' | 'mapped' | 'partial' | 'failed' | 'unavailable';
+
+export interface HostPortMapping {
+  protocol: 'TCP' | 'UDP';
+  port: number;
+  ok: boolean;
+  /** Why it failed: another computer holds it on the router, the router refused, or no answer. */
+  error?: 'conflict' | 'refused' | 'unreachable';
+}
+
+export interface HostNetwork {
+  upnp: { state: UpnpState; wanIp: string | null; mappings: HostPortMapping[] };
+  /** The router's WAN IP is private or in 100.64/10: CGNAT or double NAT. */
+  cgnat: boolean;
+  /** The IP announced to voice clients (spec §8.1). */
+  nodeIp: string | null;
+  /** This computer's LAN IPv4 (for the port-forwarding instructions). */
+  lanIp: string | null;
+}
+
+/**
+ * Windows Firewall for the hosted server (spec §8.5): `allowed` (an inbound allow rule
+ * covers the active network), `blocked` (an inbound block rule exists), `missing` (no
+ * rule: Windows asks on the first listen, or silently blocks), `off`, `unsupported`
+ * (not Windows) or `unknown` (the check failed).
+ */
+export type FirewallState = 'allowed' | 'blocked' | 'missing' | 'off' | 'unsupported' | 'unknown';
+
+export interface FirewallStatus {
+  state: FirewallState;
+  /** The active network categories, e.g. ["Public"]. */
+  activeProfiles: string[];
+}
+
+export type FirewallFixResult = 'done' | 'cancelled' | 'failed' | 'unsupported';
 
 /** start / restart / join / recoverOwnership: the new status, and the welcome when the auto-join worked. */
 export interface HostStartResult {
@@ -82,4 +124,8 @@ export interface HostApi {
   logs(): Promise<string[]>;
   /** The sandboxed page has no clipboard permission; the main process copies. */
   copyText(text: string): Promise<void>;
+  /** Windows Firewall state for GhostLink (read-only check). */
+  firewall(): Promise<FirewallStatus>;
+  /** "Corrigir firewall": adds the inbound rules through a UAC prompt, then checks again. */
+  fixFirewall(): Promise<{ result: FirewallFixResult; status: FirewallStatus }>;
 }

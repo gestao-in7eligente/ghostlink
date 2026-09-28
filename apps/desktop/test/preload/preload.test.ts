@@ -20,7 +20,7 @@ describe('preload bridge', () => {
     expect(Object.keys(electron.exposed)).toEqual(['ghostlink']);
     expect(electron.exposed.ghostlink).toBe(api);
     expect(Object.keys(api).sort()).toEqual(['app', 'host', 'identity', 'join', 'onConnectionState', 'onHostStatus', 'onServerEvent', 'servers', 'settings']);
-    expect(Object.keys(api.host).sort()).toEqual(['copyText', 'invite', 'join', 'logs', 'recoverOwnership', 'restart', 'start', 'status', 'stop']);
+    expect(Object.keys(api.host).sort()).toEqual(['copyText', 'firewall', 'fixFirewall', 'invite', 'join', 'logs', 'recoverOwnership', 'restart', 'start', 'status', 'stop']);
     expect(Object.keys(api.identity).sort()).toEqual(['create', 'replaceKeepingBackup', 'retry', 'status']);
     expect(Object.keys(api.join).sort()).toEqual(['connect', 'parse', 'probe']);
     expect(Object.keys(api.servers).sort()).toEqual(['connect', 'disconnect', 'list', 'remove']);
@@ -53,6 +53,8 @@ describe('preload bridge', () => {
     ['host.invite', () => api.host.invite({ maxUses: 1 }), IPC.hostInvite, [{ maxUses: 1 }]],
     ['host.logs', () => api.host.logs(), IPC.hostLogs, []],
     ['host.copyText', () => api.host.copyText('GL1-x'), IPC.hostCopyText, ['GL1-x']],
+    ['host.firewall', () => api.host.firewall(), IPC.hostFirewall, []],
+    ['host.fixFirewall', () => api.host.fixFirewall(), IPC.hostFixFirewall, []],
   ])('%s invokes its channel and unwraps the value', async (_name, call, channel, args) => {
     electron.ipcRenderer.invoke.mockResolvedValueOnce({ ok: true, value: 'VALUE' });
     await expect(call()).resolves.toBe('VALUE');

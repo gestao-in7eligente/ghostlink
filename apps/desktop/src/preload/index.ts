@@ -63,6 +63,8 @@ export const api: GhostlinkApi = {
     invite: (opts) => invoke(IPC.hostInvite, opts),
     logs: () => invoke(IPC.hostLogs),
     copyText: (text) => invoke(IPC.hostCopyText, text),
+    firewall: () => invoke(IPC.hostFirewall),
+    fixFirewall: () => invoke(IPC.hostFixFirewall),
   },
   onConnectionState: (cb) => subscribe<ConnectionStateEvent>(IPC_EVENTS.connectionState, cb),
   onServerEvent: (cb) => subscribe<Envelope>(IPC_EVENTS.server, cb),

@@ -11,6 +11,7 @@ import type {
   HostConfig,
   HostInvite,
   HostInviteOptions,
+  HostNetwork,
   HostStartResult,
   HostState,
   HostStatus,
@@ -94,6 +95,27 @@ function errnoOf(e: unknown): string | undefined {
   return typeof code === 'string' ? code : undefined;
 }
 
+function suggestedPortOf(e: unknown): number | null {
+  const port = typeof e === 'object' && e !== null ? (e as { suggestedPort?: unknown }).suggestedPort : undefined;
+  return typeof port === 'number' && Number.isInteger(port) && port >= HOST_PORT_MIN && port <= 65535 ? port : null;
+}
+
+/** The renderer's view of the server's `net` status (spec §8.5). */
+function networkOf(info: HostedStatus | null): HostNetwork | null {
+  if (!info?.net) return null;
+  const { upnp, cgnat, nodeIp, localAddresses } = info.net;
+  return {
+    upnp: {
+      state: upnp.state,
+      wanIp: upnp.wanIp,
+      mappings: upnp.mappings.map((m) => (m.ok ? { protocol: m.protocol, port: m.port, ok: true } : { protocol: m.protocol, port: m.port, ok: false, error: m.error })),
+    },
+    cgnat,
+    nodeIp,
+    lanIp: (localAddresses.length > 0 ? localAddresses : info.localAddresses).find((l) => l.kind === 'lan')?.ip ?? null,
+  };
+}
+
 export interface HostManagerDeps {
   userDataDir: string;
   fork(opts: ForkServerOptions): Promise<ForkedServer>;
@@ -131,6 +153,7 @@ export class HostManager {
   #info: HostedStatus | null = null;
   #error: AppErrorCode | null = null;
   #errorPort: number | null = null;
+  #suggestedPort: number | null = null;
   #joinError: AppErrorCode | null = null;
   #invite: HostInvite | null = null;
   #startedAt: number | null = null;
@@ -161,9 +184,12 @@ export class HostManager {
       hasOwner: this.#info?.hasOwner ?? null,
       error: this.#error,
       errorPort: this.#errorPort,
+      suggestedPort: this.#suggestedPort,
       joinError: this.#joinError,
       invite: this.#invite && { ...this.#invite },
       startedAt: this.#startedAt,
+      network: networkOf(this.#info),
+      busyMediaPorts: [...(this.#info?.busyMediaPorts ?? [])],
     };
   }
 
@@ -204,6 +230,7 @@ export class HostManager {
       this.#state = 'stopped';
       this.#error = null;
       this.#errorPort = null;
+      this.#suggestedPort = null;
       this.#emit();
       return this.status();
     });
@@ -280,6 +307,7 @@ export class HostManager {
     this.#state = 'starting';
     this.#error = null;
     this.#errorPort = null;
+    this.#suggestedPort = null;
     this.#emit();
     this.#logs.push(`[GhostLink] starting "${config.name}" on port ${config.port}`);
 
@@ -289,12 +317,18 @@ export class HostManager {
         dataDir,
         port: config.port,
         host: this.#deps.bindHost ?? '0.0.0.0',
-        args: [`--name=${config.name}`, `--join-mode=${config.joinMode}`, `--max-members=${config.maxMembers}`],
+        // spec §9: UPnP is always on in Host mode (the server skips it on a loopback bind).
+        args: ['--upnp', `--name=${config.name}`, `--join-mode=${config.joinMode}`, `--max-members=${config.maxMembers}`],
         onLog: (text) => this.#logs.write(text),
       });
     } catch (e) {
       this.#logs.push(`[GhostLink] the server did not start: ${e instanceof Error ? e.message : String(e)}`);
-      this.#fail(errnoOf(e) === 'EADDRINUSE' ? 'PORT_IN_USE' : 'HOST_FAILED', config.port);
+      const busy = errnoOf(e) === 'EADDRINUSE';
+      this.#fail(busy ? 'PORT_IN_USE' : 'HOST_FAILED', config.port);
+      if (busy) {
+        this.#suggestedPort = suggestedPortOf(e);
+        this.#emit();
+      }
       return;
     }
 

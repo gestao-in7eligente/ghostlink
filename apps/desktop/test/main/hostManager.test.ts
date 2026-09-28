@@ -175,8 +175,25 @@ describe('HostManager.start (spec §9)', () => {
       dataDir: join(dir.path, HOSTED_DIR, 'casa-do-ze'),
       port: 7700,
       host: '0.0.0.0',
-      args: ['--name=Casa do Zé', '--join-mode=invite', '--max-members=100'],
+      // spec §9: Host mode always runs UPnP (the server skips it on a loopback bind).
+      args: ['--upnp', '--name=Casa do Zé', '--join-mode=invite', '--max-members=100'],
     });
+  });
+
+  it('reports UPnP, CGNAT, node IP, the LAN IP and busy media ports from the server', async () => {
+    forkImpl = async (opts) => {
+      const server = await realisticFork(opts);
+      server.replies.status = () => statusReply(server, { busyMediaPorts: ['UDP 7882'] });
+      return server;
+    };
+    const { status } = await manager.start(CONFIG);
+    expect(status.network).toEqual({
+      upnp: { state: 'mapped', wanIp: '203.0.113.7', mappings: [{ protocol: 'TCP', port: 7700, ok: true }] },
+      cgnat: false,
+      nodeIp: '203.0.113.7',
+      lanIp: '192.168.0.10',
+    });
+    expect(status.busyMediaPorts).toEqual(['UDP 7882']);
   });
 
   it('auto-joins as owner: setup code read from disk, pin computed from the generated certificate', async () => {
@@ -259,15 +276,18 @@ describe('HostManager.start (spec §9)', () => {
 
   it('reports a busy port as PORT_IN_USE with the port, and can start again on another port', async () => {
     forkImpl = async () => {
-      throw Object.assign(new Error('the hosted server failed to start: listen EADDRINUSE'), { code: 'EADDRINUSE' });
+      throw Object.assign(new Error('the hosted server failed to start: listen EADDRINUSE'), { code: 'EADDRINUSE', suggestedPort: 7710 });
     };
     const result = await manager.start(CONFIG);
-    expect(result).toEqual({ status: expect.objectContaining({ state: 'failed', error: 'PORT_IN_USE', errorPort: 7700 }), welcome: null });
+    expect(result).toEqual({
+      status: expect.objectContaining({ state: 'failed', error: 'PORT_IN_USE', errorPort: 7700, suggestedPort: 7710, network: null }),
+      welcome: null,
+    });
     expect(joins).toEqual([]);
     expect(manager.logs().some((l) => /EADDRINUSE/.test(l))).toBe(true);
 
     forkImpl = (opts) => realisticFork(opts);
-    expect((await manager.start({ ...CONFIG, port: 7710 })).status).toMatchObject({ state: 'running', port: 7710, error: null, errorPort: null });
+    expect((await manager.start({ ...CONFIG, port: 7710 })).status).toMatchObject({ state: 'running', port: 7710, error: null, errorPort: null, suggestedPort: null });
   });
 
   it('reports any other startup failure as HOST_FAILED', async () => {

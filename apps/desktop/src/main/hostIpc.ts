@@ -2,12 +2,15 @@
 // sender check → zod → handler pipeline as every other channel.
 import { z } from 'zod';
 import { IPC, type HostIpcChannel, type IpcArgs, type IpcReturn } from '../shared/ipcTypes.js';
+import type { HostFirewall } from './hostFirewall.js';
 import { HOST_MAX_MEMBERS, HOST_PORT_MIN, type HostManager } from './hostManager.js';
 
 export interface HostIpcDeps {
   manager: Pick<HostManager, 'refresh' | 'start' | 'stop' | 'restart' | 'join' | 'recoverOwnership' | 'invite' | 'logs'>;
   /** electron.clipboard.writeText in production. */
   copyText(text: string): void;
+  /** Windows Firewall check and "Corrigir firewall" (no renderer input reaches the scripts). */
+  firewall?: Pick<HostFirewall, 'status' | 'fix'>;
 }
 
 /** Big enough for any invite (LIMITS.inviteMaxLength is 2048) or fingerprint; nothing more. */
@@ -35,6 +38,8 @@ export const HOST_IPC_ARG_SCHEMAS: { readonly [C in HostIpcChannel]: z.ZodType<I
   ]),
   [IPC.hostLogs]: z.tuple([]),
   [IPC.hostCopyText]: z.tuple([z.string().min(1).max(COPY_TEXT_MAX)]),
+  [IPC.hostFirewall]: z.tuple([]),
+  [IPC.hostFixFirewall]: z.tuple([]),
 };
 
 type HostHandlers = { [C in HostIpcChannel]: (...args: IpcArgs<C>) => IpcReturn<C> | Promise<IpcReturn<C>> };
@@ -57,5 +62,8 @@ export function createHostIpcHandlers(deps: HostIpcDeps | undefined): HostHandle
       if (!deps) throw new Error('Host mode is not wired');
       deps.copyText(text);
     },
+    [IPC.hostFirewall]: () => (deps?.firewall ? deps.firewall.status() : { state: 'unsupported', activeProfiles: [] }),
+    [IPC.hostFixFirewall]: async () =>
+      deps?.firewall ? deps.firewall.fix() : { result: 'unsupported' as const, status: { state: 'unsupported' as const, activeProfiles: [] } },
   };
 }

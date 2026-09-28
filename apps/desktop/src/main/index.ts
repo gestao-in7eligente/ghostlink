@@ -4,10 +4,11 @@ import { BrowserWindow, app, clipboard, safeStorage, session } from 'electron';
 import { mkdtempSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { APP_NAME } from '@ghostlink/shared';
+import { APP_NAME, DEFAULT_PORT } from '@ghostlink/shared';
 import { IPC_EVENTS, type Platform } from '../shared/ipcTypes.js';
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges } from './appProtocol.js';
 import { ClientController } from './controller.js';
+import { HostFirewall, firewallPrograms } from './hostFirewall.js';
 import { HostManager } from './hostManager.js';
 import { forkServer, hostedServerLogging } from './hostProcess.js';
 import { HostTray, shouldHideOnClose } from './hostTray.js';
@@ -97,7 +98,7 @@ function start(): BrowserWindow {
     settings,
     controller,
     appInfo: () => ({ version: app.getVersion(), platform: process.platform as Platform, locale: app.getLocale() }),
-    host: { manager: host, copyText: (text) => clipboard.writeText(text) },
+    host: { manager: host, copyText: (text) => clipboard.writeText(text), firewall: hostFirewall(host) },
   });
   app.on('before-quit', () => void controller.disconnect());
 
@@ -178,6 +179,17 @@ function startHostMode(
       });
   });
   return host;
+}
+
+/** spec §8.5: the firewall rules cover GhostLink.exe (the hosted server runs in it) and livekit-server.exe. */
+function hostFirewall(host: HostManager): HostFirewall {
+  const livekitCandidates = app.isPackaged
+    ? [join(process.resourcesPath, 'livekit', 'livekit-server.exe')]
+    : [fileURLToPath(new URL('../../resources/livekit/win-x64/livekit-server.exe', import.meta.url))];
+  return new HostFirewall({
+    programs: () => firewallPrograms({ execPath: process.execPath, livekitCandidates }),
+    ports: () => ({ tcpPorts: [host.status().config?.port ?? DEFAULT_PORT, 7881], udpPorts: [7882] }),
+  });
 }
 
 function createMainWindow(): BrowserWindow {

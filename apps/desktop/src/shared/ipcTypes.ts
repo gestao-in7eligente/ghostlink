@@ -3,7 +3,7 @@
 // dependencies, so the sandboxed preload bundle stays tiny.
 import type { Envelope, ParsedJoinInput, WelcomePayload } from '@ghostlink/shared';
 import type { AppErrorCode } from './appErrors.js';
-import type { HostApi, HostConfig, HostInvite, HostInviteOptions, HostStartResult, HostStatus } from './hostTypes.js';
+import type { FirewallFixResult, FirewallStatus, HostApi, HostConfig, HostInvite, HostInviteOptions, HostStartResult, HostStatus } from './hostTypes.js';
 
 export type IdentityStatus = 'none' | 'ready' | 'locked';
 export type ConnState = 'idle' | 'connecting' | 'authenticating' | 'connected' | 'reconnecting' | 'failed';
@@ -107,6 +107,8 @@ export const IPC = {
   hostInvite: 'ghostlink:host.invite',
   hostLogs: 'ghostlink:host.logs',
   hostCopyText: 'ghostlink:host.copyText',
+  hostFirewall: 'ghostlink:host.firewall',
+  hostFixFirewall: 'ghostlink:host.fixFirewall',
 } as const;
 
 /** Events pushed from main to the renderer. */
@@ -141,6 +143,8 @@ export interface IpcContract {
   [IPC.hostInvite]: { args: [opts: HostInviteOptions]; result: HostInvite };
   [IPC.hostLogs]: { args: []; result: string[] };
   [IPC.hostCopyText]: { args: [text: string]; result: void };
+  [IPC.hostFirewall]: { args: []; result: FirewallStatus };
+  [IPC.hostFixFirewall]: { args: []; result: { result: FirewallFixResult; status: FirewallStatus } };
 }
 
 /** The Host mode channels (spec §9), handled by main/hostIpc.ts. */

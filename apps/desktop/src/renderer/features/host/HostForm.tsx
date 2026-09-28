@@ -27,7 +27,7 @@ export function HostForm({ onCancel, onStarted }: { onCancel: () => void; onStar
   const [form, setForm] = useState(() => initialHostForm(last, t('host.form.defaultName', { nickname })));
   const [invalid, setInvalid] = useState<HostFormField | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<{ code: AppErrorCode; port: number | null } | null>(null);
+  const [error, setError] = useState<{ code: AppErrorCode; port: number | null; suggested: number | null } | null>(null);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -41,17 +41,29 @@ export function HostForm({ onCancel, onStarted }: { onCancel: () => void; onStar
     setBusy(true);
     try {
       const result = await window.ghostlink.host.start(checked.config);
-      if (result.status.state === 'failed') setError({ code: result.status.error ?? 'HOST_FAILED', port: result.status.errorPort });
-      else onStarted(result);
+      if (result.status.state === 'failed') {
+        setError({ code: result.status.error ?? 'HOST_FAILED', port: result.status.errorPort, suggested: result.status.suggestedPort });
+      } else onStarted(result);
     } catch (e) {
-      setError({ code: errorCodeOf(e), port: null });
+      setError({ code: errorCodeOf(e), port: null, suggested: null });
     } finally {
       setBusy(false);
     }
   };
 
+  const portBusy = error?.code === 'PORT_IN_USE' && error.port !== null;
   const errorText =
-    error === null ? null : error.code === 'PORT_IN_USE' && error.port !== null ? t('host.form.portInUse', { port: error.port }) : errorMessage(t, error.code);
+    error === null
+      ? null
+      : portBusy
+        ? t(error.suggested !== null ? 'host.form.portInUseShort' : 'host.form.portInUse', { port: error.port! })
+        : errorMessage(t, error.code);
+  // spec §8.5: offer the next free port, and warn that old invites stop working.
+  const useSuggested = () => {
+    if (error?.suggested == null) return;
+    setForm({ ...form, port: String(error.suggested) });
+    setError(null);
+  };
 
   return (
     <HostDialog title={t('host.form.title')} closeLabel={t('host.dialog.close')} onClose={onCancel}>
@@ -117,6 +129,14 @@ export function HostForm({ onCancel, onStarted }: { onCancel: () => void; onStar
           </p>
         )}
         <ErrorLine text={invalid ? t(FIELD_ERROR[invalid]) : errorText} />
+        {!invalid && portBusy && error?.suggested != null && (
+          <div className={host.row}>
+            <button type="button" className={ui.button} onClick={useSuggested}>
+              {t('host.form.useSuggested', { port: error.suggested })}
+            </button>
+            <span className={ui.hint}>{t('host.form.portChangeWarning')}</span>
+          </div>
+        )}
         <div className={host.footer}>
           <button type="button" className={ui.button} disabled={busy} onClick={onCancel}>
             {t('common.cancel')}

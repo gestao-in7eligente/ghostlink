@@ -6,6 +6,7 @@ import { ErrorLine } from '../../components/Screen.js';
 import ui from '../../components/ui.module.css';
 import { errorCodeOf, errorMessage, useT } from '../../i18n/index.js';
 import { HostDialog } from './HostDialog.js';
+import { HostNetworkCard } from './HostNetworkCard.js';
 import host from './host.module.css';
 import {
   INVITE_EXPIRY_CHOICES,
@@ -186,6 +187,8 @@ export function HostPanel({
           </div>
         </section>
       )}
+
+      {running && <HostNetworkCard status={status} />}
 
       {(status.fingerprint || (running && status.members !== null)) && (
         <div className={host.cards2}>

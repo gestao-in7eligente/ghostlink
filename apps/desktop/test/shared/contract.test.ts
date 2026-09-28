@@ -8,6 +8,8 @@ describe('IPC channel names (contract §5)', () => {
     expect(Object.values(IPC).sort()).toEqual([
       'ghostlink:app.info',
       'ghostlink:host.copyText',
+      'ghostlink:host.firewall',
+      'ghostlink:host.fixFirewall',
       'ghostlink:host.invite',
       'ghostlink:host.join',
       'ghostlink:host.logs',

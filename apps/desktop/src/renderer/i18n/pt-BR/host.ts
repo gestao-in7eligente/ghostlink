@@ -24,6 +24,43 @@ export const host = {
   'host.form.invalid.port': 'Use uma porta entre 1024 e 65535.',
   'host.form.invalid.maxMembers': 'Use um número entre 1 e 10000.',
   'host.form.portInUse': 'A porta {port} já está em uso por outro programa. Escolha outra, por exemplo 7710.',
+  'host.form.portInUseShort': 'A porta {port} já está em uso por outro programa.',
+  'host.form.useSuggested': 'Usar a porta {port}',
+  'host.form.portChangeWarning': 'Se este servidor já tinha convites, eles deixam de funcionar quando a porta muda. Crie convites novos depois.',
+
+  'host.net.title': 'Rede',
+  'host.net.upnp.off': 'UPnP desligado: o servidor só aceita conexões deste computador.',
+  'host.net.upnp.searching': 'Procurando o roteador (UPnP)…',
+  'host.net.upnp.mapped': 'O roteador abriu as portas automaticamente (UPnP).',
+  'host.net.upnp.partial': 'O roteador abriu só parte das portas (UPnP). Falharam: {ports}.',
+  'host.net.upnp.failed': 'O roteador recusou abrir as portas (UPnP).',
+  'host.net.upnp.unavailable': 'O roteador não respondeu ao UPnP (ou ele está desligado no roteador).',
+  'host.net.wan': 'IP público do roteador: {ip}',
+  'host.net.forward':
+    'Para quem está fora da sua rede: no roteador, redirecione as portas TCP {port}, TCP 7881 e UDP 7882 para {lanIp}. Ou use uma VPN (Radmin, Tailscale, ZeroTier) ou uma VPS.',
+  'host.net.forwardNoLan':
+    'Para quem está fora da sua rede: no roteador, redirecione as portas TCP {port}, TCP 7881 e UDP 7882 para este computador. Ou use uma VPN (Radmin, Tailscale, ZeroTier) ou uma VPS.',
+  'host.net.cgnat':
+    'Seu provedor usa CGNAT ou NAT duplo (o roteador recebeu o IP {ip}). Quem está fora da sua rede não consegue entrar diretamente: use uma VPN (Radmin, Tailscale, ZeroTier) ou uma VPS.',
+  'host.net.mediaBusy': 'Outro programa já usa {ports}. A voz pode não funcionar: feche esse programa e reinicie o servidor.',
+  'host.net.bandwidth':
+    'Banda: 13 pessoas com câmera exigem cerca de 20–25 Mbps de upload deste computador. Para grupos assim, uma VPS é recomendada.',
+
+  'host.firewall.checking': 'Verificando o Firewall do Windows…',
+  'host.firewall.allowed': 'Firewall do Windows: o GhostLink está liberado nesta rede.',
+  'host.firewall.blocked': 'O Firewall do Windows está bloqueando o GhostLink. Quem está fora deste computador não consegue entrar.',
+  'host.firewall.missing':
+    'O Firewall do Windows ainda não liberou o GhostLink nesta rede ({profiles}). Se o Windows perguntou, marque redes privadas e públicas; ou use "Corrigir firewall".',
+  'host.firewall.off': 'O Firewall do Windows está desligado nesta rede.',
+  'host.firewall.unknown': 'Não foi possível verificar o Firewall do Windows.',
+  'host.firewall.fix': 'Corrigir firewall',
+  'host.firewall.fixHint': 'O Windows vai pedir permissão de administrador para criar as regras.',
+  'host.firewall.done': 'Regras do firewall criadas.',
+  'host.firewall.cancelled': 'A permissão de administrador foi negada. Nada mudou.',
+  'host.firewall.failed': 'Não foi possível criar as regras do firewall.',
+  'host.firewall.profile.Public': 'rede pública',
+  'host.firewall.profile.Private': 'rede privada',
+  'host.firewall.profile.DomainAuthenticated': 'rede de domínio',
 
   'host.state.stopped': 'Parado',
   'host.state.starting': 'Iniciando…',
