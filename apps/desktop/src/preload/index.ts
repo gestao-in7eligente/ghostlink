@@ -11,6 +11,7 @@ import {
   type IpcChannel,
   type IpcResult,
   type IpcReturn,
+  type PttEvent,
 } from '../shared/ipcTypes.js';
 
 /** Invokes a channel and turns `{ ok: false, code }` into `Error(code)` (contract §5: the message is the code). */
@@ -52,8 +53,13 @@ export const api: GhostlinkApi = {
     disconnect: () => invoke(IPC.serversDisconnect),
     remove: (id) => invoke(IPC.serversRemove, id),
   },
+  server: {
+    request: <T>(type: string, payload?: unknown) => invoke(IPC.serverRequest, type, payload) as Promise<T>,
+  },
+  ptt: { configure: (config) => invoke(IPC.pttConfigure, config) },
   onConnectionState: (cb) => subscribe<ConnectionStateEvent>(IPC_EVENTS.connectionState, cb),
   onServerEvent: (cb) => subscribe<Envelope>(IPC_EVENTS.server, cb),
+  onPtt: (cb) => subscribe<PttEvent>(IPC_EVENTS.ptt, cb),
 };
 
 contextBridge.exposeInMainWorld('ghostlink', api);

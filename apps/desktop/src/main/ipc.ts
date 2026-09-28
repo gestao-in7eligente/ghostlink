@@ -5,6 +5,7 @@ import { toAppErrorCode } from '../shared/appErrors.js';
 import { IPC, type AppInfo, type IpcArgs, type IpcChannel, type IpcResult, type IpcReturn } from '../shared/ipcTypes.js';
 import type { ClientController } from './controller.js';
 import type { IdentityStore } from './identity.js';
+import type { PushToTalk } from './ptt.js';
 import { originOf } from './security.js';
 import { LOCALES, type SettingsStore } from './settings.js';
 
@@ -14,8 +15,33 @@ export interface IpcDeps {
   appInfo(): AppInfo;
   identity: Pick<IdentityStore, 'status' | 'create' | 'retry' | 'replaceKeepingBackup'>;
   settings: Pick<SettingsStore, 'get' | 'set'>;
-  controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove'>;
+  controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'request'>;
+  /** Global push-to-talk (voice track). */
+  ptt: Pick<PushToTalk, 'configure'>;
 }
+
+/** The handshake belongs to the main process alone: the renderer may never send it (release plan "Seams"). */
+export const FORBIDDEN_REQUEST_TYPES: ReadonlySet<string> = new Set(['hello', 'auth.proof']);
+
+/** A server request type: 1..64 chars like "msg.send" or "voice.join"; never a handshake step. */
+export const requestTypeSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)*$/)
+  .refine((t) => !FORBIDDEN_REQUEST_TYPES.has(t));
+
+/** A JSON object no bigger than a server frame (spec §5.1: maxPayload 256 KiB). */
+const requestPayloadSchema = z
+  .record(z.string(), z.unknown())
+  .refine((d) => {
+    try {
+      return JSON.stringify(d).length <= LIMITS.maxPayloadBytes;
+    } catch {
+      return false;
+    }
+  })
+  .optional();
 
 // Renderer input is untrusted: strict schemas, bounded sizes. The deeper rules
 // (address syntax, nickname normalization) are enforced again where the data is used.
@@ -48,6 +74,9 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.serversConnect]: z.tuple([serverId]),
   [IPC.serversDisconnect]: z.tuple([]),
   [IPC.serversRemove]: z.tuple([serverId]),
+  [IPC.serverRequest]: z.union([z.tuple([requestTypeSchema]), z.tuple([requestTypeSchema, requestPayloadSchema])]),
+  // A DOM KeyboardEvent.code such as "KeyV" or "ControlRight"; main maps it to the hook's keycode.
+  [IPC.pttConfigure]: z.tuple([z.strictObject({ enabled: z.boolean(), code: z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,23}$/).nullable() })]),
 };
 
 type Handlers = { [C in IpcChannel]: (...args: IpcArgs<C>) => IpcReturn<C> | Promise<IpcReturn<C>> };
@@ -69,6 +98,8 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     [IPC.serversConnect]: (id) => controller.connectSaved(id),
     [IPC.serversDisconnect]: () => controller.disconnect(),
     [IPC.serversRemove]: (id) => controller.remove(id),
+    [IPC.serverRequest]: (type, payload) => controller.request(type, payload ?? {}),
+    [IPC.pttConfigure]: (config) => deps.ptt.configure(config),
   };
 }
 

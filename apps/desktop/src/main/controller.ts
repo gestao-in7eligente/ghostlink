@@ -104,6 +104,16 @@ export class ClientController {
     return this.#deps.servers.list();
   }
 
+  /**
+   * Relays a renderer request to the connected server (`server.request` IPC).
+   * The IPC layer already refused the handshake types; the server validates the rest.
+   */
+  request(type: string, payload: unknown): Promise<unknown> {
+    const conn = this.#conn;
+    if (!conn) return Promise.reject(new AppError('CONNECTION_LOST', 'not connected'));
+    return conn.request(type, payload ?? {});
+  }
+
   async disconnect(): Promise<void> {
     const conn = this.#conn;
     const serverId = this.#serverId;

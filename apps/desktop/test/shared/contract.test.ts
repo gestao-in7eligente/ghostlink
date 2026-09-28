@@ -14,6 +14,8 @@ describe('IPC channel names (contract §5)', () => {
       'ghostlink:join.connect',
       'ghostlink:join.parse',
       'ghostlink:join.probe',
+      'ghostlink:ptt.configure',
+      'ghostlink:server.request',
       'ghostlink:servers.connect',
       'ghostlink:servers.disconnect',
       'ghostlink:servers.list',
@@ -24,7 +26,7 @@ describe('IPC channel names (contract §5)', () => {
   });
 
   it('keeps the two event channels apart from the invoke channels', () => {
-    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server']);
+    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server', 'ghostlink:event.ptt']);
     for (const event of Object.values(IPC_EVENTS)) expect(Object.values(IPC)).not.toContain(event);
   });
 });

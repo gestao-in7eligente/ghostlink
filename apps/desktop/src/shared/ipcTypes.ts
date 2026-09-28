@@ -49,6 +49,22 @@ export interface JoinConnectRequest {
   name?: string;
 }
 
+/** Push-to-talk as the renderer configures it; `code` is a DOM KeyboardEvent.code (voice track). */
+export interface PttConfig {
+  enabled: boolean;
+  code: string | null;
+}
+
+/** Whether the bound key also works while another app has focus (global hook, Windows). */
+export interface PttStatus {
+  global: boolean;
+}
+
+/** The bound push-to-talk key went down or up while another app had focus. */
+export interface PttEvent {
+  pressed: boolean;
+}
+
 export interface ConnectionStateEvent {
   state: ConnState;
   serverId: string | null;
@@ -75,8 +91,12 @@ export interface GhostlinkApi {
     disconnect(): Promise<void>;
     remove(id: string): Promise<void>;
   };
+  /** Any request to the connected server except the handshake (`hello`, `auth.proof`). */
+  server: { request<T = unknown>(type: string, payload?: unknown): Promise<T> };
+  ptt: { configure(config: PttConfig): Promise<PttStatus> };
   onConnectionState(cb: (s: ConnectionStateEvent) => void): () => void;
   onServerEvent(cb: (e: Envelope) => void): () => void;
+  onPtt(cb: (e: PttEvent) => void): () => void;
 }
 
 /** Invoke channels: `ghostlink:<namespace>.<method>`. */
@@ -95,12 +115,15 @@ export const IPC = {
   serversConnect: 'ghostlink:servers.connect',
   serversDisconnect: 'ghostlink:servers.disconnect',
   serversRemove: 'ghostlink:servers.remove',
+  serverRequest: 'ghostlink:server.request',
+  pttConfigure: 'ghostlink:ptt.configure',
 } as const;
 
 /** Events pushed from main to the renderer. */
 export const IPC_EVENTS = {
   connectionState: 'ghostlink:event.connectionState',
   server: 'ghostlink:event.server',
+  ptt: 'ghostlink:event.ptt',
 } as const;
 
 /** Arguments and result of every invoke channel; main's handlers and the preload are both typed from it. */
@@ -119,6 +142,8 @@ export interface IpcContract {
   [IPC.serversConnect]: { args: [id: string]; result: RendererWelcome };
   [IPC.serversDisconnect]: { args: []; result: void };
   [IPC.serversRemove]: { args: [id: string]; result: void };
+  [IPC.serverRequest]: { args: [type: string, payload?: unknown]; result: unknown };
+  [IPC.pttConfigure]: { args: [config: PttConfig]; result: PttStatus };
 }
 
 export type IpcChannel = keyof IpcContract;
