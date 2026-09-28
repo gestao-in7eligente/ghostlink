@@ -1,4 +1,6 @@
 // Source catalog: every key exists here first; en.ts must have exactly the same keys.
+import { voice } from './voice.pt-BR.js';
+
 export const messages = {
   'app.loading': 'Carregando…',
   'app.beta': 'beta',
@@ -123,4 +125,6 @@ export const messages = {
   'errors.SERVER_OUTDATED': 'Este servidor está desatualizado. Avise o dono.',
   'errors.ENCRYPTION_UNAVAILABLE': 'Este sistema não oferece armazenamento seguro, então a identidade não pode ser criada.',
   'errors.IDENTITY_UNAVAILABLE': 'Sua identidade não está disponível.',
+
+  ...voice,
 } as const;
