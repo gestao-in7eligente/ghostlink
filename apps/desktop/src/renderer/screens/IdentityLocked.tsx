@@ -3,11 +3,12 @@ import type { AppErrorCode } from '../../shared/appErrors.js';
 import type { IdentityStatus } from '../../shared/ipcTypes.js';
 import { ErrorLine, Screen } from '../components/Screen.js';
 import ui from '../components/ui.module.css';
+import { openBackupImport } from '../features/identity/identityModel.js';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 
 /**
  * spec §3.1: identity.bin exists but cannot be decrypted. Nothing is ever
- * overwritten here: retry, import (M8), or — after two confirmations — move
+ * overwritten here: retry, import a .ghostkey backup (the locked file is kept aside), or — after two confirmations — move
  * the old file aside and create a new identity.
  */
 export function IdentityLocked({ onStatus }: { onStatus: (status: IdentityStatus) => void }) {
@@ -53,7 +54,7 @@ export function IdentityLocked({ onStatus }: { onStatus: (status: IdentityStatus
           <button type="button" className={`${ui.button} ${ui.danger}`} disabled={busy} onClick={() => setConfirmStep(1)}>
             {t('identityLocked.replace')}
           </button>
-          <button type="button" className={ui.button} disabled title={t('common.comingSoon')}>
+          <button type="button" className={ui.button} disabled={busy} onClick={openBackupImport}>
             {t('identityLocked.import')}
           </button>
           <button type="button" className={`${ui.button} ${ui.primary}`} disabled={busy} onClick={() => void retry()}>

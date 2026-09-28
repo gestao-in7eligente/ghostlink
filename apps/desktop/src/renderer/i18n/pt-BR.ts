@@ -1,4 +1,5 @@
 import { host } from './pt-BR/host.js';
+import { identity } from './pt-BR/identity.js';
 
 // Source catalog: every key exists here first; en.ts must have exactly the same keys.
 export const messages = {
@@ -37,7 +38,7 @@ export const messages = {
   'onboarding.profile.nicknameHint': 'De 1 a 32 caracteres. Dá para usar outro em cada servidor.',
   'onboarding.backup.title': 'Guarde um backup da sua identidade',
   'onboarding.backup.body':
-    'Sua identidade existe só neste computador. Sem backup, perder ou formatar o dispositivo é perder a identidade. A exportação chega numa próxima versão; até lá, não apague os dados do app.',
+    'Sua identidade existe só neste computador. Sem backup, perder ou formatar o dispositivo é perder a identidade. Exporte um arquivo .ghostkey protegido por senha agora, ou depois em Identidade e backup.',
   'onboarding.backup.ack': 'Entendi',
   'onboarding.choose.title': 'O que você quer fazer?',
   'onboarding.choose.join': 'Entrar num servidor',
@@ -126,4 +127,5 @@ export const messages = {
   'errors.IDENTITY_UNAVAILABLE': 'Sua identidade não está disponível.',
 
   ...host,
+  ...identity,
 } as const;

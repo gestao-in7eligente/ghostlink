@@ -37,6 +37,10 @@ export const api: GhostlinkApi = {
     create: () => invoke(IPC.identityCreate),
     retry: () => invoke(IPC.identityRetry),
     replaceKeepingBackup: () => invoke(IPC.identityReplaceKeepingBackup),
+    exportBackup: (password) => invoke(IPC.identityExportBackup, password),
+    pickBackup: () => invoke(IPC.identityPickBackup),
+    importBackup: (password, replace) => invoke(IPC.identityImportBackup, password, replace),
+    delete: () => invoke(IPC.identityDelete),
   },
   settings: {
     get: () => invoke(IPC.settingsGet),

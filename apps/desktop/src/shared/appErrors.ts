@@ -17,6 +17,8 @@ export const CLIENT_ERROR_CODES = [
   'HOST_NOT_RUNNING', // the command needs the hosted server running
   'HOST_BUSY', // the hosted server is starting or stopping
   'HOST_FAILED', // the hosted server could not start, or stopped by itself
+  // Identity backup (spec §3.4); messages in i18n/<locale>/identity.ts.
+  'BACKUP_INVALID', // not a .ghostkey file, or unsupported parameters
 ] as const;
 
 export type ClientErrorCode = (typeof CLIENT_ERROR_CODES)[number];

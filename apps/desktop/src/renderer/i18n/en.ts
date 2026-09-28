@@ -1,4 +1,5 @@
 import { host } from './en/host.js';
+import { identity } from './en/identity.js';
 import type { messages as ptBR } from './pt-BR.js';
 
 // Typed against pt-BR: a missing or extra key fails the typecheck (contract §5).
@@ -38,7 +39,7 @@ export const messages: Record<keyof typeof ptBR, string> = {
   'onboarding.profile.nicknameHint': '1 to 32 characters. You can use a different one on each server.',
   'onboarding.backup.title': 'Keep a backup of your identity',
   'onboarding.backup.body':
-    'Your identity exists only on this computer. Without a backup, losing or wiping the device means losing the identity. Export arrives in an upcoming version; until then, do not delete the app data.',
+    'Your identity exists only on this computer. Without a backup, losing or wiping the device means losing the identity. Export a password-protected .ghostkey file now, or later in Identity and backup.',
   'onboarding.backup.ack': 'Got it',
   'onboarding.choose.title': 'What do you want to do?',
   'onboarding.choose.join': 'Join a server',
@@ -127,4 +128,5 @@ export const messages: Record<keyof typeof ptBR, string> = {
   'errors.IDENTITY_UNAVAILABLE': 'Your identity is not available.',
 
   ...host,
+  ...identity,
 };

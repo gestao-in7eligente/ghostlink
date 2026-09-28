@@ -1,6 +1,6 @@
 // Main-process bootstrap (contract §5). Everything testable lives in the modules it
 // wires together; this file is the thin glue that needs a real Electron.
-import { BrowserWindow, app, clipboard, safeStorage, session } from 'electron';
+import { BrowserWindow, app, clipboard, dialog, safeStorage, session } from 'electron';
 import { mkdtempSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +8,7 @@ import { APP_NAME, DEFAULT_PORT } from '@ghostlink/shared';
 import { IPC_EVENTS, type Platform } from '../shared/ipcTypes.js';
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges } from './appProtocol.js';
 import { ClientController } from './controller.js';
+import { GHOSTKEY_EXTENSION, IdentityBackup } from './backup.js';
 import { HostFirewall, firewallPrograms } from './hostFirewall.js';
 import { HostManager } from './hostManager.js';
 import { forkServer, hostedServerLogging } from './hostProcess.js';
@@ -99,6 +100,7 @@ function start(): BrowserWindow {
     controller,
     appInfo: () => ({ version: app.getVersion(), platform: process.platform as Platform, locale: app.getLocale() }),
     host: { manager: host, copyText: (text) => clipboard.writeText(text), firewall: hostFirewall(host) },
+    backup: identityBackup(window, identity, controller),
   });
   app.on('before-quit', () => void controller.disconnect());
 
@@ -179,6 +181,25 @@ function startHostMode(
       });
   });
   return host;
+}
+
+/** spec §3.4: .ghostkey export/import through the native dialogs; the seed stays in this process. */
+function identityBackup(window: BrowserWindow, identity: IdentityStore, controller: ClientController): IdentityBackup {
+  const filters = [{ name: 'GhostLink', extensions: [GHOSTKEY_EXTENSION] }];
+  return new IdentityBackup({
+    identity,
+    disconnect: () => controller.disconnect(),
+    dialogs: {
+      save: async (defaultName) => {
+        const r = await dialog.showSaveDialog(window, { defaultPath: join(app.getPath('documents'), defaultName), filters });
+        return r.canceled || !r.filePath ? null : r.filePath;
+      },
+      open: async () => {
+        const r = await dialog.showOpenDialog(window, { properties: ['openFile'], filters });
+        return r.canceled || r.filePaths.length === 0 ? null : r.filePaths[0]!;
+      },
+    },
+  });
 }
 
 /** spec §8.5: the firewall rules cover GhostLink.exe (the hosted server runs in it) and livekit-server.exe. */

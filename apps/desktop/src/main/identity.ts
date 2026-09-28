@@ -1,5 +1,5 @@
 import { createPrivateKey, createPublicKey, hkdfSync, randomBytes, sign } from 'node:crypto';
-import { existsSync, readFileSync, renameSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { CRYPTO_LABELS, ProtocolError, utf8 } from '@ghostlink/shared';
 import { AppError } from '../shared/appErrors.js';
@@ -117,6 +117,37 @@ export class IdentityStore {
   replaceKeepingBackup(): void {
     if (this.#status !== 'locked') throw new AppError('BAD_REQUEST', 'only a locked identity can be replaced');
     renameSync(this.#file, freePath(`${this.#file}.bak-${fileTimestamp(this.#now())}`));
+    this.#masterSeed = null;
+    this.#status = 'none';
+  }
+
+  /** spec §3.4: the master seed, for the .ghostkey backup only (main process; never sent to the renderer). */
+  exportSeed(): Buffer {
+    if (this.#status !== 'ready' || this.#masterSeed === null) throw new AppError('IDENTITY_UNAVAILABLE');
+    return Buffer.from(this.#masterSeed);
+  }
+
+  /**
+   * spec §3.4 "Importar": replaces the identity with a restored seed. An existing
+   * identity.bin (ready or locked) is renamed to identity.bin.bak-<date>, never overwritten.
+   * The caller asks for the double confirmation first.
+   */
+  importSeed(seed: Uint8Array): void {
+    if (seed.length !== 32) throw new AppError('BAD_REQUEST', 'a seed has 32 bytes');
+    if (!this.#crypto.isEncryptionAvailable()) throw new AppError('ENCRYPTION_UNAVAILABLE');
+    const encoded = Buffer.from(seed).toString('base64');
+    const blob = this.#crypto.encryptString(encoded);
+    if (!this.#decrypts(blob, encoded)) throw new AppError('ENCRYPTION_UNAVAILABLE', 'safeStorage round-trip failed');
+    if (existsSync(this.#file)) renameSync(this.#file, freePath(`${this.#file}.bak-${fileTimestamp(this.#now())}`));
+    writeFileAtomic(this.#file, blob);
+    this.#masterSeed = Buffer.from(seed);
+    this.#status = 'ready';
+  }
+
+  /** spec §3.1 "Apagar a identidade": removes identity.bin from this device (after a double confirmation). */
+  deleteIdentity(): void {
+    rmSync(this.#file, { force: true });
+    this.#masterSeed?.fill(0);
     this.#masterSeed = null;
     this.#status = 'none';
   }

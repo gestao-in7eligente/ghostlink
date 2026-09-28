@@ -11,10 +11,12 @@ import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 export function ServerList({
   onJoin,
   onHost,
+  onIdentity,
   onJoined,
 }: {
   onJoin: () => void;
   onHost: () => void;
+  onIdentity: () => void;
   onJoined: (welcome: RendererWelcome) => void;
 }) {
   const t = useT();
@@ -109,6 +111,9 @@ export function ServerList({
       )}
       <ErrorLine text={error && errorMessage(t, error)} />
       <div className={ui.actions}>
+        <button type="button" className={ui.link} onClick={onIdentity}>
+          {t('identity.settings.open')}
+        </button>
         <button type="button" className={ui.button} onClick={onHost}>
           {t('host.entry')}
         </button>

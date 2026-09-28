@@ -21,7 +21,7 @@ describe('preload bridge', () => {
     expect(electron.exposed.ghostlink).toBe(api);
     expect(Object.keys(api).sort()).toEqual(['app', 'host', 'identity', 'join', 'onConnectionState', 'onHostStatus', 'onServerEvent', 'servers', 'settings']);
     expect(Object.keys(api.host).sort()).toEqual(['copyText', 'firewall', 'fixFirewall', 'invite', 'join', 'logs', 'recoverOwnership', 'restart', 'start', 'status', 'stop']);
-    expect(Object.keys(api.identity).sort()).toEqual(['create', 'replaceKeepingBackup', 'retry', 'status']);
+    expect(Object.keys(api.identity).sort()).toEqual(['create', 'delete', 'exportBackup', 'importBackup', 'pickBackup', 'replaceKeepingBackup', 'retry', 'status']);
     expect(Object.keys(api.join).sort()).toEqual(['connect', 'parse', 'probe']);
     expect(Object.keys(api.servers).sort()).toEqual(['connect', 'disconnect', 'list', 'remove']);
     expect(Object.keys(api.settings).sort()).toEqual(['get', 'set']);
@@ -35,6 +35,10 @@ describe('preload bridge', () => {
     ['identity.create', () => api.identity.create(), IPC.identityCreate, []],
     ['identity.retry', () => api.identity.retry(), IPC.identityRetry, []],
     ['identity.replaceKeepingBackup', () => api.identity.replaceKeepingBackup(), IPC.identityReplaceKeepingBackup, []],
+    ['identity.exportBackup', () => api.identity.exportBackup('password1'), IPC.identityExportBackup, ['password1']],
+    ['identity.pickBackup', () => api.identity.pickBackup(), IPC.identityPickBackup, []],
+    ['identity.importBackup', () => api.identity.importBackup('password1', true), IPC.identityImportBackup, ['password1', true]],
+    ['identity.delete', () => api.identity.delete(), IPC.identityDelete, []],
     ['settings.get', () => api.settings.get(), IPC.settingsGet, []],
     ['settings.set', () => api.settings.set({ locale: 'en' }), IPC.settingsSet, [{ locale: 'en' }]],
     ['join.parse', () => api.join.parse('GL1-x'), IPC.joinParse, ['GL1-x']],

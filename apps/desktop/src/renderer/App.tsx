@@ -7,6 +7,8 @@ import { HostIndicator } from './features/host/HostIndicator.js';
 import { HostScreens } from './features/host/HostScreens.js';
 import { openHostFlow } from './features/host/hostUi.js';
 import { useHostStatusSync } from './features/host/useHostStatusSync.js';
+import { IdentityScreens } from './features/identity/IdentityScreens.js';
+import { openIdentitySettings } from './features/identity/identityModel.js';
 import { DEFAULT_LOCALE, errorCodeOf, errorMessage, useT } from './i18n/index.js';
 import { Connected } from './screens/Connected.js';
 import { IdentityLocked } from './screens/IdentityLocked.js';
@@ -84,8 +86,19 @@ export function App() {
       </main>
     );
   }
+  // Import, export and delete (spec §3.4): dialogs over any screen, including onboarding and the locked screen.
+  const identityChanged = (status: IdentityStatus) => {
+    setIdentity(status);
+    if (status === 'none') {
+      useConnectionStore.getState().dispatch({ type: 'state', event: { state: 'idle', serverId: null } });
+      setOnboarding(true);
+    } else {
+      setOnboarding(status !== 'ready' || settings.nickname === '');
+    }
+  };
+  const identityDialogs = <IdentityScreens status={identity} onChanged={identityChanged} />;
   if (identity === 'locked') {
-    return <IdentityLocked onStatus={(status) => { setIdentity(status); setOnboarding(status !== 'ready' || settings.nickname === ''); }} />;
+    return <><IdentityLocked onStatus={identityChanged} />{identityDialogs}</>;
   }
   if (onboarding) {
     const done = (next: 'join' | 'host') => {
@@ -94,13 +107,13 @@ export function App() {
       setView(next === 'join' ? 'join' : 'servers');
       if (next === 'host') openHostFlow();
     };
-    return <Onboarding identity={identity} onDone={done} />;
+    return <><Onboarding identity={identity} onDone={done} />{identityDialogs}</>;
   }
   // Host mode (spec §9): its dialogs open over any screen; the pill shows while hosting.
-  const host = <><HostIndicator /><HostScreens onJoined={joined} /></>;
+  const host = <><HostIndicator /><HostScreens onJoined={joined} />{identityDialogs}</>;
   if (connection.welcome && connection.state !== 'idle') {
     return <><Connected welcome={connection.welcome} onLeave={leave} />{host}</>;
   }
   if (view === 'join') return <><Join onCancel={() => setView('servers')} onJoined={joined} />{host}</>;
-  return <><ServerList onJoin={() => setView('join')} onHost={openHostFlow} onJoined={joined} />{host}</>;
+  return <><ServerList onJoin={() => setView('join')} onHost={openHostFlow} onIdentity={openIdentitySettings} onJoined={joined} />{host}</>;
 }

@@ -4,6 +4,7 @@ import type { IdentityStatus, Locale } from '../../shared/ipcTypes.js';
 import { ErrorLine, Screen } from '../components/Screen.js';
 import ui from '../components/ui.module.css';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
+import { openBackupExport, openBackupImport } from '../features/identity/identityModel.js';
 import { useSettingsStore } from '../stores/settings.js';
 
 type Step = 'welcome' | 'profile' | 'backup' | 'choose';
@@ -51,6 +52,11 @@ export function Onboarding({ identity, onDone }: { identity: IdentityStatus; onD
       <Screen title={t('onboarding.welcome.title')}>
         <p className={ui.text}>{t('onboarding.welcome.body')}</p>
         <div className={ui.actions}>
+          {identity === 'none' && (
+            <button type="button" className={ui.button} onClick={openBackupImport}>
+              {t('identity.onboarding.import')}
+            </button>
+          )}
           <button type="button" className={`${ui.button} ${ui.primary}`} onClick={() => setStep('profile')}>
             {t('onboarding.welcome.start')}
           </button>
@@ -94,6 +100,9 @@ export function Onboarding({ identity, onDone }: { identity: IdentityStatus; onD
       <Screen title={t('onboarding.backup.title')}>
         <p className={ui.text}>{t('onboarding.backup.body')}</p>
         <div className={ui.actions}>
+          <button type="button" className={ui.button} onClick={openBackupExport}>
+            {t('identity.onboarding.export')}
+          </button>
           <button type="button" className={`${ui.button} ${ui.primary}`} onClick={() => setStep('choose')}>
             {t('onboarding.backup.ack')}
           </button>

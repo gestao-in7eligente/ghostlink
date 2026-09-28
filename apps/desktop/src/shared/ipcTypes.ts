@@ -50,6 +50,16 @@ export interface JoinConnectRequest {
   name?: string;
 }
 
+export interface BackupExportResult {
+  saved: boolean;
+  fileName: string | null;
+}
+
+export interface BackupPickResult {
+  picked: boolean;
+  fileName: string | null;
+}
+
 export interface ConnectionStateEvent {
   state: ConnState;
   serverId: string | null;
@@ -63,6 +73,14 @@ export interface GhostlinkApi {
     create(): Promise<void>;
     retry(): Promise<IdentityStatus>;
     replaceKeepingBackup(): Promise<void>;
+    /** spec §3.4: asks where to save, then writes the .ghostkey (password ≥ 8 characters). */
+    exportBackup(password: string): Promise<BackupExportResult>;
+    /** Opens the file dialog; the file is checked and kept in the main process. */
+    pickBackup(): Promise<BackupPickResult>;
+    /** Decrypts the picked file and replaces the identity (`replace` = the user confirmed twice). */
+    importBackup(password: string, replace: boolean): Promise<IdentityStatus>;
+    /** spec §3.1: removes the identity from this device (after a double confirmation). */
+    delete(): Promise<IdentityStatus>;
   };
   settings: { get(): Promise<Settings>; set(patch: Partial<Settings>): Promise<Settings> };
   join: {
@@ -89,6 +107,10 @@ export const IPC = {
   identityCreate: 'ghostlink:identity.create',
   identityRetry: 'ghostlink:identity.retry',
   identityReplaceKeepingBackup: 'ghostlink:identity.replaceKeepingBackup',
+  identityExportBackup: 'ghostlink:identity.exportBackup',
+  identityPickBackup: 'ghostlink:identity.pickBackup',
+  identityImportBackup: 'ghostlink:identity.importBackup',
+  identityDelete: 'ghostlink:identity.delete',
   settingsGet: 'ghostlink:settings.get',
   settingsSet: 'ghostlink:settings.set',
   joinParse: 'ghostlink:join.parse',
@@ -125,6 +147,10 @@ export interface IpcContract {
   [IPC.identityCreate]: { args: []; result: void };
   [IPC.identityRetry]: { args: []; result: IdentityStatus };
   [IPC.identityReplaceKeepingBackup]: { args: []; result: void };
+  [IPC.identityExportBackup]: { args: [password: string]; result: BackupExportResult };
+  [IPC.identityPickBackup]: { args: []; result: BackupPickResult };
+  [IPC.identityImportBackup]: { args: [password: string, replace: boolean]; result: IdentityStatus };
+  [IPC.identityDelete]: { args: []; result: IdentityStatus };
   [IPC.settingsGet]: { args: []; result: Settings };
   [IPC.settingsSet]: { args: [patch: Partial<Settings>]; result: Settings };
   [IPC.joinParse]: { args: [input: string]; result: ParsedJoinInput };
@@ -149,6 +175,13 @@ export interface IpcContract {
 
 /** The Host mode channels (spec §9), handled by main/hostIpc.ts. */
 export type HostIpcChannel = Extract<IpcChannel, `ghostlink:host.${string}`>;
+
+/** The identity backup channels (spec §3.4), handled by main/backup.ts. */
+export type BackupIpcChannel =
+  | typeof IPC.identityExportBackup
+  | typeof IPC.identityPickBackup
+  | typeof IPC.identityImportBackup
+  | typeof IPC.identityDelete;
 
 export type IpcChannel = keyof IpcContract;
 export type IpcArgs<C extends IpcChannel> = IpcContract[C]['args'];
