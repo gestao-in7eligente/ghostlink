@@ -15,11 +15,10 @@ import { AccessToken, RoomServiceClient, TrackSource } from 'livekit-server-sdk'
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { PERMISSIONS, type ResErr, type ResOk, type VoiceChannelState } from '@ghostlink/shared';
-import { freeLoopbackPort } from '../../src/livekit/backend.js';
 import { resolveLivekitBinary } from '../../src/livekit/binary.js';
 import { createVoiceModule, type VoiceModule } from '../../src/voice/index.js';
 import { connectTestClient, startTestServer, type TestClient, type TestServer } from '../helpers/testClient.js';
-import { StubText } from '../helpers/voice.js';
+import { StubText, freeMediaPorts } from '../helpers/voice.js';
 
 // spec §14 "Integração LiveKit": the real livekit-server and real WebRTC participants
 // (@livekit/rtc-node). Skipped when scripts/fetch-livekit.mjs has not installed the binary.
@@ -53,13 +52,16 @@ async function env(): Promise<Env> {
   text.channels.set('VC1', { type: 'voice', userLimit: 0 });
   text.channels.set('VC2', { type: 'voice', userLimit: 0 });
   const voice = createVoiceModule({ sweepIntervalMs: 3_600_000, reconcileIntervalMs: 3_600_000 });
+  const logs: string[] = [];
+  const keep = (m: string, meta?: Record<string, unknown>) => void logs.push(`${m} ${JSON.stringify(meta ?? {})}`);
   const t = await startTestServer({
     joinMode: 'open',
     modules: [text, voice],
-    voice: { binaryPath: binary!, nodeIp: '127.0.0.1', udpPort: await freeLoopbackPort(), tcpPort: await freeLoopbackPort() },
+    logger: { info: keep, warn: keep, error: keep },
+    voice: { binaryPath: binary!, nodeIp: '127.0.0.1', ...(await freeMediaPorts()) },
   });
   servers.push(t);
-  expect(await voice.whenReady()).toBe(true);
+  expect(await voice.whenReady(), `LiveKit did not start: ${logs.join(' / ')}`).toBe(true);
   const livekitPort = Number(/^port: (\d+)$/m.exec(readFileSync(join(t.dataDir, 'livekit.yaml'), 'utf8'))![1]);
   const keys = JSON.parse(readFileSync(join(t.dataDir, 'livekit-keys.json'), 'utf8')) as { apiKey: string; apiSecret: string };
   return {

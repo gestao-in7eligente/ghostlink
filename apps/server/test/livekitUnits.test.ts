@@ -9,6 +9,7 @@ import { ALL_PERMISSIONS, DEFAULT_EVERYONE_PERMISSIONS, PERMISSIONS } from '@gho
 import { loadOrCreateLivekitKeys, renderLivekitConfig, writeLivekitConfig, type LivekitConfigInput } from '../src/livekit/config.js';
 import { verifyVoiceToken } from '../src/livekit/jwt.js';
 import { createJoinToken, livekitPermission } from '../src/livekit/permissions.js';
+import { livekitUrlFor } from '../src/voice/url.js';
 
 const dirs: string[] = [];
 function tempDir(): string {
@@ -169,5 +170,24 @@ describe('verifyVoiceToken: the /rtc proxy authorization (spec §4)', () => {
     expect(verify('')).toBeNull();
     expect(verify('x'.repeat(10_000))).toBeNull();
     expect(verify('not.a.jwt')).toBeNull();
+  });
+});
+
+describe('livekitUrlFor: the voice.join URL (spec §8.2)', () => {
+  const fallback = 'voice.example.com:7700';
+
+  it('echoes the host:port the client connected to, normalized', () => {
+    expect(livekitUrlFor('127.0.0.1:7700', fallback)).toBe('wss://127.0.0.1:7700');
+    expect(livekitUrlFor('LocalHost:7710', fallback)).toBe('wss://localhost:7710');
+    expect(livekitUrlFor('[::1]:7700', fallback)).toBe('wss://[::1]:7700');
+    expect(livekitUrlFor('[0:0:0:0:0:0:0:1]:7700', fallback)).toBe('wss://[::1]:7700');
+    // No port in Host means the client used the scheme's default port, so none is added.
+    expect(livekitUrlFor('ghost.example.com', fallback)).toBe('wss://ghost.example.com');
+  });
+
+  it('falls back to the public address when the Host header is missing or is not a plain host[:port]', () => {
+    for (const bad of [undefined, '', 'a b:7700', 'host/path', 'host:7700/x', 'user@host:7700', 'host:0', 'host:99999', '::1', 'h:7700?q', 'x'.repeat(300)]) {
+      expect(livekitUrlFor(bad, fallback)).toBe('wss://voice.example.com:7700');
+    }
   });
 });

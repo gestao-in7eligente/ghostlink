@@ -82,6 +82,11 @@ export interface ModuleContext {
 export interface RequestContext extends ModuleContext {
   readonly userId: string;
   readonly sessionId: string;
+  /**
+   * The raw Host header of this session's WebSocket upgrade: the host:port the client
+   * used (voice answers with it, spec §8.2). Client-controlled: validate before use.
+   */
+  readonly requestHost?: string;
   /** Re-check after every await (spec §5.1): false once the session was replaced or closed. */
   isCurrent(): boolean;
 }

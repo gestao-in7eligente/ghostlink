@@ -1,5 +1,6 @@
+import { createSocket } from 'node:dgram';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { createServer as createTcpServer, type AddressInfo } from 'node:net';
 import { WebSocketServer } from 'ws';
 import { DEFAULT_EVERYONE_PERMISSIONS } from '@ghostlink/shared';
 import type { LivekitParticipant, VoiceBackend, VoiceBackendListeners, VoiceWebhookEvent } from '../../src/livekit/backend.js';
@@ -8,6 +9,40 @@ import type { ModuleContext } from '../../src/modules.js';
 import type { MembershipRemovedReason, TextModuleVoiceSeams, VoiceAccess } from '../../src/voice/access.js';
 
 export const FAKE_KEYS = { apiKey: 'GLfakeApiKey', apiSecret: 's'.repeat(43) };
+
+function udpBindable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = createSocket('udp4');
+    socket.once('error', () => resolve(false));
+    socket.bind(port, '0.0.0.0', () => socket.close(() => resolve(true)));
+  });
+}
+
+function tcpBindable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createTcpServer();
+    server.once('error', () => resolve(false));
+    server.listen(port, '0.0.0.0', () => server.close(() => resolve(true)));
+  });
+}
+
+/**
+ * Public media ports for a real livekit-server in tests. LiveKit binds the UDP port on
+ * every interface, so a port borrowed from the TCP ephemeral range is not enough: on
+ * Windows it may sit in an excluded UDP range (bind fails with an access error). These
+ * come from below the dynamic range and were just bound on all interfaces.
+ */
+export async function freeMediaPorts(): Promise<{ udpPort: number; tcpPort: number }> {
+  const pick = async (bindable: (port: number) => Promise<boolean>, not?: number): Promise<number> => {
+    for (let i = 0; i < 200; i++) {
+      const port = 20_000 + Math.floor(Math.random() * 25_000);
+      if (port !== not && (await bindable(port))) return port;
+    }
+    throw new Error('no free media port');
+  };
+  const udpPort = await pick(udpBindable);
+  return { udpPort, tcpPort: await pick(tcpBindable, udpPort) };
+}
 
 export type BackendCall =
   | { op: 'remove'; room: string; identity: string }

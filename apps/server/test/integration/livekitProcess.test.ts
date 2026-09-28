@@ -7,6 +7,7 @@ import { silentLogger } from '../../src/logger.js';
 import { LivekitBackend, freeLoopbackPort, type VoiceWebhookEvent } from '../../src/livekit/backend.js';
 import { resolveLivekitBinary } from '../../src/livekit/binary.js';
 import { LivekitProcess } from '../../src/livekit/process.js';
+import { freeMediaPorts } from '../helpers/voice.js';
 
 // Real livekit-server (spec §14 "Integração LiveKit"); skipped when scripts/fetch-livekit.mjs has not run.
 const binary = resolveLivekitBinary();
@@ -33,10 +34,7 @@ function post(url: string, body: string, headers: Record<string, string> = {}): 
   });
 }
 
-async function randomMediaPorts(): Promise<{ udpPort: number; tcpPort: number }> {
-  // UDP and TCP ports are separate namespaces; a free TCP port is almost always a free UDP port too.
-  return { udpPort: await freeLoopbackPort(), tcpPort: await freeLoopbackPort() };
-}
+const randomMediaPorts = freeMediaPorts;
 
 describe.skipIf(!binary)('livekit-server process (real binary)', () => {
   it('boots in strict mode with the generated config, answers RoomService, and stops', async () => {

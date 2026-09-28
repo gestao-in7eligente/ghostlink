@@ -26,7 +26,7 @@ interface Setup {
   client(nickname?: string): Promise<TestClient>;
 }
 
-async function setup(o: { backend?: FakeBackend | null; graceMs?: number } = {}): Promise<Setup> {
+async function setup(o: { backend?: FakeBackend | null; graceMs?: number; publicAddresses?: string[] } = {}): Promise<Setup> {
   const text = new StubText();
   text.channels.set('VC1', { type: 'voice', userLimit: 0 });
   text.channels.set('VC2', { type: 'voice', userLimit: 0 });
@@ -41,7 +41,13 @@ async function setup(o: { backend?: FakeBackend | null; graceMs?: number } = {})
     warn: (m, meta) => logs.push(`${m} ${JSON.stringify(meta ?? {})}`),
     error: (m, meta) => logs.push(`${m} ${JSON.stringify(meta ?? {})}`),
   };
-  const t = await startTestServer({ joinMode: 'open', modules: [text, voice], logger, limits: o.graceMs ? { presenceGraceMs: o.graceMs } : undefined });
+  const t = await startTestServer({
+    joinMode: 'open',
+    modules: [text, voice],
+    logger,
+    limits: o.graceMs ? { presenceGraceMs: o.graceMs } : undefined,
+    publicAddresses: o.publicAddresses,
+  });
   servers.push(t);
   await voice.whenReady();
   return {
@@ -139,6 +145,30 @@ describe('voice module: welcome and features', () => {
     expect(down.logs.some((l) => l.includes('voice is unavailable'))).toBe(true);
   });
 
+  it('whenReady waits through a failed first start that the supervisor retries, and is false only when it gives up', async () => {
+    // A first start can fail on a transient cause (a port taken meanwhile); the supervisor restarts LiveKit.
+    class RetriedBackend extends FakeBackend {
+      override async start(listeners: Parameters<FakeBackend['start']>[0]): Promise<void> {
+        setTimeout(() => void super.start(listeners), 50);
+        throw new Error('livekit-server exited (code 1)');
+      }
+    }
+    const retried = await setup({ backend: new RetriedBackend() });
+    expect(await retried.voice.whenReady()).toBe(true);
+    expect((await retried.client()).welcome!.features).toContain('voice');
+
+    class GivingUpBackend extends FakeBackend {
+      override async start(listeners: Parameters<FakeBackend['start']>[0]): Promise<void> {
+        this.available = false;
+        setTimeout(() => listeners.onUnavailable(), 50);
+        throw new Error('livekit-server exited (code 1)');
+      }
+    }
+    const down = await setup({ backend: new GivingUpBackend() });
+    expect(await down.voice.whenReady()).toBe(false);
+    expect(down.logs.some((l) => l.includes('voice is unavailable'))).toBe(true);
+  });
+
   it('the welcome lists participants only in voice channels the user can see', async () => {
     const s = await setup();
     const alice = await s.client('alice');
@@ -171,6 +201,13 @@ describe('voice.join (spec §8.2)', () => {
     expect(claims.sub).toBe(`u_${a.identity.userId}`);
     expect(claims.video).toMatchObject({ room: 'ch_VC1', canPublish: true, canPublishSources: ['microphone', 'camera', 'screen_share', 'screen_share_audio'] });
     expect(s.voice.registry.assignedChannel(a.identity.userId)).toBe('VC1');
+  });
+
+  it('points livekitUrl at the host:port this client connected to, not at another public address (spec §8.2)', async () => {
+    // The renderer pins only the hostname its connection used (spec §4): any other host would fail TLS.
+    const s = await setup({ publicAddresses: ['voice.example.com:7700'] });
+    const a = await s.client('ana');
+    expect(ok<JoinRes>(await a.request('voice.join', { channelId: 'VC1' })).livekitUrl).toBe(`wss://127.0.0.1:${s.t.server.port}`);
   });
 
   it('a user without SPEAK or VIDEO may connect but never gets canPublish with an empty list', async () => {

@@ -17,6 +17,11 @@ export interface LivekitParticipant {
   tracks: { sid: string; source: TrackKind }[];
 }
 
+/**
+ * Contract: after start(), unless stop() comes first, the backend eventually calls
+ * onReady() or, when it gives up (no more restarts), onUnavailable() — also when
+ * start() itself rejected.
+ */
 export interface VoiceBackendListeners {
   /** LiveKit (re)started: rebuild the voice map (spec §7). */
   onReady(): void;
@@ -131,7 +136,14 @@ export class LivekitBackend implements VoiceBackend {
   async #start(): Promise<void> {
     const webhooks = new WebhookServer({ ...this.keys, logger: this.#opts.logger, onEvent: (e) => this.#listeners?.onWebhook(e) });
     this.#webhooks = webhooks;
-    const webhookUrl = await webhooks.listen();
+    let webhookUrl: string;
+    try {
+      webhookUrl = await webhooks.listen();
+    } catch (e) {
+      // Nothing to supervise without the receiver: give up now (see VoiceBackendListeners).
+      if (!this.#stopped) this.#listeners?.onUnavailable();
+      throw e;
+    }
     if (this.#stopped) return;
     this.#process = new LivekitProcess({
       binaryPath: this.#opts.binaryPath,

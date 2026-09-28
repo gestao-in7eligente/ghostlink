@@ -87,6 +87,7 @@ export class Gateway {
       return;
     }
     const ip = req.socket.remoteAddress ?? 'unknown';
+    const requestHost = req.headers.host;
     this.#wss.handleUpgrade(req, socket, head, (ws) => {
       const { limits } = this.#deps;
       const conn = new Connection(ws, { ip, ipKey: ipKey(ip), pingIntervalMs: limits.pingIntervalMs, pongTimeoutMs: limits.pongTimeoutMs });
@@ -97,7 +98,7 @@ export class Gateway {
         conn.close('RATE_LIMITED');
         return;
       }
-      void this.#serve(conn);
+      void this.#serve(conn, requestHost);
     });
   }
 
@@ -116,7 +117,7 @@ export class Gateway {
     this.#wss.close();
   }
 
-  async #serve(conn: Connection): Promise<void> {
+  async #serve(conn: Connection, requestHost: string | undefined): Promise<void> {
     const releaseUnauthenticated = this.#trackUnauthenticated(conn.ipKey);
     conn.onClose(releaseUnauthenticated);
     let session: AuthedSession;
@@ -146,10 +147,10 @@ export class Gateway {
       conn.close('SERVER_SHUTDOWN');
       return;
     }
-    await this.#runSession(conn, session);
+    await this.#runSession(conn, session, requestHost);
   }
 
-  async #runSession(conn: Connection, session: AuthedSession): Promise<void> {
+  async #runSession(conn: Connection, session: AuthedSession, requestHost: string | undefined): Promise<void> {
     const { modules, logger } = this.#deps;
     const handle: SessionHandle = {
       userId: session.userId,
@@ -189,6 +190,7 @@ export class Gateway {
       ...modules.context,
       userId: session.userId,
       sessionId: session.sessionId,
+      requestHost,
       isCurrent: () => this.sessions.isCurrent(handle),
     };
     const perSecond = new SlidingWindowLimiter(this.#deps.limits.requestsPerSecondPerSession, 1_000, this.#deps.now);

@@ -25,6 +25,7 @@ import { SlidingWindowLimiter } from '../ratelimit/limiter.js';
 import { NO_CHANNELS, textModuleOf, voiceAccessOf, type TextModuleVoiceSeams, type VoiceAccess } from './access.js';
 import { RtcProxy } from './proxy.js';
 import { VoiceRegistry } from './registry.js';
+import { livekitUrlFor } from './url.js';
 
 const P = PERMISSIONS;
 const VIEW_AND_CONNECT = P.VIEW_CHANNEL | P.CONNECT_VOICE;
@@ -43,7 +44,11 @@ export interface VoiceModuleOptions {
 /** The `voice` module plus the calls other modules and tests may make on it. */
 export interface VoiceModule extends ServerModule {
   readonly name: 'voice';
-  /** Resolves true once LiveKit answers, false when voice cannot run. */
+  /**
+   * Resolves true once LiveKit first answers (a failed first start that the supervisor
+   * retries is waited through), false when voice cannot run: no binary, the supervisor
+   * gave up, or the server stopped first.
+   */
   whenReady(): Promise<boolean>;
   /** Current voice.state of a channel — Text sends it with channel.created to a user who gains access (spec §5.3). */
   channelState(channelId: string): VoiceChannelState;
@@ -84,6 +89,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
   let publicPort = 0;
   let joinLimiter!: SlidingWindowLimiter;
   let ready: Promise<boolean> = Promise.resolve(false);
+  let settleReady: (value: boolean) => void = () => {};
   let starting: Promise<unknown> = Promise.resolve();
   const timers: NodeJS.Timeout[] = [];
   const unsubscribe: Array<() => void> = [];
@@ -227,10 +233,9 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     }
   };
 
-  const livekitUrl = (): string => {
-    const addresses = getMeta(ctx.db).publicAddresses;
-    return `wss://${addresses[0] ?? `127.0.0.1:${publicPort}`}`;
-  };
+  /** The host:port this client connected to (spec §8.2); a public address only when Host is unusable. */
+  const livekitUrl = (rc: RequestContext): string =>
+    livekitUrlFor(rc.requestHost, getMeta(ctx.db).publicAddresses[0] ?? `127.0.0.1:${publicPort}`);
 
   const proxy = new RtcProxy({
     target: () => (backend?.available ? backend.signalPort : null),
@@ -268,7 +273,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     for (const old of new Set([previous, present])) {
       if (old && old !== channelId) void backend.removeParticipant(voiceRoomName(old), voiceIdentity(rc.userId)).catch(log('removeParticipant'));
     }
-    return { livekitUrl: livekitUrl(), token, iceServers: [] };
+    return { livekitUrl: livekitUrl(rc), token, iceServers: [] };
   };
 
   const moderate = async (rc: RequestContext, payload: unknown): Promise<Record<string, never>> => {
@@ -348,25 +353,29 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       publicPort = port;
       if (!backend) return;
       const b = backend;
+      ready = new Promise<boolean>((resolve) => (settleReady = resolve));
       const first = b.start({
-        onReady: () => void reconcile(),
-        onWebhook,
-        onUnavailable: () => ctx.logger.error('voice is unavailable: LiveKit could not be restarted'),
-      });
-      starting = first.catch(() => {});
-      ready = first.then(
-        () => b.available,
-        (e: unknown) => {
-          ctx.logger.error('LiveKit did not start; voice is unavailable for now', { error: e instanceof Error ? e.message : String(e) });
-          return false;
+        onReady: () => {
+          settleReady(true);
+          void reconcile();
         },
-      );
+        onWebhook,
+        onUnavailable: () => {
+          settleReady(false);
+          ctx.logger.error('voice is unavailable: LiveKit could not be restarted');
+        },
+      });
+      // A failed first start is retried by the supervisor, which ends in onReady or onUnavailable.
+      starting = first.catch((e: unknown) => {
+        ctx.logger.error('LiveKit did not start; retrying', { error: e instanceof Error ? e.message : String(e) });
+      });
       timers.push(setInterval(() => void reconcile(), opts.reconcileIntervalMs ?? 60_000));
       timers.push(setInterval(() => void refreshPermissions(), opts.sweepIntervalMs ?? 5_000));
       for (const t of timers) t.unref();
     },
     async stop() {
       stopped = true;
+      settleReady(false);
       for (const t of timers.splice(0)) clearInterval(t);
       for (const off of unsubscribe.splice(0)) off();
       await backend?.stop();
