@@ -59,6 +59,9 @@ jobs:
         run: npm run lint
       - name: Typecheck
         run: npm run typecheck
+      # The LiveKit integration tests run against the real binary (spec §14); macOS has none yet.
+      - name: Fetch LiveKit
+        run: node scripts/fetch-livekit.mjs
       - name: Unit and integration tests
         run: npm test
 

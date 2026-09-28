@@ -18,6 +18,7 @@
   "dependencies": {
     "@ghostlink/shared": "*",
     "@peculiar/x509": "2.1.0",
+    "livekit-server-sdk": "2.19.1",
     "reflect-metadata": "0.2.2",
     "ws": "8.22.0",
     "zod": "4.6.5"

@@ -89,6 +89,13 @@ describe('ci.yml jobs', () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
+  it('fetches the verified LiveKit binary before the tests, so the LiveKit integration tests run (spec §14)', () => {
+    const test = workflow.jobs.test!;
+    const fetch = runIndex(test, 'node scripts/fetch-livekit.mjs');
+    expect(fetch).toBeGreaterThan(0);
+    expect(fetch).toBeLessThan(runIndex(test, 'npm test'));
+  });
+
   it('packages on Windows and macOS, then smoke tests the package', () => {
     const pack = workflow.jobs.package!;
     expect(pack.strategy.matrix.os).toEqual(['windows-latest', 'macos-latest']);

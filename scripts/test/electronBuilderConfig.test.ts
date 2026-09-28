@@ -41,7 +41,13 @@ describe('apps/desktop/electron-builder.yml', () => {
     expect(config.asar).toBe(true);
     expect(config.npmRebuild).toBe(false); // spec §15: @electron/rebuild would try MSVC
     expect(config.publish).toBeNull();
-    expect(pkg.scripts.dist).toBe('npm run build && electron-builder --config electron-builder.yml --publish never');
+    // fetch-livekit verifies the pinned LiveKit release before it is packaged (spec §8.1).
+    expect(pkg.scripts.dist).toBe('npm run build && node ../../scripts/fetch-livekit.mjs && electron-builder --config electron-builder.yml --publish never');
+  });
+
+  it('ships the LiveKit binary of the target platform next to the asar (spec §15)', () => {
+    // ${os}-${arch} is the target (never ${platform}, the build host); main finds it at process.resourcesPath/livekit.
+    expect(config.extraResources).toEqual([{ from: 'resources/livekit/${os}-${arch}', to: 'livekit' }]);
   });
 
   it('flips exactly the spec §12 fuses', () => {
@@ -97,7 +103,8 @@ describe('apps/desktop/package.json (packaging)', () => {
   // These are exactly the packages the main-process bundles import at run time (plan 1b's
   // build.test.ts checks that ws and zod stay external and that reflect-metadata loads before x509).
   // Add one only for a package that must stay external (a native module, electron-updater…).
-  const RUNTIME_DEPENDENCIES = ['@peculiar/x509', 'reflect-metadata', 'ws', 'zod'];
+  // livekit-server-sdk: the hosted server's LiveKit client; uiohook-napi: native global push-to-talk hook.
+  const RUNTIME_DEPENDENCIES = ['@peculiar/x509', 'livekit-server-sdk', 'reflect-metadata', 'uiohook-napi', 'ws', 'zod'];
 
   it('ships only the packages the bundles load at run time', () => {
     expect(Object.keys(pkg.dependencies ?? {}).sort()).toEqual(RUNTIME_DEPENDENCIES);
