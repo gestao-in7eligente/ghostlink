@@ -404,6 +404,11 @@ export class PortMapper {
       if (this.#stopped) break;
       try {
         const { leaseSeconds } = await this.#o.client.addPortMapping({ ...p, leaseSeconds: this.#o.leaseSeconds ?? UPNP_LEASE_SECONDS });
+        if (this.#stopped) {
+          // stop() ran while this mapping was on its way: undo it now, not in 2 h.
+          await this.#o.client.deletePortMapping(p).catch(() => {});
+          break;
+        }
         this.#mapped.add(`${p.protocol}:${p.port}`);
         out.push({ ...p, ok: true, leaseSeconds });
       } catch (e) {

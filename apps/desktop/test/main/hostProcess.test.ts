@@ -167,8 +167,8 @@ describe('forkServer control channel (spec §9)', () => {
   it('rejects a startup failure with the errno code the server reported', async () => {
     const child = nextChild();
     const started = forkServer({ dataDir: '/data', port: 7700 });
-    child.emit('message', { type: 'error', message: 'listen EADDRINUSE: address already in use 0.0.0.0:7700', code: 'EADDRINUSE' });
-    await expect(started).rejects.toMatchObject({ code: 'EADDRINUSE' });
+    child.emit('message', { type: 'error', message: 'listen EADDRINUSE: address already in use 0.0.0.0:7700', code: 'EADDRINUSE', suggestedPort: 7710 });
+    await expect(started).rejects.toMatchObject({ code: 'EADDRINUSE', suggestedPort: 7710 });
   });
 
   it('matches replies to requests by id, in any order', async () => {

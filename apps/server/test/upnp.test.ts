@@ -206,6 +206,29 @@ describe('PortMapper (lease renewal, unmap on stop)', () => {
     expect(fake.actions.filter((a) => a === 'DeletePortMapping')).toHaveLength(3);
   });
 
+  it('removes a mapping that completes after stop() (no 2 h leftover on the router)', async () => {
+    let release!: () => void;
+    const deleted: string[] = [];
+    const client = {
+      addPortMapping: async () => {
+        await new Promise<void>((r) => {
+          release = r;
+        });
+        return { leaseSeconds: 7200 };
+      },
+      deletePortMapping: async (m: { protocol: string; port: number }) => {
+        deleted.push(`${m.protocol}:${m.port}`);
+      },
+    };
+    const mapper = new PortMapper({ client, ports: [{ protocol: 'TCP', port: 7700 }, { protocol: 'UDP', port: 7882 }] });
+    const started = mapper.start();
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    const stopped = mapper.stop();
+    release();
+    await Promise.all([started, stopped]);
+    expect(deleted).toEqual(['TCP:7700']);
+  });
+
   it('reports a failed port and still unmaps only what it mapped', async () => {
     const fake = await igd({ conflicts: ['TCP:7700'] });
     const gw = await discoverGateway(at(fake));

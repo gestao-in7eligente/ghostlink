@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -117,5 +118,91 @@ describe('ghostlink-server CLI', () => {
     expect(text).toContain('Join mode: invite');
     expect(text).toContain('Members: 0 / 100');
     expect(text).toContain('Public addresses: 198.51.100.7:7700');
+  });
+});
+
+function tempData(): string {
+  const d = mkdtempSync(join(tmpdir(), 'ghostlink-cli-'));
+  dirs.push(d);
+  return d;
+}
+
+async function freePort(): Promise<number> {
+  for (;;) {
+    const s = await new Promise<Server>((r) => {
+      const srv = createServer();
+      srv.listen(0, '127.0.0.1', () => r(srv));
+    });
+    const { port } = s.address() as { port: number };
+    await new Promise<void>((r) => s.close(() => r()));
+    if (port > 1024 && port < 60_000) return port;
+  }
+}
+
+describe('ghostlink-server start (spec §10)', () => {
+  /** Runs `start` until the output shows it is up, then stops it like SIGTERM would. */
+  async function runStart(flags: string[]) {
+    const io = capture();
+    let stop!: () => void;
+    const stopped = new Promise<void>((r) => {
+      stop = r;
+    });
+    const exit = runCli(['start', ...flags], io, {}, { untilStop: stopped });
+    for (let i = 0; i < 200 && !io.stdout.some((l) => l.startsWith('Fingerprint:')) && io.stderr.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    stop();
+    return { io, code: await exit };
+  }
+
+  it('starts, prints fingerprint, setup code, node IP and addresses, and stops cleanly', async () => {
+    const data = tempData();
+    const port = await freePort();
+    const { io, code } = await runStart(['--data', data, '--port', String(port), '--host', '127.0.0.1', '--node-ip', '203.0.113.9', '--public-address', 'vps.example.com:7700']);
+    expect(code).toBe(0);
+    const text = io.stdout.join('\n');
+    expect(text).toContain(`Listening on 127.0.0.1:${port}`);
+    expect(text).toMatch(/Fingerprint: [A-Z2-7]{8} [A-Z2-7]{8} [A-Z2-7]{8} [A-Z2-7]{8}/);
+    expect(text).toMatch(/Setup code \(use it once to become the owner\): [0-9a-f]{8}-/);
+    expect(text).toContain('Node IP (announced for voice): 203.0.113.9');
+    expect(text).toContain('Public addresses: vps.example.com:7700');
+    expect(text).toContain('UPnP: off');
+    expect(text).toContain('Shutting down');
+  });
+
+  it('exits 2 on a busy port and suggests the next free one', async () => {
+    const t = await server();
+    const io = capture();
+    expect(await runCli(['start', '--data', tempData(), '--port', String(t.server.port), '--host', '127.0.0.1'], io, {})).toBe(2);
+    const text = io.stderr.join('\n');
+    expect(text).toMatch(new RegExp(`Port ${t.server.port} is already in use by another program`));
+    expect(text).toMatch(/--port \d+/);
+    expect(text).toMatch(/old invites/i);
+  });
+
+  it.each([[['--node-ip', 'example.com']], [['--node-ip', '999.1.1.1']], [['--port', '70000']]])('refuses %j', async (flags) => {
+    const io = capture();
+    expect(await runCli(['start', '--data', tempData(), ...flags], io, {})).toBe(1);
+  });
+});
+
+describe('ghostlink-server reset-owner (spec §3.3 "Recuperar posse")', () => {
+  it('issues a new setup code that makes another identity the owner', async () => {
+    const t = await server({ joinMode: 'open' });
+    (await connectTestClient(t.server, { setupCode: t.server.setupCode()!, nickname: 'Old' })).close();
+    const io = capture();
+    expect(await runCli(['reset-owner', '--data', t.dataDir], io, {})).toBe(0);
+    const code = /([0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8}-[0-9a-f]{8})/.exec(io.stdout.join('\n'))![1]!;
+    expect(readFileSync(join(t.dataDir, 'setup-code.txt'), 'utf8').trim()).toBe(code);
+    const next = await connectTestClient(t.server, { setupCode: code, nickname: 'New' });
+    expect(next.welcome?.self.isOwner).toBe(true);
+    next.close();
+    expect(existsSync(join(t.dataDir, 'setup-code.txt'))).toBe(false);
+  });
+
+  it('refuses a directory without server data', async () => {
+    const io = capture();
+    expect(await runCli(['reset-owner', '--data', tempData()], io, {})).toBe(1);
+    expect(io.stderr[0]).toMatch(/No GhostLink server data/);
   });
 });

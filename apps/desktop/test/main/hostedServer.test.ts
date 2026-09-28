@@ -1,12 +1,15 @@
+import { createSocket } from 'node:dgram';
 import { EventEmitter } from 'node:events';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseJoinInput } from '@ghostlink/shared';
 import { silentLogger, type GhostServer } from '../../../server/src/index.js';
+import { discoverGateway } from '../../../server/src/net/upnp.js';
+import { startFakeIgd } from '../../../server/test/helpers/fakeIgd.js';
 import { connectTestClient, startTestServer } from '../../../server/test/helpers/testClient.js';
 import { probeServerKeyId } from '../../src/main/connection.js';
-import { advertisedAddresses, parseHostArgs, runHostedServer, type HostMessage } from '../../src/main/hostedServer.js';
+import { parseHostArgs, runHostedServer, type HostMessage } from '../../src/main/hostedServer.js';
 import { useTempDir } from '../helpers/tempDir.js';
 
 const dir = useTempDir();
@@ -85,15 +88,10 @@ describe('parseHostArgs', () => {
   });
 });
 
-describe('advertisedAddresses', () => {
-  const local = [
-    { ip: '192.168.0.10', interface: 'Ethernet', kind: 'lan' as const },
-    { ip: '26.1.2.3', interface: 'Radmin VPN', kind: 'radmin' as const },
-  ];
-  it('advertises every local address when bound to all interfaces, none when bound to loopback', () => {
-    expect(advertisedAddresses('0.0.0.0', 7700, local)).toEqual(['192.168.0.10:7700', '26.1.2.3:7700']);
-    expect(advertisedAddresses('127.0.0.1', 7700, local)).toEqual([]);
-    expect(advertisedAddresses('26.1.2.3', 7700, local)).toEqual(['26.1.2.3:7700']);
+describe('parseHostArgs: networking flags', () => {
+  it('reads --upnp and --node-ip', () => {
+    expect(parseHostArgs(['--data', '/d', '--port', '7700', '--upnp', '--node-ip=203.0.113.9'])).toMatchObject({ upnp: true, nodeIp: '203.0.113.9' });
+    expect(parseHostArgs(['--data', '/d', '--port', '7700'])).not.toHaveProperty('upnp');
   });
 });
 
@@ -131,7 +129,10 @@ describe('runHostedServer (utility process body, spec §9)', () => {
       const parent = fakeParentPort();
       const exit = exitRecorder();
       await runHostedServer(parent.port, ['--data', dir.path, '--port', String(busy.server.port)], { exit: exit.exit, logger: silentLogger });
-      expect(parent.posted).toEqual([{ type: 'error', message: expect.stringMatching(/EADDRINUSE/), code: 'EADDRINUSE' }]);
+      // spec §8.5: the next free port (7710, 7720, … style) comes with the error.
+      expect(parent.posted).toEqual([{ type: 'error', message: expect.stringMatching(/EADDRINUSE/), code: 'EADDRINUSE', suggestedPort: expect.any(Number) }]);
+      const { suggestedPort } = parent.posted[0] as { suggestedPort: number };
+      expect((suggestedPort - busy.server.port) % 10).toBe(0);
       expect(exit.codes).toEqual([1]);
     } finally {
       await busy.cleanup();
@@ -148,6 +149,7 @@ describe('parent-port control commands (spec §9)', () => {
       exit: exit.exit,
       logger: silentLogger,
       localAddresses: () => [{ ip: '127.0.0.1', interface: 'test', kind: 'lan' }],
+      mediaPorts: [],
     });
     const ready = parent.posted[0] as { type: 'ready'; port: number };
     expect(ready.type).toBe('ready');
@@ -171,6 +173,13 @@ describe('parent-port control commands (spec §9)', () => {
         hasOwner: false,
         publicAddresses: [`127.0.0.1:${port}`],
         localAddresses: [{ ip: '127.0.0.1', interface: 'test', kind: 'lan' }],
+        net: {
+          upnp: { state: 'off', wanIp: null, mappings: [] },
+          cgnat: false,
+          nodeIp: '127.0.0.1',
+          localAddresses: [{ ip: '127.0.0.1', interface: 'test', kind: 'lan' }],
+        },
+        busyMediaPorts: [],
       },
     });
     parent.send({ cmd: 'shutdown' });
@@ -221,5 +230,56 @@ describe('parent-port control commands (spec §9)', () => {
     }
     parent.send({ cmd: 'shutdown' });
     expect(await exit.done).toBe(0);
+  });
+});
+
+describe('networking in the hosted server (spec §8.5)', () => {
+  it('reports LiveKit media ports another program already holds', async () => {
+    const held = createSocket('udp4');
+    await new Promise<void>((r) => held.bind(0, '127.0.0.1', () => r()));
+    const udpPort = held.address().port;
+    try {
+      const parent = fakeParentPort();
+      const exit = exitRecorder();
+      await runHostedServer(parent.port, ['--data', dir.path, '--port', '0'], {
+        exit: exit.exit,
+        logger: silentLogger,
+        mediaPorts: [{ protocol: 'UDP', port: udpPort }],
+      });
+      const status = await ask(parent, 1, { cmd: 'status' });
+      expect(status).toMatchObject({ ok: true, value: { busyMediaPorts: [`UDP ${udpPort}`] } });
+      parent.send({ cmd: 'shutdown' });
+      expect(await exit.done).toBe(0);
+    } finally {
+      await new Promise<void>((r) => held.close(() => r()));
+    }
+  });
+
+  it('with --upnp: maps the ports on the router, reports the WAN, and unmaps on shutdown', async () => {
+    const fake = await startFakeIgd();
+    try {
+      const parent = fakeParentPort();
+      const exit = exitRecorder();
+      await runHostedServer(parent.port, ['--data', dir.path, '--port', '0', '--host', '0.0.0.0', '--upnp'], {
+        exit: exit.exit,
+        logger: silentLogger,
+        localAddresses: () => [{ ip: '192.168.0.10', interface: 'Ethernet', kind: 'lan' }],
+        discover: () => discoverGateway({ ssdpAddress: '127.0.0.1', ssdpPort: fake.ssdpPort, interfaces: ['127.0.0.1'], timeoutMs: 1_500 }),
+        mediaPorts: [{ protocol: 'UDP', port: 7882 }],
+      });
+      const { port } = parent.posted[0] as { port: number };
+      let value: { net: { upnp: { state: string; wanIp: string } }; publicAddresses: string[] } | undefined;
+      for (let i = 1; i < 50 && value?.net.upnp.state !== 'mapped'; i++) {
+        value = ((await ask(parent, i, { cmd: 'status' })) as { value: typeof value }).value;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(value).toMatchObject({ net: { upnp: { state: 'mapped', wanIp: '203.0.113.7' } }, publicAddresses: [`203.0.113.7:${port}`, `192.168.0.10:${port}`] });
+      expect([...fake.mappings.keys()].sort()).toEqual([`TCP:${port}`, 'UDP:7882']);
+      parent.send({ cmd: 'shutdown' });
+      expect(await exit.done).toBe(0);
+      expect(fake.mappings.size).toBe(0);
+    } finally {
+      await fake.close();
+    }
   });
 });

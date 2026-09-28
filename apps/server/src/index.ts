@@ -35,6 +35,8 @@ export { consoleLogger, silentLogger } from './logger.js';
 export { SERVER_VERSION, WEB_SITE_BASE } from './version.js';
 export * from './net/addresses.js';
 export * from './net/ports.js';
+export * from './net/netModule.js';
+export { UpnpError, type MappingResult, type UpnpProtocol } from './net/upnp.js';
 
 export interface StartServerOptions {
   dataDir: string; // created if missing

@@ -97,7 +97,11 @@ export async function forkServer(opts: ForkServerOptions): Promise<ForkedServer>
       if (!isHostMessage(message) || message.type === 'reply') return;
       clearTimeout(timer);
       if (message.type === 'ready') resolve(message.port);
-      else reject(Object.assign(new Error(`the hosted server failed to start: ${message.message}`), { code: message.code }));
+      else {
+        const failure = Object.assign(new Error(`the hosted server failed to start: ${message.message}`), { code: message.code });
+        if (typeof message.suggestedPort === 'number') Object.assign(failure, { suggestedPort: message.suggestedPort });
+        reject(failure);
+      }
     });
     void exited.then((code) => {
       clearTimeout(timer);

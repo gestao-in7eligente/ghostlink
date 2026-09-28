@@ -70,6 +70,13 @@ function statusReply(server: FakeServer, extra: Partial<HostedStatus> = {}): Hos
       { ip: '192.168.0.10', interface: 'Ethernet', kind: 'lan' },
       { ip: '26.1.2.3', interface: 'Radmin VPN', kind: 'radmin' },
     ],
+    net: {
+      upnp: { state: 'mapped', wanIp: '203.0.113.7', mappings: [{ protocol: 'TCP', port: server.port, ok: true, leaseSeconds: 7200 }] },
+      cgnat: false,
+      nodeIp: '203.0.113.7',
+      localAddresses: [],
+    },
+    busyMediaPorts: [],
     ...extra,
   };
 }
