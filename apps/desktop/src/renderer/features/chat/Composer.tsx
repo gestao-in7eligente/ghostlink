@@ -43,15 +43,27 @@ export function Composer({ channel, canSend, onSent }: { channel: Channel; canSe
 
   const canMentionEveryone = useMemo(() => has(myPermissions({ server, members }, channel), PERMISSIONS.MENTION_EVERYONE), [server, members, channel]);
 
-  // Entering edit mode loads the message (tokens shown as names); leaving it restores the draft.
+  // Entering edit mode keeps the draft aside and loads the message (tokens shown as names);
+  // leaving it, however it ends (Esc, save, a reply started meanwhile), brings the draft back.
+  const editingId = useRef<number | null>(null);
   useEffect(() => {
-    if (!edit) return;
+    if (!edit) {
+      if (editingId.current !== null) {
+        editingId.current = null;
+        setText(saved.current.text);
+        setPicked(saved.current.picked);
+        setError(null);
+      }
+      return;
+    }
     const message = channelLog(textState().messages, channel.id)?.items.find((m) => m.id === edit.messageId);
     if (!message) {
       useComposerStore.getState().cancel();
       return;
     }
-    saved.current = { text: area.current?.value ?? '', picked };
+    // Switching from one edit to another keeps the original draft.
+    if (editingId.current === null) saved.current = { text: area.current?.value ?? '', picked };
+    editingId.current = edit.messageId;
     const decoded = decodeMentions(message.content, {
       member: (id) => (Object.hasOwn(textState().members.byId, id) ? textState().members.byId[id] : undefined),
       role: (id) => (Object.hasOwn(textState().server.roles, id) ? textState().server.roles[id] : undefined),
@@ -67,7 +79,7 @@ export function Composer({ channel, canSend, onSent }: { channel: Channel; canSe
         el.setSelectionRange(el.value.length, el.value.length);
       }
     });
-    // Runs only when another message is picked for editing: the draft and t are read at that moment.
+    // Only when the edited message changes: the draft and t are read at that moment.
   }, [edit?.messageId]);
 
   useEffect(() => {
@@ -155,13 +167,9 @@ export function Composer({ channel, canSend, onSent }: { channel: Channel; canSe
     else insert('```\n\n```', 4);
   };
 
+  /** Leaves reply or edit mode (the edit effect restores the draft). */
   const cancelMode = () => {
-    const wasEditing = edit !== null;
     useComposerStore.getState().cancel();
-    if (wasEditing) {
-      setText(saved.current.text);
-      setPicked(saved.current.picked);
-    }
     setError(null);
   };
 
@@ -310,11 +318,15 @@ export function Composer({ channel, canSend, onSent }: { channel: Channel; canSe
           aria-activedescendant={open ? `${listId}-${active}` : undefined}
           aria-autocomplete="list"
           onChange={(e) => {
-            setText(e.target.value);
-            setCaret(e.target.selectionStart);
+            const value = e.target.value;
+            const at = e.target.selectionStart;
+            setText(value);
+            setCaret(at);
             setSelected(0);
+            // A dismissed suggestion list stays closed only while that same @query is being typed.
+            setDismissed((d) => (d !== null && mentionQueryAt(value, at)?.start === d ? d : null));
             setError(null);
-            if (e.target.value.trim() !== '' && !edit) sendTyping(channel.id);
+            if (value.trim() !== '' && !edit) sendTyping(channel.id);
           }}
           onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}

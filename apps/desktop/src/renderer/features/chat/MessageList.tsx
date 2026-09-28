@@ -59,7 +59,8 @@ export function MessageList({
   const [atBottom, setAtBottom] = useState(true);
 
   // Before a render that prepends rows, remember the scroll geometry (the DOM still shows the old rows).
-  const firstKey = rows[0]?.key ?? null;
+  // The first *message* tells a prepend apart: older messages of the same day keep the same date row on top.
+  const firstKey = rows.find((r) => r.kind !== 'date')?.key ?? null;
   const prevFirst = useRef(firstKey);
   const anchor = useRef<{ key: string; height: number; top: number } | null>(null);
   if (prevFirst.current !== firstKey) {
