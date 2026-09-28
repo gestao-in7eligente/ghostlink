@@ -17,6 +17,11 @@ export interface VoiceAccess {
 /** Why a member left: the Text module's kick, ban and server.leave. */
 export type MembershipRemovedReason = 'kicked' | 'banned' | 'left';
 
+/** The Text module's in-process signals: `on(name, listener)` returns an unsubscribe. */
+export interface TextEventsSeam {
+  on(event: string, listener: (payload: never) => void): () => void;
+}
+
 /**
  * Optional members of the `text` module that voice uses when present:
  * - `voiceAccess` (object) or `getVoiceAccess()` (method): the VoiceAccess implementation;
@@ -25,6 +30,9 @@ export type MembershipRemovedReason = 'kicked' | 'banned' | 'left';
  * - `onPermissionsChanged(listener)`: called after any role, member-role or channel change
  *   that may change someone's effective bits, so voice re-applies LiveKit permissions now
  *   instead of at its next periodic sweep.
+ * - `events.on(name, listener)` (the Text track's actual seam), with
+ *   `membership.removed { userId, reason }`, `access.changed { userIds }`,
+ *   `channel.deleted { channelId, type }` and `visibility.changed { userId, gained, lost }`.
  * Each subscription returns an unsubscribe function.
  */
 export interface TextModuleVoiceSeams extends ServerModule {
@@ -32,6 +40,7 @@ export interface TextModuleVoiceSeams extends ServerModule {
   getVoiceAccess?(): VoiceAccess;
   onMembershipRemoved?(listener: (userId: string, reason: MembershipRemovedReason) => void): () => void;
   onPermissionsChanged?(listener: () => void): () => void;
+  events?: TextEventsSeam;
 }
 
 /** The `text` module, or null when this server runs without one (then no channel exists). */

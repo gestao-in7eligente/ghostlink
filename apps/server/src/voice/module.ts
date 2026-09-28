@@ -96,6 +96,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
   let stopped = false;
   let reconciling = false;
   let sweeping = false;
+  let sweepAgain = false;
 
   const access = (): VoiceAccess => opts.access?.(ctx) ?? voiceAccessOf(text) ?? NO_CHANNELS;
   const log = (what: string) => (e: unknown) => ctx.logger.warn(`voice: ${what} failed`, { error: String(e) });
@@ -125,6 +126,15 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     }
   };
 
+  /** A user who just gained voice channels gets their voice.state with channel.created (spec §5.3). */
+  const sendGained = (userId: string, channelIds: readonly string[]): void => {
+    const a = access();
+    for (const channelId of channelIds) {
+      if (a.channel(channelId)?.type !== 'voice' || !has(a.permissions(userId, channelId), P.VIEW_CHANNEL)) continue;
+      sendToUser(userId, { t: 'voice.state', d: registry.state(channelId) });
+    }
+  };
+
   const sendToUser = (userId: string, event: ServerEvent): void => {
     for (const s of ctx.sessions.list()) if (s.userId === userId) ctx.sessions.send(s.sessionId, event);
   };
@@ -144,22 +154,30 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
 
   /** Pushes the complete permission block when it changed (spec §8.3); drops users who lost access. */
   const refreshPermissions = async (): Promise<void> => {
-    if (sweeping || stopped) return;
+    if (stopped) return;
+    // A change that arrives mid-sweep may come after its user was checked: sweep again.
+    if (sweeping) {
+      sweepAgain = true;
+      return;
+    }
     sweeping = true;
     try {
-      for (const [userId, channelId] of registry.assignments()) {
-        if (!allowed(userId, channelId)) {
-          await removeUser(userId, { notify: ctx.sessions.isOnlineOrInGrace(userId) });
-          continue;
+      do {
+        sweepAgain = false;
+        for (const [userId, channelId] of registry.assignments()) {
+          if (!allowed(userId, channelId)) {
+            await removeUser(userId, { notify: ctx.sessions.isOnlineOrInGrace(userId) });
+            continue;
+          }
+          const permission = permissionFor(userId, channelId);
+          const key = permissionKey(permission);
+          if (applied.get(userId) === key) continue;
+          applied.set(userId, key);
+          if (backend?.available && registry.channelOf(userId) === channelId) {
+            await backend.updatePermission(voiceRoomName(channelId), voiceIdentity(userId), permission).catch(log('updateParticipant'));
+          }
         }
-        const permission = permissionFor(userId, channelId);
-        const key = permissionKey(permission);
-        if (applied.get(userId) === key) continue;
-        applied.set(userId, key);
-        if (backend?.available && registry.channelOf(userId) === channelId) {
-          await backend.updatePermission(voiceRoomName(channelId), voiceIdentity(userId), permission).catch(log('updateParticipant'));
-        }
-      }
+      } while (sweepAgain && !stopped);
     } finally {
       sweeping = false;
     }
@@ -347,6 +365,28 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       if (onRemoved) unsubscribe.push(onRemoved);
       const onChanged = text?.onPermissionsChanged?.(() => void refreshPermissions());
       if (onChanged) unsubscribe.push(onChanged);
+      const events = text?.events;
+      if (events && typeof events.on === 'function') {
+        const userIdIn = (p: unknown): string | null => {
+          const userId = (p as { userId?: unknown } | null)?.userId;
+          return typeof userId === 'string' && /^[0-9a-f]{32}$/.test(userId) ? userId : null;
+        };
+        unsubscribe.push(
+          events.on('membership.removed', (p: unknown) => {
+            const userId = userIdIn(p);
+            if (userId) void removeUser(userId, { notify: true });
+          }),
+          events.on('access.changed', () => void refreshPermissions()),
+          events.on('channel.deleted', () => void refreshPermissions()),
+          events.on('visibility.changed', (p: unknown) => {
+            const userId = userIdIn(p);
+            const gained = (p as { gained?: unknown }).gained;
+            if (!userId || !Array.isArray(gained)) return;
+            sendGained(userId, gained.filter((c): c is string => typeof c === 'string'));
+            void refreshPermissions();
+          }),
+        );
+      }
       backend = (opts.backend ?? defaultBackend)(c, c.options?.voice ?? {});
     },
     start({ port }) {

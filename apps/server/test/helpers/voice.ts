@@ -229,3 +229,35 @@ export class StubText implements TextModuleVoiceSeams {
     for (const l of this.#changed) l();
   }
 }
+
+/**
+ * The Text track's own signal style: `events.on(name, listener)` returning an unsubscribe,
+ * with `membership.removed`, `access.changed`, `channel.deleted` and `visibility.changed`.
+ * Only the events seam here (no onMembershipRemoved / onPermissionsChanged hooks).
+ */
+export class EventsText implements TextModuleVoiceSeams {
+  readonly name = 'text';
+  readonly stub = new StubText();
+  readonly voiceAccess: VoiceAccess = this.stub.voiceAccess;
+  readonly #listeners = new Map<string, Set<(payload: unknown) => void>>();
+  readonly events = {
+    on: (event: string, listener: (payload: never) => void): (() => void) => {
+      const set = this.#listeners.get(event) ?? new Set<(payload: unknown) => void>();
+      this.#listeners.set(event, set);
+      set.add(listener as (payload: unknown) => void);
+      return () => void set.delete(listener as (payload: unknown) => void);
+    },
+  };
+
+  init(ctx: ModuleContext): void {
+    this.stub.init(ctx);
+  }
+
+  emit(event: string, payload: unknown): void {
+    for (const l of this.#listeners.get(event) ?? []) l(payload);
+  }
+
+  listenerCount(): number {
+    return [...this.#listeners.values()].reduce((n, s) => n + s.size, 0);
+  }
+}

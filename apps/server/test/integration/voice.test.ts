@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { request } from 'node:https';
+import { TrackSource } from 'livekit-server-sdk';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { PERMISSIONS, type ResErr, type ResOk, type VoiceChannelState } from '@ghostlink/shared';
@@ -7,7 +8,7 @@ import type { Logger } from '../../src/logger.js';
 import { createVoiceModule, type VoiceModule } from '../../src/voice/index.js';
 import { withDb } from '../helpers/db.js';
 import { connectTestClient, startTestServer, type TestClient, type TestServer } from '../helpers/testClient.js';
-import { FAKE_KEYS, FakeBackend, StubText } from '../helpers/voice.js';
+import { EventsText, FAKE_KEYS, FakeBackend, StubText } from '../helpers/voice.js';
 
 const P = PERMISSIONS;
 const servers: TestServer[] = [];
@@ -536,6 +537,127 @@ describe('the /rtc* proxy (spec §4)', () => {
     await wsUpgrade(s.t.server.port, `/rtc/v1?access_token=${token}`).then((r) => r.ws?.close());
     expect(s.logs.join('\n')).not.toMatch(/access_token|\/rtc/);
     expect(s.logs.join('\n')).not.toContain(token.split('.')[2]!);
+  });
+});
+
+describe("the Text module's events (its real seam: events.on)", () => {
+  async function eventsSetup() {
+    const text = new EventsText();
+    text.stub.channels.set('VC1', { type: 'voice', userLimit: 0 });
+    text.stub.channels.set('SECRET', { type: 'voice', userLimit: 0 });
+    text.stub.privateChannels.add('SECRET');
+    const backend = new FakeBackend();
+    const voice = createVoiceModule({ backend: () => backend, sweepIntervalMs: 3_600_000, reconcileIntervalMs: 3_600_000 });
+    const t = await startTestServer({ joinMode: 'open', modules: [text, voice] });
+    servers.push(t);
+    await voice.whenReady();
+    const client = async (nickname: string) => {
+      const c = await connectTestClient(t.server, { nickname });
+      clients.push(c);
+      return c;
+    };
+    return { t, text, backend, voice, client };
+  }
+
+  it('subscribes on start and unsubscribes on stop', async () => {
+    const s = await eventsSetup();
+    expect(s.text.listenerCount()).toBe(4);
+    await s.t.server.close();
+    expect(s.text.listenerCount()).toBe(0);
+  });
+
+  it('membership.removed drops the user from voice at once and tells their client', async () => {
+    const s = await eventsSetup();
+    const a = await s.client('ana');
+    ok(await a.request('voice.join', { channelId: 'VC1' }));
+    s.backend.join('ch_VC1', `u_${a.identity.userId}`);
+    s.text.emit('membership.removed', { userId: a.identity.userId, reason: 'kicked' });
+    await a.waitEvent('voice.forceDisconnect');
+    expect(s.backend.removals()).toContain(`ch_VC1/u_${a.identity.userId}`);
+    expect(s.voice.registry.assignedChannel(a.identity.userId)).toBeNull();
+  });
+
+  it('access.changed re-applies LiveKit permissions now, not at the next sweep', async () => {
+    const s = await eventsSetup();
+    const a = await s.client('ana');
+    const identity = `u_${a.identity.userId}`;
+    ok(await a.request('voice.join', { channelId: 'VC1' }));
+    s.backend.join('ch_VC1', identity);
+    s.text.stub.setBits(a.identity.userId, 'VC1', P.VIEW_CHANNEL | P.CONNECT_VOICE);
+    s.text.emit('access.changed', { userIds: [a.identity.userId] });
+    await expect.poll(() => s.backend.updates(identity).length).toBe(1);
+    expect(s.backend.updates(identity)[0]).toMatchObject({ canPublish: false, canPublishSources: [] });
+  });
+
+  it('channel.deleted empties that voice room', async () => {
+    const s = await eventsSetup();
+    const a = await s.client('ana');
+    ok(await a.request('voice.join', { channelId: 'VC1' }));
+    s.backend.join('ch_VC1', `u_${a.identity.userId}`);
+    s.text.stub.channels.delete('VC1');
+    s.text.emit('channel.deleted', { channelId: 'VC1', type: 'voice' });
+    await a.waitEvent('voice.forceDisconnect');
+    expect(s.backend.removals()).toContain(`ch_VC1/u_${a.identity.userId}`);
+  });
+
+  it('visibility.changed: a user who gains a voice channel gets its voice.state; one who loses it is dropped', async () => {
+    const s = await eventsSetup();
+    const a = await s.client('ana');
+    const b = await s.client('bia');
+    s.text.stub.setBits(a.identity.userId, 'SECRET', P.VIEW_CHANNEL | P.CONNECT_VOICE | P.SPEAK);
+    ok(await a.request('voice.join', { channelId: 'SECRET' }));
+    s.backend.join('ch_SECRET', `u_${a.identity.userId}`);
+    await noEvent(b, 'voice.state');
+
+    s.text.stub.setBits(b.identity.userId, 'SECRET', P.VIEW_CHANNEL);
+    s.text.emit('visibility.changed', { userId: b.identity.userId, gained: ['SECRET', 'TX-none'], lost: [] });
+    const state = await nextState(b, 'SECRET');
+    expect(state.participants.map((p) => p.userId)).toEqual([a.identity.userId]);
+
+    s.text.stub.setBits(a.identity.userId, 'SECRET', 0);
+    s.text.emit('visibility.changed', { userId: a.identity.userId, gained: [], lost: ['SECRET'] });
+    await a.waitEvent('voice.forceDisconnect');
+    expect(s.voice.registry.assignedChannel(a.identity.userId)).toBeNull();
+  });
+
+  it('a change during a running sweep is not lost: the sweep runs again', async () => {
+    const s = await eventsSetup();
+    const a = await s.client('ana');
+    const b = await s.client('bia');
+    for (const c of [a, b]) {
+      ok(await c.request('voice.join', { channelId: 'VC1' }));
+      s.backend.join('ch_VC1', `u_${c.identity.userId}`);
+    }
+    // Hold the sweep on its first LiveKit call, change Ana's bits meanwhile, then release.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    const original = s.backend.updatePermission.bind(s.backend);
+    let first = true;
+    s.backend.updatePermission = async (room, identity, permission) => {
+      if (first) {
+        first = false;
+        await held;
+      }
+      return original(room, identity, permission);
+    };
+    s.text.stub.setBits(a.identity.userId, 'VC1', P.VIEW_CHANNEL | P.CONNECT_VOICE);
+    s.text.stub.setBits(b.identity.userId, 'VC1', P.VIEW_CHANNEL | P.CONNECT_VOICE);
+    s.text.emit('access.changed', { userIds: null });
+    await new Promise((r) => setTimeout(r, 20));
+    s.text.stub.setBits(a.identity.userId, 'VC1', P.VIEW_CHANNEL | P.CONNECT_VOICE | P.SPEAK);
+    s.text.emit('access.changed', { userIds: [a.identity.userId] });
+    release();
+    await expect.poll(() => s.backend.updates(`u_${a.identity.userId}`).at(-1)?.canPublishSources).toEqual([TrackSource.MICROPHONE]);
+  });
+
+  it('ignores malformed payloads', async () => {
+    const s = await eventsSetup();
+    const a = await s.client('ana');
+    ok(await a.request('voice.join', { channelId: 'VC1' }));
+    for (const payload of [null, 'x', { userId: 42 }, { userId: a.identity.userId.slice(0, 5) }]) s.text.emit('membership.removed', payload);
+    s.text.emit('visibility.changed', { userId: a.identity.userId, gained: 'VC1' });
+    await noEvent(a, 'voice.forceDisconnect');
+    expect(s.voice.registry.assignedChannel(a.identity.userId)).toBe('VC1');
   });
 });
 
