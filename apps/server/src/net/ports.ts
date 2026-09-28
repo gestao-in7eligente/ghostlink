@@ -86,10 +86,15 @@ export async function probeTcpPort(port: number, opts: { bindHost?: string; loca
   return { free: busyOn.length === 0, busyOn };
 }
 
-/** UDP (LiveKit's 7882): taken when 0.0.0.0 or 127.0.0.1 cannot be bound. */
-export async function probeUdpPort(port: number): Promise<PortProbe> {
+/**
+ * UDP (LiveKit's 7882): taken when 0.0.0.0 or 127.0.0.1 cannot be bound. For a server
+ * bound to one address only that address is tried: a test bind on 0.0.0.0 would make
+ * Windows show its firewall prompt for a server that never listens outside.
+ */
+export async function probeUdpPort(port: number, opts: { bindHost?: string } = {}): Promise<PortProbe> {
+  const bindHost = opts.bindHost ?? '0.0.0.0';
   const busyOn: string[] = [];
-  for (const host of ['0.0.0.0', '127.0.0.1']) {
+  for (const host of isWildcardHost(bindHost) ? ['0.0.0.0', '127.0.0.1'] : [bindHost]) {
     if (!(await tryBindUdp(port, host))) busyOn.push(host);
   }
   return { free: busyOn.length === 0, busyOn };

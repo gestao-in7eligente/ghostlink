@@ -90,6 +90,12 @@ describe('probeUdpPort (media 7882/UDP)', () => {
     await holdUdp(port, '127.0.0.1');
     expect((await probeUdpPort(port)).free).toBe(false);
   });
+
+  it('for a loopback-bound server, only tries loopback (no 0.0.0.0 bind, no firewall prompt)', async () => {
+    const port = await freeUdp();
+    await holdUdp(port, '127.0.0.1');
+    expect(await probeUdpPort(port, { bindHost: '127.0.0.1' })).toEqual({ free: false, busyOn: ['127.0.0.1'] });
+  });
 });
 
 describe('findFreeTcpPort (7710, 7720, …)', () => {

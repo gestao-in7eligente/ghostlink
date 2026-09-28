@@ -160,7 +160,7 @@ function errorCodeOf(e: unknown): string | undefined {
 export async function busyMediaPorts(bindHost: string, ports = MEDIA_PORTS): Promise<string[]> {
   const busy: string[] = [];
   for (const p of ports) {
-    const probe = p.protocol === 'UDP' ? await probeUdpPort(p.port) : await probeTcpPort(p.port, { bindHost });
+    const probe = p.protocol === 'UDP' ? await probeUdpPort(p.port, { bindHost }) : await probeTcpPort(p.port, { bindHost });
     if (!probe.free) busy.push(`${p.protocol} ${p.port}`);
   }
   return busy;
