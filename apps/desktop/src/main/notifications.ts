@@ -2,6 +2,8 @@ import type { ChatNotification, OpenChannelEvent } from '../shared/ipcTypes.js';
 
 const TITLE_MAX = 64;
 const BODY_MAX = 200;
+/** Toasts kept alive for their click handler; the oldest go first (Windows may never send 'close'). */
+export const MAX_LIVE_NOTIFICATIONS = 20;
 
 /** One line of plain text: no control characters, collapsed spaces, bounded length. */
 export function notificationText(raw: string, max: number): string {
@@ -10,7 +12,7 @@ export function notificationText(raw: string, max: number): string {
 }
 
 export interface NativeNotification {
-  on(event: 'click' | 'close', listener: () => void): unknown;
+  on(event: 'click' | 'close' | 'failed', listener: () => void): unknown;
   show(): void;
 }
 
@@ -36,7 +38,7 @@ export interface NotifierDeps {
  * window is not focused, and a click brings the window back on that channel.
  */
 export class ChatNotifier {
-  /** Kept alive until closed: a collected Notification loses its click handler. */
+  /** Kept alive until closed (a collected Notification loses its click handler), newest last, bounded. */
   readonly #live = new Set<NativeNotification>();
 
   constructor(private readonly deps: NotifierDeps) {}
@@ -49,6 +51,7 @@ export class ChatNotifier {
     if (title === '') return false;
     const note = this.deps.create({ title, body, silent: false });
     this.#live.add(note);
+    while (this.#live.size > MAX_LIVE_NOTIFICATIONS) this.#live.delete(this.#live.values().next().value!);
     note.on('click', () => {
       this.#live.delete(note);
       const w = this.deps.window();
@@ -59,6 +62,7 @@ export class ChatNotifier {
       this.deps.openChannel({ channelId: n.channelId });
     });
     note.on('close', () => this.#live.delete(note));
+    note.on('failed', () => this.#live.delete(note));
     note.show();
     return true;
   }

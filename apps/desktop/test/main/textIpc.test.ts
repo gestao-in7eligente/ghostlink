@@ -5,7 +5,7 @@ import { IPC, type IpcResult } from '../../src/shared/ipcTypes.js';
 const electron = vi.hoisted(() => ({ ipcMain: { handle: vi.fn() } }));
 vi.mock('electron', () => electron);
 
-const { registerIpc, FORBIDDEN_REQUEST_TYPES } = await import('../../src/main/ipc.js');
+const { registerIpc, FORBIDDEN_REQUEST_TYPES, RENDERER_REQUEST_TYPES } = await import('../../src/main/ipc.js');
 type Deps = Parameters<typeof registerIpc>[0];
 
 const TOP = { url: 'app://ghostlink/index.html', parent: null };
@@ -18,7 +18,7 @@ let show: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   electron.ipcMain.handle.mockReset();
-  request = vi.fn(async (type: string, payload: unknown) => ({ type, payload }));
+  request = vi.fn(async (type: string, payload: unknown, serverId?: string) => ({ type, payload, ...(serverId ? { serverId } : {}) }));
   openExternal = vi.fn(async () => true);
   copyText = vi.fn();
   show = vi.fn(() => true);
@@ -45,9 +45,28 @@ describe('server.request (generic renderer → server requests)', () => {
     expect(await invoke(IPC.serverRequest, TOP, 'bans.list')).toEqual({ ok: true, value: { type: 'bans.list', payload: {} } });
   });
 
-  it.each([...FORBIDDEN_REQUEST_TYPES])('refuses the handshake step %s', async (type) => {
-    expect(await invoke(IPC.serverRequest, TOP, type, {})).toEqual({ ok: false, code: 'BAD_REQUEST' });
-    expect(request).not.toHaveBeenCalled();
+  it.each([...FORBIDDEN_REQUEST_TYPES, 'res', 'error', 'welcome', 'challenge', 'msg.new', 'voice.state', 'upload.begin', 'files.url', 'a'.repeat(64)])(
+    'refuses %s: only the client requests of spec §5.2 get through',
+    async (type) => {
+      expect(await invoke(IPC.serverRequest, TOP, type, {})).toEqual({ ok: false, code: 'BAD_REQUEST' });
+      expect(request).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows every text and voice request of spec §5.2, and ping', () => {
+    for (const t of ['msg.send', 'msg.history', 'channel.read', 'typing', 'role.reorder', 'member.ban', 'bans.list', 'invite.create', 'server.leave', 'profile.update']) {
+      expect(RENDERER_REQUEST_TYPES.has(t), t).toBe(true);
+    }
+    for (const t of ['voice.join', 'voice.leave', 'voice.selfState', 'voice.moderate', 'ping']) expect(RENDERER_REQUEST_TYPES.has(t), t).toBe(true);
+    for (const t of FORBIDDEN_REQUEST_TYPES) expect(RENDERER_REQUEST_TYPES.has(t)).toBe(false);
+  });
+
+  it('passes the expected server id along, so main can refuse a request meant for another server', async () => {
+    expect(await invoke(IPC.serverRequest, TOP, 'msg.send', { content: 'oi' }, 'srv-1')).toEqual({
+      ok: true,
+      value: { type: 'msg.send', payload: { content: 'oi' }, serverId: 'srv-1' },
+    });
+    expect(await invoke(IPC.serverRequest, TOP, 'msg.send', { content: 'oi' }, '')).toEqual({ ok: false, code: 'BAD_REQUEST' });
   });
 
   it.each<[string, unknown[]]>([
@@ -58,15 +77,17 @@ describe('server.request (generic renderer → server requests)', () => {
     ['an array payload', ['msg.send', [1, 2]]],
     ['a string payload', ['msg.send', 'x']],
     ['a payload bigger than a frame', ['msg.send', { content: 'x'.repeat(300 * 1024) }]],
-    ['an extra argument', ['msg.send', {}, 'more']],
+    ['a payload of few characters but more bytes than a frame', ['msg.send', { content: '漢'.repeat(100 * 1024) }]],
+    ['a non-string server id', ['msg.send', {}, 42]],
+    ['an extra argument', ['msg.send', {}, 'srv-1', 'more']],
   ])('refuses %s', async (_label, args) => {
     expect(await invoke(IPC.serverRequest, TOP, ...args)).toEqual({ ok: false, code: 'BAD_REQUEST' });
     expect(request).not.toHaveBeenCalled();
   });
 
-  it('accepts a 64-character type and passes server error codes through', async () => {
+  it('passes server error codes through', async () => {
     request.mockRejectedValueOnce(new ProtocolError('NOT_FOUND'));
-    expect(await invoke(IPC.serverRequest, TOP, 'a'.repeat(64), {})).toEqual({ ok: false, code: 'NOT_FOUND' });
+    expect(await invoke(IPC.serverRequest, TOP, 'msg.history', {})).toEqual({ ok: false, code: 'NOT_FOUND' });
   });
 
   it('is refused to other frames', async () => {

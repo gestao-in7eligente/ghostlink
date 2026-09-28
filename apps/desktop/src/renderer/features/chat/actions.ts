@@ -40,7 +40,9 @@ function ghostlink(): GhostlinkApi {
 export async function request<T>(type: string, payload: Record<string, unknown>, schema: z.ZodType<T>): Promise<T> {
   // Optional fields left undefined are omitted (the server's strict schemas see only real keys).
   const defined = Object.fromEntries(Object.entries(payload).filter(([, v]) => v !== undefined));
-  const raw = await ghostlink().server.request(type, defined);
+  // Bound to the server these stores show: after a switch, main refuses it rather than send it elsewhere.
+  const serverId = textState().server.serverId;
+  const raw = serverId === null ? await ghostlink().server.request(type, defined) : await ghostlink().server.request(type, defined, serverId);
   const parsed = schema.safeParse(raw);
   if (!parsed.success) throw new Error('INTERNAL');
   return parsed.data;
@@ -158,7 +160,8 @@ let lastTyping = { channelId: '', at: 0 };
 export function sendTyping(channelId: string, now = Date.now()): void {
   if (lastTyping.channelId === channelId && now - lastTyping.at < CHAT_LIMITS.typingIntervalMs) return;
   lastTyping = { channelId, at: now };
-  ghostlink().server.request('typing', { channelId }).catch(() => undefined);
+  const serverId = textState().server.serverId ?? undefined;
+  ghostlink().server.request('typing', { channelId }, serverId).catch(() => undefined);
 }
 
 /** Stops the throttle after a message is sent, so the next keystroke announces typing again. */

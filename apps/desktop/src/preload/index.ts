@@ -58,7 +58,8 @@ export const api: GhostlinkApi = {
     remove: (id) => invoke(IPC.serversRemove, id),
   },
   server: {
-    request: <T>(type: string, payload?: unknown) => invoke(IPC.serverRequest, type, payload) as Promise<T>,
+    request: <T>(type: string, payload?: unknown, serverId?: string) =>
+      (serverId === undefined ? invoke(IPC.serverRequest, type, payload) : invoke(IPC.serverRequest, type, payload, serverId)) as Promise<T>,
   },
   notifications: { show: (n) => invoke(IPC.notificationsShow, n) },
   onConnectionState: (cb) => subscribe<ConnectionStateEvent>(IPC_EVENTS.connectionState, cb),

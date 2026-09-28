@@ -10,7 +10,18 @@ import { leaveServer } from '../chat/actions.js';
  * "Sair do servidor" (spec §7): membership ends, optionally with all my messages.
  * The owner must transfer ownership first. The server leaves the saved list too.
  */
-export function LeaveDialog({ serverId, onClose, onLeft }: { serverId: string; onClose: () => void; onLeft: () => void }) {
+export function LeaveDialog({
+  serverId,
+  onClose,
+  onLeaving,
+  onLeft,
+}: {
+  serverId: string;
+  onClose: () => void;
+  /** The server ends the session right after the answer: the layout must not read that as a kick. */
+  onLeaving: (active: boolean) => void;
+  onLeft: () => void;
+}) {
   const t = useT();
   const name = useTextStore((st) => st.server.name);
   const owner = useTextStore((st) => isOwner(st.server));
@@ -18,7 +29,13 @@ export function LeaveDialog({ serverId, onClose, onLeft }: { serverId: string; o
 
   const leave = async () => {
     if (owner) throw new Error('OWNER_MUST_TRANSFER');
-    await leaveServer(deleteMine);
+    onLeaving(true);
+    try {
+      await leaveServer(deleteMine);
+    } catch (e) {
+      onLeaving(false);
+      throw e;
+    }
     await window.ghostlink.servers.remove(serverId).catch(() => undefined);
     onLeft();
   };

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ChatNotifier, notificationText, type NativeNotification, type NotifierWindow } from '../../src/main/notifications.js';
+import { ChatNotifier, MAX_LIVE_NOTIFICATIONS, notificationText, type NativeNotification, type NotifierWindow } from '../../src/main/notifications.js';
 
 function fakeWindow(focused: boolean) {
   return {
@@ -50,6 +50,14 @@ describe('ChatNotifier (spec §11.1 item 8)', () => {
     expect(win.focus).toHaveBeenCalled();
     expect(openChannel).toHaveBeenCalledWith({ channelId: N.channelId });
     expect(notifier.pending).toBe(0);
+  });
+
+  it('keeps only the newest notifications alive (Windows may never send close for old toasts)', () => {
+    const { notifier, created } = setup(false);
+    for (let i = 0; i < MAX_LIVE_NOTIFICATIONS + 5; i += 1) notifier.show(N);
+    expect(notifier.pending).toBe(MAX_LIVE_NOTIFICATIONS);
+    created.at(-1)!.handlers.get('failed')!();
+    expect(notifier.pending).toBe(MAX_LIVE_NOTIFICATIONS - 1);
   });
 
   it('flattens control characters and bounds the length', () => {

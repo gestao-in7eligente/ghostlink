@@ -92,8 +92,11 @@ export interface GhostlinkApi {
     disconnect(): Promise<void>;
     remove(id: string): Promise<void>;
   };
-  /** Any request to the connected server except the handshake (`hello`, `auth.proof`). */
-  server: { request<T = unknown>(type: string, payload?: unknown): Promise<T> };
+  /**
+   * A client request of spec §5.2 to the connected server. With `serverId` (the saved
+   * server the caller believes it talks to), main refuses it after a switch.
+   */
+  server: { request<T = unknown>(type: string, payload?: unknown, serverId?: string): Promise<T> };
   notifications: { show(n: ChatNotification): Promise<boolean> };
   onConnectionState(cb: (s: ConnectionStateEvent) => void): () => void;
   onServerEvent(cb: (e: Envelope) => void): () => void;
@@ -134,7 +137,7 @@ export interface IpcContract {
   [IPC.appInfo]: { args: []; result: AppInfo };
   [IPC.appOpenExternal]: { args: [url: string]; result: boolean };
   [IPC.appCopyText]: { args: [text: string]; result: void };
-  [IPC.serverRequest]: { args: [type: string, payload?: unknown]; result: unknown };
+  [IPC.serverRequest]: { args: [type: string, payload?: unknown, serverId?: string]; result: unknown };
   [IPC.notificationsShow]: { args: [notification: ChatNotification]; result: boolean };
   [IPC.identityStatus]: { args: []; result: IdentityStatus };
   [IPC.identityCreate]: { args: []; result: void };

@@ -50,6 +50,7 @@ describe('preload bridge', () => {
     ['app.openExternal', () => api.app.openExternal('https://x/'), IPC.appOpenExternal, ['https://x/']],
     ['app.copyText', () => api.app.copyText('abc'), IPC.appCopyText, ['abc']],
     ['server.request', () => api.server.request('msg.send', { a: 1 }), IPC.serverRequest, ['msg.send', { a: 1 }]],
+    ['server.request for a server', () => api.server.request('msg.send', { a: 1 }, 'srv-1'), IPC.serverRequest, ['msg.send', { a: 1 }, 'srv-1']],
     ['notifications.show', () => api.notifications.show({ title: 't', body: 'b', channelId: 'c' }), IPC.notificationsShow, [{ title: 't', body: 'b', channelId: 'c' }]],
   ])('%s invokes its channel and unwraps the value', async (_name, call, channel, args) => {
     electron.ipcRenderer.invoke.mockResolvedValueOnce({ ok: true, value: 'VALUE' });

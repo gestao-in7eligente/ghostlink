@@ -27,6 +27,7 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
   const t = useT();
   useTextSync(welcome);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [leaving, setLeaving] = useState(false);
   const stageId = useTextStore((s) => s.channels.stageId);
   const VoiceStage = useLayoutSlots((s) => s.VoiceStage);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -59,9 +60,9 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
 
       {dialog === 'invite' && <InviteDialog onClose={() => setDialog(null)} />}
       {dialog === 'settings' && <ServerSettings onClose={() => setDialog(null)} />}
-      {dialog === 'leave' && <LeaveDialog serverId={welcome.serverId} onClose={() => setDialog(null)} onLeft={onLeave} />}
+      {dialog === 'leave' && <LeaveDialog serverId={welcome.serverId} onClose={() => setDialog(null)} onLeaving={setLeaving} onLeft={onLeave} />}
       {dialog === 'user' && <UserSettings onClose={() => setDialog(null)} />}
-      <ConnectionLost serverId={welcome.serverId} onLeave={onLeave} />
+      {!leaving && <ConnectionLost serverId={welcome.serverId} onLeave={onLeave} />}
     </div>
   );
 }

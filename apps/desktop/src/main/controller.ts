@@ -106,11 +106,14 @@ export class ClientController {
 
   /**
    * Relays a renderer request to the connected server (`server.request` IPC).
-   * The IPC layer already refused the handshake types; the server validates the rest.
+   * The IPC layer already allowed only client request types; the server validates
+   * the rest. With `serverId`, a request meant for another saved server (the user
+   * switched meanwhile) is refused instead of reaching the wrong server.
    */
-  request(type: string, payload: unknown): Promise<unknown> {
+  request(type: string, payload: unknown, serverId?: string): Promise<unknown> {
     const conn = this.#conn;
     if (!conn) return Promise.reject(new AppError('CONNECTION_LOST', 'not connected'));
+    if (serverId !== undefined && serverId !== this.#serverId) return Promise.reject(new AppError('CONNECTION_LOST', 'another server'));
     return conn.request(type, payload ?? {});
   }
 

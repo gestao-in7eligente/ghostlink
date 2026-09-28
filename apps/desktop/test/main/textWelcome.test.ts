@@ -67,4 +67,11 @@ describe('ClientController.request (server.request IPC)', () => {
   it('rejects with CONNECTION_LOST when nothing is connected', async () => {
     await expect(controller.request('ping', {})).rejects.toMatchObject({ code: 'CONNECTION_LOST' });
   });
+
+  it('refuses a request meant for another server (a switch happened meanwhile)', async () => {
+    const t = await textServer();
+    const welcome = await controller.join({ addresses: [`127.0.0.1:${t.server.port}`], serverKeyId: t.server.serverKeyId, nickname: 'Ana' });
+    await expect(controller.request('ping', {}, welcome.serverId)).resolves.toBeTruthy();
+    await expect(controller.request('ping', {}, 'another-server')).rejects.toMatchObject({ code: 'CONNECTION_LOST' });
+  });
 });
