@@ -36,6 +36,7 @@ npm run smoke        # abre o app empacotado em modo smoke e confere que ele sai
 - O `npm run smoke` confere os fuses do Electron (spec §12), procura no `app.asar` dependências opcionais trocadas por stubs e abre o app com `GHOSTLINK_SMOKE=1` num perfil temporário. O app precisa carregar a janela, iniciar e parar o servidor embutido e sair com código 0 em até 60 s.
 - Os instaladores **não são assinados** (a assinatura paga fica fora do MVP). Um instalador baixado da internet faz o SmartScreen avisar ("Mais informações" → "Executar assim mesmo"); no macOS 15 ou mais novo, libere em Ajustes do Sistema > Privacidade e Segurança. Nada disso afeta o `npm run smoke`, que roda o app gerado na própria máquina.
 - O `app.asar` é protegido por checagem de integridade: qualquer alteração depois do empacotamento faz o app recusar abrir ("ASAR Integrity Violation").
+- O app grava o log em `logs/main.log` dentro da pasta de dados (`%APPDATA%\GhostLink` no Windows, `~/Library/Application Support/GhostLink` no macOS), com rotação em 5 MB (fica um `main.old.log`). Em desenvolvimento o log também aparece no terminal. Tokens, senhas e códigos nunca devem ser registrados.
 
 ## Integração contínua
 

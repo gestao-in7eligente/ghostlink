@@ -7,6 +7,7 @@ const electron = vi.hoisted(() => ({ ipcMain: { handle: vi.fn() } }));
 vi.mock('electron', () => electron);
 
 const { isTrustedSender, registerIpc } = await import('../../src/main/ipc.js');
+const { mainLog } = await import('../../src/main/log.js');
 type Deps = Parameters<typeof registerIpc>[0];
 
 const APP = 'app://ghostlink';
@@ -116,7 +117,7 @@ describe('error mapping', () => {
   });
 
   it('hides unexpected errors as INTERNAL without their message', async () => {
-    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const log = vi.spyOn(mainLog, 'error').mockImplementation(() => {});
     deps.controller.probe.mockRejectedValueOnce(new Error('EACCES C:\\Users\\ana\\AppData'));
     const result = await invoke(IPC.joinProbe, TOP, '10.0.0.1:7700');
     expect(result).toEqual({ ok: false, code: 'INTERNAL' });
