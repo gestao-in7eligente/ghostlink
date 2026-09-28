@@ -126,8 +126,8 @@ const transferOwnership: Handler = (core, ctx, payload) => {
       const top = db.get<{ p: number | null }>('SELECT MAX(position) AS p FROM roles');
       db.run(
         `INSERT INTO roles (id, name, color, permissions, position, hoist, mentionable, is_default, system_tag)
-         VALUES (?, ?, 0, ?, ?, 1, 0, 0, ?)`,
-        adminId, SEED.adminName, PERMISSIONS.ADMINISTRATOR, Number(top?.p ?? 0) + 1, ADMIN_SYSTEM_TAG,
+         VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?)`,
+        adminId, SEED.adminName, SEED.adminColor, PERMISSIONS.ADMINISTRATOR, Number(top?.p ?? 0) + 1, ADMIN_SYSTEM_TAG,
       );
     }
     db.run('UPDATE server_meta SET owner_user_id = ? WHERE id = 1', p.userId);

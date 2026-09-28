@@ -19,7 +19,8 @@ describe('seed and welcome (spec §5.3, §6)', () => {
     const everyone = roles.find((r) => r.isDefault)!;
     expect(everyone).toMatchObject({ name: '@todos', permissions: DEFAULT_EVERYONE_PERMISSIONS, position: 0 });
     expect(has(everyone.permissions, PERMISSIONS.CREATE_INVITES)).toBe(false);
-    expect(roles.find((r) => r.name === 'Admin')).toMatchObject({ permissions: PERMISSIONS.ADMINISTRATOR, isDefault: false });
+    // Admin comes red and not hoisted, like the owner's UI reference (admins listed under "Online" with a red badge).
+    expect(roles.find((r) => r.name === 'Admin')).toMatchObject({ permissions: PERMISSIONS.ADMINISTRATOR, isDefault: false, color: 0xed4245, hoist: false });
     expect(members).toEqual([expect.objectContaining({ userId: owner.userId, nickname: 'Dono', online: true, roleIds: [] })]);
     expect(readStates).toEqual([{ channelId: channelId(owner, 'geral'), lastReadMessageId: 0, mentionCount: 0 }]);
     expect(serverSettings).toEqual({ ownerId: owner.userId, maxMembers: 100, hasPassword: false });

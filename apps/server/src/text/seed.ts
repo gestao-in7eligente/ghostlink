@@ -10,6 +10,8 @@ export const SEED = {
   adminName: 'Admin',
   textChannel: 'geral',
   voiceChannel: 'Sala de voz',
+  /** Red and not hoisted, like the "Admin" badge of the owner's UI reference. */
+  adminColor: 0xed4245,
 } as const;
 
 /**
@@ -27,8 +29,8 @@ export function seedDefaults(db: Db, now: number): void {
     );
     db.run(
       `INSERT INTO roles (id, name, color, permissions, position, hoist, mentionable, is_default, system_tag)
-       VALUES (?, ?, 0, ?, 1, 1, 0, 0, ?)`,
-      newEntityId(), SEED.adminName, PERMISSIONS.ADMINISTRATOR, ADMIN_SYSTEM_TAG,
+       VALUES (?, ?, ?, ?, 1, 0, 0, 0, ?)`,
+      newEntityId(), SEED.adminName, SEED.adminColor, PERMISSIONS.ADMINISTRATOR, ADMIN_SYSTEM_TAG,
     );
     if (!db.get('SELECT 1 AS x FROM channels LIMIT 1')) {
       db.run('INSERT INTO channels (id, name, type, position, created_at) VALUES (?, ?, ?, 0, ?)', newEntityId(), SEED.textChannel, 'text', now);
