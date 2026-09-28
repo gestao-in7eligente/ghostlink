@@ -92,6 +92,6 @@ describe('buildInviteInfo', () => {
     expect(parseJoinInput(info.link)).toEqual(expected);
     expect(parseJoinInput(info.pasteCode)).toEqual(expected);
     expect(parseJoinInput(info.webLink)).toEqual(expected);
-    expect(info.webLink.startsWith('https://ghostlink.invalid/j/#GL1-')).toBe(true);
+    expect(info.webLink.startsWith('https://gestao-in7eligente.github.io/ghostlink/j/#GL1-')).toBe(true);
   });
 });

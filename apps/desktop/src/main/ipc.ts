@@ -5,6 +5,7 @@ import { toAppErrorCode } from '../shared/appErrors.js';
 import { IPC, type AppInfo, type ChatNotification, type IpcArgs, type IpcChannel, type IpcResult, type IpcReturn } from '../shared/ipcTypes.js';
 import type { ClientController } from './controller.js';
 import type { IdentityStore } from './identity.js';
+import { mainLog } from './log.js';
 import { originOf } from './security.js';
 import { LOCALES, type SettingsStore } from './settings.js';
 
@@ -132,7 +133,7 @@ export async function dispatchIpc<C extends IpcChannel>(
     return { ok: true, value: await handler(...parsed.data) };
   } catch (e) {
     const code = toAppErrorCode(e);
-    if (code === 'INTERNAL') console.error(`[ipc] ${channel} failed:`, e);
+    if (code === 'INTERNAL') mainLog.error(`[ipc] ${channel} failed:`, e);
     return { ok: false, code };
   }
 }

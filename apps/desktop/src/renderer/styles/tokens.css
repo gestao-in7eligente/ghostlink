@@ -1,4 +1,4 @@
-/* Design tokens (spec §11): near-black dark theme, spectral cyan accent, red for destructive actions. */
+/* Design tokens (spec §11): near-black dark theme, Discord-style blurple (#5865f2) as the primary color, red for destructive actions. */
 :root {
   color-scheme: dark;
 
@@ -11,9 +11,10 @@
   --text: #e6edf3;
   --text-muted: #8b98a8;
 
-  --accent: #5eead4;
-  --accent-hover: #99f6e4;
-  --accent-ink: #042f2a; /* text on the accent */
+  --accent: #5865f2;
+  --accent-hover: #4752c4;
+  --accent-ink: #ffffff; /* text on the accent */
+  --accent-text: #949cf7; /* accent-colored text on the dark surfaces (links, fingerprints): #5865f2 is too dark to read there */
   --danger: #f87171;
   --danger-bg: #3b1215;
   --warning: #fbbf24;
