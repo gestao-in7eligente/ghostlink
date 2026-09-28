@@ -32,11 +32,12 @@
 }
 
 .logo {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 12px var(--accent);
+  display: block;
+  flex-shrink: 0;
+}
+
+.logoTile {
+  fill: var(--accent);
 }
 
 .badge {
@@ -150,7 +151,7 @@
   border: none;
   background: none;
   padding: 0;
-  color: var(--accent);
+  color: var(--accent-text);
   cursor: pointer;
 }
 
@@ -170,7 +171,7 @@
   letter-spacing: 0.04em;
   word-spacing: 0.3em;
   white-space: nowrap;
-  color: var(--accent);
+  color: var(--accent-text);
   background: var(--bg-2);
   border-radius: var(--radius-sm);
   padding: var(--space-3);
