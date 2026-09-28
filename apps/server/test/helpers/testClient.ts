@@ -141,6 +141,8 @@ export function connectRaw(
 export interface TestClient {
   identity: TestIdentity;
   welcome?: WelcomePayload;
+  /** The welcome exactly as sent, including module fields (the client schema strips unknown keys). */
+  rawWelcome?: Record<string, unknown>;
   error?: { code: ErrorCode; min?: number; max?: number };
   raw: RawClient;
   request(t: string, d?: unknown): Promise<ResOk | ResErr>;
@@ -199,6 +201,7 @@ export async function connectTestClient(server: GhostServer, opts: ConnectTestCl
   }
   if (message.t !== 'welcome') throw new Error(`unexpected message ${message.t}`);
   client.welcome = welcomeSchemaClient.parse(message.d);
+  client.rawWelcome = message.d as Record<string, unknown>;
 
   // After the welcome: route responses by id, queue everything else as events.
   let nextId = 1;

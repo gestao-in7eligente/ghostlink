@@ -1,24 +1,7 @@
 import { z } from 'zod';
 import { ProtocolError, type Envelope, type ResErr, type ResOk } from '@ghostlink/shared';
 import type { Logger } from '../logger.js';
-
-export interface RequestContext {
-  userId: string;
-  sessionId: string;
-  now: () => number;
-}
-
-export type RequestHandler = (ctx: RequestContext, payload: unknown) => unknown;
-
-const pingSchema = z.strictObject({});
-
-/** M1 handles only `ping` (spec §5.2): `{}` → `{ t: serverTime }`. */
-export const M1_HANDLERS: Readonly<Record<string, RequestHandler>> = {
-  ping: (ctx, payload) => {
-    pingSchema.parse(payload ?? {});
-    return { t: ctx.now() };
-  },
-};
+import type { RequestContext, RequestHandler } from '../modules.js';
 
 export function errorResponse(id: number, code: ResErr['error']['code'], message: string = code): ResErr {
   return { t: 'res', id, ok: false, error: { code, message } };

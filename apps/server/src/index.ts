@@ -2,12 +2,15 @@ import type { AddressInfo } from 'node:net';
 import { formatHostPort, parseHostPort, sanitizeLabel, type JoinMode } from '@ghostlink/shared';
 import { ensureSetupCode } from './auth/setupCode.js';
 import { ensureDataDirs } from './config/paths.js';
+import { coreModule } from './coreModule.js';
 import { Db } from './db/database.js';
 import { ensureMeta, getMeta, setPublicAddresses } from './db/serverMeta.js';
 import { createHttpServer } from './http/server.js';
 import { buildInviteInfo, createInvite, type InviteInfo } from './invites/invites.js';
 import { resolveLimits, type ServerLimits } from './limits.js';
 import { consoleLogger, type Logger } from './logger.js';
+import { ModuleHost } from './moduleHost.js';
+import type { ServerModule } from './modules.js';
 import { loadOrCreateCertificate } from './tls/certificate.js';
 import { SERVER_VERSION } from './version.js';
 import { Gateway } from './ws/gateway.js';
@@ -15,6 +18,18 @@ import { Gateway } from './ws/gateway.js';
 export type { InviteInfo } from './invites/invites.js';
 export type { Logger } from './logger.js';
 export type { ServerLimits } from './limits.js';
+export type {
+  ModuleContext,
+  RequestContext,
+  RequestHandler,
+  ServerEvent,
+  ServerModule,
+  SessionCloseInfo,
+  SessionCloseReason,
+  SessionInfo,
+  SessionsApi,
+} from './modules.js';
+export { defaultModules } from './defaultModules.js';
 export { consoleLogger, silentLogger } from './logger.js';
 export { SERVER_VERSION, WEB_SITE_BASE } from './version.js';
 
@@ -28,6 +43,7 @@ export interface StartServerOptions {
   logger?: Logger;
   now?: () => number; // injectable clock for tests
   limits?: Partial<ServerLimits>; // tests only: shrink timeouts and caps
+  modules?: ServerModule[]; // feature modules, run after the built-in 'core' module (see MODULES.md)
 }
 
 export interface GhostServer {
@@ -37,7 +53,7 @@ export interface GhostServer {
   readonly dataDir: string;
   setupCode(): string | null; // null once consumed
   createInvite(opts?: { maxUses?: number; expiresInHours?: number; createdBy?: string }): InviteInfo;
-  close(): Promise<void>; // graceful: closes WS with SERVER_SHUTDOWN, HTTP, DB
+  close(): Promise<void>; // graceful: closes WS with SERVER_SHUTDOWN, HTTP, modules (reverse order), DB
 }
 
 const DEFAULT_NAME = 'GhostLink';
@@ -57,6 +73,8 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
   const logger = opts.logger ?? consoleLogger;
   const now = opts.now ?? Date.now;
   const limits = resolveLimits(opts.limits);
+  // Validates module names and request types before anything touches the disk.
+  const modules = new ModuleHost([coreModule, ...(opts.modules ?? [])], logger);
   const paths = ensureDataDirs(opts.dataDir);
   const certificate = await loadOrCreateCertificate(opts.dataDir);
 
@@ -83,15 +101,32 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     limits,
     now,
     logger,
+    modules,
   });
   const http = createHttpServer({
     certPem: certificate.certPem,
     keyPem: certificate.keyPem,
     health: () => ({ name: getMeta(db).name, version: SERVER_VERSION }),
     onUpgrade: (req, socket, head) => gateway.handleUpgrade(req, socket, head),
+    moduleRequest: (req, res) => modules.http(req, res),
+    moduleUpgrade: (req, socket, head) => modules.upgrade(req, socket, head),
   });
 
+  /** Order matters: sessions end (modules still see onSessionClosed), then HTTP, then modules stop, then the DB. */
+  const shutdown = async (): Promise<void> => {
+    await gateway.close();
+    if (http.listening) {
+      await new Promise<void>((resolve) => {
+        http.close(() => resolve());
+        http.closeAllConnections();
+      });
+    }
+    await modules.stop();
+    db.close();
+  };
+
   try {
+    await modules.init({ db, now, logger, limits, dataDir: opts.dataDir, serverKeyId: certificate.serverKeyId, sessions: gateway.sessions.api });
     await new Promise<void>((resolve, reject) => {
       http.once('error', reject);
       http.listen(opts.port, opts.host ?? '0.0.0.0', () => {
@@ -100,11 +135,16 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
       });
     });
   } catch (e) {
-    await gateway.close();
-    db.close();
+    await shutdown();
     throw e;
   }
   const port = (http.address() as AddressInfo).port;
+  try {
+    await modules.start({ port });
+  } catch (e) {
+    await shutdown();
+    throw e;
+  }
   logger.info('GhostLink server listening', { port, version: SERVER_VERSION });
 
   const effectiveAddresses = (): string[] => {
@@ -125,12 +165,7 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     },
     close: () => {
       closing ??= (async () => {
-        await gateway.close();
-        await new Promise<void>((resolve) => {
-          http.close(() => resolve());
-          http.closeAllConnections();
-        });
-        db.close();
+        await shutdown();
         logger.info('GhostLink server stopped');
       })();
       return closing;

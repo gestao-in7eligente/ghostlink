@@ -5,7 +5,7 @@ import { ensureSetupCode } from './auth/setupCode.js';
 import { dataPaths } from './config/paths.js';
 import { Db, DatabaseTooNewError } from './db/database.js';
 import { getMeta } from './db/serverMeta.js';
-import { consoleLogger, startServer } from './index.js';
+import { consoleLogger, defaultModules, startServer } from './index.js';
 import { buildInviteInfo, createInvite } from './invites/invites.js';
 import { readCertificate } from './tls/certificate.js';
 import { SERVER_VERSION } from './version.js';
@@ -99,6 +99,7 @@ async function cmdStart(values: Values, env: NodeJS.ProcessEnv, io: CliIo): Prom
       name: values.name,
       publicAddresses: values['public-address'],
       logger: consoleLogger,
+      modules: defaultModules(),
     });
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'EADDRINUSE') {

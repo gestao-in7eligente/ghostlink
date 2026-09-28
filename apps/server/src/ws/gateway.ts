@@ -8,10 +8,13 @@ import type { Db } from '../db/database.js';
 import { getMeta } from '../db/serverMeta.js';
 import type { ServerLimits } from '../limits.js';
 import type { Logger } from '../logger.js';
+import type { ModuleHost } from '../moduleHost.js';
+import type { RequestContext, SessionInfo } from '../modules.js';
 import { SlidingWindowLimiter, ipKey } from '../ratelimit/limiter.js';
 import { Connection, ConnectionClosedError } from './connection.js';
-import { M1_HANDLERS, createDispatcher, errorResponse } from './dispatch.js';
-import { SessionRegistry, type SessionHandle } from './sessions.js';
+import { createDispatcher, errorResponse } from './dispatch.js';
+import { SessionHub } from './sessionHub.js';
+import type { SessionHandle } from './sessions.js';
 
 export interface GatewayDeps {
   db: Db;
@@ -21,6 +24,7 @@ export interface GatewayDeps {
   limits: ServerLimits;
   now: () => number;
   logger: Logger;
+  modules: ModuleHost;
 }
 
 const SWEEP_INTERVAL_MS = 60_000;
@@ -28,10 +32,12 @@ const SHUTDOWN_GRACE_MS = 2_000;
 
 /**
  * Owns every WebSocket: pre-auth admission limits (spec §13), the handshake,
- * the one-session-per-identity registry and the post-auth request loop.
+ * the one-session-per-identity registry (with the presence grace) and the
+ * post-auth request loop, which dispatches to the module handlers.
  */
 export class Gateway {
-  readonly sessions = new SessionRegistry();
+  /** Also the SessionsApi handed to modules. */
+  readonly sessions: SessionHub;
   readonly #deps: GatewayDeps;
   readonly #wss: WebSocketServer;
   readonly #connections = new Set<Connection>();
@@ -46,7 +52,14 @@ export class Gateway {
 
   constructor(deps: GatewayDeps) {
     this.#deps = deps;
-    const { limits, now } = deps;
+    const { limits, now, modules } = deps;
+    this.sessions = new SessionHub({
+      graceMs: limits.presenceGraceMs,
+      hooks: {
+        opened: (session) => modules.sessionOpened(session),
+        closed: (session, info) => modules.sessionClosed(session, info),
+      },
+    });
     this.#wss = new WebSocketServer({
       noServer: true,
       maxPayload: limits.maxPayloadBytes,
@@ -56,7 +69,7 @@ export class Gateway {
     this.#challenges = new ChallengeStore({ ttlMs: limits.challengeTtlMs, maxPendingPerIp: limits.pendingChallengesPerIp, now });
     this.#authFailures = new SlidingWindowLimiter(limits.authFailuresPerIpPerMinute, 60_000, now);
     this.#newIdentities = new SlidingWindowLimiter(limits.newIdentitiesPerIpPerHour, 3_600_000, now);
-    this.#dispatch = createDispatcher(M1_HANDLERS, deps.logger);
+    this.#dispatch = createDispatcher(modules.handlers, deps.logger);
     this.#sweepTimer = setInterval(() => {
       this.#authFailures.sweep();
       this.#newIdentities.sweep();
@@ -91,6 +104,7 @@ export class Gateway {
   /** Graceful shutdown: every socket gets `error { SERVER_SHUTDOWN }`, stragglers are terminated. */
   async close(): Promise<void> {
     this.#closing = true;
+    this.sessions.shutdown();
     clearInterval(this.#sweepTimer);
     const pending = [...this.#connections].map((conn) => new Promise<void>((resolve) => {
       conn.onClose(resolve);
@@ -136,21 +150,47 @@ export class Gateway {
   }
 
   async #runSession(conn: Connection, session: AuthedSession): Promise<void> {
-    const handle: SessionHandle = { userId: session.userId, sessionId: session.sessionId, terminate: (code) => conn.close(code) };
+    const { modules, logger } = this.#deps;
+    const handle: SessionHandle = {
+      userId: session.userId,
+      sessionId: session.sessionId,
+      send: (event) => conn.send(event),
+      terminate: (code) => conn.close(code),
+    };
+    const info: SessionInfo = { userId: session.userId, sessionId: session.sessionId };
     this.sessions.add(handle); // closes an older session of the same identity with SESSION_REPLACED
-    conn.onClose(() => this.sessions.remove(handle));
+    conn.onClose(() => this.sessions.ended(handle, conn.closeCode ?? 'disconnected'));
+
+    // Everything from here to sessions.opened() is synchronous, so no event can reach
+    // this socket before its welcome.
+    let extras: Record<string, unknown>;
+    try {
+      extras = modules.welcome(info);
+    } catch (e) {
+      logger.error('welcome failed', { error: String(e) });
+      conn.close('INTERNAL');
+      return;
+    }
     const meta = getMeta(this.#deps.db);
-    const welcome: WelcomePayload = {
+    const welcome: WelcomePayload & Record<string, unknown> = {
       self: { userId: session.userId, nickname: session.nickname, isOwner: session.isOwner },
       sessionId: session.sessionId,
       serverTime: this.#deps.now(),
       server: { name: meta.name, version: this.#deps.version, joinMode: meta.joinMode, serverKeyId: this.#deps.serverKeyId },
-      features: [],
+      features: [...modules.features],
       fileToken: session.fileToken,
       protocol: { min: PROTOCOL.min, max: PROTOCOL.max },
+      ...extras, // ModuleHost.welcome() refuses M1 keys
     };
     conn.send({ t: 'welcome', d: welcome });
+    this.sessions.opened(handle);
 
+    const requestContext: RequestContext = {
+      ...modules.context,
+      userId: session.userId,
+      sessionId: session.sessionId,
+      isCurrent: () => this.sessions.isCurrent(handle),
+    };
     const perSecond = new SlidingWindowLimiter(this.#deps.limits.requestsPerSecondPerSession, 1_000, this.#deps.now);
     for (;;) {
       let envelope: Envelope;
@@ -166,7 +206,7 @@ export class Gateway {
         conn.send(errorResponse(envelope.id, 'RATE_LIMITED'));
         continue;
       }
-      const response = await this.#dispatch({ userId: session.userId, sessionId: session.sessionId, now: this.#deps.now }, envelope);
+      const response = await this.#dispatch(requestContext, envelope);
       // Re-check after the await: the session may have been replaced or closed meanwhile (spec §5.1).
       if (response && this.sessions.isCurrent(handle)) conn.send(response);
     }

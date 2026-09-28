@@ -9,6 +9,10 @@ export interface HttpServerDeps {
   /** Public, non-sensitive facts for /health. */
   health: () => { name: string; version: string };
   onUpgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
+  /** Module routes, tried after the built-in ones; true when handled. */
+  moduleRequest?: (req: IncomingMessage, res: ServerResponse) => boolean;
+  /** Module upgrades for any path but /ws; true when handled. */
+  moduleUpgrade?: (req: IncomingMessage, socket: Duplex, head: Buffer) => boolean;
 }
 
 function pathOf(url: string | undefined): string {
@@ -32,11 +36,15 @@ function route(deps: HttpServerDeps, req: IncomingMessage, res: ServerResponse):
     res.end(req.method === 'HEAD' ? undefined : 'OK');
     return;
   }
+  if (deps.moduleRequest?.(req, res)) return;
   res.writeHead(404, { 'Content-Length': 0 });
   res.end();
 }
 
-/** HTTPS server with /health, HEAD|GET / and the /ws upgrade; everything else is 404 (spec §4). */
+/**
+ * HTTPS server with /health, HEAD|GET / and the /ws upgrade (spec §4). Other
+ * requests and upgrades are offered to the modules; unclaimed ones get 404.
+ */
 export function createHttpServer(deps: HttpServerDeps): Server {
   const server = createServer(
     { cert: deps.certPem, key: deps.keyPem, headersTimeout: 10_000, requestTimeout: 30_000 },
@@ -47,6 +55,7 @@ export function createHttpServer(deps: HttpServerDeps): Server {
       deps.onUpgrade(req, socket, head);
       return;
     }
+    if (deps.moduleUpgrade?.(req, socket, head)) return;
     socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
   });
   return server;

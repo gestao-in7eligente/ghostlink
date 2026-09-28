@@ -134,4 +134,20 @@ describe('Connection', () => {
     expect(conn.state).toBe('closed');
   });
 
+  it('remembers the first close() code; a peer close or terminate() leaves it null', async () => {
+    const closedByServer = await pair();
+    expect(closedByServer.conn.closeCode).toBeNull();
+    closedByServer.conn.close('KICKED');
+    closedByServer.conn.close('INTERNAL');
+    expect(closedByServer.conn.closeCode).toBe('KICKED');
+
+    const closedByPeer = await pair();
+    closedByPeer.client.close();
+    await waitFor(() => closedByPeer.conn.socketClosed);
+    expect(closedByPeer.conn.closeCode).toBeNull();
+
+    const terminated = await pair();
+    terminated.conn.terminate();
+    expect(terminated.conn.closeCode).toBeNull();
+  });
 });

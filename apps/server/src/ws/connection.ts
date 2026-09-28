@@ -53,6 +53,7 @@ export class Connection {
   readonly #heartbeat: NodeJS.Timeout;
   #lastPong = performance.now();
   #socketClosed = false;
+  #closeCode: ErrorCode | null = null;
   readonly #closeListeners: Array<() => void> = [];
 
   constructor(ws: WebSocket, opts: ConnectionOptions) {
@@ -98,6 +99,7 @@ export class Connection {
   close(code: ErrorCode, extra?: { min?: number; max?: number }): void {
     if (this.state === 'closed') return;
     this.state = 'closed';
+    this.#closeCode = code;
     this.clearDeadline();
     this.#write({ t: 'error', d: { code, ...extra } });
     this.#ws.close(APP_CLOSE_CODE, code);
@@ -142,6 +144,11 @@ export class Connection {
 
   get socketClosed(): boolean {
     return this.#socketClosed;
+  }
+
+  /** The code passed to close(), or null when the socket went away without one (peer close, terminate()). */
+  get closeCode(): ErrorCode | null {
+    return this.#closeCode;
   }
 
   #write(envelope: object): void {

@@ -4,7 +4,7 @@ import { SessionRegistry, type SessionHandle } from '../src/ws/sessions.js';
 
 function handle(userId: string, sessionId: string): SessionHandle & { terminated: ErrorCode[] } {
   const terminated: ErrorCode[] = [];
-  return { userId, sessionId, terminated, terminate: (code) => terminated.push(code) };
+  return { userId, sessionId, terminated, send: () => {}, terminate: (code) => terminated.push(code) };
 }
 
 describe('SessionRegistry', () => {
@@ -48,5 +48,24 @@ describe('SessionRegistry', () => {
     r.add(a);
     r.add(a);
     expect(a.terminated).toEqual([]);
+  });
+
+  it('indexes current sessions by session id and lists them', () => {
+    const r = new SessionRegistry();
+    const a = handle('u1', 's1');
+    const b = handle('u1', 's2');
+    const c = handle('u2', 's3');
+    r.add(a);
+    r.add(c);
+    expect(r.getBySession('s1')).toBe(a);
+    r.add(b); // replaces a
+    expect(r.getBySession('s1')).toBeUndefined();
+    expect(r.getBySession('s2')).toBe(b);
+    expect(r.list()).toEqual([b, c]);
+    r.remove(a); // late close of the replaced session changes nothing
+    expect(r.getBySession('s2')).toBe(b);
+    r.remove(b);
+    expect(r.getBySession('s2')).toBeUndefined();
+    expect(r.list()).toEqual([c]);
   });
 });
