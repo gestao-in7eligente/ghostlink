@@ -24,7 +24,7 @@ class FakeChild extends EventEmitter {
 const electron = vi.hoisted(() => ({ utilityProcess: { fork: vi.fn() } }));
 vi.mock('electron', () => electron);
 
-const { READY_TIMEOUT_MS, SHUTDOWN_GRACE_MS, forkServer, serverEntryPath } = await import('../../src/main/hostProcess.js');
+const { READY_TIMEOUT_MS, SHUTDOWN_GRACE_MS, forkServer, hostedServerLogging, serverEntryPath } = await import('../../src/main/hostProcess.js');
 
 function nextChild(): FakeChild {
   const child = new FakeChild();
@@ -108,5 +108,41 @@ describe('forkServer (spec §9)', () => {
     await vi.advanceTimersByTimeAsync(1);
     await stopped;
     expect(child.killed).toBe(1);
+  });
+
+  it('survives errors on the server pipes and a fatal utility-process error', async () => {
+    const child = nextChild();
+    const errors: string[] = [];
+    const logs: string[] = [];
+    const started = forkServer({
+      dataDir: '/data',
+      port: 0,
+      onLog: (text, stream) => logs.push(`${stream}:${text}`),
+      onError: (message, error) => errors.push(`${message}${error ? ` (${(error as NodeJS.ErrnoException).code})` : ''}`),
+    });
+    child.stdout.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+    child.stderr.emit('error', Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }));
+    child.emit('error', 'FatalError', 'v8::internal', '{}');
+    child.stderr.write('warn line\n');
+    child.emit('message', { type: 'ready', port: 43210 });
+    expect((await started).port).toBe(43210);
+    expect(logs).toEqual(['stderr:warn line\n']);
+    expect(errors).toEqual(['hosted server stderr stream error (ECONNRESET)', 'hosted server FatalError at v8::internal']);
+  });
+});
+
+describe('hostedServerLogging', () => {
+  it('sends server output to the log line by line, stderr as warnings', () => {
+    const lines: string[] = [];
+    const log = {
+      info: (m: string) => lines.push(`info ${m}`),
+      warn: (m: string, ...d: unknown[]) => lines.push(['warn', m, ...d.map(String)].join(' ')),
+      error: (m: string) => lines.push(`error ${m}`),
+    };
+    const { onLog, onError } = hostedServerLogging(log);
+    onLog?.('a\nb\n', 'stdout');
+    onLog?.('oops\n', 'stderr');
+    onError?.('hosted server stdout stream error', new Error('x'));
+    expect(lines).toEqual(['info [server] a', 'info [server] b', 'warn [server] oops', 'warn hosted server stdout stream error Error: x']);
   });
 });

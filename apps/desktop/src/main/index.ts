@@ -8,9 +8,10 @@ import { APP_NAME } from '@ghostlink/shared';
 import { IPC_EVENTS, type Platform } from '../shared/ipcTypes.js';
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges } from './appProtocol.js';
 import { ClientController } from './controller.js';
-import { forkServer } from './hostProcess.js';
+import { forkServer, hostedServerLogging } from './hostProcess.js';
 import { IdentityStore } from './identity.js';
 import { registerIpc } from './ipc.js';
+import { FileLog, consoleMirror, guardStdio, installCrashHandlers, mainLog, safeWrite, setMainLog } from './log.js';
 import { installRendererPinning, setRendererPin } from './pinning.js';
 import { SavedServersStore } from './savedServers.js';
 import { installSecurity, originOf } from './security.js';
@@ -18,6 +19,10 @@ import { SettingsStore } from './settings.js';
 import { runSmoke } from './smoke.js';
 
 const smoke = process.env.GHOSTLINK_SMOKE === '1';
+// 0. Before anything can fail: a closed console pipe is never fatal, and uncaught errors are
+//    logged instead of showing Electron's modal dialog (smoke mode: they fail the run).
+guardStdio();
+installCrashHandlers({ log: mainLog, smoke, exit: (code) => app.exit(code) });
 // Dev only: electron-vite serves the renderer and passes its URL.
 const devRendererUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;
 const appOrigin = (devRendererUrl && originOf(devRendererUrl)) || APP_ORIGIN;
@@ -26,6 +31,8 @@ const appOrigin = (devRendererUrl && originOf(devRendererUrl)) || APP_ORIGIN;
 if (!app.isPackaged && process.env.GHOSTLINK_USER_DATA) {
   app.setPath('userData', resolve(process.env.GHOSTLINK_USER_DATA));
 }
+// 1b. <userData>/logs/main.log; the console only mirrors it in development.
+setMainLog(new FileLog({ dir: join(app.getPath('userData'), 'logs'), mirror: app.isPackaged ? null : consoleMirror }));
 // 2. One single list of disabled features. Without it Chromium caches certificate
 //    decisions — rejections included — for 30 min, breaking pin changes (spec §4).
 app.commandLine.appendSwitch('disable-features', 'CacheCertVerification');
@@ -41,6 +48,7 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow?.focus();
   });
   app.on('window-all-closed', () => app.quit());
+  mainLog.info(`${APP_NAME} ${app.getVersion()} starting (${process.platform}, ${app.isPackaged ? 'packaged' : 'development'}${smoke ? ', smoke' : ''})`);
   // 5. Everything that needs a ready app.
   app
     .whenReady()
@@ -48,7 +56,7 @@ if (!app.requestSingleInstanceLock()) {
       mainWindow = start();
     })
     .catch((e: unknown) => {
-      console.error('GhostLink failed to start:', e);
+      mainLog.error('GhostLink failed to start:', e);
       app.exit(1);
     });
 }
@@ -125,8 +133,13 @@ function startSmoke(window: BrowserWindow): void {
       (await window.webContents.executeJavaScript(
         "document.documentElement.dataset.ready === '1' && typeof window.ghostlink?.app?.info === 'function'",
       )) === true,
-    forkServer: () => forkServer({ dataDir: mkdtempSync(join(app.getPath('temp'), 'ghostlink-smoke-')), port: 0 }),
+    forkServer: () =>
+      forkServer({ dataDir: mkdtempSync(join(app.getPath('temp'), 'ghostlink-smoke-')), port: 0, ...hostedServerLogging(mainLog) }),
     exit: (code) => app.exit(code),
-    log: (message) => console.log(message),
+    // `npm run smoke` reads "smoke: OK" from stdout; in development the log mirror prints it.
+    log: (message) => {
+      mainLog.info(message);
+      if (app.isPackaged) safeWrite(process.stdout, `${message}\n`);
+    },
   });
 }
