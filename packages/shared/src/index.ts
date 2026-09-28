@@ -9,3 +9,4 @@ export * from './invite.js';
 export * from './permissions.js';
 export * from './text.js';
 export * from './version.js';
+export * from './release.js';
