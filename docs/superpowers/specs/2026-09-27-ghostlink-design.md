@@ -737,9 +737,9 @@ Um IP WAN em `100.64.0.0/10` ou em faixa RFC1918 indica **CGNAT ou NAT duplo**. 
 ## 11. Interface
 
 **Visual e sons**
-- Tema escuro quase preto (`#0b0d10` a `#161a20`), acento **ciano espectral** (`#5eead4`) e vermelho para ações destrutivas.
+- Tema escuro quase preto (`#0b0d10` a `#161a20`), cor primária **blurple igual à do Discord** (`#5865F2`, hover `#4752C4`, texto branco por cima) e vermelho para ações destrutivas. Decisão do dono em 2026-09-28: nada de verde-água.
 - Fonte Inter embutida e tokens em CSS vars.
-- Ícone e logo originais em SVG: um fantasma formado por um elo de corrente.
+- **Ícone e logo:** um **fantasma** (decisão do dono em 2026-09-28), em arte original SVG. Fantasma branco clássico (topo arredondado, barra ondulada, olhos escuros) sobre um quadrado arredondado em blurple `#5865F2`. É o mesmo símbolo no app, no instalador, na bandeja e no site.
 - Sons originais sintetizados por `scripts/gen-sounds.mjs`.
 - Selo "beta" visível enquanto a versão for `0.x`.
 
