@@ -71,6 +71,8 @@ interface Instance {
 }
 
 const instances: Instance[] = [];
+/** Every profile directory, cleaned up even when a launch fails. */
+const profiles: string[] = [];
 let server: GhostServer | null = null;
 let dataDir = '';
 let speechWav = '';
@@ -123,6 +125,7 @@ function writeSpeechWav(path: string): void {
 
 async function launch(name: string): Promise<Instance> {
   const userData = mkdtempSync(join(tmpdir(), `ghostlink-e2e-${name}-`));
+  profiles.push(userData);
   const env: Record<string, string> = { ...(process.env as Record<string, string>), GHOSTLINK_USER_DATA: userData };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.ELECTRON_RENDERER_URL;
@@ -210,10 +213,8 @@ describe.skipIf(!binary)('voice between two app instances (real LiveKit, fake de
   });
 
   afterAll(async () => {
-    for (const i of instances.splice(0)) {
-      await i.app.close().catch(() => {});
-      rmSync(i.userData, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
-    }
+    for (const i of instances.splice(0)) await i.app.close().catch(() => {});
+    for (const dir of profiles.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     await server?.close();
     if (dataDir) rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   });
