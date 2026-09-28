@@ -23,7 +23,6 @@ const M1_WELCOME_KEYS: ReadonlySet<string> = new Set(Object.keys({
  */
 export class ModuleHost {
   readonly handlers: Readonly<Record<string, RequestHandler>>;
-  readonly features: readonly string[];
   readonly #modules: readonly ServerModule[];
   readonly #byName = new Map<string, ServerModule>();
   readonly #logger: Logger;
@@ -36,7 +35,6 @@ export class ModuleHost {
     this.#logger = logger;
     const owners = new Map<string, string>();
     const handlers = new Map<string, RequestHandler>();
-    const features = new Set<string>();
     for (const m of modules) {
       if (typeof m.name !== 'string' || m.name.length === 0) throw new Error('every server module needs a non-empty name');
       if (this.#byName.has(m.name)) throw new Error(`duplicate module name "${m.name}"`);
@@ -47,11 +45,16 @@ export class ModuleHost {
         owners.set(type, m.name);
         handlers.set(type, handler);
       }
-      for (const f of m.features ?? []) features.add(f);
     }
     // fromEntries defines own properties, so even "__proto__" stays a plain key.
     this.handlers = Object.freeze(Object.fromEntries(handlers));
-    this.features = Object.freeze([...features]);
+  }
+
+  /** Feature flags for the next welcome; read on every call, so a module may turn one on once it is ready. */
+  get features(): readonly string[] {
+    const features = new Set<string>();
+    for (const m of this.#modules) for (const f of m.features ?? []) features.add(f);
+    return [...features];
   }
 
   get context(): ModuleContext {

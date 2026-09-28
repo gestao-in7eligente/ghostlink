@@ -1,4 +1,5 @@
 import type { ServerModule } from './modules.js';
+import { createVoiceModule } from './voice/index.js';
 
 /**
  * The feature modules a real server runs: the CLI `start` command and the
@@ -7,5 +8,5 @@ import type { ServerModule } from './modules.js';
  * that satisfies getModule() dependencies (a module after those it calls in init).
  */
 export function defaultModules(): ServerModule[] {
-  return [];
+  return [createVoiceModule()];
 }

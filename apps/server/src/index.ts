@@ -9,6 +9,7 @@ import { createHttpServer } from './http/server.js';
 import { buildInviteInfo, createInvite, type InviteInfo } from './invites/invites.js';
 import { resolveLimits, type ServerLimits } from './limits.js';
 import { consoleLogger, type Logger } from './logger.js';
+import type { VoiceServerOptions } from './livekit/backend.js';
 import { ModuleHost } from './moduleHost.js';
 import type { ServerModule } from './modules.js';
 import { loadOrCreateCertificate } from './tls/certificate.js';
@@ -16,10 +17,12 @@ import { SERVER_VERSION } from './version.js';
 import { Gateway } from './ws/gateway.js';
 
 export type { InviteInfo } from './invites/invites.js';
+export type { VoiceServerOptions } from './livekit/backend.js';
 export type { Logger } from './logger.js';
 export type { ServerLimits } from './limits.js';
 export type {
   ModuleContext,
+  ModuleOptions,
   RequestContext,
   RequestHandler,
   ServerEvent,
@@ -44,6 +47,7 @@ export interface StartServerOptions {
   now?: () => number; // injectable clock for tests
   limits?: Partial<ServerLimits>; // tests only: shrink timeouts and caps
   modules?: ServerModule[]; // feature modules, run after the built-in 'core' module (see MODULES.md)
+  voice?: VoiceServerOptions; // LiveKit binary, public media ports and node_ip (the Hosting track passes node_ip from UPnP)
 }
 
 export interface GhostServer {
@@ -126,7 +130,7 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
   };
 
   try {
-    await modules.init({ db, now, logger, limits, dataDir: opts.dataDir, serverKeyId: certificate.serverKeyId, sessions: gateway.sessions.api });
+    await modules.init({ db, now, logger, limits, dataDir: opts.dataDir, serverKeyId: certificate.serverKeyId, sessions: gateway.sessions.api, options: { voice: opts.voice } });
     await new Promise<void>((resolve, reject) => {
       http.once('error', reject);
       http.listen(opts.port, opts.host ?? '0.0.0.0', () => {
