@@ -16,7 +16,7 @@ import {
 } from '../src/index.js';
 
 const KEY_ID = toBase64Url(Uint8Array.from({ length: 32 }, (_, i) => i * 7));
-const SITE = 'https://ghostlink.invalid';
+const SITE = 'https://gestao-in7eligente.github.io/ghostlink'; // the real WEB_SITE_BASE: an origin plus a path
 
 function expectBadRequest(fn: () => unknown): void {
   let caught: unknown;
