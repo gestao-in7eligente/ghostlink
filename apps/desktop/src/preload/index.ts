@@ -6,6 +6,7 @@ import {
   IPC,
   IPC_EVENTS,
   type ConnectionStateEvent,
+  type OpenChannelEvent,
   type GhostlinkApi,
   type IpcArgs,
   type IpcChannel,
@@ -30,7 +31,11 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 }
 
 export const api: GhostlinkApi = {
-  app: { info: () => invoke(IPC.appInfo) },
+  app: {
+    info: () => invoke(IPC.appInfo),
+    openExternal: (url) => invoke(IPC.appOpenExternal, url),
+    copyText: (text) => invoke(IPC.appCopyText, text),
+  },
   identity: {
     status: () => invoke(IPC.identityStatus),
     create: () => invoke(IPC.identityCreate),
@@ -52,8 +57,13 @@ export const api: GhostlinkApi = {
     disconnect: () => invoke(IPC.serversDisconnect),
     remove: (id) => invoke(IPC.serversRemove, id),
   },
+  server: {
+    request: <T>(type: string, payload?: unknown) => invoke(IPC.serverRequest, type, payload) as Promise<T>,
+  },
+  notifications: { show: (n) => invoke(IPC.notificationsShow, n) },
   onConnectionState: (cb) => subscribe<ConnectionStateEvent>(IPC_EVENTS.connectionState, cb),
   onServerEvent: (cb) => subscribe<Envelope>(IPC_EVENTS.server, cb),
+  onOpenChannel: (cb) => subscribe<OpenChannelEvent>(IPC_EVENTS.openChannel, cb),
 };
 
 contextBridge.exposeInMainWorld('ghostlink', api);

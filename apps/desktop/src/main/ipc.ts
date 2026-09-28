@@ -2,7 +2,7 @@ import { ipcMain, type WebFrameMain } from 'electron';
 import { z } from 'zod';
 import { LIMITS } from '@ghostlink/shared';
 import { toAppErrorCode } from '../shared/appErrors.js';
-import { IPC, type AppInfo, type IpcArgs, type IpcChannel, type IpcResult, type IpcReturn } from '../shared/ipcTypes.js';
+import { IPC, type AppInfo, type ChatNotification, type IpcArgs, type IpcChannel, type IpcResult, type IpcReturn } from '../shared/ipcTypes.js';
 import type { ClientController } from './controller.js';
 import type { IdentityStore } from './identity.js';
 import { originOf } from './security.js';
@@ -14,8 +14,34 @@ export interface IpcDeps {
   appInfo(): AppInfo;
   identity: Pick<IdentityStore, 'status' | 'create' | 'retry' | 'replaceKeepingBackup'>;
   settings: Pick<SettingsStore, 'get' | 'set'>;
-  controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove'>;
+  controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'request'>;
+  /** Confirmed external links and the clipboard (Text track). */
+  shell: { openExternal(url: string): Promise<boolean>; copyText(text: string): void };
+  notifications: { show(n: ChatNotification): boolean };
 }
+
+/** The handshake belongs to the main process alone: the renderer may never send it (release plan "Seams"). */
+export const FORBIDDEN_REQUEST_TYPES: ReadonlySet<string> = new Set(['hello', 'auth.proof']);
+
+/** A server request type: 1..64 chars like "msg.send" or "voice.join"; never a handshake step. */
+export const requestTypeSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)*$/)
+  .refine((t) => !FORBIDDEN_REQUEST_TYPES.has(t));
+
+/** A JSON object no bigger than a server frame (spec §5.1: maxPayload 256 KiB). */
+const requestPayloadSchema = z
+  .record(z.string(), z.unknown())
+  .refine((d) => {
+    try {
+      return JSON.stringify(d).length <= LIMITS.maxPayloadBytes;
+    } catch {
+      return false;
+    }
+  })
+  .optional();
 
 // Renderer input is untrusted: strict schemas, bounded sizes. The deeper rules
 // (address syntax, nickname normalization) are enforced again where the data is used.
@@ -25,6 +51,12 @@ const serverId = z.string().min(1).max(64);
 
 export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>> } = {
   [IPC.appInfo]: z.tuple([]),
+  [IPC.appOpenExternal]: z.tuple([z.string().min(1).max(2048)]),
+  [IPC.appCopyText]: z.tuple([z.string().max(8192)]),
+  [IPC.serverRequest]: z.union([z.tuple([requestTypeSchema]), z.tuple([requestTypeSchema, requestPayloadSchema])]),
+  [IPC.notificationsShow]: z.tuple([
+    z.strictObject({ title: z.string().min(1).max(256), body: z.string().max(4096), channelId: z.string().regex(/^[A-Z2-7]{26}$/) }),
+  ]),
   [IPC.identityStatus]: z.tuple([]),
   [IPC.identityCreate]: z.tuple([]),
   [IPC.identityRetry]: z.tuple([]),
@@ -56,6 +88,10 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
   const { identity, settings, controller } = deps;
   return {
     [IPC.appInfo]: () => deps.appInfo(),
+    [IPC.appOpenExternal]: (url) => deps.shell.openExternal(url),
+    [IPC.appCopyText]: (text) => deps.shell.copyText(text),
+    [IPC.serverRequest]: (type, payload) => controller.request(type, payload ?? {}),
+    [IPC.notificationsShow]: (n) => deps.notifications.show(n),
     [IPC.identityStatus]: () => identity.status,
     [IPC.identityCreate]: () => identity.create(),
     [IPC.identityRetry]: () => identity.retry(),

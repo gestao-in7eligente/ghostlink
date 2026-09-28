@@ -19,7 +19,12 @@ describe('preload bridge', () => {
   it('exposes exactly the contract API as window.ghostlink', () => {
     expect(Object.keys(electron.exposed)).toEqual(['ghostlink']);
     expect(electron.exposed.ghostlink).toBe(api);
-    expect(Object.keys(api).sort()).toEqual(['app', 'identity', 'join', 'onConnectionState', 'onServerEvent', 'servers', 'settings']);
+    expect(Object.keys(api).sort()).toEqual([
+      'app', 'identity', 'join', 'notifications', 'onConnectionState', 'onOpenChannel', 'onServerEvent', 'server', 'servers', 'settings',
+    ]);
+    expect(Object.keys(api.app).sort()).toEqual(['copyText', 'info', 'openExternal']);
+    expect(Object.keys(api.server)).toEqual(['request']);
+    expect(Object.keys(api.notifications)).toEqual(['show']);
     expect(Object.keys(api.identity).sort()).toEqual(['create', 'replaceKeepingBackup', 'retry', 'status']);
     expect(Object.keys(api.join).sort()).toEqual(['connect', 'parse', 'probe']);
     expect(Object.keys(api.servers).sort()).toEqual(['connect', 'disconnect', 'list', 'remove']);
@@ -42,6 +47,10 @@ describe('preload bridge', () => {
     ['servers.connect', () => api.servers.connect('s1'), IPC.serversConnect, ['s1']],
     ['servers.disconnect', () => api.servers.disconnect(), IPC.serversDisconnect, []],
     ['servers.remove', () => api.servers.remove('s1'), IPC.serversRemove, ['s1']],
+    ['app.openExternal', () => api.app.openExternal('https://x/'), IPC.appOpenExternal, ['https://x/']],
+    ['app.copyText', () => api.app.copyText('abc'), IPC.appCopyText, ['abc']],
+    ['server.request', () => api.server.request('msg.send', { a: 1 }), IPC.serverRequest, ['msg.send', { a: 1 }]],
+    ['notifications.show', () => api.notifications.show({ title: 't', body: 'b', channelId: 'c' }), IPC.notificationsShow, [{ title: 't', body: 'b', channelId: 'c' }]],
   ])('%s invokes its channel and unwraps the value', async (_name, call, channel, args) => {
     electron.ipcRenderer.invoke.mockResolvedValueOnce({ ok: true, value: 'VALUE' });
     await expect(call()).resolves.toBe('VALUE');
@@ -67,5 +76,7 @@ describe('preload bridge', () => {
 
     api.onServerEvent(() => {});
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.server);
+    api.onOpenChannel(() => {});
+    expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.openChannel);
   });
 });

@@ -6,7 +6,9 @@ import { IPC, IPC_EVENTS } from '../../src/shared/ipcTypes.js';
 describe('IPC channel names (contract §5)', () => {
   it('are exactly the contract channels, named ghostlink:<namespace>.<method>', () => {
     expect(Object.values(IPC).sort()).toEqual([
+      'ghostlink:app.copyText',
       'ghostlink:app.info',
+      'ghostlink:app.openExternal',
       'ghostlink:identity.create',
       'ghostlink:identity.replaceKeepingBackup',
       'ghostlink:identity.retry',
@@ -14,6 +16,8 @@ describe('IPC channel names (contract §5)', () => {
       'ghostlink:join.connect',
       'ghostlink:join.parse',
       'ghostlink:join.probe',
+      'ghostlink:notifications.show',
+      'ghostlink:server.request',
       'ghostlink:servers.connect',
       'ghostlink:servers.disconnect',
       'ghostlink:servers.list',
@@ -23,8 +27,8 @@ describe('IPC channel names (contract §5)', () => {
     ]);
   });
 
-  it('keeps the two event channels apart from the invoke channels', () => {
-    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server']);
+  it('keeps the event channels apart from the invoke channels', () => {
+    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server', 'ghostlink:event.openChannel']);
     for (const event of Object.values(IPC_EVENTS)) expect(Object.values(IPC)).not.toContain(event);
   });
 });

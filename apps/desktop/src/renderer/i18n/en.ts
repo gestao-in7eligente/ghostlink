@@ -1,3 +1,4 @@
+import { chat } from './chat.en.js';
 import type { messages as ptBR } from './pt-BR.js';
 
 // Typed against pt-BR: a missing or extra key fails the typecheck (contract §5).
@@ -125,4 +126,6 @@ export const messages: Record<keyof typeof ptBR, string> = {
   'errors.SERVER_OUTDATED': 'This server is out of date. Tell the owner.',
   'errors.ENCRYPTION_UNAVAILABLE': 'This system offers no secure storage, so an identity cannot be created.',
   'errors.IDENTITY_UNAVAILABLE': 'Your identity is not available.',
+
+  ...chat,
 };

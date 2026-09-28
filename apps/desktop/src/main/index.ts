@@ -1,16 +1,18 @@
 // Main-process bootstrap (contract §5). Everything testable lives in the modules it
 // wires together; this file is the thin glue that needs a real Electron.
-import { BrowserWindow, app, safeStorage, session } from 'electron';
+import { BrowserWindow, Notification, app, clipboard, dialog, safeStorage, session, shell } from 'electron';
 import { mkdtempSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { APP_NAME } from '@ghostlink/shared';
+import { APP_ID, APP_NAME } from '@ghostlink/shared';
 import { IPC_EVENTS, type Platform } from '../shared/ipcTypes.js';
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges } from './appProtocol.js';
 import { ClientController } from './controller.js';
+import { openExternalWithConfirm } from './externalLinks.js';
 import { forkServer } from './hostProcess.js';
 import { IdentityStore } from './identity.js';
 import { registerIpc } from './ipc.js';
+import { ChatNotifier } from './notifications.js';
 import { installRendererPinning, setRendererPin } from './pinning.js';
 import { SavedServersStore } from './savedServers.js';
 import { installSecurity, originOf } from './security.js';
@@ -76,11 +78,37 @@ function start(): BrowserWindow {
     emitServerEvent: (event) => send(IPC_EVENTS.server, event),
     clientName: `ghostlink/${app.getVersion()} (${process.platform})`,
   });
+  // Windows shows toasts (and routes their clicks) only for a known AppUserModelID.
+  if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
+  const notifier = new ChatNotifier({
+    isSupported: () => Notification.isSupported(),
+    create: (options) => new Notification(options),
+    window: () => (window.isDestroyed() ? null : window),
+    openChannel: (event) => send(IPC_EVENTS.openChannel, event),
+  });
   registerIpc({
     appOrigin,
     identity,
     settings,
     controller,
+    notifications: notifier,
+    shell: {
+      openExternal: (url) => openExternalWithConfirm(url, {
+        locale: () => settings.get().locale,
+        confirm: async (d) => (await dialog.showMessageBox(window, {
+          type: 'question',
+          title: d.title,
+          message: d.message,
+          detail: d.detail,
+          buttons: d.buttons,
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+        })).response,
+        open: (url) => shell.openExternal(url),
+      }),
+      copyText: (text) => clipboard.writeText(text),
+    },
     appInfo: () => ({ version: app.getVersion(), platform: process.platform as Platform, locale: app.getLocale() }),
   });
   app.on('before-quit', () => void controller.disconnect());
