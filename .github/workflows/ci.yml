@@ -1,0 +1,118 @@
+# Continuous integration (spec §15 "CI", contract §6).
+# - test:    lint, typecheck, unit + integration tests on Windows, Linux and macOS.
+# - package: NSIS installer / ad-hoc signed DMGs with fuses, then the packaged smoke test.
+# Actions are pinned by commit SHA; scripts/test/ciWorkflow.test.ts enforces the policies below.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # Flaky networks: npm retries each request before failing the whole install.
+  npm_config_fetch_retries: '6'
+  npm_config_fetch_retry_mintimeout: '5000'
+  npm_config_audit: 'false'
+  npm_config_fund: 'false'
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.x
+          cache: npm
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            npm ci && exit 0
+            echo "::warning::npm ci failed (attempt ${attempt} of 3), retrying in 20 s"
+            sleep 20
+          done
+          exit 1
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit and integration tests
+        run: npm test
+
+  package:
+    name: Package and smoke test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.x
+          cache: npm
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            npm ci && exit 0
+            echo "::warning::npm ci failed (attempt ${attempt} of 3), retrying in 20 s"
+            sleep 20
+          done
+          exit 1
+      - name: Build installers
+        id: dist
+        run: npm run dist
+      # safeStorage and Chromium's cookie encryption use the default keychain. On a runner it
+      # may be locked, and a keychain prompt would hang the smoke test until the timeout.
+      - name: Create a temporary unlocked keychain
+        if: runner.os == 'macOS'
+        run: |
+          keychain="$RUNNER_TEMP/ghostlink-ci.keychain-db"
+          password="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | xargs)
+          security default-keychain -d user -s "$keychain"
+      - name: Smoke test the packaged app
+        run: npm run smoke
+      - name: Upload installers
+        if: ${{ !cancelled() && steps.dist.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ghostlink-${{ runner.os }}-${{ github.sha }}
+          path: |
+            apps/desktop/dist/GhostLink-Setup-*.exe
+            apps/desktop/dist/GhostLink-*-mac-*.dmg
+          if-no-files-found: error
+          retention-days: 7

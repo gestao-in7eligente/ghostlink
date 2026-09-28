@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- GhostLink app icon (placeholder): a ghost whose outline is a chain link,
+       interlocked with a second link. Colors: spec §11 (near-black tile, spectral cyan). -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#161a20"/>
+      <stop offset="1" stop-color="#0b0d10"/>
+    </linearGradient>
+    <path id="ghost" d="M232 720V440A200 200 0 0 1 632 440V720A66.67 66.67 0 0 1 498.67 720A66.67 66.67 0 0 1 365.33 720A66.67 66.67 0 0 1 232 720Z"/>
+    <rect id="link" x="520" y="520" width="280" height="160" rx="80"/>
+    <clipPath id="crossing-top"><rect x="592" y="480" width="80" height="80"/></clipPath>
+    <clipPath id="crossing-bottom"><rect x="592" y="640" width="80" height="80"/></clipPath>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#tile)"/>
+  <use href="#link" fill="none" stroke="#2dd4bf" stroke-width="56"/>
+  <use href="#ghost" fill="none" stroke="#5eead4" stroke-width="56" stroke-linejoin="round"/>
+  <!-- The links interlock: the second link passes over the ghost at the top crossing… -->
+  <g clip-path="url(#crossing-top)">
+    <use href="#link" fill="none" stroke="#101318" stroke-width="104"/>
+    <use href="#link" fill="none" stroke="#2dd4bf" stroke-width="56"/>
+  </g>
+  <!-- …and under it at the bottom crossing. -->
+  <g clip-path="url(#crossing-bottom)">
+    <use href="#ghost" fill="none" stroke="#0e1115" stroke-width="104" stroke-linejoin="round"/>
+    <use href="#ghost" fill="none" stroke="#5eead4" stroke-width="56" stroke-linejoin="round"/>
+  </g>
+  <ellipse cx="360" cy="460" rx="36" ry="48" fill="#5eead4"/>
+  <ellipse cx="504" cy="460" rx="36" ry="48" fill="#5eead4"/>
+</svg>

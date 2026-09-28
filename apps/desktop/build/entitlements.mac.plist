@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- Replaces electron-builder's default template (spec §15), so it repeats its cs.* keys. -->
+    <!-- V8 JIT under the hardened runtime. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- Required with ad-hoc signing: the helpers and frameworks carry no Team ID. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- Voice and camera (NSMicrophoneUsageDescription / NSCameraUsageDescription in Info.plist). -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <key>com.apple.security.device.camera</key>
+    <true/>
+  </dict>
+</plist>
