@@ -47,9 +47,15 @@ export function getMeta(db: Db): ServerMeta {
   };
 }
 
-/** Seeds the single server_meta row on first run; later runs keep the stored name and join mode. */
-export function ensureMeta(db: Db, init: { name: string; joinMode: JoinMode; now: number }): ServerMeta {
-  db.run('INSERT OR IGNORE INTO server_meta (id, name, join_mode, created_at) VALUES (1, ?, ?, ?)', init.name, init.joinMode, init.now);
+/** Seeds the single server_meta row on first run; later runs keep the stored name, join mode and member limit. */
+export function ensureMeta(db: Db, init: { name: string; joinMode: JoinMode; maxMembers?: number; now: number }): ServerMeta {
+  db.run(
+    'INSERT OR IGNORE INTO server_meta (id, name, join_mode, max_members, created_at) VALUES (1, ?, ?, ?, ?)',
+    init.name,
+    init.joinMode,
+    init.maxMembers ?? 100,
+    init.now,
+  );
   return getMeta(db);
 }
 
