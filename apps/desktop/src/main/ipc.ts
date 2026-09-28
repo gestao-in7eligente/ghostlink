@@ -4,6 +4,7 @@ import { LIMITS } from '@ghostlink/shared';
 import { toAppErrorCode } from '../shared/appErrors.js';
 import { IPC, type AppInfo, type IpcArgs, type IpcChannel, type IpcResult, type IpcReturn } from '../shared/ipcTypes.js';
 import type { ClientController } from './controller.js';
+import { HOST_IPC_ARG_SCHEMAS, createHostIpcHandlers, type HostIpcDeps } from './hostIpc.js';
 import type { IdentityStore } from './identity.js';
 import { originOf } from './security.js';
 import { LOCALES, type SettingsStore } from './settings.js';
@@ -15,6 +16,8 @@ export interface IpcDeps {
   identity: Pick<IdentityStore, 'status' | 'create' | 'retry' | 'replaceKeepingBackup'>;
   settings: Pick<SettingsStore, 'get' | 'set'>;
   controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove'>;
+  /** Host mode (spec §9). */
+  host?: HostIpcDeps;
 }
 
 // Renderer input is untrusted: strict schemas, bounded sizes. The deeper rules
@@ -48,6 +51,7 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.serversConnect]: z.tuple([serverId]),
   [IPC.serversDisconnect]: z.tuple([]),
   [IPC.serversRemove]: z.tuple([serverId]),
+  ...HOST_IPC_ARG_SCHEMAS,
 };
 
 type Handlers = { [C in IpcChannel]: (...args: IpcArgs<C>) => IpcReturn<C> | Promise<IpcReturn<C>> };
@@ -69,6 +73,7 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     [IPC.serversConnect]: (id) => controller.connectSaved(id),
     [IPC.serversDisconnect]: () => controller.disconnect(),
     [IPC.serversRemove]: (id) => controller.remove(id),
+    ...createHostIpcHandlers(deps.host),
   };
 }
 

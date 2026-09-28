@@ -104,6 +104,11 @@ export class ClientController {
     return this.#deps.servers.list();
   }
 
+  /** The saved-server id of the active connection, or null (Host mode leaves it before a stop). */
+  get currentServerId(): string | null {
+    return this.#serverId;
+  }
+
   async disconnect(): Promise<void> {
     const conn = this.#conn;
     const serverId = this.#serverId;

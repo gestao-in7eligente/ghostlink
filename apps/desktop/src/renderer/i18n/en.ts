@@ -1,3 +1,4 @@
+import { host } from './en/host.js';
 import type { messages as ptBR } from './pt-BR.js';
 
 // Typed against pt-BR: a missing or extra key fails the typecheck (contract §5).
@@ -42,7 +43,6 @@ export const messages: Record<keyof typeof ptBR, string> = {
   'onboarding.choose.title': 'What do you want to do?',
   'onboarding.choose.join': 'Join a server',
   'onboarding.choose.host': 'Host a server',
-  'onboarding.choose.hostSoon': 'Hosting from the app arrives in an upcoming version.',
 
   'join.title': 'Join a server',
   'join.input.label': 'Invite or address',
@@ -125,4 +125,6 @@ export const messages: Record<keyof typeof ptBR, string> = {
   'errors.SERVER_OUTDATED': 'This server is out of date. Tell the owner.',
   'errors.ENCRYPTION_UNAVAILABLE': 'This system offers no secure storage, so an identity cannot be created.',
   'errors.IDENTITY_UNAVAILABLE': 'Your identity is not available.',
+
+  ...host,
 };

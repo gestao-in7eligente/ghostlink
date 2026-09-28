@@ -1,6 +1,6 @@
 // Main-process bootstrap (contract §5). Everything testable lives in the modules it
 // wires together; this file is the thin glue that needs a real Electron.
-import { BrowserWindow, app, safeStorage, session } from 'electron';
+import { BrowserWindow, app, clipboard, safeStorage, session } from 'electron';
 import { mkdtempSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +8,9 @@ import { APP_NAME } from '@ghostlink/shared';
 import { IPC_EVENTS, type Platform } from '../shared/ipcTypes.js';
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges } from './appProtocol.js';
 import { ClientController } from './controller.js';
+import { HostManager } from './hostManager.js';
 import { forkServer } from './hostProcess.js';
+import { HostTray, shouldHideOnClose } from './hostTray.js';
 import { IdentityStore } from './identity.js';
 import { registerIpc } from './ipc.js';
 import { installRendererPinning, setRendererPin } from './pinning.js';
@@ -21,6 +23,9 @@ const smoke = process.env.GHOSTLINK_SMOKE === '1';
 // Dev only: electron-vite serves the renderer and passes its URL.
 const devRendererUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;
 const appOrigin = (devRendererUrl && originOf(devRendererUrl)) || APP_ORIGIN;
+// Dev/test hook (never honoured when packaged): Host mode binds here instead of 0.0.0.0,
+// so automated runs do not trigger the Windows firewall prompt.
+const hostBind = app.isPackaged ? undefined : process.env.GHOSTLINK_HOST_BIND || undefined;
 
 // 1. Test hook (never honoured when packaged): one profile per instance.
 if (!app.isPackaged && process.env.GHOSTLINK_USER_DATA) {
@@ -38,6 +43,7 @@ if (!app.requestSingleInstanceLock()) {
   let mainWindow: BrowserWindow | null = null;
   app.on('second-instance', () => {
     if (mainWindow?.isMinimized()) mainWindow.restore();
+    mainWindow?.show(); // it may be hidden in the tray while hosting
     mainWindow?.focus();
   });
   app.on('window-all-closed', () => app.quit());
@@ -76,12 +82,14 @@ function start(): BrowserWindow {
     emitServerEvent: (event) => send(IPC_EVENTS.server, event),
     clientName: `ghostlink/${app.getVersion()} (${process.platform})`,
   });
+  const host = startHostMode(window, controller, servers, settings, send);
   registerIpc({
     appOrigin,
     identity,
     settings,
     controller,
     appInfo: () => ({ version: app.getVersion(), platform: process.platform as Platform, locale: app.getLocale() }),
+    host: { manager: host, copyText: (text) => clipboard.writeText(text) },
   });
   app.on('before-quit', () => void controller.disconnect());
 
@@ -89,6 +97,68 @@ function start(): BrowserWindow {
   if (smoke) startSmoke(window);
   void window.loadURL(devRendererUrl ?? `${APP_ORIGIN}/index.html`);
   return window;
+}
+
+/**
+ * Host mode (spec §9): the hosted server's manager, the tray, and the window/quit
+ * rules — closing the window while hosting hides it; quitting stops the server first.
+ */
+function startHostMode(
+  window: BrowserWindow,
+  controller: ClientController,
+  servers: SavedServersStore,
+  settings: SettingsStore,
+  send: (channel: string, payload: unknown) => void,
+): HostManager {
+  const showWindow = () => {
+    if (window.isDestroyed()) return;
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+  };
+  const tray = new HostTray({ locale: () => settings.get().locale, onOpen: showWindow, onStopAndQuit: () => app.quit() });
+  const host = new HostManager({
+    userDataDir: app.getPath('userData'),
+    fork: forkServer,
+    join: (req) => controller.join(req),
+    leave: async (serverKeyId) => {
+      if (servers.findByServerKeyId(serverKeyId)?.id === controller.currentServerId) await controller.disconnect();
+    },
+    nickname: () => settings.get().nickname,
+    emit: (status) => {
+      send(IPC_EVENTS.host, status);
+      tray.update(status);
+    },
+    bindHost: hostBind,
+  });
+
+  let quitting = false;
+  let stoppedForQuit = false;
+  window.on('close', (event) => {
+    if (!shouldHideOnClose({ hosting: host.isActive(), quitting })) return;
+    event.preventDefault();
+    window.hide();
+    if (!host.trayNoticeShown()) {
+      tray.notifyKeptRunning();
+      host.markTrayNoticeShown();
+    }
+  });
+  app.on('activate', showWindow); // macOS: the Dock icon brings the hidden window back
+  app.on('before-quit', (event) => {
+    quitting = true;
+    if (stoppedForQuit || !host.isActive()) return;
+    // "Sair" stops the server and LiveKit (spec §9). One attempt only: a failure never blocks quitting.
+    event.preventDefault();
+    stoppedForQuit = true;
+    void host
+      .stopForQuit()
+      .catch((e: unknown) => console.error('[host] could not stop the hosted server:', e))
+      .finally(() => {
+        tray.destroy();
+        app.quit();
+      });
+  });
+  return host;
 }
 
 function createMainWindow(): BrowserWindow {

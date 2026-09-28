@@ -12,6 +12,7 @@ import {
   type IpcResult,
   type IpcReturn,
 } from '../shared/ipcTypes.js';
+import type { HostStatus } from '../shared/hostTypes.js';
 
 /** Invokes a channel and turns `{ ok: false, code }` into `Error(code)` (contract §5: the message is the code). */
 async function invoke<C extends IpcChannel>(channel: C, ...args: IpcArgs<C>): Promise<IpcReturn<C>> {
@@ -52,8 +53,20 @@ export const api: GhostlinkApi = {
     disconnect: () => invoke(IPC.serversDisconnect),
     remove: (id) => invoke(IPC.serversRemove, id),
   },
+  host: {
+    status: () => invoke(IPC.hostStatus),
+    start: (config) => invoke(IPC.hostStart, config),
+    stop: () => invoke(IPC.hostStop),
+    restart: () => invoke(IPC.hostRestart),
+    join: () => invoke(IPC.hostJoin),
+    recoverOwnership: () => invoke(IPC.hostRecoverOwnership),
+    invite: (opts) => invoke(IPC.hostInvite, opts),
+    logs: () => invoke(IPC.hostLogs),
+    copyText: (text) => invoke(IPC.hostCopyText, text),
+  },
   onConnectionState: (cb) => subscribe<ConnectionStateEvent>(IPC_EVENTS.connectionState, cb),
   onServerEvent: (cb) => subscribe<Envelope>(IPC_EVENTS.server, cb),
+  onHostStatus: (cb) => subscribe<HostStatus>(IPC_EVENTS.host, cb),
 };
 
 contextBridge.exposeInMainWorld('ghostlink', api);
