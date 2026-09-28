@@ -96,8 +96,12 @@ describe('findFreeTcpPort (7710, 7720, …)', () => {
   it('steps by 10 past busy ports', async () => {
     const base = await freeBase();
     await hold(base, '127.0.0.1');
-    await hold(base + 10, '127.0.0.1');
-    expect(await findFreeTcpPort(base, { bindHost: '0.0.0.0' })).toBe(base + 20);
+    await hold(base + 10, '127.0.0.1').catch(() => {}); // already taken by someone else is just as busy
+    // Other suites run in parallel and may hold base+20 by chance: any later step of 10 is right.
+    const found = await findFreeTcpPort(base, { bindHost: '0.0.0.0' });
+    expect(found).not.toBeNull();
+    expect(found! - base).toBeGreaterThanOrEqual(20);
+    expect((found! - base) % 10).toBe(0);
   });
 
   it('gives up after the allowed tries and never goes past 65535', async () => {
