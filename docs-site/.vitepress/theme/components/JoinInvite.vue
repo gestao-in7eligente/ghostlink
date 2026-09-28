@@ -126,7 +126,7 @@ async function copyCode(): Promise<void> {
                 ref="codeBox"
                 class="gl-invite__code"
                 readonly
-                rows="3"
+                rows="5"
                 spellcheck="false"
                 autocomplete="off"
                 :value="invite.pasteCode"
@@ -224,6 +224,12 @@ async function copyCode(): Promise<void> {
 .gl-invite__steps {
   margin: 0;
   padding-left: 20px;
+  list-style: decimal;
+}
+
+.gl-invite__steps > li::marker {
+  color: var(--vp-c-text-2);
+  font-weight: 600;
 }
 
 .gl-invite__steps > li + li {
@@ -248,6 +254,8 @@ async function copyCode(): Promise<void> {
   line-height: 20px;
   word-break: break-all;
   resize: none;
+  field-sizing: content;
+  max-height: 180px;
 }
 
 .gl-invite__code:focus-visible {
@@ -275,6 +283,8 @@ async function copyCode(): Promise<void> {
 
 .gl-invite__details ul {
   margin: 8px 0 0;
+  padding-left: 20px;
+  list-style: disc;
 }
 
 .gl-invite__small {
@@ -282,6 +292,11 @@ async function copyCode(): Promise<void> {
   color: var(--vp-c-text-2);
   font-size: 13px;
   line-height: 20px;
+}
+
+.gl-invite__small a {
+  color: var(--vp-c-brand-1);
+  font-weight: 500;
 }
 
 .gl-invite__privacy {
