@@ -115,6 +115,20 @@ export interface ServerSettings {
   hasPassword: boolean;
 }
 
+/** The `server.updated` payload, also the answer to `server.update`. */
+export interface ServerInfo extends ServerSettings {
+  name: string;
+  joinMode: 'open' | 'password' | 'invite';
+}
+
+/** The answer to `invite.create` (spec §3.5, §5.2). */
+export interface InviteLinks {
+  code: string;
+  link: string;
+  pasteCode: string;
+  webLink: string;
+}
+
 /** Welcome keys added by the text module (spec §5.3). */
 export interface TextWelcome {
   channels: Channel[];
@@ -292,7 +306,7 @@ export const channelSchemaClient: z.ZodType<Channel> = z.object({
   lastMessageId: z.number().int().min(0).catch(0),
 });
 
-const reactionSchemaClient: z.ZodType<Reaction> = z.object({
+export const reactionSchemaClient: z.ZodType<Reaction> = z.object({
   emoji: z.string().max(64),
   userIds: z.array(idClient).max(100_000),
 });
@@ -337,6 +351,21 @@ export const serverSettingsSchemaClient: z.ZodType<ServerSettings> = z.object({
   ownerId: idClient.nullable(),
   maxMembers: z.number().int().min(0),
   hasPassword: z.boolean(),
+});
+
+export const serverInfoSchemaClient: z.ZodType<ServerInfo> = z.object({
+  name: z.string().max(256),
+  joinMode: z.enum(['open', 'password', 'invite']),
+  ownerId: idClient.nullable(),
+  maxMembers: z.number().int().min(0),
+  hasPassword: z.boolean(),
+});
+
+export const inviteLinksSchemaClient: z.ZodType<InviteLinks> = z.object({
+  code: z.string().max(64),
+  link: z.string().max(4096),
+  pasteCode: z.string().max(4096),
+  webLink: z.string().max(4096),
 });
 
 const DEFAULT_SETTINGS: ServerSettings = { ownerId: null, maxMembers: 0, hasPassword: false };
