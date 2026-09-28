@@ -31,4 +31,9 @@
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
   --shadow: 0 12px 40px rgb(0 0 0 / 45%);
+
+  /* Main-screen reference (added for voice; new variables only): */
+  --bg-3: #1c232d; /* selected rows, pills, avatars, raised buttons */
+  --success: #23a55a; /* online dot, "voice connected", speaking ring */
+  --text-faint: #656d76; /* section headers and hints */
 }

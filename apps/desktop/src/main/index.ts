@@ -123,6 +123,8 @@ function createMainWindow(): BrowserWindow {
       spellcheck: false,
       // Remote voice plays without a click first (spec §8.4); room.startAudio() covers the rest.
       autoplayPolicy: 'no-user-gesture-required',
+      // The microphone gate runs on renderer timers: they must keep their pace while a game has focus.
+      backgroundThrottling: false,
     },
   });
   if (!smoke) window.once('ready-to-show', () => window.show());

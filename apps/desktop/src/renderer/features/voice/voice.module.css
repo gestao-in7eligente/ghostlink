@@ -1,0 +1,547 @@
+/* Voice UI, matching the owner's main-screen reference (tracks/ui-reference.md). Tokens only. */
+
+/* ---- avatar ---- */
+.avatar {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  background: var(--bg-3);
+  color: var(--text-muted);
+  transition: box-shadow 120ms ease;
+}
+.avatar svg {
+  width: 62%;
+  height: 62%;
+}
+.avatarSpeaking {
+  box-shadow: 0 0 0 2px var(--success);
+}
+
+/* ---- icon buttons (user panel, stage bar) ---- */
+.iconButton {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.iconButton:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+.iconButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.iconButton[aria-pressed='true'],
+.iconDanger {
+  color: var(--danger);
+}
+.iconButton[aria-pressed='true']:hover,
+.iconDanger:hover {
+  color: var(--danger);
+}
+.chevron {
+  width: 16px;
+  margin-left: -4px;
+}
+
+/* ---- controls in the user panel's bottom row ---- */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.anchor {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* ---- popover menus ---- */
+.menu {
+  z-index: 60;
+  min-width: 232px;
+  max-width: 320px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-0);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 14px;
+}
+.menuTitle {
+  margin: 4px 8px 6px;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.menuItem:hover,
+.menuItem:focus-visible {
+  background: var(--bg-3);
+}
+.menuItem > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menuItemDanger {
+  color: var(--danger);
+}
+.menuCheck {
+  flex: none;
+  color: var(--accent-text, var(--accent));
+}
+.menuSeparator {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--border);
+}
+.menuSlider {
+  display: grid;
+  gap: 6px;
+  padding: 6px 8px 8px;
+}
+.menuSliderHead {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.range {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+/* ---- participants under a voice channel (sidebar) ---- */
+.participants {
+  margin: 2px 0 6px;
+  padding: 0 0 0 30px;
+  list-style: none;
+}
+.participantRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  text-align: left;
+}
+button.participantRow {
+  cursor: pointer;
+}
+button.participantRow:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+.participantSpeaking .participantName {
+  color: var(--text);
+}
+.participantName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stateIcons {
+  display: inline-flex;
+  flex: none;
+  gap: 4px;
+  color: var(--text-faint);
+}
+.stateIconServer {
+  color: var(--danger);
+}
+
+/* ---- voice panel: the top row of the user card ---- */
+.panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 2px 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.panelSignal {
+  flex: none;
+  color: var(--success);
+}
+.panelSignalWait {
+  color: var(--warning);
+}
+.panelText {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.25;
+}
+.panelTitle {
+  color: var(--success);
+  font-size: 13px;
+  font-weight: 700;
+}
+.panelTitleWait {
+  color: var(--warning);
+}
+.panelChannel {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ping {
+  flex: none;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-0);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.notice > p {
+  flex: 1;
+  margin: 0;
+}
+.noticeClose {
+  width: 22px;
+  height: 22px;
+}
+
+/* ---- stage (center) ---- */
+.stage {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-0);
+}
+.stageHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+}
+.stageHeader h2 {
+  flex: 1;
+  margin: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stageHeaderIcon {
+  color: var(--text-faint);
+}
+.pill {
+  flex: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg-3);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.stageBody {
+  min-height: 0;
+  padding: 20px;
+  overflow: auto;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-1);
+  color: var(--text);
+  outline-offset: 2px;
+}
+button.tile {
+  cursor: pointer;
+}
+button.tile:hover {
+  border-color: var(--border-strong);
+}
+.tileSpeaking {
+  border-color: var(--success);
+  box-shadow: inset 0 0 0 1px var(--success);
+}
+button.tileSpeaking:hover {
+  border-color: var(--success);
+}
+.tileName {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  max-width: calc(100% - 72px);
+  padding: 3px 8px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--bg-0);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tileIcons {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: var(--bg-0);
+  color: var(--text-muted);
+}
+.empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  height: 100%;
+  color: var(--text-muted);
+  text-align: center;
+}
+.empty h3 {
+  margin: 8px 0 0;
+  color: var(--text);
+  font-size: 18px;
+}
+.empty p {
+  margin: 0;
+  font-size: 14px;
+}
+.emptyIcon {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  color: var(--text-muted);
+}
+.stageBar {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 20px 18px;
+}
+.roundButton {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bg-3);
+  color: var(--text);
+  cursor: pointer;
+}
+.roundButton:hover {
+  background: var(--border-strong);
+}
+.roundButton[aria-pressed='true'] {
+  color: var(--danger);
+}
+.roundDanger {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.roundDanger:hover {
+  background: var(--danger);
+  color: var(--accent-ink);
+}
+.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+.primary:hover {
+  background: var(--accent-hover);
+}
+.primary:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+/* ---- settings section ---- */
+.settings {
+  display: grid;
+  gap: 20px;
+  color: var(--text);
+}
+.settings h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.settingsGroup {
+  display: grid;
+  gap: 8px;
+}
+.settingsLabel {
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.twoColumns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.select {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-2);
+  color: var(--text);
+}
+.radioRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-2);
+  cursor: pointer;
+}
+.radioRow input {
+  accent-color: var(--accent);
+}
+.keyRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.kbd {
+  min-width: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-3);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-align: center;
+}
+.kbdRecording {
+  border-color: var(--accent);
+  color: var(--accent-text, var(--accent));
+}
+.secondary {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-3);
+  color: var(--text);
+  cursor: pointer;
+}
+.secondary:hover {
+  border-color: var(--accent);
+}
+.hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.meter {
+  position: relative;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-3);
+}
+.meterFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--text-faint);
+  transition: width 90ms linear;
+}
+.meterFillOpen {
+  background: var(--success);
+}
+.meterMark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--accent);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
