@@ -1,6 +1,6 @@
 import type { AddressInfo } from 'node:net';
-import { formatHostPort, parseHostPort, sanitizeLabel, type JoinMode } from '@ghostlink/shared';
-import { ensureSetupCode } from './auth/setupCode.js';
+import { LIMITS, ProtocolError, formatHostPort, parseHostPort, sanitizeLabel, type JoinMode } from '@ghostlink/shared';
+import { ensureSetupCode, resetSetupCode } from './auth/setupCode.js';
 import { ensureDataDirs } from './config/paths.js';
 import { coreModule } from './coreModule.js';
 import { Db } from './db/database.js';
@@ -32,6 +32,7 @@ export type {
 export { defaultModules } from './defaultModules.js';
 export { consoleLogger, silentLogger } from './logger.js';
 export { SERVER_VERSION, WEB_SITE_BASE } from './version.js';
+export * from './net/addresses.js';
 
 export interface StartServerOptions {
   dataDir: string; // created if missing
@@ -40,6 +41,7 @@ export interface StartServerOptions {
   name?: string; // used only on first run (seeds server_meta.name)
   publicAddresses?: string[]; // overrides server_meta.public_addresses when given
   joinMode?: JoinMode; // first run only; default 'invite'
+  maxMembers?: number; // first run only; default 100 (schema default)
   logger?: Logger;
   now?: () => number; // injectable clock for tests
   limits?: Partial<ServerLimits>; // tests only: shrink timeouts and caps
@@ -53,8 +55,25 @@ export interface GhostServer {
   readonly dataDir: string;
   setupCode(): string | null; // null once consumed
   createInvite(opts?: { maxUses?: number; expiresInHours?: number; createdBy?: string }): InviteInfo;
+  /** Host panel / `status` (spec §9). */
+  info(): ServerInfo;
+  /** Replaces server_meta.public_addresses (spec §3.5); throws ProtocolError('BAD_REQUEST') on a bad or too long list. */
+  setPublicAddresses(addresses: readonly string[]): void;
+  /** "Recuperar posse" (spec §3.3): a fresh setup code, written to data/setup-code.txt. */
+  resetSetupCode(): string;
   close(): Promise<void>; // graceful: closes WS with SERVER_SHUTDOWN, HTTP, modules (reverse order), DB
 }
+
+export interface ServerInfo {
+  name: string;
+  joinMode: JoinMode;
+  maxMembers: number;
+  members: number;
+  hasOwner: boolean;
+  publicAddresses: string[];
+}
+
+const MAX_MEMBERS_LIMIT = 100_000;
 
 const DEFAULT_NAME = 'GhostLink';
 
@@ -66,6 +85,7 @@ function normalizeAddresses(addresses: readonly string[]): string[] {
     const canonical = formatHostPort(host, port);
     if (!out.includes(canonical)) out.push(canonical);
   }
+  if (out.length > LIMITS.inviteMaxAddresses) throw new ProtocolError('BAD_REQUEST', `at most ${LIMITS.inviteMaxAddresses} public addresses`);
   return out;
 }
 
@@ -73,6 +93,9 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
   const logger = opts.logger ?? consoleLogger;
   const now = opts.now ?? Date.now;
   const limits = resolveLimits(opts.limits);
+  if (opts.maxMembers !== undefined && (!Number.isInteger(opts.maxMembers) || opts.maxMembers < 1 || opts.maxMembers > MAX_MEMBERS_LIMIT)) {
+    throw new ProtocolError('BAD_REQUEST', `maxMembers must be an integer between 1 and ${MAX_MEMBERS_LIMIT}`);
+  }
   // Validates module names and request types before anything touches the disk.
   const modules = new ModuleHost([coreModule, ...(opts.modules ?? [])], logger);
   const paths = ensureDataDirs(opts.dataDir);
@@ -84,6 +107,7 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     ensureMeta(db, {
       name: sanitizeLabel(opts.name ?? DEFAULT_NAME, 64) || DEFAULT_NAME,
       joinMode: opts.joinMode ?? 'invite',
+      maxMembers: opts.maxMembers,
       now: now(),
     });
     if (opts.publicAddresses !== undefined) setPublicAddresses(db, normalizeAddresses(opts.publicAddresses));
@@ -163,6 +187,20 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
       const { code } = createInvite(db, { ...o, now: now() });
       return buildInviteInfo(code, { addresses: effectiveAddresses(), serverKeyId: certificate.serverKeyId, name: getMeta(db).name });
     },
+    info: () => {
+      const meta = getMeta(db);
+      const members = Number(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users WHERE removed_at IS NULL')?.n ?? 0);
+      return {
+        name: meta.name,
+        joinMode: meta.joinMode,
+        maxMembers: meta.maxMembers,
+        members,
+        hasOwner: meta.ownerUserId !== null,
+        publicAddresses: meta.publicAddresses,
+      };
+    },
+    setPublicAddresses: (addresses) => setPublicAddresses(db, normalizeAddresses(addresses)),
+    resetSetupCode: () => resetSetupCode(db, opts.dataDir),
     close: () => {
       closing ??= (async () => {
         await shutdown();

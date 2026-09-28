@@ -3,6 +3,10 @@ import type { AppErrorCode } from '../shared/appErrors.js';
 import type { IdentityStatus, RendererWelcome } from '../shared/ipcTypes.js';
 import { ErrorLine, Screen } from './components/Screen.js';
 import ui from './components/ui.module.css';
+import { HostIndicator } from './features/host/HostIndicator.js';
+import { HostScreens } from './features/host/HostScreens.js';
+import { openHostFlow } from './features/host/hostUi.js';
+import { useHostStatusSync } from './features/host/useHostStatusSync.js';
 import { DEFAULT_LOCALE, errorCodeOf, errorMessage, useT } from './i18n/index.js';
 import { Connected } from './screens/Connected.js';
 import { IdentityLocked } from './screens/IdentityLocked.js';
@@ -46,6 +50,8 @@ export function App() {
     };
   }, [attempt]);
 
+  useHostStatusSync(attempt);
+
   useEffect(() => {
     document.documentElement.lang = settings?.locale ?? DEFAULT_LOCALE;
   }, [settings?.locale]);
@@ -82,11 +88,19 @@ export function App() {
     return <IdentityLocked onStatus={(status) => { setIdentity(status); setOnboarding(status !== 'ready' || settings.nickname === ''); }} />;
   }
   if (onboarding) {
-    return <Onboarding identity={identity} onDone={() => { setIdentity('ready'); setOnboarding(false); setView('join'); }} />;
+    const done = (next: 'join' | 'host') => {
+      setIdentity('ready');
+      setOnboarding(false);
+      setView(next === 'join' ? 'join' : 'servers');
+      if (next === 'host') openHostFlow();
+    };
+    return <Onboarding identity={identity} onDone={done} />;
   }
+  // Host mode (spec §9): its dialogs open over any screen; the pill shows while hosting.
+  const host = <><HostIndicator /><HostScreens onJoined={joined} /></>;
   if (connection.welcome && connection.state !== 'idle') {
-    return <Connected welcome={connection.welcome} onLeave={leave} />;
+    return <><Connected welcome={connection.welcome} onLeave={leave} />{host}</>;
   }
-  if (view === 'join') return <Join onCancel={() => setView('servers')} onJoined={joined} />;
-  return <ServerList onJoin={() => setView('join')} onJoined={joined} />;
+  if (view === 'join') return <><Join onCancel={() => setView('servers')} onJoined={joined} />{host}</>;
+  return <><ServerList onJoin={() => setView('join')} onHost={openHostFlow} onJoined={joined} />{host}</>;
 }

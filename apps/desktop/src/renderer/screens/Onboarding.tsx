@@ -11,9 +11,9 @@ const LOCALES: Locale[] = ['pt-BR', 'en'];
 
 /**
  * spec §11.1: welcome → language + nickname (the identity is created here) →
- * backup notice → Join or Host (Host arrives in Milestone 7).
+ * backup notice → Join or Host.
  */
-export function Onboarding({ identity, onDone }: { identity: IdentityStatus; onDone: () => void }) {
+export function Onboarding({ identity, onDone }: { identity: IdentityStatus; onDone: (next: 'join' | 'host') => void }) {
   const t = useT();
   const settings = useSettingsStore((s) => s.settings);
   const setSettings = useSettingsStore((s) => s.setSettings);
@@ -105,14 +105,13 @@ export function Onboarding({ identity, onDone }: { identity: IdentityStatus; onD
   return (
     <Screen title={t('onboarding.choose.title')}>
       <div className={ui.actions}>
-        <button type="button" className={ui.button} disabled title={t('common.comingSoon')}>
+        <button type="button" className={ui.button} onClick={() => onDone('host')}>
           {t('onboarding.choose.host')}
         </button>
-        <button type="button" className={`${ui.button} ${ui.primary}`} onClick={onDone}>
+        <button type="button" className={`${ui.button} ${ui.primary}`} onClick={() => onDone('join')}>
           {t('onboarding.choose.join')}
         </button>
       </div>
-      <p className={ui.hint}>{t('onboarding.choose.hostSoon')}</p>
     </Screen>
   );
 }

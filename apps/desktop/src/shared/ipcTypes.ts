@@ -3,6 +3,7 @@
 // dependencies, so the sandboxed preload bundle stays tiny.
 import type { Envelope, ParsedJoinInput, WelcomePayload } from '@ghostlink/shared';
 import type { AppErrorCode } from './appErrors.js';
+import type { HostApi, HostConfig, HostInvite, HostInviteOptions, HostStartResult, HostStatus } from './hostTypes.js';
 
 export type IdentityStatus = 'none' | 'ready' | 'locked';
 export type ConnState = 'idle' | 'connecting' | 'authenticating' | 'connected' | 'reconnecting' | 'failed';
@@ -75,8 +76,10 @@ export interface GhostlinkApi {
     disconnect(): Promise<void>;
     remove(id: string): Promise<void>;
   };
+  host: HostApi;
   onConnectionState(cb: (s: ConnectionStateEvent) => void): () => void;
   onServerEvent(cb: (e: Envelope) => void): () => void;
+  onHostStatus(cb: (s: HostStatus) => void): () => void;
 }
 
 /** Invoke channels: `ghostlink:<namespace>.<method>`. */
@@ -95,12 +98,22 @@ export const IPC = {
   serversConnect: 'ghostlink:servers.connect',
   serversDisconnect: 'ghostlink:servers.disconnect',
   serversRemove: 'ghostlink:servers.remove',
+  hostStatus: 'ghostlink:host.status',
+  hostStart: 'ghostlink:host.start',
+  hostStop: 'ghostlink:host.stop',
+  hostRestart: 'ghostlink:host.restart',
+  hostJoin: 'ghostlink:host.join',
+  hostRecoverOwnership: 'ghostlink:host.recoverOwnership',
+  hostInvite: 'ghostlink:host.invite',
+  hostLogs: 'ghostlink:host.logs',
+  hostCopyText: 'ghostlink:host.copyText',
 } as const;
 
 /** Events pushed from main to the renderer. */
 export const IPC_EVENTS = {
   connectionState: 'ghostlink:event.connectionState',
   server: 'ghostlink:event.server',
+  host: 'ghostlink:event.host',
 } as const;
 
 /** Arguments and result of every invoke channel; main's handlers and the preload are both typed from it. */
@@ -119,7 +132,19 @@ export interface IpcContract {
   [IPC.serversConnect]: { args: [id: string]; result: RendererWelcome };
   [IPC.serversDisconnect]: { args: []; result: void };
   [IPC.serversRemove]: { args: [id: string]; result: void };
+  [IPC.hostStatus]: { args: []; result: HostStatus };
+  [IPC.hostStart]: { args: [config: HostConfig]; result: HostStartResult };
+  [IPC.hostStop]: { args: []; result: HostStatus };
+  [IPC.hostRestart]: { args: []; result: HostStartResult };
+  [IPC.hostJoin]: { args: []; result: HostStartResult };
+  [IPC.hostRecoverOwnership]: { args: []; result: HostStartResult };
+  [IPC.hostInvite]: { args: [opts: HostInviteOptions]; result: HostInvite };
+  [IPC.hostLogs]: { args: []; result: string[] };
+  [IPC.hostCopyText]: { args: [text: string]; result: void };
 }
+
+/** The Host mode channels (spec §9), handled by main/hostIpc.ts. */
+export type HostIpcChannel = Extract<IpcChannel, `ghostlink:host.${string}`>;
 
 export type IpcChannel = keyof IpcContract;
 export type IpcArgs<C extends IpcChannel> = IpcContract[C]['args'];

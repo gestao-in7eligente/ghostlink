@@ -8,7 +8,7 @@ export interface SmokeDeps {
   waitForLoad(): Promise<void>;
   /** True once the page rendered and reached the main process through window.ghostlink. */
   rendererReady(): Promise<boolean>;
-  forkServer(): Promise<ForkedServer>;
+  forkServer(): Promise<Pick<ForkedServer, 'port' | 'shutdown'>>;
   exit(code: number): void;
   log(message: string): void;
   timeoutMs?: number;

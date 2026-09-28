@@ -19,7 +19,8 @@ describe('preload bridge', () => {
   it('exposes exactly the contract API as window.ghostlink', () => {
     expect(Object.keys(electron.exposed)).toEqual(['ghostlink']);
     expect(electron.exposed.ghostlink).toBe(api);
-    expect(Object.keys(api).sort()).toEqual(['app', 'identity', 'join', 'onConnectionState', 'onServerEvent', 'servers', 'settings']);
+    expect(Object.keys(api).sort()).toEqual(['app', 'host', 'identity', 'join', 'onConnectionState', 'onHostStatus', 'onServerEvent', 'servers', 'settings']);
+    expect(Object.keys(api.host).sort()).toEqual(['copyText', 'invite', 'join', 'logs', 'recoverOwnership', 'restart', 'start', 'status', 'stop']);
     expect(Object.keys(api.identity).sort()).toEqual(['create', 'replaceKeepingBackup', 'retry', 'status']);
     expect(Object.keys(api.join).sort()).toEqual(['connect', 'parse', 'probe']);
     expect(Object.keys(api.servers).sort()).toEqual(['connect', 'disconnect', 'list', 'remove']);
@@ -27,6 +28,7 @@ describe('preload bridge', () => {
   });
 
   const req = { addresses: ['10.0.0.1:7700'], serverKeyId: 'k'.repeat(43), nickname: 'Ana' };
+  const hostConfig = { name: 'Casa', port: 7700, joinMode: 'invite' as const, maxMembers: 100 };
   it.each<[string, () => Promise<unknown>, string, unknown[]]>([
     ['app.info', () => api.app.info(), IPC.appInfo, []],
     ['identity.status', () => api.identity.status(), IPC.identityStatus, []],
@@ -42,6 +44,15 @@ describe('preload bridge', () => {
     ['servers.connect', () => api.servers.connect('s1'), IPC.serversConnect, ['s1']],
     ['servers.disconnect', () => api.servers.disconnect(), IPC.serversDisconnect, []],
     ['servers.remove', () => api.servers.remove('s1'), IPC.serversRemove, ['s1']],
+    ['host.status', () => api.host.status(), IPC.hostStatus, []],
+    ['host.start', () => api.host.start(hostConfig), IPC.hostStart, [hostConfig]],
+    ['host.stop', () => api.host.stop(), IPC.hostStop, []],
+    ['host.restart', () => api.host.restart(), IPC.hostRestart, []],
+    ['host.join', () => api.host.join(), IPC.hostJoin, []],
+    ['host.recoverOwnership', () => api.host.recoverOwnership(), IPC.hostRecoverOwnership, []],
+    ['host.invite', () => api.host.invite({ maxUses: 1 }), IPC.hostInvite, [{ maxUses: 1 }]],
+    ['host.logs', () => api.host.logs(), IPC.hostLogs, []],
+    ['host.copyText', () => api.host.copyText('GL1-x'), IPC.hostCopyText, ['GL1-x']],
   ])('%s invokes its channel and unwraps the value', async (_name, call, channel, args) => {
     electron.ipcRenderer.invoke.mockResolvedValueOnce({ ok: true, value: 'VALUE' });
     await expect(call()).resolves.toBe('VALUE');
@@ -67,5 +78,7 @@ describe('preload bridge', () => {
 
     api.onServerEvent(() => {});
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.server);
+    api.onHostStatus(() => {});
+    expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.host);
   });
 });

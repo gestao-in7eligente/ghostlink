@@ -12,6 +12,11 @@ export const CLIENT_ERROR_CODES = [
   'SERVER_OUTDATED', // PROTOCOL_UNSUPPORTED because the server is older than this app
   'ENCRYPTION_UNAVAILABLE', // safeStorage cannot encrypt on this system
   'IDENTITY_UNAVAILABLE', // there is no usable identity (missing or locked)
+  // Host mode (spec §9, §8.5); messages in i18n/<locale>/host.ts.
+  'PORT_IN_USE', // another program already listens on the chosen port
+  'HOST_NOT_RUNNING', // the command needs the hosted server running
+  'HOST_BUSY', // the hosted server is starting or stopping
+  'HOST_FAILED', // the hosted server could not start, or stopped by itself
 ] as const;
 
 export type ClientErrorCode = (typeof CLIENT_ERROR_CODES)[number];

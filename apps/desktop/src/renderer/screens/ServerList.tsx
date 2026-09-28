@@ -3,11 +3,22 @@ import type { AppErrorCode } from '../../shared/appErrors.js';
 import type { RendererWelcome, SavedServer } from '../../shared/ipcTypes.js';
 import { ErrorLine, Screen } from '../components/Screen.js';
 import ui from '../components/ui.module.css';
+import hostUi from '../features/host/host.module.css';
+import { isHostedHere, useHostStore } from '../features/host/hostStore.js';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 
 /** Saved servers (one connection at a time, spec §1.3): reconnect, remove, or join a new one. */
-export function ServerList({ onJoin, onJoined }: { onJoin: () => void; onJoined: (welcome: RendererWelcome) => void }) {
+export function ServerList({
+  onJoin,
+  onHost,
+  onJoined,
+}: {
+  onJoin: () => void;
+  onHost: () => void;
+  onJoined: (welcome: RendererWelcome) => void;
+}) {
   const t = useT();
+  const hostStatus = useHostStore((s) => s.status);
   const [servers, setServers] = useState<SavedServer[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
@@ -57,7 +68,10 @@ export function ServerList({ onJoin, onJoined }: { onJoin: () => void; onJoined:
           {servers.map((s) => (
             <li key={s.id} className={ui.item}>
               <div className={ui.itemText}>
-                <span className={ui.itemTitle}>{s.name}</span>
+                <span className={ui.itemTitle}>
+                  {s.name}
+                  {isHostedHere(hostStatus, s.serverKeyId) && <span className={hostUi.badge}>{t('host.list.badge')}</span>}
+                </span>
                 <span className={ui.hint}>
                   {t('servers.as', { nickname: s.nickname })} · {s.addresses[0]}
                 </span>
@@ -95,6 +109,9 @@ export function ServerList({ onJoin, onJoined }: { onJoin: () => void; onJoined:
       )}
       <ErrorLine text={error && errorMessage(t, error)} />
       <div className={ui.actions}>
+        <button type="button" className={ui.button} onClick={onHost}>
+          {t('host.entry')}
+        </button>
         <button type="button" className={`${ui.button} ${ui.primary}`} onClick={onJoin}>
           {t('servers.join')}
         </button>

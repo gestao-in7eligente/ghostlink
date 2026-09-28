@@ -1,3 +1,5 @@
+import { host } from './pt-BR/host.js';
+
 // Source catalog: every key exists here first; en.ts must have exactly the same keys.
 export const messages = {
   'app.loading': 'Carregando…',
@@ -40,7 +42,6 @@ export const messages = {
   'onboarding.choose.title': 'O que você quer fazer?',
   'onboarding.choose.join': 'Entrar num servidor',
   'onboarding.choose.host': 'Hospedar um servidor',
-  'onboarding.choose.hostSoon': 'Hospedar pelo app chega numa próxima versão.',
 
   'join.title': 'Entrar num servidor',
   'join.input.label': 'Convite ou endereço',
@@ -123,4 +124,6 @@ export const messages = {
   'errors.SERVER_OUTDATED': 'Este servidor está desatualizado. Avise o dono.',
   'errors.ENCRYPTION_UNAVAILABLE': 'Este sistema não oferece armazenamento seguro, então a identidade não pode ser criada.',
   'errors.IDENTITY_UNAVAILABLE': 'Sua identidade não está disponível.',
+
+  ...host,
 } as const;
