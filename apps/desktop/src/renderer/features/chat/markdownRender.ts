@@ -3,15 +3,21 @@
 import { createElement as h, type MouseEvent, type ReactNode } from 'react';
 import type { Block, Inline } from './markdown.js';
 
+/** CSS-module class names (a missing one is simply left out). */
 export interface MarkdownClasses {
-  paragraph: string;
-  quote: string;
-  codeBlock: string;
-  code: string;
-  link: string;
-  mention: string;
+  paragraph: string | undefined;
+  quote: string | undefined;
+  codeBlock: string | undefined;
+  code: string | undefined;
+  link: string | undefined;
+  mention: string | undefined;
   /** Added to a mention of the current user (or @everyone / one of their roles). */
-  mentionMe: string;
+  mentionMe: string | undefined;
+}
+
+function cx(...names: (string | undefined | false)[]): string | undefined {
+  const joined = names.filter(Boolean).join(' ');
+  return joined === '' ? undefined : joined;
 }
 
 export interface MarkdownContext {
@@ -62,7 +68,7 @@ function inline(nodes: readonly Inline[], ctx: MarkdownContext): ReactNode[] {
       case 'user': {
         const name = ctx.userName(node.id);
         const me = ctx.pingsMe('user', node.id);
-        return h('span', { key, className: me ? `${ctx.classes.mention} ${ctx.classes.mentionMe}` : ctx.classes.mention }, `@${name ?? ctx.labels.formerMember}`);
+        return h('span', { key, className: cx(ctx.classes.mention, me && ctx.classes.mentionMe) }, `@${name ?? ctx.labels.formerMember}`);
       }
       case 'role': {
         const role = ctx.role(node.id);
@@ -70,12 +76,12 @@ function inline(nodes: readonly Inline[], ctx: MarkdownContext): ReactNode[] {
         const style = role?.color ? { color: role.color, backgroundColor: `color-mix(in srgb, ${role.color} 15%, transparent)` } : undefined;
         return h(
           'span',
-          { key, className: me ? `${ctx.classes.mention} ${ctx.classes.mentionMe}` : ctx.classes.mention, style },
+          { key, className: cx(ctx.classes.mention, me && ctx.classes.mentionMe), style },
           `@${role?.name ?? ctx.labels.deletedRole}`,
         );
       }
       case 'everyone':
-        return h('span', { key, className: `${ctx.classes.mention} ${ctx.classes.mentionMe}` }, ctx.labels.everyone);
+        return h('span', { key, className: cx(ctx.classes.mention, ctx.classes.mentionMe) }, ctx.labels.everyone);
     }
   });
 }
