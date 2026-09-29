@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseJoinInput } from '@ghostlink/shared';
-import { silentLogger, type GhostServer } from '../../../server/src/index.js';
+import { silentLogger, type GhostServer, type StartServerOptions } from '../../../server/src/index.js';
 import { resolveLivekitBinary } from '../../../server/src/livekit/binary.js';
 import { discoverGateway } from '../../../server/src/net/upnp.js';
 import { startFakeIgd } from '../../../server/test/helpers/fakeIgd.js';
@@ -93,6 +93,47 @@ describe('parseHostArgs: networking flags', () => {
   it('reads --upnp and --node-ip', () => {
     expect(parseHostArgs(['--data', '/d', '--port', '7700', '--upnp', '--node-ip=203.0.113.9'])).toMatchObject({ upnp: true, nodeIp: '203.0.113.9' });
     expect(parseHostArgs(['--data', '/d', '--port', '7700'])).not.toHaveProperty('upnp');
+  });
+});
+
+describe('parseHostArgs: the bundled LiveKit binary', () => {
+  it('reads --livekit-bin=<absolute path>, and has no binary without it', () => {
+    const bin = join(dir.path, 'livekit', 'livekit-server.exe');
+    expect(parseHostArgs(['--data', '/d', '--port', '7700', `--livekit-bin=${bin}`])).toMatchObject({ livekitBinary: bin });
+    expect(parseHostArgs(['--data', '/d', '--port', '7700'])).not.toHaveProperty('livekitBinary');
+  });
+
+  it.each(['livekit-server.exe', 'livekit/livekit-server', ''])('refuses the relative --livekit-bin %j', (bin) => {
+    expect(() => parseHostArgs(['--data', '/d', '--port', '7700', `--livekit-bin=${bin}`])).toThrow(/livekit-bin/);
+  });
+});
+
+describe('runHostedServer: voice options', () => {
+  async function voiceOptionsFor(argv: string[]): Promise<StartServerOptions['voice']> {
+    const seen: StartServerOptions[] = [];
+    const exit = exitRecorder();
+    await runHostedServer(fakeParentPort().port, ['--data', dir.path, '--port', '0', ...argv], {
+      exit: exit.exit,
+      logger: silentLogger,
+      mediaPorts: [],
+      start: async (o) => {
+        seen.push(o);
+        throw new Error('stop here');
+      },
+    });
+    expect(exit.codes).toEqual([1]);
+    return seen[0]!.voice;
+  }
+
+  it('hands --livekit-bin to the server as voice.binaryPath (the packaged app: no env var, no folder search)', async () => {
+    const bin = join(dir.path, 'resources', 'livekit', 'livekit-server.exe');
+    expect(await voiceOptionsFor([`--livekit-bin=${bin}`])).toEqual({ binaryPath: bin });
+    expect(await voiceOptionsFor([`--livekit-bin=${bin}`, '--node-ip=203.0.113.9'])).toEqual({ binaryPath: bin, nodeIp: '203.0.113.9' });
+  });
+
+  it('without it, the server keeps its own lookup (development)', async () => {
+    expect(await voiceOptionsFor([])).toBeUndefined();
+    expect(await voiceOptionsFor(['--node-ip=203.0.113.9'])).toEqual({ nodeIp: '203.0.113.9' });
   });
 });
 

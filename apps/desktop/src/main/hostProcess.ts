@@ -1,4 +1,5 @@
-import { utilityProcess } from 'electron';
+import { app, utilityProcess } from 'electron';
+import { posix, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ProtocolError, isErrorCode } from '@ghostlink/shared';
 import { AppError } from '../shared/appErrors.js';
@@ -43,6 +44,17 @@ export const SHUTDOWN_GRACE_MS = 5_000;
 export const READY_TIMEOUT_MS = 30_000;
 export const REQUEST_TIMEOUT_MS = 10_000;
 
+/**
+ * The packaged app's livekit-server: process.resourcesPath/livekit/livekit-server[.exe]
+ * (electron-builder extraResources). Null in development, where the server keeps its own
+ * lookup ($GHOSTLINK_LIVEKIT_BIN, then the repository's resources folder).
+ */
+export function packagedLivekitBinary(opts: { packaged: boolean; resourcesPath: string | undefined; platform: NodeJS.Platform }): string | null {
+  if (!opts.packaged || !opts.resourcesPath) return null;
+  const path = opts.platform === 'win32' ? win32 : posix;
+  return path.join(opts.resourcesPath, 'livekit', opts.platform === 'win32' ? 'livekit-server.exe' : 'livekit-server');
+}
+
 /** out/main/serverEntry.js: the second main-process input of the electron-vite build. */
 export function serverEntryPath(): string {
   return fileURLToPath(new URL('./serverEntry.js', import.meta.url));
@@ -64,7 +76,18 @@ function replyError(code: string): Error {
  * that position would silently be taken as the options.
  */
 export async function forkServer(opts: ForkServerOptions): Promise<ForkedServer> {
-  const args = ['--data', opts.dataDir, '--port', String(opts.port), '--host', opts.host ?? '127.0.0.1', ...(opts.args ?? [])];
+  // Packaged: the hosted server runs the bundled LiveKit only, never one named by an env var or found in a parent folder.
+  const livekit = packagedLivekitBinary({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, platform: process.platform });
+  const args = [
+    '--data',
+    opts.dataDir,
+    '--port',
+    String(opts.port),
+    '--host',
+    opts.host ?? '127.0.0.1',
+    ...(livekit === null ? [] : [`--livekit-bin=${livekit}`]),
+    ...(opts.args ?? []),
+  ];
   const child = utilityProcess.fork(serverEntryPath(), args, { stdio: 'pipe', serviceName: 'GhostLink Server' });
   const streamError = (name: string) => (error: Error) => opts.onError?.(`hosted server ${name} stream error`, error);
   forwardText(child.stdout, (text) => opts.onLog?.(text, 'stdout'), streamError('stdout'));

@@ -1,3 +1,4 @@
+import { isAbsolute } from 'node:path';
 import { parseArgs } from 'node:util';
 import { z } from 'zod';
 import { ProtocolError, type JoinMode } from '@ghostlink/shared';
@@ -16,6 +17,7 @@ import {
   type NetStatus,
   type ServerInfo,
   type UpnpProtocol,
+  type VoiceServerOptions,
 } from '@ghostlink/server';
 import { LineRing } from './hostLogs.js';
 
@@ -63,6 +65,11 @@ export interface HostArgs {
   /** spec §9: Host mode always passes --upnp. */
   upnp?: boolean;
   nodeIp?: string;
+  /**
+   * The packaged app's bundled livekit-server (hostProcess passes it): the only binary the
+   * server may run then — no $GHOSTLINK_LIVEKIT_BIN, no search through parent folders.
+   */
+  livekitBinary?: string;
   /** First run only (they seed server_meta). */
   name?: string;
   joinMode?: JoinMode;
@@ -78,8 +85,8 @@ export const MEDIA_PORTS: ReadonlyArray<{ protocol: UpnpProtocol; port: number }
 const HOST_JOIN_MODES: readonly JoinMode[] = ['invite', 'open'];
 
 /**
- * `--data <dir> --port <n> [--host <ip>] [--upnp] [--node-ip=<ip>] [--name=<text>]
- * [--join-mode=invite|open] [--max-members=<n>]`. The host defaults to loopback (no
+ * `--data <dir> --port <n> [--host <ip>] [--upnp] [--node-ip=<ip>] [--livekit-bin=<path>]
+ * [--name=<text>] [--join-mode=invite|open] [--max-members=<n>]`. The host defaults to loopback (no
  * firewall prompt). The parent passes `--name=<text>` in one piece, so a name that
  * starts with "-" can never be read as an option.
  */
@@ -92,6 +99,7 @@ export function parseHostArgs(argv: string[]): HostArgs {
       host: { type: 'string' },
       upnp: { type: 'boolean' },
       'node-ip': { type: 'string' },
+      'livekit-bin': { type: 'string' },
       name: { type: 'string' },
       'join-mode': { type: 'string' },
       'max-members': { type: 'string' },
@@ -105,6 +113,10 @@ export function parseHostArgs(argv: string[]): HostArgs {
   const args: HostArgs = { dataDir: values.data, port, host: values.host ?? '127.0.0.1' };
   if (values.upnp) args.upnp = true;
   if (values['node-ip'] !== undefined) args.nodeIp = values['node-ip'];
+  if (values['livekit-bin'] !== undefined) {
+    if (!isAbsolute(values['livekit-bin'])) throw new Error('--livekit-bin must be an absolute path');
+    args.livekitBinary = values['livekit-bin'];
+  }
   if (values.name !== undefined) args.name = values.name;
   if (values['join-mode'] !== undefined) {
     const mode = values['join-mode'] as JoinMode;
@@ -149,6 +161,14 @@ function ringLogger(inner: Logger, ring: LineRing): Logger {
     inner[level](msg, meta);
   };
   return { info: tee('info'), warn: tee('warn'), error: tee('error') };
+}
+
+/** The server's voice options: the bundled binary (packaged app) and an explicit --node-ip; none in development. */
+function voiceOptions(a: HostArgs): VoiceServerOptions | undefined {
+  const voice: VoiceServerOptions = {};
+  if (a.livekitBinary !== undefined) voice.binaryPath = a.livekitBinary;
+  if (a.nodeIp !== undefined) voice.nodeIp = a.nodeIp;
+  return Object.keys(voice).length > 0 ? voice : undefined;
 }
 
 function errorCodeOf(e: unknown): string | undefined {
@@ -216,8 +236,8 @@ export async function runHostedServer(port: ParentPortLike, argv: string[], deps
       // `net` first: voice waits (bounded) for its first UPnP answer and announces its node_ip
       // (the router's WAN IP, else the LAN), following later changes (spec §8.1).
       modules: [netModule, ...defaultModules()],
-      // An explicit --node-ip wins in voice as well.
-      voice: args.nodeIp === undefined ? undefined : { nodeIp: args.nodeIp },
+      // An explicit --node-ip wins in voice as well; the packaged app pins the LiveKit binary.
+      voice: voiceOptions(args),
     });
   } catch (e) {
     const code = errorCodeOf(e);

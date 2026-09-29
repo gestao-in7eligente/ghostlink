@@ -40,7 +40,7 @@ class InProcessChild extends EventEmitter {
   }
 }
 
-const electron = vi.hoisted(() => ({ utilityProcess: { fork: vi.fn() } }));
+const electron = vi.hoisted(() => ({ utilityProcess: { fork: vi.fn() }, app: { isPackaged: false } }));
 vi.mock('electron', () => electron);
 
 const { forkServer } = await import('../../src/main/hostProcess.js');

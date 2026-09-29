@@ -21,10 +21,12 @@ class FakeChild extends EventEmitter {
   }
 }
 
-const electron = vi.hoisted(() => ({ utilityProcess: { fork: vi.fn() } }));
+const electron = vi.hoisted(() => ({ utilityProcess: { fork: vi.fn() }, app: { isPackaged: false } }));
 vi.mock('electron', () => electron);
 
-const { READY_TIMEOUT_MS, SHUTDOWN_GRACE_MS, forkServer, hostedServerLogging, serverEntryPath } = await import('../../src/main/hostProcess.js');
+const { READY_TIMEOUT_MS, SHUTDOWN_GRACE_MS, forkServer, hostedServerLogging, packagedLivekitBinary, serverEntryPath } = await import(
+  '../../src/main/hostProcess.js'
+);
 
 function nextChild(): FakeChild {
   const child = new FakeChild();
@@ -36,7 +38,41 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('packagedLivekitBinary', () => {
+  it('is process.resourcesPath/livekit/livekit-server[.exe] in the packaged app, and nothing in development', () => {
+    expect(packagedLivekitBinary({ packaged: true, resourcesPath: 'C:\\Program Files\\GhostLink\\resources', platform: 'win32' })).toBe(
+      'C:\\Program Files\\GhostLink\\resources\\livekit\\livekit-server.exe',
+    );
+    expect(packagedLivekitBinary({ packaged: true, resourcesPath: '/Applications/GhostLink.app/Contents/Resources', platform: 'darwin' })).toBe(
+      '/Applications/GhostLink.app/Contents/Resources/livekit/livekit-server',
+    );
+    expect(packagedLivekitBinary({ packaged: false, resourcesPath: 'C:\\x', platform: 'win32' })).toBeNull();
+    expect(packagedLivekitBinary({ packaged: true, resourcesPath: undefined, platform: 'win32' })).toBeNull();
+  });
+});
+
 describe('forkServer (spec §9)', () => {
+  it('the packaged app tells the hosted server where its bundled livekit-server is', async () => {
+    const saved = (process as { resourcesPath?: string }).resourcesPath;
+    electron.app.isPackaged = true;
+    Object.defineProperty(process, 'resourcesPath', { value: 'C:\\GL\\resources', configurable: true, writable: true });
+    try {
+      const child = nextChild();
+      const started = forkServer({ dataDir: '/data', port: 0, args: ['--upnp'] });
+      child.emit('message', { type: 'ready', port: 43210 });
+      await started;
+      const expected = packagedLivekitBinary({ packaged: true, resourcesPath: 'C:\\GL\\resources', platform: process.platform })!;
+      expect(electron.utilityProcess.fork).toHaveBeenLastCalledWith(
+        serverEntryPath(),
+        ['--data', '/data', '--port', '0', '--host', '127.0.0.1', `--livekit-bin=${expected}`, '--upnp'],
+        { stdio: 'pipe', serviceName: 'GhostLink Server' },
+      );
+    } finally {
+      electron.app.isPackaged = false;
+      Object.defineProperty(process, 'resourcesPath', { value: saved, configurable: true, writable: true });
+    }
+  });
+
   it('forks serverEntry with an argument ARRAY, piped stdio and a service name', async () => {
     const child = nextChild();
     const started = forkServer({ dataDir: '/data', port: 0 });
