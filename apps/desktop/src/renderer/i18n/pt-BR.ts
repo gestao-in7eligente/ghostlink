@@ -131,6 +131,7 @@ export const messages = {
   'errors.SERVER_OUTDATED': 'Este servidor está desatualizado. Avise o dono.',
   'errors.ENCRYPTION_UNAVAILABLE': 'Este sistema não oferece armazenamento seguro, então a identidade não pode ser criada.',
   'errors.IDENTITY_UNAVAILABLE': 'Sua identidade não está disponível.',
+  'errors.VOICE_URL_REJECTED': 'O servidor mandou a chamada de voz para outro endereço, então ela foi bloqueada. Avise o dono do servidor.',
 
   ...host,
   ...identity,

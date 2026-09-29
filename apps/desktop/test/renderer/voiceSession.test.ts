@@ -129,6 +129,8 @@ interface Harness {
   respond: Map<string, (payload: unknown) => unknown>;
   microphones: FakeTrack[];
   failMicrophone: { next: boolean };
+  /** The host:port main is connected to (RendererWelcome.address). */
+  address: { value: string | null };
 }
 
 let h: Harness;
@@ -145,6 +147,7 @@ function harness(): Harness {
   const settings = { value: defaultVoiceSettings };
   const microphones: FakeTrack[] = [];
   const failMicrophone = { next: false };
+  const address = { value: '127.0.0.1:7700' as string | null };
   const respond = new Map<string, (payload: unknown) => unknown>([
     ['voice.join', (p) => ({ livekitUrl: 'wss://127.0.0.1:7700', token: `token-${(p as { channelId: string }).channelId}`, iceServers: [] })],
   ]);
@@ -184,9 +187,10 @@ function harness(): Harness {
       return track as unknown as LocalAudioTrack;
     },
     onUserGesture: (cb) => void gestures.push(cb),
+    connectedAddress: () => address.value,
     pingIntervalMs: 1_000,
   });
-  return { session, rooms, requests, state: () => state, dispatch, settings, attached, gestures, respond, microphones, failMicrophone };
+  return { session, rooms, requests, state: () => state, dispatch, settings, attached, gestures, respond, microphones, failMicrophone, address };
 }
 
 const room = () => h.rooms.at(-1)!;
@@ -242,8 +246,32 @@ describe('joining a voice channel (spec §8.2)', () => {
     expect(h.state().notice).toEqual({ kind: 'error', code: 'CHANNEL_FULL' });
   });
 
+  it.each([
+    ['a livekitUrl on another host', { livekitUrl: 'wss://evil.example:7700', iceServers: [] }, '127.0.0.1:7700'],
+    ['a livekitUrl on another port', { livekitUrl: 'wss://127.0.0.1:7443', iceServers: [] }, '127.0.0.1:7700'],
+    ['a plain ws: livekitUrl', { livekitUrl: 'ws://127.0.0.1:7700', iceServers: [] }, '127.0.0.1:7700'],
+    ['a third-party STUN server', { livekitUrl: 'wss://127.0.0.1:7700', iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }, '127.0.0.1:7700'],
+    ['no connected address', { livekitUrl: 'wss://127.0.0.1:7700', iceServers: [] }, null],
+  ])('refuses %s before LiveKit connects, and releases the server assignment', async (_label, answer, connected) => {
+    h.address.value = connected;
+    h.respond.set('voice.join', () => ({ ...answer, token: 't' }));
+    await h.session.join('VC1');
+    expect(h.rooms).toEqual([]);
+    expect(h.state().call).toEqual({ status: 'idle', channelId: null });
+    expect(h.state().notice).toEqual({ kind: 'error', code: 'VOICE_URL_REJECTED' });
+    expect(h.requests.map(([t]) => t)).toEqual(['voice.join', 'voice.leave']);
+  });
+
+  it('accepts the connected host and port, and STUN/TURN on that host', async () => {
+    h.address.value = '[::1]:7710';
+    h.respond.set('voice.join', () => ({ livekitUrl: 'wss://[::1]:7710', token: 't', iceServers: [{ urls: 'turn:[::1]:3478?transport=udp' }] }));
+    await h.session.join('VC1');
+    expect(room().connected).toMatchObject({ url: 'wss://[::1]:7710', opts: { rtcConfig: { iceServers: [{ urls: 'turn:[::1]:3478?transport=udp' }] } } });
+    expect(h.state().call.status).toBe('connected');
+  });
+
   it('a LiveKit connection failure leaves the call and releases the server assignment', async () => {
-    h.respond.set('voice.join', (p) => ({ livekitUrl: 'wss://x:1', token: `t-${(p as { channelId: string }).channelId}`, iceServers: [] }));
+    h.respond.set('voice.join', (p) => ({ livekitUrl: 'wss://127.0.0.1:7700', token: `t-${(p as { channelId: string }).channelId}`, iceServers: [] }));
     const original = FakeRoom.prototype.connect;
     FakeRoom.prototype.connect = async function () {
       throw new Error('signal failed');
@@ -274,7 +302,7 @@ describe('joining a voice channel (spec §8.2)', () => {
     h.respond.set('voice.join', (p) =>
       new Promise((r) => {
         const channelId = (p as { channelId: string }).channelId;
-        const value = { livekitUrl: 'wss://x:1', token: `t-${channelId}`, iceServers: [] };
+        const value = { livekitUrl: 'wss://127.0.0.1:7700', token: `t-${channelId}`, iceServers: [] };
         if (channelId === 'VC1') release = () => r(value);
         else r(value);
       }),
@@ -293,7 +321,7 @@ describe('media in the call (spec §8.4)', () => {
   it('subscribes to microphones already there and to new ones, never to camera or screen', async () => {
     h.respond.set('voice.join', () => {
       // Someone is already in the room when we connect.
-      return { livekitUrl: 'wss://x:1', token: 't', iceServers: [] };
+      return { livekitUrl: 'wss://127.0.0.1:7700', token: 't', iceServers: [] };
     });
     const originalConnect = FakeRoom.prototype.connect;
     FakeRoom.prototype.connect = async function (this: FakeRoom, url: string, token: string, opts: unknown) {
@@ -389,7 +417,7 @@ describe('media in the call (spec §8.4)', () => {
     let open!: () => void;
     const slow = new Promise<void>((r) => (open = r));
     const session = new VoiceSession({
-      request: async <T,>(type: string): Promise<T> => (type === 'voice.join' ? { livekitUrl: 'wss://x:1', token: 't', iceServers: [] } : {}) as T,
+      request: async <T,>(type: string): Promise<T> => (type === 'voice.join' ? { livekitUrl: 'wss://127.0.0.1:7700', token: 't', iceServers: [] } : {}) as T,
       createRoom: (options) => {
         const r = new FakeRoom(options);
         h.rooms.push(r);
@@ -406,6 +434,7 @@ describe('media in the call (spec §8.4)', () => {
         return track as unknown as LocalAudioTrack;
       },
       onUserGesture: () => {},
+      connectedAddress: () => '127.0.0.1:7700',
     });
     const joining = session.join('VC1');
     for (let i = 0; i < 5; i++) await flush();

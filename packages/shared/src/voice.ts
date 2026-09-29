@@ -3,6 +3,7 @@
  * and lenient client schemas, plus the LiveKit room/identity naming.
  */
 import { z } from 'zod';
+import { formatHostPort, parseHostPort } from './invite.js';
 
 /** One person in a voice channel, as every viewer of the channel sees them (spec §5.3). */
 export interface VoiceParticipant {
@@ -143,6 +144,50 @@ const iceServerSchemaClient = z.object({
   username: z.string().max(512).optional(),
   credential: z.string().max(512).optional(),
 });
+
+/** `host[:port]` (brackets for IPv6) → the canonical host, or null when it is not one. */
+function canonicalHost(hostPort: string): string | null {
+  try {
+    return parseHostPort(hostPort).host;
+  } catch {
+    return null;
+  }
+}
+
+/** STUN/TURN URIs (RFC 7064, RFC 7065): `stun:host[:port]`, `turn[s]:host[:port][?transport=udp|tcp]`. */
+const ICE_URL = /^(stun|turns?):([^?]+)(\?transport=(?:udp|tcp))?$/i;
+
+function iceUrlOnHost(url: string, host: string): boolean {
+  const m = ICE_URL.exec(url);
+  if (!m || (m[3] !== undefined && m[1]!.toLowerCase() === 'stun')) return false;
+  return canonicalHost(m[2]!) === host;
+}
+
+/**
+ * spec §4, §8.2: where a voice.join answer may send this client. The renderer pins only
+ * the host of its current connection, so `livekitUrl` must be `wss:` on that same host and
+ * port (no port means 443), without credentials, and ICE servers may only be STUN/TURN on
+ * that host (v0.1 sends none). Anything else is refused before LiveKit connects, so a
+ * malicious or confused server cannot point the call, or the client's IP, at a third party.
+ * `connectedAddress` is the "host:port" main is connected to (RendererWelcome.address).
+ */
+export function voiceJoinEndpointsTrusted(joined: Pick<VoiceJoinResponse, 'livekitUrl' | 'iceServers'>, connectedAddress: string): boolean {
+  let connected: { host: string; port: number };
+  let url: URL;
+  try {
+    connected = parseHostPort(connectedAddress);
+    url = new URL(joined.livekitUrl);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'wss:' || url.username !== '' || url.password !== '') return false;
+  const port = url.port === '' ? 443 : Number(url.port);
+  const bare = url.hostname.startsWith('[') ? url.hostname.slice(1, -1) : url.hostname;
+  if (port !== connected.port || canonicalHost(formatHostPort(bare, port)) !== connected.host) return false;
+  return joined.iceServers.every((server) =>
+    (Array.isArray(server.urls) ? server.urls : [server.urls]).every((u) => iceUrlOnHost(u, connected.host)),
+  );
+}
 
 export const voiceJoinResponseSchemaClient: z.ZodType<VoiceJoinResponse> = z.object({
   livekitUrl: z.string().min(1).max(512),

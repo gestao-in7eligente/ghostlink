@@ -81,6 +81,7 @@ describe('ClientController.join', () => {
     const [saved] = servers.list();
     expect(saved).toMatchObject({ name: 'Casa do Zé', addresses: [local(t)], serverKeyId: t.server.serverKeyId, nickname: 'Ana' });
     expect(welcome.serverId).toBe(saved!.id);
+    expect(welcome.address).toBe(local(t)); // what the renderer pin covers; voice checks livekitUrl against it
     expect(welcome.server.name).toBe('Casa do Zé');
     expect(pins).toEqual([{ hostname: '127.0.0.1', serverKeyId: t.server.serverKeyId }]);
     expect(states).toEqual([
@@ -171,6 +172,7 @@ describe('ClientController — after joining', () => {
     const forwarded = events.find((e) => e.t === 'welcome')!.d as RendererWelcome;
     expect(forwarded).not.toHaveProperty('fileToken');
     expect(forwarded.serverId).toBe(welcome.serverId);
+    expect(forwarded.address).toBe(local(t));
     expect(forwarded.sessionId).not.toBe(welcome.sessionId);
     expect(states).toContainEqual({ state: 'reconnecting', serverId: welcome.serverId });
     expect(states.at(-1)).toEqual({ state: 'connected', serverId: welcome.serverId });

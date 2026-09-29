@@ -5,6 +5,7 @@ import {
   userIdFromIdentity,
   voiceForceMoveSchemaClient,
   voiceIdentity,
+  voiceJoinEndpointsTrusted,
   voiceJoinResponseSchemaClient,
   voiceJoinSchema,
   voiceLeaveSchema,
@@ -91,6 +92,58 @@ describe('voice client schemas are lenient (spec §5.1)', () => {
   it('rejects malformed participants', () => {
     expect(() => voiceStateSchemaClient.parse({ channelId: 'c1', participants: [{ ...participant, userId: 'x' }] })).toThrow();
     expect(() => voiceJoinResponseSchemaClient.parse({ livekitUrl: 'wss://x', token: 'a'.repeat(20_000), iceServers: [] })).toThrow();
+  });
+});
+
+describe('voiceJoinEndpointsTrusted (spec §4, §8.2)', () => {
+  const trusted = (livekitUrl: string, address: string, iceServers: Array<{ urls: string | string[] }> = []) =>
+    voiceJoinEndpointsTrusted({ livekitUrl, iceServers }, address);
+
+  it.each([
+    ['wss://127.0.0.1:7700', '127.0.0.1:7700'],
+    ['wss://127.0.0.1:7700/', '127.0.0.1:7700'],
+    ['wss://Casa.Example.com:7710', 'casa.example.com:7710'],
+    ['wss://[::1]:7700', '[::1]:7700'],
+    ['wss://[0:0:0:0:0:0:0:1]:7700', '[::1]:7700'],
+    ['wss://casa.example.com', 'casa.example.com:443'], // the Host header leaves out the default port
+  ])('accepts %s on the connected address %s', (url, address) => {
+    expect(trusted(url, address)).toBe(true);
+  });
+
+  it.each([
+    ['another host', 'wss://evil.example:7700', '127.0.0.1:7700'],
+    ['a look-alike host', 'wss://casa.example.com.evil.net:7700', 'casa.example.com:7700'],
+    ['another port', 'wss://127.0.0.1:7701', '127.0.0.1:7700'],
+    ['the default port instead of the connected one', 'wss://casa.example.com', 'casa.example.com:7700'],
+    ['plain ws:', 'ws://127.0.0.1:7700', '127.0.0.1:7700'],
+    ['https:', 'https://127.0.0.1:7700', '127.0.0.1:7700'],
+    ['credentials', 'wss://user:pw@127.0.0.1:7700', '127.0.0.1:7700'],
+    ['a host hidden behind userinfo', 'wss://127.0.0.1:7700@evil.example', '127.0.0.1:7700'],
+    ['not a URL', 'nope', '127.0.0.1:7700'],
+    ['a bad connected address', 'wss://127.0.0.1:7700', 'not an address!'],
+  ])('refuses %s (%s for %s)', (_label, url, address) => {
+    expect(trusted(url, address)).toBe(false);
+  });
+
+  it('accepts STUN/TURN servers only on the connected host', () => {
+    const ok = 'wss://127.0.0.1:7700';
+    expect(trusted(ok, '127.0.0.1:7700', [{ urls: 'turn:127.0.0.1:3478?transport=udp' }])).toBe(true);
+    expect(trusted(ok, '127.0.0.1:7700', [{ urls: ['stun:127.0.0.1:3478', 'turns:127.0.0.1:5349?transport=tcp', 'turn:127.0.0.1'] }])).toBe(true);
+    expect(trusted('wss://[::1]:7700', '[::1]:7700', [{ urls: 'stun:[::1]:3478' }])).toBe(true);
+    for (const urls of [
+      'stun:stun.l.google.com:19302',
+      'turn:evil.example:3478',
+      ['stun:127.0.0.1:3478', 'stun:evil.example'],
+      'stuns:127.0.0.1',
+      'http://127.0.0.1:3478',
+      'turn:127.0.0.1?transport=quic',
+      'stun:127.0.0.1?transport=udp',
+      'turn:user@127.0.0.1',
+      'stun:127.0.0.1.evil.net',
+      '',
+    ]) {
+      expect(trusted(ok, '127.0.0.1:7700', [{ urls }]), JSON.stringify(urls)).toBe(false);
+    }
   });
 });
 

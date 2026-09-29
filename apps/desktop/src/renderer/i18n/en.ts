@@ -131,6 +131,7 @@ export const messages: Record<keyof typeof ptBR, string> = {
   'errors.SERVER_OUTDATED': 'This server is out of date. Tell the owner.',
   'errors.ENCRYPTION_UNAVAILABLE': 'This system offers no secure storage, so an identity cannot be created.',
   'errors.IDENTITY_UNAVAILABLE': 'Your identity is not available.',
+  'errors.VOICE_URL_REJECTED': 'The server sent the voice call to another address, so it was blocked. Let the server owner know.',
 
   ...host,
   ...identity,

@@ -14,7 +14,13 @@ import {
   type RoomOptions,
   type TrackPublication,
 } from 'livekit-client';
-import { userIdFromIdentity, voiceForceMoveSchemaClient, voiceJoinResponseSchemaClient, type Envelope } from '@ghostlink/shared';
+import {
+  userIdFromIdentity,
+  voiceForceMoveSchemaClient,
+  voiceJoinEndpointsTrusted,
+  voiceJoinResponseSchemaClient,
+  type Envelope,
+} from '@ghostlink/shared';
 import type { ConnState } from '../../../shared/ipcTypes.js';
 import { errorCodeOf } from '../../i18n/index.js';
 import { volumeOf, type VoiceSettings } from './settings.js';
@@ -45,6 +51,8 @@ export interface VoiceSessionDeps {
   createMicrophone(options: AudioCaptureOptions): Promise<LocalAudioTrack>;
   /** Runs `cb` once, on the user's next click or key press (autoplay recovery). */
   onUserGesture(cb: () => void): void;
+  /** The "host:port" main is connected to (RendererWelcome.address), or null when not connected. */
+  connectedAddress(): string | null;
   pingIntervalMs?: number;
 }
 
@@ -95,6 +103,14 @@ export class VoiceSession {
       return;
     }
     if (attempt !== this.#attempt) return;
+    // spec §4, §8.2: LiveKit (and any ICE server) only on the host and port we are connected to.
+    const address = this.#deps.connectedAddress();
+    if (address === null || !voiceJoinEndpointsTrusted(joined, address)) {
+      this.#deps.dispatch({ type: 'call', status: 'idle', channelId: null });
+      this.#deps.dispatch({ type: 'notice', notice: { kind: 'error', code: 'VOICE_URL_REJECTED' } });
+      void this.#deps.request('voice.leave', {}).catch(() => {});
+      return;
+    }
 
     const settings = this.#deps.settings();
     const room = this.#deps.createRoom({

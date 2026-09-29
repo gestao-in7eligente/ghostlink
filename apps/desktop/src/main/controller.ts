@@ -35,10 +35,10 @@ export interface ControllerDeps {
   connectionOptions?: Pick<ServerConnectionOptions, 'timing' | 'random'>;
 }
 
-/** The fileToken never leaves the main process (spec §3.1, §5.3). */
-export function toRendererWelcome(welcome: WelcomePayload, serverId: string): RendererWelcome {
+/** The fileToken never leaves the main process (spec §3.1, §5.3); `address` is the connected host:port. */
+export function toRendererWelcome(welcome: WelcomePayload, serverId: string, address: string): RendererWelcome {
   const { fileToken: _fileToken, ...rest } = welcome;
-  return { ...rest, serverId };
+  return { ...rest, serverId, address };
 }
 
 interface Target {
@@ -197,7 +197,7 @@ export class ClientController {
       // After a reconnect the new snapshot replaces the renderer's state (spec §13),
       // and the working address may have changed.
       void this.#pin(conn, target.serverKeyId);
-      this.#deps.emitServerEvent({ t: 'welcome', d: toRendererWelcome(again, saved.id) });
+      this.#deps.emitServerEvent({ t: 'welcome', d: toRendererWelcome(again, saved.id, conn.connectedAddress ?? address) });
     });
     conn.on('event', (event: Envelope) => {
       if (current()) this.#deps.emitServerEvent(event);
@@ -207,7 +207,7 @@ export class ClientController {
     });
 
     this.#deps.emitConnectionState({ state: 'connected', serverId: saved.id });
-    return toRendererWelcome(welcome, saved.id);
+    return toRendererWelcome(welcome, saved.id, address);
   }
 
   /**

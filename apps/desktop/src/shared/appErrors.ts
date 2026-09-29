@@ -12,6 +12,7 @@ export const CLIENT_ERROR_CODES = [
   'SERVER_OUTDATED', // PROTOCOL_UNSUPPORTED because the server is older than this app
   'ENCRYPTION_UNAVAILABLE', // safeStorage cannot encrypt on this system
   'IDENTITY_UNAVAILABLE', // there is no usable identity (missing or locked)
+  'VOICE_URL_REJECTED', // voice.join pointed LiveKit (or ICE) somewhere else than the connected server
   // Host mode (spec §9, §8.5); messages in i18n/<locale>/host.ts.
   'PORT_IN_USE', // another program already listens on the chosen port
   'HOST_NOT_RUNNING', // the command needs the hosted server running

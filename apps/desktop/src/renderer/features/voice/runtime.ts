@@ -136,6 +136,7 @@ function start(): () => void {
     outlet: createDomOutlet(),
     createMicrophone,
     onUserGesture: onNextUserGesture,
+    connectedAddress: () => useConnectionStore.getState().welcome?.address ?? null,
   });
   session = current;
 

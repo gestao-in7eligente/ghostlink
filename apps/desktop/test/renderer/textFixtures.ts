@@ -82,6 +82,7 @@ export function snapshot(extra: Partial<TextSnapshot['text']> = {}, serverId = '
 export function welcomeWithText(snap = snapshot()): RendererWelcome {
   return {
     serverId: snap.serverId,
+    address: '127.0.0.1:7700',
     self: snap.self,
     sessionId: 'sess',
     serverTime: 1,

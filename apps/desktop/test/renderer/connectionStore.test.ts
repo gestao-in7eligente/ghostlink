@@ -5,6 +5,7 @@ import { connectionReducer, initialConnection, useConnectionStore, type Connecti
 function welcome(serverId: string, sessionId = 'sess-1'): RendererWelcome {
   return {
     serverId,
+    address: '127.0.0.1:7700',
     self: { userId: 'a'.repeat(32), nickname: 'Ana', isOwner: false },
     sessionId,
     serverTime: 1,

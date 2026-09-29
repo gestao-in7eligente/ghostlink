@@ -33,8 +33,12 @@ export interface SavedServer {
   addedAt: number;
 }
 
-/** The welcome as the renderer sees it: never the fileToken (spec §3.1). */
-export type RendererWelcome = Omit<WelcomePayload, 'fileToken'> & { serverId: string };
+/**
+ * The welcome as the renderer sees it: never the fileToken (spec §3.1), plus the saved
+ * server's id and `address`, the "host:port" main is connected to — the host the renderer
+ * pin covers, and the only place voice.join may send the call (spec §4, §8.2).
+ */
+export type RendererWelcome = Omit<WelcomePayload, 'fileToken'> & { serverId: string; address: string };
 
 export interface ProbeResult {
   serverKeyId: string;

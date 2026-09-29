@@ -596,6 +596,7 @@ Um IP WAN em `100.64.0.0/10` ou em faixa RFC1918 indica **CGNAT ou NAT duplo**. 
    - validade de 60 s para o join. Depois disso o LiveKit renova o token sozinho.
 4. **Resposta:** `{ livekitUrl: "wss://<host:porta usado pelo cliente>", token, iceServers: [] }`.
 5. **Renderer:**
+   - antes de tudo, confere o destino: `livekitUrl` precisa ser `wss:` no **mesmo host e porta** da conexão atual (o endereço que o main informa no welcome do renderer, o mesmo que o pin cobre), sem credenciais; cada ICE server só pode ser `stun:`/`turn:`/`turns:` nesse mesmo host. Qualquer outra coisa é recusada com `VOICE_URL_REJECTED`, sem chamar o LiveKit, e o cliente envia `voice.leave`;
    - `new Room({ adaptiveStream: true, dynacast: true, webAudioMix: true, audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, voiceIsolation: false } })`;
    - `room.connect(livekitUrl, token, { autoSubscribe: false, rtcConfig: { iceServers } })`.
 
