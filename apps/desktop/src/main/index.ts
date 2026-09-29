@@ -17,7 +17,7 @@ import { installSecurity, originOf } from './security.js';
 import { SettingsStore } from './settings.js';
 import { runSmoke } from './smoke.js';
 import { Updater, createUpdaterBackend } from './updater.js';
-import { createSignatureFetcher } from './updaterSignature.js';
+import { createReleaseFileFetcher } from './updaterSignature.js';
 
 const smoke = process.env.GHOSTLINK_SMOKE === '1';
 // Dev only: electron-vite serves the renderer and passes its URL.
@@ -83,7 +83,7 @@ function start(): BrowserWindow {
     backend: createUpdaterBackend({ packaged: app.isPackaged, smoke, platform: process.platform, resourcesPath: process.resourcesPath }),
     userDataDir: userData,
     currentVersion: app.getVersion(),
-    fetchSignature: createSignatureFetcher((url, init) => net.fetch(url, init)),
+    fetchReleaseFile: createReleaseFileFetcher((url, init) => net.fetch(url, init)),
     emit: (state) => send(IPC_EVENTS.updates, state),
   });
   registerIpc({

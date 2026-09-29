@@ -1,11 +1,13 @@
-// Building blocks of the release pipeline (spec §15): the tag check, the VPS server package and
-// checksums-sha256.txt. Node built-ins only, no top-level side effects (scripts/test covers them).
+// Building blocks of the release pipeline (spec §15): the tag check, the VPS server package,
+// checksums-sha256.txt and the check of a signed release before it is published. Node built-ins
+// only, no top-level side effects (scripts/test covers them).
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { builtinModules } from 'node:module';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
+import { SIGNATURE_SUFFIX, publicKeyFromRaw, verifyBytes } from './releaseKey.mjs';
 
 export const CHECKSUMS_FILE = 'checksums-sha256.txt';
 /** Stable versions only (no leading zeros); pre-release tags are not published by release.yml. */
@@ -73,6 +75,53 @@ export function parseChecksums(text) {
     map.set(match[2], match[1]);
   }
   return map;
+}
+
+/**
+ * @param {string} dir
+ * @param {string} name
+ */
+function readReleaseFile(dir, name) {
+  try {
+    return readFileSync(join(dir, name));
+  } catch {
+    throw new Error(`${name} is missing`);
+  }
+}
+
+/**
+ * Checks a signed release directory the way clients will, so a release they would refuse is never
+ * published (the app refuses any update whose installer is not listed, under its versioned name, in
+ * a checksums-sha256.txt signed by the release key; install.sh does the same for the server package):
+ *   - checksums-sha256.txt.ed25519 is a valid signature of checksums-sha256.txt by `publicKey`;
+ *   - checksums-sha256.txt is byte for byte what checksumsFor(dir) writes (every file, current hashes);
+ *   - GhostLink-Setup-<version>.exe and ghostlink-server-<version>.tgz exist, are listed, and carry a
+ *     valid <file>.ed25519.
+ * @param {string} dir
+ * @param {string} version
+ * @param {string} publicKey raw base64url (RELEASE_PUBLIC_KEY)
+ * @returns {Promise<string[]>} the files clients look up
+ */
+export async function verifyReleaseDir(dir, version, publicKey) {
+  if (!VERSION.test(version)) throw new Error(`"${version}" is not a release version`);
+  const key = publicKeyFromRaw(publicKey);
+  const checksums = readReleaseFile(dir, CHECKSUMS_FILE);
+  if (!verifyBytes(checksums, readReleaseFile(dir, `${CHECKSUMS_FILE}${SIGNATURE_SUFFIX}`), key)) {
+    throw new Error(`${CHECKSUMS_FILE}${SIGNATURE_SUFFIX} is not a valid signature by the release key`);
+  }
+  const text = checksums.toString('utf8');
+  if (text !== (await checksumsFor(dir))) throw new Error(`${CHECKSUMS_FILE} does not list exactly the files in ${dir} with their current hashes`);
+  const required = [`GhostLink-Setup-${version}.exe`, `ghostlink-server-${version}.tgz`];
+  for (const name of required) {
+    const data = readReleaseFile(dir, name);
+    if (!text.split('\n').includes(`${createHash('sha256').update(data).digest('hex')}  ${name}`)) {
+      throw new Error(`${CHECKSUMS_FILE} has no line for ${name}`);
+    }
+    if (!verifyBytes(data, readReleaseFile(dir, `${name}${SIGNATURE_SUFFIX}`), key)) {
+      throw new Error(`${name}${SIGNATURE_SUFFIX} is not a valid signature by the release key`);
+    }
+  }
+  return required;
 }
 
 /**

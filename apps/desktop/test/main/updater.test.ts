@@ -33,14 +33,14 @@ class FakeBackend extends EventEmitter implements UpdaterBackend {
 
 let backend: FakeBackend;
 let states: UpdateState[];
-const fetchSignature = vi.fn(async () => new Uint8Array(64));
+const fetchReleaseFile = vi.fn(async (_url: string, _maxBytes: number) => new Uint8Array(64));
 
 function load(opts: { supported?: boolean } = {}): Updater {
   return Updater.load({
     backend: opts.supported === false ? null : backend,
     userDataDir: dir.path,
     currentVersion: '0.1.0',
-    fetchSignature,
+    fetchReleaseFile,
     emit: (state) => states.push(state),
     log: () => {},
   });
@@ -70,16 +70,30 @@ describe('Updater configuration (spec §15)', () => {
   });
 
   it('replaces the Authenticode check with the Ed25519 release-signature check', async () => {
+    fetchReleaseFile.mockClear();
     const updater = load();
     updater.start();
     // No update announced yet: whatever was downloaded is refused without a network call.
     await expect(backend.verifyUpdateCodeSignature(['x'], join(dir.path, 'a.exe'))).resolves.toMatch(/version/i);
-    expect(fetchSignature).not.toHaveBeenCalled();
+    expect(fetchReleaseFile).not.toHaveBeenCalled();
     backend.emit('update-available', { version: '0.1.1' });
     await expect(backend.verifyUpdateCodeSignature(['x'], join(dir.path, 'a.exe'))).resolves.toEqual(expect.any(String));
-    expect(fetchSignature).toHaveBeenCalledWith(
-      'https://github.com/gestao-in7eligente/ghostlink/releases/download/v0.1.1/GhostLink-Setup-0.1.1.exe.ed25519',
-    );
+    const release = 'https://github.com/gestao-in7eligente/ghostlink/releases/download/v0.1.1';
+    expect(fetchReleaseFile).toHaveBeenCalledWith(`${release}/GhostLink-Setup-0.1.1.exe.ed25519`, 64);
+    expect(fetchReleaseFile).toHaveBeenCalledWith(`${release}/checksums-sha256.txt`, expect.any(Number));
+    expect(fetchReleaseFile).toHaveBeenCalledWith(`${release}/checksums-sha256.txt.ed25519`, 64);
+    updater.dispose();
+  });
+
+  it('refuses an update that is not newer than the running app, without a network call', async () => {
+    fetchReleaseFile.mockClear();
+    const updater = load();
+    updater.start();
+    for (const version of ['0.1.0', '0.0.9']) {
+      backend.emit('update-available', { version });
+      await expect(backend.verifyUpdateCodeSignature(['x'], join(dir.path, 'a.exe'))).resolves.toMatch(/not newer/);
+    }
+    expect(fetchReleaseFile).not.toHaveBeenCalled();
     updater.dispose();
   });
 

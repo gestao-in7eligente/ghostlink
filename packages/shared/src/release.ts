@@ -17,6 +17,15 @@ export const RELEASE_PUBLIC_KEY = 'Hhib591tl4P4Nf9us1fB5FCXXbGOZDBHwvWIu-2FWnc';
 export const RELEASE_SIGNATURE_SUFFIX = '.ed25519';
 export const RELEASE_SIGNATURE_BYTES = 64;
 
+/**
+ * `sha256sum` lines ("<hex>  <name>\n") for every file of a release, signed like any file
+ * (`checksums-sha256.txt.ed25519`). A detached signature only proves that the release key signed
+ * some bytes; the signed checksums bind those bytes to a file name, and the names carry the version.
+ */
+export const RELEASE_CHECKSUMS_FILE = 'checksums-sha256.txt';
+/** Download bound for it: a release lists about a dozen files, one short line each. */
+export const RELEASE_CHECKSUMS_MAX_BYTES = 64 * 1024;
+
 const GITHUB = `https://github.com/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}`;
 export const RELEASES_PAGE_URL = `${GITHUB}/releases`;
 export const LATEST_RELEASE_API_URL = `https://api.github.com/repos/${RELEASE_REPO.owner}/${RELEASE_REPO.repo}/releases/latest`;
@@ -35,6 +44,17 @@ export function isReleaseVersion(v: unknown): v is string {
 function checkVersion(version: string): string {
   if (!isReleaseVersion(version)) throw new Error('not a stable release version');
   return version;
+}
+
+/** Numeric order of two stable release versions: negative when a is older, 0 when equal, positive when newer. */
+export function compareReleaseVersions(a: string, b: string): number {
+  const x = checkVersion(a).split('.').map(Number);
+  const y = checkVersion(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = x[i]! - y[i]!;
+    if (d !== 0) return d;
+  }
+  return 0;
 }
 
 /** The NSIS installer electron-builder produces (`nsis.artifactName`). */

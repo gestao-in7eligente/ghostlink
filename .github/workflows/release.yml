@@ -3,6 +3,8 @@
 #   - every file gets a detached Ed25519 signature (<file>.ed25519) from the release key, which
 #     exists only as that environment's secret and never meets an npm install;
 #   - checksums-sha256.txt covers all files and is signed with Ed25519 and with Sigstore (cosign keyless);
+#     the app and install.sh install only a file listed there under its versioned name, and
+#     scripts/verify-release.mjs refuses to publish a release they would reject;
 #   - the GitHub release is published as a normal, *latest* release (electron-updater and
 #     releases/latest ignore pre-releases and drafts; the "beta" label is in the title).
 # Actions are pinned by commit SHA, every job has minimal permissions, untrusted values reach
@@ -184,6 +186,9 @@ jobs:
           node scripts/sign-release.mjs release/*
           node scripts/checksums.mjs release
           node scripts/sign-release.mjs release/checksums-sha256.txt
+      # What the updater and install.sh require: signed checksums naming this version's files.
+      - name: Check the release as clients will
+        run: node scripts/verify-release.mjs release "$VERSION"
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Sign the checksums with Sigstore

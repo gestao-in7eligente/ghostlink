@@ -156,11 +156,23 @@ describe('release.yml builds', () => {
 describe('release.yml signing and publishing', () => {
   it('signs every file with Ed25519, then checksums them and signs the checksums', () => {
     const run = runOf(job('sign'));
+    expect(run).toContain('node scripts/sign-release.mjs release/checksums-sha256.txt'); // → checksums-sha256.txt.ed25519
     const order = ['node scripts/sign-release.mjs release/*', 'node scripts/checksums.mjs release', 'node scripts/sign-release.mjs release/checksums-sha256.txt'].map((c) => run.indexOf(c));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     const download = job('sign').steps.find((s) => s.uses?.startsWith('actions/download-artifact@'))!;
     expect(download.with).toEqual({ pattern: 'release-*', 'merge-multiple': true, path: 'release' });
+  });
+
+  it('refuses to go on unless the signed checksums name the installer and server package of this version', () => {
+    const sign = job('sign');
+    const signing = sign.steps.findIndex((s) => s.run?.includes('node scripts/sign-release.mjs release/checksums-sha256.txt'));
+    const check = sign.steps.findIndex((s) => s.run === 'node scripts/verify-release.mjs release "$VERSION"');
+    const cosign = sign.steps.findIndex((s) => s.uses?.startsWith('sigstore/cosign-installer@'));
+    expect(signing).toBeGreaterThanOrEqual(0);
+    expect(check).toBe(signing + 1);
+    expect(cosign).toBeGreaterThan(check);
+    expect(sign.steps[check]!.env).toBeUndefined(); // needs no secret
   });
 
   it('signs the checksums keyless with cosign (Sigstore) and verifies them as users will', () => {

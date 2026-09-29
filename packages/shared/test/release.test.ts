@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { fromBase64Url, toBase64Url } from '../src/encoding.js';
 import {
+  RELEASE_CHECKSUMS_FILE,
+  RELEASE_CHECKSUMS_MAX_BYTES,
   RELEASE_PUBLIC_KEY,
   RELEASE_REPO,
   RELEASE_SIGNATURE_SUFFIX,
   RELEASES_PAGE_URL,
   LATEST_RELEASE_API_URL,
   SITE_URL,
+  compareReleaseVersions,
   ed25519SpkiDer,
   isReleaseVersion,
   releaseDownloadUrl,
@@ -66,7 +69,36 @@ describe('isReleaseVersion', () => {
   });
 });
 
+describe('compareReleaseVersions (the updater never goes back)', () => {
+  it.each([
+    ['0.1.0', '0.1.1'],
+    ['0.1.9', '0.1.10'],
+    ['0.9.9', '0.10.0'],
+    ['0.99.0', '1.0.0'],
+    ['1.2.3', '2.0.0'],
+    ['0.0.0', '0.0.1'],
+  ])('orders %s before %s numerically, not as text', (older, newer) => {
+    expect(compareReleaseVersions(older, newer)).toBeLessThan(0);
+    expect(compareReleaseVersions(newer, older)).toBeGreaterThan(0);
+  });
+
+  it('treats equal versions as equal', () => {
+    expect(compareReleaseVersions('0.1.0', '0.1.0')).toBe(0);
+  });
+
+  it.each([['0.1.0-rc.1'], ['v0.1.0'], [''], ['0.1']])('refuses the non-release version %j', (bad) => {
+    expect(() => compareReleaseVersions(bad, '0.1.0')).toThrow();
+    expect(() => compareReleaseVersions('0.1.0', bad)).toThrow();
+  });
+});
+
 describe('release file names and URLs', () => {
+  it('names the signed checksums file every release carries, with a small download bound', () => {
+    expect(RELEASE_CHECKSUMS_FILE).toBe('checksums-sha256.txt');
+    expect(RELEASE_CHECKSUMS_MAX_BYTES).toBeGreaterThanOrEqual(4096);
+    expect(RELEASE_CHECKSUMS_MAX_BYTES).toBeLessThanOrEqual(1024 * 1024);
+  });
+
   it('names the artifacts after electron-builder and the server package', () => {
     expect(windowsInstallerName('0.1.0')).toBe('GhostLink-Setup-0.1.0.exe');
     expect(serverPackageName('0.1.0')).toBe('ghostlink-server-0.1.0.tgz');

@@ -1,7 +1,8 @@
 // Automatic updates (spec §15), Windows NSIS builds only in v0.1. electron-updater downloads a
-// new release in the background; before it may install, the installer must carry a valid Ed25519
-// signature by the release key (updaterSignature.ts). The check runs at startup and every 6 h, can
-// be turned off, and is the app's only contact with a third party (GitHub).
+// new release in the background; before it may install, the installer must be newer than the running
+// app, carry a valid Ed25519 signature by the release key and match its line in the release's signed
+// checksums-sha256.txt (updaterSignature.ts). The check runs at startup and every 6 h, can be turned
+// off, and is the app's only contact with a third party (GitHub).
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { NsisUpdater } from 'electron-updater';
@@ -10,7 +11,7 @@ import { RELEASE_REPO, isReleaseVersion } from '@ghostlink/shared';
 import { AppError } from '../shared/appErrors.js';
 import type { UpdateState, UpdateStatus } from '../shared/updates.js';
 import { readJsonFile, writeJsonAtomic } from './files.js';
-import { createInstallerVerifier, type SignatureFetcher } from './updaterSignature.js';
+import { createInstallerVerifier, type ReleaseFileFetcher } from './updaterSignature.js';
 
 export type { UpdateState, UpdateStatus } from '../shared/updates.js';
 
@@ -41,7 +42,8 @@ export interface UpdaterOptions {
   backend: UpdaterBackend | null;
   userDataDir: string;
   currentVersion: string;
-  fetchSignature: SignatureFetcher;
+  /** Downloads the signatures and checksums of a release (createReleaseFileFetcher in the app). */
+  fetchReleaseFile: ReleaseFileFetcher;
   emit(state: UpdateState): void;
   log?: (message: string) => void;
 }
@@ -67,7 +69,7 @@ export class Updater {
   #status: UpdateStatus;
   #version: string | null = null;
   #percent: number | null = null;
-  /** The version announced by update-available: the only one whose signature is fetched. */
+  /** The version announced by update-available: the only one whose signatures are fetched. */
   #pendingVersion: string | null = null;
   #started = false;
   #firstCheck: ReturnType<typeof setTimeout> | null = null;
@@ -102,7 +104,10 @@ export class Updater {
     backend.allowDowngrade = false;
     backend.disableWebInstaller = true;
     backend.setFeedURL({ provider: 'github', owner: RELEASE_REPO.owner, repo: RELEASE_REPO.repo });
-    backend.verifyUpdateCodeSignature = createInstallerVerifier(() => this.#pendingVersion, { fetchSignature: this.#opts.fetchSignature });
+    backend.verifyUpdateCodeSignature = createInstallerVerifier(() => this.#pendingVersion, {
+      fetchReleaseFile: this.#opts.fetchReleaseFile,
+      runningVersion: this.#opts.currentVersion,
+    });
 
     backend.on('checking-for-update', () => {
       if (this.#status !== 'downloading' && this.#status !== 'downloaded') this.#set('checking');
