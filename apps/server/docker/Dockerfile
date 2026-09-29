@@ -4,6 +4,8 @@
 #   docker build -f apps/server/docker/Dockerfile -t ghostlink-server .
 # Configuration is by environment variables (see entrypoint.sh); data lives in /data
 # (mount a persistent volume there: it holds the TLS key = the server identity).
+# On Railway, give the service a TCP proxy to port 7700 and set GHOSTLINK_VOICE=1: proxy
+# mode turns on by itself (spec §8.6), and voice runs over ICE-TCP on that same port.
 
 FROM node:24-bookworm-slim AS build
 WORKDIR /src
@@ -38,6 +40,7 @@ COPY apps/server/docker/entrypoint.sh /opt/ghostlink/entrypoint.sh
 RUN chmod 0755 /opt/ghostlink/entrypoint.sh
 ENV GHOSTLINK_DATA=/data \
     NODE_ENV=production
-# 7700/TCP: HTTPS + WSS (self-signed, pinned by clients). 7881/TCP: voice over ICE-TCP.
-EXPOSE 7700 7881
+# 7700/TCP: HTTPS + WSS (self-signed, pinned by clients) and, in proxy mode, voice too
+# (ICE-TCP). Without a proxy, voice also needs 7881/TCP and 7882/UDP published.
+EXPOSE 7700
 ENTRYPOINT ["/opt/ghostlink/entrypoint.sh"]

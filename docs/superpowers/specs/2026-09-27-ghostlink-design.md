@@ -706,6 +706,11 @@ Algumas plataformas de nuvem só expõem um serviço por HTTP ou por um proxy TC
 - A sinalização (`/rtc`) passa pela mesma porta, dentro do TLS, como sempre.
 - **Limitação:** toda a mídia vai por TCP. Com perda de pacotes, a latência sobe mais do que com UDP, porque um pacote perdido segura os seguintes.
 
+**Contêiner.** A imagem (`apps/server/docker/Dockerfile`) expõe só a 7700/TCP e é configurada pelo `entrypoint.sh`:
+- No Railway, o modo proxy liga sozinho quando o serviço tem um proxy TCP: o Railway define `RAILWAY_TCP_PROXY_DOMAIN` e `RAILWAY_TCP_PROXY_PORT`, e o servidor escuta na `RAILWAY_TCP_APPLICATION_PORT` se `GHOSTLINK_PORT` não for dado. O endereço do proxy vai nos convites, a menos que `GHOSTLINK_PUBLIC_ADDRESS` diga outro.
+- Em outros hosts, `GHOSTLINK_PROXY_ADDRESS=<host:porta>` liga o modo proxy, ou `GHOSTLINK_PROXY_MODE=1` com o primeiro `GHOSTLINK_PUBLIC_ADDRESS`. `GHOSTLINK_PROXY_MODE=0` desliga, mesmo no Railway.
+- A voz só roda com `GHOSTLINK_VOICE=1`.
+
 ## 9. Modo Hospedar (no app)
 
 **Processo do servidor**
