@@ -1,4 +1,4 @@
-import type { AddressInfo } from 'node:net';
+import type { AddressInfo, Server as NetServer } from 'node:net';
 import { LIMITS, ProtocolError, formatHostPort, parseHostPort, sanitizeLabel, type JoinMode } from '@ghostlink/shared';
 import { ensureSetupCode, resetSetupCode } from './auth/setupCode.js';
 import { ensureDataDirs } from './config/paths.js';
@@ -11,8 +11,9 @@ import { resolveLimits, type ServerLimits } from './limits.js';
 import { consoleLogger, type Logger } from './logger.js';
 import type { VoiceServerOptions } from './livekit/backend.js';
 import { ModuleHost } from './moduleHost.js';
-import type { ServerModule } from './modules.js';
+import type { ProxyEndpoint, ServerModule } from './modules.js';
 import { allLocalIPv4, guardAddresses, isWildcardHost, portInUseError, probeTcpPort } from './net/ports.js';
+import { createPublicPort } from './net/publicPort.js';
 import { loadOrCreateCertificate } from './tls/certificate.js';
 import { SERVER_VERSION } from './version.js';
 import { Gateway } from './ws/gateway.js';
@@ -24,6 +25,7 @@ export type { ServerLimits } from './limits.js';
 export type {
   ModuleContext,
   ModuleOptions,
+  ProxyEndpoint,
   RequestContext,
   RequestHandler,
   ServerEvent,
@@ -54,6 +56,11 @@ export interface StartServerOptions {
   limits?: Partial<ServerLimits>; // tests only: shrink timeouts and caps
   modules?: ServerModule[]; // feature modules, run after the built-in 'core' module (see MODULES.md)
   voice?: VoiceServerOptions; // LiveKit binary, public media ports and node_ip (the Hosting track passes node_ip from UPnP)
+  /**
+   * The external host:port of a TCP proxy in front of this server (spec §8.5 "Atrás de um
+   * proxy TCP", e.g. Railway's): the public port then carries HTTPS/WSS and voice (ICE-TCP).
+   */
+  proxy?: ProxyEndpoint;
 }
 
 export interface GhostServer {
@@ -104,6 +111,7 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
   if (opts.maxMembers !== undefined && (!Number.isInteger(opts.maxMembers) || opts.maxMembers < 1 || opts.maxMembers > MAX_MEMBERS_LIMIT)) {
     throw new ProtocolError('BAD_REQUEST', `maxMembers must be an integer between 1 and ${MAX_MEMBERS_LIMIT}`);
   }
+  const proxy = opts.proxy === undefined ? undefined : parseHostPort(formatHostPort(opts.proxy.host, opts.proxy.port));
   // Validates module names and request types before anything touches the disk.
   const modules = new ModuleHost([coreModule, ...(opts.modules ?? [])], logger);
   const host = opts.host ?? '0.0.0.0';
@@ -150,13 +158,21 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     moduleUpgrade: (req, socket, head) => modules.upgrade(req, socket, head),
     limits,
   });
+  // spec §8.5: behind a TCP proxy, one public port for TLS and ICE-TCP, told apart by the first byte.
+  const front = proxy ? createPublicPort({ tls: http, iceTarget: () => modules.iceTcpPort(), limits }) : null;
+  const listener: NetServer = front?.server ?? http;
 
   let guards: Array<{ close(cb: () => void): unknown }> = [];
   /** Order matters: sessions end (modules still see onSessionClosed), then HTTP, then modules stop, then the DB. */
   const shutdown = async (): Promise<void> => {
     await Promise.all(guards.map((g) => new Promise<void>((resolve) => g.close(() => resolve()))));
     await gateway.close();
-    if (http.listening) {
+    if (front) {
+      // Nothing waits for these sockets: TLS ones already ended their sessions above.
+      front.server.close();
+      front.destroyAll();
+      http.closeAllConnections();
+    } else if (http.listening) {
       await new Promise<void>((resolve) => {
         http.close(() => resolve());
         http.closeAllConnections();
@@ -167,11 +183,20 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
   };
 
   try {
-    await modules.init({ db, now, logger, limits, dataDir: opts.dataDir, serverKeyId: certificate.serverKeyId, sessions: gateway.sessions.api, options: { voice: opts.voice } });
+    await modules.init({
+      db,
+      now,
+      logger,
+      limits,
+      dataDir: opts.dataDir,
+      serverKeyId: certificate.serverKeyId,
+      sessions: gateway.sessions.api,
+      options: { voice: opts.voice, proxy },
+    });
     await new Promise<void>((resolve, reject) => {
-      http.once('error', reject);
-      http.listen(opts.port, host, () => {
-        http.off('error', reject);
+      listener.once('error', reject);
+      listener.listen(opts.port, host, () => {
+        listener.off('error', reject);
         resolve();
       });
     });
@@ -179,10 +204,10 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     await shutdown();
     throw e;
   }
-  const port = (http.address() as AddressInfo).port;
+  const port = (listener.address() as AddressInfo).port;
   if (process.platform === 'win32' && isWildcardHost(host)) {
     // Windows would let another program bind 127.0.0.1:port (or a LAN IP) over our wildcard listener.
-    guards = await guardAddresses(http, port, ['127.0.0.1', ...allLocalIPv4()]);
+    guards = await guardAddresses(listener, port, ['127.0.0.1', ...allLocalIPv4()]);
   }
   try {
     await modules.start({ port });
@@ -191,6 +216,7 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     throw e;
   }
   logger.info('GhostLink server listening', { port, version: SERVER_VERSION });
+  if (proxy) logger.info(`proxy mode: behind the TCP proxy ${formatHostPort(proxy.host, proxy.port)}; port ${port} carries HTTPS/WSS and voice (ICE-TCP)`);
 
   const effectiveAddresses = (): string[] => {
     const stored = getMeta(db).publicAddresses;

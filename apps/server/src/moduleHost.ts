@@ -160,6 +160,20 @@ export class ModuleHost {
     return false;
   }
 
+  /** Proxy mode: the first ICE-TCP port a module offers (see ServerModule.iceTcpPort), else null. */
+  iceTcpPort(): number | null {
+    for (const m of this.#modules) {
+      if (!m.iceTcpPort) continue;
+      try {
+        const port = m.iceTcpPort();
+        if (port !== null) return port;
+      } catch (e) {
+        this.#logger.error('module iceTcpPort failed', { module: m.name, error: String(e) });
+      }
+    }
+    return null;
+  }
+
   #hook(m: ServerModule, hook: string, run: () => unknown): void {
     if (this.#stopping) return;
     const fail = (e: unknown) => this.#logger.error('module hook failed', { module: m.name, hook, error: String(e) });

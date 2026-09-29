@@ -249,3 +249,20 @@ describe('ModuleHost: http and upgrade routing', () => {
     expect(socket.destroy).toHaveBeenCalledOnce();
   });
 });
+
+describe('ModuleHost: the ICE-TCP target (proxy mode)', () => {
+  it('is the first port a module offers; null when none does', () => {
+    const host = new ModuleHost([{ name: 'a' }, { name: 'b', iceTcpPort: () => null }, { name: 'c', iceTcpPort: () => 25_889 }, { name: 'd', iceTcpPort: () => 1 }], logger());
+    expect(host.iceTcpPort()).toBe(25_889);
+    expect(new ModuleHost([{ name: 'a' }, { name: 'b', iceTcpPort: () => null }], logger()).iceTcpPort()).toBeNull();
+  });
+
+  it('a throwing module is logged and skipped', () => {
+    const l = logger();
+    const host = new ModuleHost([{ name: 'a', iceTcpPort: () => {
+      throw new Error('boom');
+    } }, { name: 'b', iceTcpPort: () => 7 }], l);
+    expect(host.iceTcpPort()).toBe(7);
+    expect(l.error).toHaveBeenCalledWith('module iceTcpPort failed', { module: 'a', error: 'Error: boom' });
+  });
+});

@@ -687,6 +687,16 @@ Um IP WAN em `100.64.0.0/10` ou em faixa RFC1918 indica **CGNAT ou NAT duplo**. 
 - **`public_addresses`:** IP WAN (quando não é CGNAT), IP da LAN e VPNs (Radmin `26.0.0.0/8`, Tailscale `100.64.0.0/10`, ZeroTier pelo nome da interface).
 - **Aviso de banda:** 13 pessoas com câmera exigem cerca de 20–25 Mbps de upload do host. Nesse caso a VPS é recomendada.
 
+### 8.6 Atrás de um proxy TCP (Railway e parecidos)
+
+Algumas plataformas de nuvem só expõem um serviço por HTTP ou por um proxy TCP, **sem UDP**. O Railway permite **um** proxy TCP por instância: um endereço externo aleatório (ex.: `altaria.proxy.rlwy.net:25889`) ligado a uma porta interna (7700). Para isso existe o **modo proxy** (`--proxy <host:porta>`, com o endereço externo do proxy). Nele, a porta pública carrega tudo.
+
+**Uma porta, dois protocolos.** O primeiro byte de cada conexão decide:
+- `0x16`, um registro de handshake TLS: a conexão vai para o servidor HTTPS/WSS de sempre, sem nenhum byte lido. O prazo do handshake e os limites de §13 continuam valendo.
+- `0x00` a `0x02`: ICE-TCP (RFC 4571). A conexão começa com os 2 bytes do tamanho de um STUN binding request, que o LiveKit lê em até 512 bytes. Ela é encaminhada para a porta ICE-TCP do LiveKit em `127.0.0.1`, com backpressure nos dois sentidos, e sem Nagle. Quando um lado fecha, o outro fecha junto.
+- Qualquer outro byte fecha a conexão na hora, e quem não envia nada em 5 s também é desconectado.
+- Antes dessa decisão, cada socket já conta para o limite total de §13. Depois, no máximo 1024 conexões ICE-TCP ficam abertas ao mesmo tempo. Sem voz no ar, o ICE-TCP é recusado.
+
 ## 9. Modo Hospedar (no app)
 
 **Processo do servidor**

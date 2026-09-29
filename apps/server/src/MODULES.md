@@ -22,6 +22,7 @@ Each feature track (Text/roles, Voice, Hosting) plugs into the server as a `Serv
    - A key that clashes with an M1 key or with another module's key closes the session with `INTERNAL`.
    - Feature flags go in `features`, which is read at every welcome (a getter may turn one on later, as voice does once LiveKit runs).
 6. `http(req, res)` and `upgrade(req, socket, head)` return `true` when they handled the request. Built-in routes and `/ws` always win. Don't log URLs, because `/rtc` query strings carry tokens.
+7. `iceTcpPort()` matters only behind a TCP proxy (spec §8.6), where the public port also carries ICE-TCP. It returns the `127.0.0.1` port those connections are piped to, or `null` while there is none. Voice returns LiveKit's `rtc.tcp_port` while LiveKit runs. It is called once per connection, so keep it cheap.
 
 ## Protocol types
 
