@@ -10,16 +10,15 @@ import { useHostStatusSync } from './features/host/useHostStatusSync.js';
 import { joinStartFromLink, useDeepLinkStore } from './features/deeplink/deepLinkStore.js';
 import { useDeepLinkSync } from './features/deeplink/useDeepLinkSync.js';
 import { IdentityScreens } from './features/identity/IdentityScreens.js';
-import { openIdentitySettings } from './features/identity/identityModel.js';
 import { DEFAULT_LOCALE, errorCodeOf, errorMessage, useT } from './i18n/index.js';
 import { AddServerModal } from './integration/AddServerModal.js';
 import { useAddServerUi } from './integration/addServerUi.js';
+import { HomeLayout } from './integration/HomeLayout.js';
 import { useLayoutWiring } from './integration/useLayoutWiring.js';
 import { Connected } from './screens/Connected.js';
 import { IdentityLocked } from './screens/IdentityLocked.js';
 import { Join } from './screens/Join.js';
 import { Onboarding } from './screens/Onboarding.js';
-import { ServerList } from './screens/ServerList.js';
 import { useConnectionStore } from './stores/connection.js';
 import { useSettingsStore } from './stores/settings.js';
 
@@ -121,9 +120,11 @@ export function App() {
   // Host mode (spec §9): its dialogs open over any screen. While hosting, the floating
   // pill shows outside the main layout; inside it the rail shows HostRailButton instead.
   const connected = connection.welcome !== null && connection.state !== 'idle';
+  // Home and the main layout show hosting in the rail; only the Join screens need the floating pill.
+  const inLayout = connected || (!deepLink && !joinOpen && view !== 'join');
   const host = (
     <>
-      {!connected && <HostIndicator />}
+      {!inLayout && <HostIndicator />}
       <HostScreens onJoined={joined} />
       <AddServerModal />
       {identityDialogs}
@@ -167,5 +168,6 @@ export function App() {
     return <><Connected welcome={connection.welcome} onLeave={leave} />{host}</>;
   }
   if (view === 'join') return <><Join onCancel={() => setView('servers')} onJoined={joined} />{host}</>;
-  return <><ServerList onJoin={() => setView('join')} onHost={openHostFlow} onIdentity={openIdentitySettings} onJoined={joined} />{host}</>;
+  // The app opens on the Discord-like layout (owner requirement): Home = rail + "Seus servidores" + welcome.
+  return <><HomeLayout nickname={settings.nickname} onJoined={joined} />{host}</>;
 }
