@@ -5,5 +5,5 @@
     "allowJs": true,
     "checkJs": true
   },
-  "include": ["smoke.mjs", "lib/**/*.mjs", "test/**/*.ts", "test/fixtures/**/*.mjs", "vitest.config.ts"]
+  "include": ["smoke.mjs", "gen-release-key.mjs", "sign-release.mjs", "checksums.mjs", "pack-server.mjs", "release-version.mjs", "verify-release.mjs", "lib/**/*.mjs", "test/**/*.ts", "test/fixtures/**/*.mjs", "vitest.config.ts"]
 }

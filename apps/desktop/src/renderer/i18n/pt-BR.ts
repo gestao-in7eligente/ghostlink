@@ -1,11 +1,13 @@
 import { host } from './pt-BR/host.js';
 import { identity } from './pt-BR/identity.js';
+import { releasePtBR } from './release.pt-BR.js';
 
 // Source catalog: every key exists here first; en.ts must have exactly the same keys.
 import { chat } from './chat.pt-BR.js';
 import { integration } from './integration.pt-BR.js';
 
 export const messages = {
+  ...releasePtBR,
   'app.loading': 'Carregando…',
   'app.beta': 'beta',
 

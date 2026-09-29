@@ -4,6 +4,7 @@
 import type { Envelope, ParsedJoinInput, WelcomePayload } from '@ghostlink/shared';
 import type { AppErrorCode } from './appErrors.js';
 import type { FirewallFixResult, FirewallStatus, HostApi, HostConfig, HostInvite, HostInviteOptions, HostStartResult, HostStatus } from './hostTypes.js';
+import type { UpdateState, UpdatesApi } from './updates.js';
 
 export type IdentityStatus = 'none' | 'ready' | 'locked';
 export type ConnState = 'idle' | 'connecting' | 'authenticating' | 'connected' | 'reconnecting' | 'failed';
@@ -125,6 +126,7 @@ export interface GhostlinkApi {
   server: { request<T = unknown>(type: string, payload?: unknown, serverId?: string): Promise<T> };
   notifications: { show(n: ChatNotification): Promise<boolean> };
   onOpenChannel(cb: (e: OpenChannelEvent) => void): () => void;
+  updates: UpdatesApi;
 }
 
 /** Invoke channels: `ghostlink:<namespace>.<method>`. */
@@ -163,6 +165,9 @@ export const IPC = {
   hostCopyText: 'ghostlink:host.copyText',
   hostFirewall: 'ghostlink:host.firewall',
   hostFixFirewall: 'ghostlink:host.fixFirewall',
+  updatesState: 'ghostlink:updates.state',
+  updatesSetAutoCheck: 'ghostlink:updates.setAutoCheck',
+  updatesRestart: 'ghostlink:updates.restart',
 } as const;
 
 /** Events pushed from main to the renderer. */
@@ -172,6 +177,7 @@ export const IPC_EVENTS = {
   host: 'ghostlink:event.host',
   deepLink: 'ghostlink:event.deepLink',
   openChannel: 'ghostlink:event.openChannel',
+  updates: 'ghostlink:event.updates',
 } as const;
 
 /** Arguments and result of every invoke channel; main's handlers and the preload are both typed from it. */
@@ -210,6 +216,9 @@ export interface IpcContract {
   [IPC.hostCopyText]: { args: [text: string]; result: void };
   [IPC.hostFirewall]: { args: []; result: FirewallStatus };
   [IPC.hostFixFirewall]: { args: []; result: { result: FirewallFixResult; status: FirewallStatus } };
+  [IPC.updatesState]: { args: []; result: UpdateState };
+  [IPC.updatesSetAutoCheck]: { args: [enabled: boolean]; result: UpdateState };
+  [IPC.updatesRestart]: { args: []; result: void };
 }
 
 /** The Host mode channels (spec §9), handled by main/hostIpc.ts. */

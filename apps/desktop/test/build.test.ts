@@ -41,6 +41,10 @@ describe('electron-vite build', () => {
     expect(polyfill).toBeLessThan(entry.indexOf('from "@peculiar/x509"'));
   });
 
+  it('leaves electron-updater in node_modules (it loads its own CommonJS dependencies)', () => {
+    expect(read('main/index.js')).toMatch(/from "electron-updater"/);
+  });
+
   it('keeps the server (SQLite, x509) out of the window process bundle', () => {
     const main = read('main/index.js');
     for (const module of ['node:sqlite', '@peculiar/x509', 'reflect-metadata']) expect(main, module).not.toContain(module);

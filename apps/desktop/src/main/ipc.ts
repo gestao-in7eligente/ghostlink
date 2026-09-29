@@ -11,6 +11,7 @@ import type { IdentityStore } from './identity.js';
 import { mainLog } from './log.js';
 import { originOf } from './security.js';
 import { LOCALES, type SettingsStore } from './settings.js';
+import type { Updater } from './updater.js';
 
 export interface IpcDeps {
   /** app://ghostlink, or the dev server origin in development. */
@@ -28,6 +29,7 @@ export interface IpcDeps {
   /** Confirmed external links and the clipboard (Text track). */
   shell: { openExternal(url: string): Promise<boolean>; copyText(text: string): void };
   notifications: { show(n: ChatNotification): boolean };
+  updates: Pick<Updater, 'state' | 'setAutoCheck' | 'restart'>;
 }
 
 /** The handshake belongs to the main process alone: the renderer may never send it (release plan "Seams"). */
@@ -115,12 +117,15 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   ...HOST_IPC_ARG_SCHEMAS,
   ...BACKUP_IPC_ARG_SCHEMAS,
   [IPC.deepLinkTake]: z.tuple([]),
+  [IPC.updatesState]: z.tuple([]),
+  [IPC.updatesSetAutoCheck]: z.tuple([z.boolean()]),
+  [IPC.updatesRestart]: z.tuple([]),
 };
 
 type Handlers = { [C in IpcChannel]: (...args: IpcArgs<C>) => IpcReturn<C> | Promise<IpcReturn<C>> };
 
 export function createIpcHandlers(deps: IpcDeps): Handlers {
-  const { identity, settings, controller } = deps;
+  const { identity, settings, controller, updates } = deps;
   return {
     [IPC.appInfo]: () => deps.appInfo(),
     [IPC.appOpenExternal]: (url) => deps.shell.openExternal(url),
@@ -143,6 +148,9 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     ...createHostIpcHandlers(deps.host),
     ...createBackupIpcHandlers(deps.backup),
     [IPC.deepLinkTake]: () => deps.deepLinks?.take() ?? null,
+    [IPC.updatesState]: () => updates.state(),
+    [IPC.updatesSetAutoCheck]: (enabled) => updates.setAutoCheck(enabled),
+    [IPC.updatesRestart]: () => updates.restart(),
   };
 }
 

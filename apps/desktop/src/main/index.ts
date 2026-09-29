@@ -1,6 +1,6 @@
 // Main-process bootstrap (contract §5). Everything testable lives in the modules it
 // wires together; this file is the thin glue that needs a real Electron.
-import { BrowserWindow, Notification, app, clipboard, dialog, safeStorage, session, shell } from 'electron';
+import { BrowserWindow, Notification, app, clipboard, dialog, net, safeStorage, session, shell } from 'electron';
 import { mkdtempSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +24,8 @@ import { SavedServersStore } from './savedServers.js';
 import { installSecurity, originOf } from './security.js';
 import { SettingsStore } from './settings.js';
 import { runSmoke } from './smoke.js';
+import { Updater, createUpdaterBackend } from './updater.js';
+import { createReleaseFileFetcher } from './updaterSignature.js';
 
 const smoke = process.env.GHOSTLINK_SMOKE === '1';
 // 0. Before anything can fail: a closed console pipe is never fatal, and uncaught errors are
@@ -121,6 +123,14 @@ function start(): BrowserWindow {
     window: () => (window.isDestroyed() ? null : window),
     openChannel: (event) => send(IPC_EVENTS.openChannel, event),
   });
+  // Spec §15: Windows installs only, never in development or smoke mode; the setting can turn it off.
+  const updater = Updater.load({
+    backend: createUpdaterBackend({ packaged: app.isPackaged, smoke, platform: process.platform, resourcesPath: process.resourcesPath }),
+    userDataDir: userData,
+    currentVersion: app.getVersion(),
+    fetchReleaseFile: createReleaseFileFetcher((url, init) => net.fetch(url, init)),
+    emit: (state) => send(IPC_EVENTS.updates, state),
+  });
   registerIpc({
     appOrigin,
     identity,
@@ -144,12 +154,17 @@ function start(): BrowserWindow {
       }),
       copyText: (text) => clipboard.writeText(text),
     },
+    updates: updater,
     appInfo: () => ({ version: app.getVersion(), platform: process.platform as Platform, locale: app.getLocale() }),
     host: { manager: host, copyText: (text) => clipboard.writeText(text), firewall: hostFirewall(host) },
     backup: identityBackup(window, identity, controller),
     deepLinks: deepLinks ?? undefined,
   });
-  app.on('before-quit', () => void controller.disconnect());
+  updater.start();
+  app.on('before-quit', () => {
+    updater.dispose();
+    void controller.disconnect();
+  });
 
   // 6. Smoke mode (spec §14): listeners first, then the page load.
   if (smoke) startSmoke(window);
