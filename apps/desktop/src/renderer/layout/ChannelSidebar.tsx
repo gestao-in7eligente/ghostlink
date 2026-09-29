@@ -138,6 +138,7 @@ function TextChannelRow({ channel }: { channel: Channel }) {
         aria-current={active ? 'page' : undefined}
         aria-label={label}
         onClick={() => dispatchText({ type: 'select', channelId: channel.id })}
+        data-channel={channel.id}
       >
         <Hash className={l.channelIcon} size={18} aria-hidden="true" />
         <span className={l.channelName}>{channel.name}</span>
@@ -171,6 +172,7 @@ function VoiceChannelRow({ channel }: { channel: Channel }) {
         aria-label={t('layout.joinVoice', { channel: channel.name })}
         title={t('layout.joinVoice', { channel: channel.name })}
         onClick={open}
+        data-voice-channel={channel.id}
       >
         <Volume2 className={l.channelIcon} size={18} aria-hidden="true" />
         <span className={l.channelName}>{channel.name}</span>
