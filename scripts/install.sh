@@ -6,20 +6,26 @@
 #
 # Idempotent: running it again updates GhostLink and LiveKit and keeps the data
 # (/var/lib/ghostlink) and the settings of the first run (/etc/ghostlink/install.conf).
+# It never installs a version older than the installed one without --allow-downgrade.
 #
 # Every download is verified before use:
-#   - the server package against checksums-sha256.txt AND the release's Ed25519
-#     signature (public key below), plus the Sigstore bundle when cosign is installed;
+#   - checksums-sha256.txt against its Ed25519 signature by the release key (below),
+#     before any of its lines is used; then the server package against its single line
+#     there, which pins the bytes of this version (an older genuine package is refused),
+#     and against its own Ed25519 signature, plus the Sigstore bundle of the checksums
+#     (signed by release.yml for this tag) when cosign is installed; once unpacked, the
+#     package's package.json must carry the requested version;
 #   - LiveKit against SHA-256 values pinned in this file.
 # The public IP comes from the routing table (ip -4 route get 1.1.1.1), which sends
 # no packet; no external service is asked.
 set -euo pipefail
 
 GHOSTLINK_REPO="gestao-in7eligente/ghostlink"
-# Raw Ed25519 public key (base64url, 32 bytes) of the release signing key. The Release
-# track fills it in (same value as RELEASE_PUBLIC_KEY in packages/shared/src/release.ts).
-RELEASE_PUBLIC_KEY_B64URL="REPLACE_WITH_RELEASE_PUBLIC_KEY"
-RELEASE_KEY_PLACEHOLDER="REPLACE_WITH_RELEASE_PUBLIC_KEY"
+# Raw Ed25519 public key (base64url, 32 bytes) of the release signing key (same value as
+# RELEASE_PUBLIC_KEY in packages/shared/src/release.ts).
+RELEASE_PUBLIC_KEY_B64URL="Hhib591tl4P4Nf9us1fB5FCXXbGOZDBHwvWIu-2FWnc"
+# Sigstore: the checksums are signed by the release workflow run of the version's tag.
+SIGSTORE_OIDC_ISSUER="https://token.actions.githubusercontent.com"
 
 LIVEKIT_VERSION="1.13.7"
 # From https://github.com/livekit/livekit/releases/download/v1.13.7/checksums.txt
@@ -39,6 +45,7 @@ MEDIA_TCP_PORT=7881
 WORK=""
 DRY_RUN=0
 ASSUME_YES=0
+ALLOW_DOWNGRADE=0
 OPT_NODE_IP=""
 OPT_PORT=""
 OPT_NAME=""
@@ -87,6 +94,8 @@ Options:
   --port <n>         TCP port of the server (default 7700)
   --name <text>      Server name, first install only (letters, digits, space . _ -)
   --version <x.y.z>  Install this version instead of the latest release
+  --allow-downgrade  Allow a version older than the installed one (the data in
+                     /var/lib/ghostlink may not work with it); refused otherwise
   --yes              Never ask; fail when a value is missing
   --dry-run          Print every action without changing anything
   -h, --help         Show this help
@@ -126,6 +135,11 @@ is_version() {
   [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 }
 
+# version_lt <a> <b>: version a is older than version b (numeric order: 0.9.0 < 0.10.0).
+version_lt() {
+  [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n 1)" = "$1" ]
+}
+
 # Safe inside a double-quoted systemd argument: no quotes, backslashes, % or control characters.
 is_name() {
   [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9\ ._-]{0,63}$ ]]
@@ -147,26 +161,24 @@ sha256_of() {
   sha256sum "$1" | cut -d' ' -f1
 }
 
-# verify_checksum <file> <checksums-file> <name>: the line for <name> must match the file.
+# verify_checksum <file> <checksums-file> <name>: the checksums file (already authenticated)
+# must have exactly one line "<sha256>  <name>" for <name>, and its hash must be the file's.
+# A missing, duplicate or conflicting line is refused, never resolved by picking one.
 verify_checksum() {
-  local file="$1" sums="$2" name="$3" expected actual
-  expected="$(awk -v n="$name" '{ f = $2; sub(/^\*/, "", f); if (f == n) { print $1; exit } }' "$sums")"
-  [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || {
-    warn "no checksum for $name"
+  local file="$1" sums="$2" name="$3" actual
+  actual="$(sha256_of "$file")"
+  [[ "$actual" =~ ^[0-9a-f]{64}$ ]] || return 1
+  [ "$(awk -v n="$name" 'length($0) > 66 && substr($0, 67) == n' "$sums" | wc -l)" -eq 1 ] || {
+    warn "$(basename "$sums") must have exactly one line for $name"
     return 1
   }
-  actual="$(sha256_of "$file")"
-  [ "$expected" = "$actual" ]
+  grep -qFx -- "$actual  $name" "$sums"
 }
 
 # verify_ed25519 <file> <signature-file> <public-key-b64url>: detached signature over the
 # file bytes. The signature file holds 64 raw bytes or their base64/base64url text.
 verify_ed25519() {
   local file="$1" sig="$2" key="$3" work b64 pad
-  [ "$key" != "$RELEASE_KEY_PLACEHOLDER" ] || {
-    warn "this installer has no release public key yet"
-    return 1
-  }
   [[ "$key" =~ ^[A-Za-z0-9_-]{43}$ ]] || {
     warn "invalid release public key"
     return 1
@@ -276,39 +288,79 @@ resolve_version() {
   say "GhostLink version: $VERSION"
 }
 
+# The version $INSTALL_DIR/current points to (releases/<version>), or nothing.
+installed_version() {
+  local link="$INSTALL_DIR/current" version
+  [ "$DRY_RUN" = 1 ] && [ -n "${GHOSTLINK_TEST_CURRENT:-}" ] && link="$GHOSTLINK_TEST_CURRENT"
+  [ -e "$link" ] || return 0
+  version="$(basename "$(readlink -f "$link")")"
+  if is_version "$version"; then printf '%s\n' "$version"; fi
+}
+
+# No rollback: an older release (a stale "latest", a mistyped --version) is refused unless
+# --allow-downgrade is given. The same version again is an ordinary update.
+check_downgrade() {
+  local installed
+  installed="$(installed_version)"
+  [ -n "$installed" ] || return 0
+  say "Installed version: $installed"
+  version_lt "$VERSION" "$installed" || return 0
+  [ "$ALLOW_DOWNGRADE" = 1 ] || die "GhostLink $installed is installed and $VERSION is older: refused (a downgrade may not read the data in $DATA_DIR; use --allow-downgrade to install it anyway)"
+  warn "downgrading GhostLink from $installed to $VERSION (--allow-downgrade)"
+}
+
 download() {
   local url="$1" out="$2"
   if [ "$DRY_RUN" = 1 ]; then
     printf '+ download %s\n' "$url"
+    # Test hook: the release files come from a local directory, so their checks really run.
+    if [ -n "${GHOSTLINK_TEST_RELEASE_DIR:-}" ]; then cp "$GHOSTLINK_TEST_RELEASE_DIR/${url##*/}" "$out"; fi
   else
     curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$out" "$url"
   fi
 }
 
+# The "version" field of a package.json.
+package_version() {
+  node -e 'const p = JSON.parse(require("fs").readFileSync(0, "utf8")); process.stdout.write(typeof p.version === "string" ? p.version : "")' <"$1" 2>/dev/null || true
+}
+
 install_server() {
   local base="https://github.com/${GHOSTLINK_REPO}/releases/download/v${VERSION}"
-  local tgz="ghostlink-server-${VERSION}.tgz"
-  local work="$WORK/server"
+  local tgz="ghostlink-server-${VERSION}.tgz" sums="checksums-sha256.txt"
+  local identity="https://github.com/${GHOSTLINK_REPO}/.github/workflows/release.yml@refs/tags/v${VERSION}"
+  local work="$WORK/server" key="$RELEASE_PUBLIC_KEY_B64URL"
+  [ "$DRY_RUN" = 1 ] && [ -n "${GHOSTLINK_TEST_RELEASE_KEY:-}" ] && key="$GHOSTLINK_TEST_RELEASE_KEY"
   mkdir -p "$work"
   say "Downloading $tgz…"
   download "$base/$tgz" "$work/$tgz"
-  download "$base/checksums-sha256.txt" "$work/checksums-sha256.txt"
+  download "$base/$sums" "$work/$sums"
+  download "$base/$sums.ed25519" "$work/$sums.ed25519"
   download "$base/$tgz.ed25519" "$work/$tgz.ed25519"
   if [ "$DRY_RUN" = 1 ]; then
-    printf '+ verify sha256 of %s against checksums-sha256.txt\n' "$tgz"
+    printf '+ verify Ed25519 signature %s.ed25519 with the release key, before using %s\n' "$sums" "$sums"
+    printf '+ verify sha256 of %s against its single line in %s\n' "$tgz" "$sums"
     printf '+ verify Ed25519 signature %s.ed25519\n' "$tgz"
+    printf '+ if cosign is installed: cosign verify-blob --bundle %s.sigstore.json --certificate-identity %s --certificate-oidc-issuer %s %s\n' \
+      "$sums" "$identity" "$SIGSTORE_OIDC_ISSUER" "$sums"
+    printf '+ check that the package.json version is %s\n' "$VERSION"
     printf '+ install %s into %s/releases/%s and switch %s/current\n' "$tgz" "$INSTALL_DIR" "$VERSION" "$INSTALL_DIR"
-    return
+    # Test hook: with local release files, the checks below run too (nothing is installed).
+    [ -n "${GHOSTLINK_TEST_RELEASE_DIR:-}" ] || return 0
   fi
-  verify_checksum "$work/$tgz" "$work/checksums-sha256.txt" "$tgz" || die "checksum mismatch for $tgz: download refused"
-  verify_ed25519 "$work/$tgz" "$work/$tgz.ed25519" "$RELEASE_PUBLIC_KEY_B64URL" || die "invalid Ed25519 signature for $tgz: download refused"
-  say "Checksum and Ed25519 signature OK."
-  if command -v cosign >/dev/null 2>&1; then
-    download "$base/checksums-sha256.txt.sigstore.json" "$work/checksums-sha256.txt.sigstore.json"
-    cosign verify-blob --bundle "$work/checksums-sha256.txt.sigstore.json" \
-      --certificate-identity-regexp "^https://github.com/${GHOSTLINK_REPO}/" \
-      --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-      "$work/checksums-sha256.txt" >/dev/null || die "the Sigstore bundle does not match checksums-sha256.txt"
+  # checksums-sha256.txt is trusted only once its own signature checks out: its line for
+  # this version pins the package bytes, which the package's own signature alone does not
+  # (an older genuine package with its genuine .ed25519 would pass that one).
+  verify_ed25519 "$work/$sums" "$work/$sums.ed25519" "$key" || die "invalid Ed25519 signature for $sums: download refused"
+  verify_checksum "$work/$tgz" "$work/$sums" "$tgz" || die "checksum mismatch for $tgz: download refused"
+  verify_ed25519 "$work/$tgz" "$work/$tgz.ed25519" "$key" || die "invalid Ed25519 signature for $tgz: download refused"
+  say "Signed checksums, checksum and Ed25519 signature OK."
+  if [ "$DRY_RUN" = 0 ] && command -v cosign >/dev/null 2>&1; then
+    download "$base/$sums.sigstore.json" "$work/$sums.sigstore.json"
+    cosign verify-blob --bundle "$work/$sums.sigstore.json" \
+      --certificate-identity "$identity" \
+      --certificate-oidc-issuer "$SIGSTORE_OIDC_ISSUER" \
+      "$work/$sums" >/dev/null || die "the Sigstore bundle does not match $sums"
     say "Sigstore bundle OK."
   fi
   mkdir -p "$work/unpacked"
@@ -316,8 +368,13 @@ install_server() {
   local cli
   cli="$(find "$work/unpacked" -maxdepth 3 -type f -path '*dist/cli.js' | head -n 1)"
   [ -n "$cli" ] || die "the package has no dist/cli.js"
-  local root
+  local root package
   root="$(dirname "$(dirname "$cli")")"
+  [ -f "$root/package.json" ] || die "the package has no package.json"
+  package="$(package_version "$root/package.json")"
+  [ "$package" = "$VERSION" ] || die "the package is version '$package', not $VERSION: download refused"
+  say "Package version $VERSION OK."
+  [ "$DRY_RUN" = 0 ] || return 0
   local target="$INSTALL_DIR/releases/$VERSION"
   rm -rf "$target.new"
   install -d -m 0755 "$INSTALL_DIR/releases"
@@ -484,6 +541,7 @@ main() {
       --port) OPT_PORT="${2:-}"; shift 2 || die "--port needs a value" ;;
       --name) OPT_NAME="${2:-}"; shift 2 || die "--name needs a value" ;;
       --version) OPT_VERSION="${2:-}"; shift 2 || die "--version needs a value" ;;
+      --allow-downgrade) ALLOW_DOWNGRADE=1; shift ;;
       --yes | -y) ASSUME_YES=1; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       -h | --help) usage; exit 0 ;;
@@ -498,7 +556,6 @@ main() {
   trap 'rm -rf "$WORK"' EXIT
   if [ "$DRY_RUN" = 0 ]; then
     [ "$(id -u)" = 0 ] || die "run as root (sudo bash install.sh)"
-    [ "$RELEASE_PUBLIC_KEY_B64URL" != "$RELEASE_KEY_PLACEHOLDER" ] || die "this copy of install.sh has no release public key; download the one attached to a release"
   else
     say "Dry run: nothing will be changed."
   fi
@@ -511,6 +568,7 @@ main() {
   install_node
   create_user
   resolve_version
+  check_downgrade
   install_livekit
   install_server
   save_conf
