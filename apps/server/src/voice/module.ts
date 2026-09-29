@@ -82,7 +82,10 @@ function permissionKey(p: LivekitPermission): string {
  */
 export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
   const registry = new VoiceRegistry();
-  const applied = new Map<string, string>();
+  /** What LiveKit was last told per user: to which connection (participant sid), and which block. */
+  const applied = new Map<string, { sid: string; key: string }>();
+  /** The permission push in progress per user (pushes are serialized per user). */
+  const pushes = new Map<string, Promise<void>>();
   let ctx!: ModuleContext;
   let text: TextModuleVoiceSeams | null = null;
   let backend: VoiceBackend | null = null;
@@ -152,6 +155,38 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     for (const channelId of channels) await backend.removeParticipant(voiceRoomName(channelId), voiceIdentity(userId)).catch(log('removeParticipant'));
   };
 
+  const pushPermission = async (userId: string): Promise<void> => {
+    const channelId = registry.assignedChannel(userId);
+    const sid = channelId ? registry.sidIn(channelId, userId) : null;
+    // Not in LiveKit (yet): there is nobody to tell. Their arrival pushes the block then.
+    if (stopped || !channelId || !sid || !backend?.available) return;
+    const permission = permissionFor(userId, channelId);
+    const key = permissionKey(permission);
+    const last = applied.get(userId);
+    if (last?.sid === sid && last.key === key) return;
+    try {
+      await backend.updatePermission(voiceRoomName(channelId), voiceIdentity(userId), permission);
+      if (registry.sidIn(channelId, userId) === sid) applied.set(userId, { sid, key });
+    } catch (e) {
+      log('updateParticipant')(e);
+    }
+  };
+
+  /**
+   * Brings LiveKit in line with the user's current permissions (spec §8.3): the complete
+   * block, sent to the connection LiveKit reports. A token grants what was true when it
+   * was minted, so each new connection gets the block once, and later only changes.
+   * Serialized per user and computed when it runs: an earlier push never lands last.
+   */
+  const syncPermission = (userId: string): Promise<void> => {
+    const run = (pushes.get(userId) ?? Promise.resolve()).then(() => pushPermission(userId));
+    pushes.set(userId, run);
+    void run.then(() => {
+      if (pushes.get(userId) === run) pushes.delete(userId);
+    });
+    return run;
+  };
+
   /** Pushes the complete permission block when it changed (spec §8.3); drops users who lost access. */
   const refreshPermissions = async (): Promise<void> => {
     if (stopped) return;
@@ -169,13 +204,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
             await removeUser(userId, { notify: ctx.sessions.isOnlineOrInGrace(userId) });
             continue;
           }
-          const permission = permissionFor(userId, channelId);
-          const key = permissionKey(permission);
-          if (applied.get(userId) === key) continue;
-          applied.set(userId, key);
-          if (backend?.available && registry.channelOf(userId) === channelId) {
-            await backend.updatePermission(voiceRoomName(channelId), voiceIdentity(userId), permission).catch(log('updateParticipant'));
-          }
+          await syncPermission(userId);
         }
       } while (sweepAgain && !stopped);
     } finally {
@@ -204,7 +233,10 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
           rooms.set(channelId, users);
         }
       }
-      if (!stopped) broadcast(registry.replacePresence(rooms));
+      if (stopped) return;
+      broadcast(registry.replacePresence(rooms));
+      // Participants whose webhook was lost never got their block (their token may predate a change).
+      await Promise.all([...rooms.values()].flatMap((users) => [...users.keys()].map(syncPermission)));
     } catch (e) {
       log('reconciliation')(e);
     } finally {
@@ -238,6 +270,8 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
         broadcast(e.event === 'participant_joined' || !e.track
           ? registry.join(channelId, userId, e.participantSid)
           : registry.trackPublished(channelId, userId, e.participantSid, e.track));
+        // A mute or permission change since their token was minted reaches LiveKit now.
+        void syncPermission(userId);
         return;
       case 'track_unpublished':
         if (e.track) broadcast(registry.trackUnpublished(channelId, userId, e.track.sid));
@@ -286,7 +320,6 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     const previous = registry.assignedChannel(rc.userId);
     const present = registry.channelOf(rc.userId);
     registry.assign(rc.userId, channelId);
-    applied.set(rc.userId, permissionKey(permission));
     broadcast(registry.removeEverywhere(rc.userId, channelId));
     for (const old of new Set([previous, present])) {
       if (old && old !== channelId) void backend.removeParticipant(voiceRoomName(old), voiceIdentity(rc.userId)).catch(log('removeParticipant'));
@@ -309,11 +342,8 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     if (p.action === 'mute' || p.action === 'unmute') {
       broadcast(registry.setServerMuted(p.userId, p.action === 'mute'));
       // Enforced by LiveKit: the microphone leaves canPublishSources (never mutePublishedTrack, spec §8.3).
-      const permission = permissionFor(p.userId, current);
-      applied.set(p.userId, permissionKey(permission));
-      if (backend?.available && registry.channelOf(p.userId) === current) {
-        await backend.updatePermission(voiceRoomName(current), voiceIdentity(p.userId), permission).catch(log('updateParticipant'));
-      }
+      // Not in LiveKit yet: the block goes out when they arrive (participant_joined).
+      await syncPermission(p.userId);
       return {};
     }
     if (p.action === 'disconnect') {

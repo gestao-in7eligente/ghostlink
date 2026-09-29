@@ -86,6 +86,11 @@ export class VoiceRegistry {
     return this.#channelsOf(userId)[0] ?? null;
   }
 
+  /** The LiveKit participant sid of the user's connection in `channelId`, or null when LiveKit does not see them there. */
+  sidIn(channelId: string, userId: string): string | null {
+    return this.#rooms.get(channelId)?.get(userId)?.sid ?? null;
+  }
+
   /** participant_joined (or a track event for someone we had not seen): the user is in `channelId` only. */
   join(channelId: string, userId: string, sid: string): string[] {
     const changed = this.removeEverywhere(userId, channelId);

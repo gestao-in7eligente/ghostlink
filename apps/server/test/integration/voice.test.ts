@@ -675,10 +675,11 @@ describe("the Text module's events (its real seam: events.on)", () => {
     const identity = `u_${a.identity.userId}`;
     ok(await a.request('voice.join', { channelId: 'VC1' }));
     s.backend.join('ch_VC1', identity);
+    await expect.poll(() => s.backend.updates(identity).length).toBe(1); // on arrival
     s.text.stub.setBits(a.identity.userId, 'VC1', P.VIEW_CHANNEL | P.CONNECT_VOICE);
     s.text.emit('access.changed', { userIds: [a.identity.userId] });
-    await expect.poll(() => s.backend.updates(identity).length).toBe(1);
-    expect(s.backend.updates(identity)[0]).toMatchObject({ canPublish: false, canPublishSources: [] });
+    await expect.poll(() => s.backend.updates(identity).length).toBe(2);
+    expect(s.backend.updates(identity)[1]).toMatchObject({ canPublish: false, canPublishSources: [] });
   });
 
   it('channel.deleted empties that voice room', async () => {
@@ -761,21 +762,113 @@ describe('permission changes and reconciliation (spec §7, §8.3)', () => {
     ok(await a.request('voice.join', { channelId: 'VC1' }));
     s.backend!.join('ch_VC1', identity);
     await nextState(a, 'VC1');
+    await expect.poll(() => s.backend!.updates(identity).length).toBe(1); // on arrival
     s.text.setBits(a.identity.userId, 'VC1', P.VIEW_CHANNEL | P.CONNECT_VOICE | P.VIDEO);
     s.text.emitChanged();
-    await expect.poll(() => s.backend!.updates(identity).length).toBe(1);
-    const p = s.backend!.updates(identity)[0]!;
+    await expect.poll(() => s.backend!.updates(identity).length).toBe(2);
+    const p = s.backend!.updates(identity)[1]!;
     expect(p.canPublishSources).not.toContain(2);
     expect(p).toMatchObject({ canSubscribe: true, canPublish: true, canPublishData: false, canUpdateMetadata: false, hidden: false });
     s.text.emitChanged();
     await new Promise((r) => setTimeout(r, 50));
-    expect(s.backend!.updates(identity)).toHaveLength(1); // unchanged bits: no call
+    expect(s.backend!.updates(identity)).toHaveLength(2); // unchanged bits: no call
 
     s.text.setBits(a.identity.userId, 'VC1', 0);
     await s.voice.refreshPermissions();
     expect(s.backend!.removals()).toContain(`ch_VC1/${identity}`);
     await a.waitEvent('voice.forceDisconnect');
     expect(s.voice.registry.assignedChannel(a.identity.userId)).toBeNull();
+  });
+
+  describe('between voice.join and LiveKit seeing the user (their token predates the change)', () => {
+    async function assigned(s: Setup) {
+      const mod = await s.client('mod');
+      const target = await s.client('target');
+      s.text.setBits(mod.identity.userId, 'VC1', s.text.defaultBits | P.MUTE_MEMBERS);
+      s.text.positions.set(mod.identity.userId, 5);
+      const { token } = ok<JoinRes>(await target.request('voice.join', { channelId: 'VC1' }));
+      expect(claimsOf(token).video.canPublishSources).toContain('microphone');
+      return { mod, target, identity: `u_${target.identity.userId}` };
+    }
+
+    it('a server mute reaches LiveKit when the user arrives, and they never keep the microphone', async () => {
+      const s = await setup();
+      const { mod, target, identity } = await assigned(s);
+      ok(await mod.request('voice.moderate', { userId: target.identity.userId, action: 'mute' }));
+      expect(s.backend!.updates(identity)).toEqual([]); // nobody in LiveKit to tell yet
+      await s.voice.refreshPermissions();
+      expect(s.backend!.updates(identity)).toEqual([]);
+
+      s.backend!.join('ch_VC1', identity); // connects with the token it already holds
+      await expect.poll(() => s.backend!.updates(identity).length).toBeGreaterThan(0);
+      const pushed = s.backend!.updates(identity).at(-1)!;
+      expect(pushed.canPublishSources).not.toContain(TrackSource.MICROPHONE);
+      expect(pushed).toMatchObject({ canSubscribe: true, canPublishData: false, canUpdateMetadata: false, hidden: false });
+      await s.voice.refreshPermissions();
+      await s.voice.reconcile();
+      expect(s.backend!.updates(identity)).toHaveLength(1); // once per connection, not on every sweep
+    });
+
+    it('a permission change reaches LiveKit when the user arrives', async () => {
+      const s = await setup();
+      const { target, identity } = await assigned(s);
+      s.text.setBits(target.identity.userId, 'VC1', P.VIEW_CHANNEL | P.CONNECT_VOICE);
+      s.text.emitChanged();
+      await s.voice.refreshPermissions();
+      expect(s.backend!.updates(identity)).toEqual([]);
+      s.backend!.join('ch_VC1', identity);
+      await expect.poll(() => s.backend!.updates(identity).at(-1)).toMatchObject({ canPublish: false, canPublishSources: [] });
+    });
+
+    it('every new LiveKit connection gets the current block, since its token may be older', async () => {
+      const s = await setup();
+      const { mod, target, identity } = await assigned(s);
+      const sid = s.backend!.join('ch_VC1', identity);
+      await expect.poll(() => s.backend!.updates(identity)).toHaveLength(1);
+      ok(await mod.request('voice.moderate', { userId: target.identity.userId, action: 'mute' }));
+      expect(s.backend!.updates(identity)).toHaveLength(2);
+      s.backend!.emit({ event: 'participant_left', room: 'ch_VC1', identity, participantSid: sid, track: null });
+      s.backend!.join('ch_VC1', identity); // reconnects with the (unmuted) join token
+      await expect.poll(() => s.backend!.updates(identity)).toHaveLength(3);
+      expect(s.backend!.updates(identity).at(-1)!.canPublishSources).not.toContain(TrackSource.MICROPHONE);
+    });
+
+    it('reconciliation pushes the current block to a participant whose webhook was lost', async () => {
+      const s = await setup();
+      const { mod, target, identity } = await assigned(s);
+      ok(await mod.request('voice.moderate', { userId: target.identity.userId, action: 'mute' }));
+      s.backend!.seed('ch_VC1', identity);
+      await s.voice.reconcile();
+      expect(s.backend!.updates(identity).at(-1)!.canPublishSources).not.toContain(TrackSource.MICROPHONE);
+      await s.voice.reconcile();
+      expect(s.backend!.updates(identity)).toHaveLength(1);
+    });
+
+    it('a later change is never overtaken by an earlier push still on its way to LiveKit', async () => {
+      const s = await setup();
+      const { mod, target, identity } = await assigned(s);
+      // Hold the first push (the one on arrival, with the microphone) until the mute is under way.
+      let release!: () => void;
+      const held = new Promise<void>((r) => (release = r));
+      const original = s.backend!.updatePermission.bind(s.backend!);
+      let first = true;
+      s.backend!.updatePermission = async (room, id, permission) => {
+        if (first) {
+          first = false;
+          await held;
+        }
+        return original(room, id, permission);
+      };
+      s.backend!.join('ch_VC1', identity);
+      await new Promise((r) => setTimeout(r, 20));
+      const muting = mod.request('voice.moderate', { userId: target.identity.userId, action: 'mute' });
+      await new Promise((r) => setTimeout(r, 50));
+      release();
+      ok(await muting);
+      await expect.poll(() => s.backend!.updates(identity).length).toBeGreaterThan(0);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(s.backend!.updates(identity).at(-1)!.canPublishSources).not.toContain(TrackSource.MICROPHONE);
+    });
   });
 
   it('rebuilds the voice map from LiveKit and removes participants nobody assigned', async () => {

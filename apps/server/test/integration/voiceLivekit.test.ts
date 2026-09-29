@@ -175,6 +175,22 @@ describe.skipIf(!binary)('voice with the real LiveKit', () => {
     await expect.poll(() => e.voice.registry.hasMicrophone(ana.identity.userId), { timeout: 10_000 }).toBe(true);
   });
 
+  it('a server mute before the user reaches LiveKit is applied when they arrive, though their token allows the microphone', async () => {
+    const e = await env();
+    const ana = await e.client('ana');
+    const mod = await e.client('mod');
+    e.text.setBits(mod.identity.userId, 'VC1', e.text.defaultBits | P.MUTE_MEMBERS);
+    e.text.positions.set(mod.identity.userId, 5);
+    const { token } = ok<{ token: string }>(await ana.request('voice.join', { channelId: 'VC1' }));
+    ok(await mod.request('voice.moderate', { userId: ana.identity.userId, action: 'mute' }));
+
+    const room = await participant(e, token);
+    await expect
+      .poll(async () => (await e.rs.listParticipants('ch_VC1'))[0]?.permission?.canPublishSources, { timeout: 10_000 })
+      .toEqual([TrackSource.CAMERA, TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO]);
+    await expect(publishMicrophone(room)).rejects.toThrow();
+  });
+
   it('removeParticipant plus the proxy keep a disconnected user out, though LiveKit alone would let them back', async () => {
     const e = await env();
     const ana = await e.client('ana');
