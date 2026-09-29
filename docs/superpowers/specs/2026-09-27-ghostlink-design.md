@@ -874,13 +874,23 @@ Algumas plataformas de nuvem só expõem um serviço por HTTP ou por um proxy TC
 |---|---|
 | Antes do TLS | Handshake TLS em até 10 s · no máximo 4096 sockets TCP abertos no total e 64 por IP (IPv6 agrupado por /64), contados da conexão ao fechamento, inclusive depois de autenticar · o socket que passa do limite é fechado na hora |
 | Pré-autenticação | `hello` em até 5 s · `auth.proof` em até 10 s · no máximo 256 conexões não autenticadas no total · 20 conexões por IP · `scrypt` com no máximo 2 simultâneos |
-| Autenticação | Falhas por IP: 10/min (sucessos não contam) · desafios pendentes por IP: 5 · IPv6 agrupado por /64 |
+| Autenticação | Falhas por IP: 10/min (sucessos não contam; um membro que entra só com a chave, sem código de setup, nunca é barrado, porque não tem nada a adivinhar) · desafios pendentes por IP: 5 · IPv6 agrupado por /64 |
 | Membros novos | 5 identidades novas por IP por hora, em qualquer modo de entrada |
 | Chat | `msg.send`: 5 a cada 5 s por usuário, com rajada de 10 · `typing`: 1 a cada 3 s · `msg.react`: 10 a cada 5 s |
 | Voz e perfil | `voice.join`: 5 a cada 10 s · `profile.update`: 5/min |
 | Geral | `upload.begin`: 10/min · requisições gerais: 30/s por sessão · `invite.create`: 10/h por usuário |
 | Upload | Corpo cortado ao passar de `size` · 3 uploads simultâneos por sessão · 60 s sem progresso derruba a conexão |
 | Tamanhos | Frame de 256 KiB · mensagem de 4000 caracteres · 10 anexos · apelido de 1 a 32 caracteres visíveis · nome de canal com até 100 |
+
+**Atrás de um proxy TCP (§8.6)**
+- Todo cliente chega pelo endereço do proxy, e o proxy TCP do Railway não oferece o PROXY protocol (v1/v2): nenhum cabeçalho com o IP real chega ao servidor. Um limite por IP valeria para todos juntos. Por isso, no modo proxy, os limites por IP viram limites do servidor inteiro, dimensionados para ele:
+  - sockets TCP: 4096 no total (o limite de 64 por IP deixa de existir);
+  - pré-autenticação: 256 conexões não autenticadas no total e até 256 desafios pendentes;
+  - falhas de autenticação: 100/min no servidor inteiro, e um membro que entra só com a chave continua nunca sendo barrado;
+  - membros novos: 30 identidades novas por hora no servidor inteiro;
+  - o `last_ip` não é gravado, porque seria o do proxy. Banir por IP deixa de ter efeito, e o ban por identidade continua.
+- O servidor registra no log, uma vez na inicialização, que o modo proxy está ligado e quais limites valem.
+- **Trade-off:** quem abusa atinge todo mundo. Pode ocupar as 256 conexões pré-autenticação, esgotar as 100 falhas por minuto ou as 30 entradas por hora e atrasar a entrada de gente nova. Os membros existentes continuam entrando. A força bruta continua impraticável: os códigos de convite têm 50 bits, o `scrypt` roda no máximo 2 por vez e as falhas têm teto global.
 
 **Reconexão do cliente**
 - Backoff exponencial de 1 a 30 s, com jitter.

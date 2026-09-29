@@ -14,6 +14,7 @@ import { ModuleHost } from './moduleHost.js';
 import type { ProxyEndpoint, ServerModule } from './modules.js';
 import { allLocalIPv4, guardAddresses, isWildcardHost, portInUseError, probeTcpPort } from './net/ports.js';
 import { createPublicPort } from './net/publicPort.js';
+import { PER_ADDRESS, SHARED_ADDRESS } from './ratelimit/limiter.js';
 import { loadOrCreateCertificate } from './tls/certificate.js';
 import { SERVER_VERSION } from './version.js';
 import { Gateway } from './ws/gateway.js';
@@ -107,11 +108,13 @@ function normalizeAddresses(addresses: readonly string[]): string[] {
 export async function startServer(opts: StartServerOptions): Promise<GhostServer> {
   const logger = opts.logger ?? consoleLogger;
   const now = opts.now ?? Date.now;
-  const limits = resolveLimits(opts.limits);
+  const proxy = opts.proxy === undefined ? undefined : parseHostPort(formatHostPort(opts.proxy.host, opts.proxy.port));
+  // spec §13: behind a TCP proxy every client arrives from the proxy's address.
+  const limits = resolveLimits(opts.limits, { sharedAddress: proxy !== undefined });
+  const addressing = proxy ? SHARED_ADDRESS : PER_ADDRESS;
   if (opts.maxMembers !== undefined && (!Number.isInteger(opts.maxMembers) || opts.maxMembers < 1 || opts.maxMembers > MAX_MEMBERS_LIMIT)) {
     throw new ProtocolError('BAD_REQUEST', `maxMembers must be an integer between 1 and ${MAX_MEMBERS_LIMIT}`);
   }
-  const proxy = opts.proxy === undefined ? undefined : parseHostPort(formatHostPort(opts.proxy.host, opts.proxy.port));
   // Validates module names and request types before anything touches the disk.
   const modules = new ModuleHost([coreModule, ...(opts.modules ?? [])], logger);
   const host = opts.host ?? '0.0.0.0';
@@ -148,6 +151,7 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     now,
     logger,
     modules,
+    addressing,
   });
   const http = createHttpServer({
     certPem: certificate.certPem,
@@ -157,6 +161,7 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     moduleRequest: (req, res) => modules.http(req, res),
     moduleUpgrade: (req, socket, head) => modules.upgrade(req, socket, head),
     limits,
+    addressKey: (address) => addressing.keyOf(address),
   });
   // spec §8.5: behind a TCP proxy, one public port for TLS and ICE-TCP, told apart by the first byte.
   const front = proxy ? createPublicPort({ tls: http, iceTarget: () => modules.iceTcpPort(), limits }) : null;
@@ -216,7 +221,15 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     throw e;
   }
   logger.info('GhostLink server listening', { port, version: SERVER_VERSION });
-  if (proxy) logger.info(`proxy mode: behind the TCP proxy ${formatHostPort(proxy.host, proxy.port)}; port ${port} carries HTTPS/WSS and voice (ICE-TCP)`);
+  if (proxy) {
+    logger.info(
+      `proxy mode: behind the TCP proxy ${formatHostPort(proxy.host, proxy.port)}; port ${port} carries HTTPS/WSS and voice (ICE-TCP). ` +
+        'Every client arrives from the proxy, so the per-IP limits are server-wide: ' +
+        `${limits.maxSockets} open sockets, ${limits.maxConnectionsPerIp} unauthenticated connections, ` +
+        `${limits.authFailuresPerIpPerMinute} authentication failures per minute (members are never locked out), ` +
+        `${limits.newIdentitiesPerIpPerHour} new members per hour; last_ip is not recorded, so IP bans are off`,
+    );
+  }
 
   const effectiveAddresses = (): string[] => {
     const stored = getMeta(db).publicAddresses;

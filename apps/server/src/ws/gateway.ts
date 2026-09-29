@@ -10,7 +10,7 @@ import type { ServerLimits } from '../limits.js';
 import type { Logger } from '../logger.js';
 import type { ModuleHost } from '../moduleHost.js';
 import type { RequestContext, SessionInfo } from '../modules.js';
-import { SlidingWindowLimiter, ipKey } from '../ratelimit/limiter.js';
+import { PER_ADDRESS, SlidingWindowLimiter, type ClientAddressing } from '../ratelimit/limiter.js';
 import { Connection, ConnectionClosedError } from './connection.js';
 import { createDispatcher, errorResponse } from './dispatch.js';
 import { SessionHub } from './sessionHub.js';
@@ -25,6 +25,8 @@ export interface GatewayDeps {
   now: () => number;
   logger: Logger;
   modules: ModuleHost;
+  /** Per address (default), or one shared key behind a TCP proxy (spec §13). */
+  addressing?: ClientAddressing;
 }
 
 const SWEEP_INTERVAL_MS = 60_000;
@@ -39,6 +41,7 @@ export class Gateway {
   /** Also the SessionsApi handed to modules. */
   readonly sessions: SessionHub;
   readonly #deps: GatewayDeps;
+  readonly #addressing: ClientAddressing;
   readonly #wss: WebSocketServer;
   readonly #connections = new Set<Connection>();
   readonly #unauthenticatedPerIp = new Map<string, number>();
@@ -52,6 +55,7 @@ export class Gateway {
 
   constructor(deps: GatewayDeps) {
     this.#deps = deps;
+    this.#addressing = deps.addressing ?? PER_ADDRESS;
     const { limits, now, modules } = deps;
     this.sessions = new SessionHub({
       graceMs: limits.presenceGraceMs,
@@ -90,7 +94,7 @@ export class Gateway {
     const requestHost = req.headers.host;
     this.#wss.handleUpgrade(req, socket, head, (ws) => {
       const { limits } = this.#deps;
-      const conn = new Connection(ws, { ip, ipKey: ipKey(ip), pingIntervalMs: limits.pingIntervalMs, pongTimeoutMs: limits.pongTimeoutMs });
+      const conn = new Connection(ws, { ip, ipKey: this.#addressing.keyOf(ip), pingIntervalMs: limits.pingIntervalMs, pongTimeoutMs: limits.pongTimeoutMs });
       this.#connections.add(conn);
       conn.onClose(() => this.#connections.delete(conn));
       const perIp = this.#unauthenticatedPerIp.get(conn.ipKey) ?? 0;
@@ -132,6 +136,7 @@ export class Gateway {
         authFailures: this.#authFailures,
         newIdentities: this.#newIdentities,
         logger: this.#deps.logger,
+        realAddresses: this.#addressing.real,
       });
     } catch (e) {
       if (!(e instanceof HandshakeFailed)) {
