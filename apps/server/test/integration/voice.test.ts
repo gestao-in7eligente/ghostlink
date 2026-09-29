@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { PERMISSIONS, type ResErr, type ResOk, type VoiceChannelState } from '@ghostlink/shared';
 import type { Logger } from '../../src/logger.js';
-import { createVoiceModule, type VoiceModule } from '../../src/voice/index.js';
+import { createVoiceModule, type VoiceModule, type VoiceModuleOptions } from '../../src/voice/index.js';
 import { withDb } from '../helpers/db.js';
 import { connectTestClient, startTestServer, type TestClient, type TestServer } from '../helpers/testClient.js';
 import { EventsText, FAKE_KEYS, FakeBackend, StubText } from '../helpers/voice.js';
@@ -28,7 +28,9 @@ interface Setup {
   client(nickname?: string): Promise<TestClient>;
 }
 
-async function setup(o: { backend?: FakeBackend | null; graceMs?: number; publicAddresses?: string[] } = {}): Promise<Setup> {
+async function setup(
+  o: { backend?: FakeBackend | null; graceMs?: number; publicAddresses?: string[]; voice?: Partial<VoiceModuleOptions>; waitReady?: boolean } = {},
+): Promise<Setup> {
   const text = new StubText();
   text.channels.set('VC1', { type: 'voice', userLimit: 0 });
   text.channels.set('VC2', { type: 'voice', userLimit: 0 });
@@ -36,7 +38,7 @@ async function setup(o: { backend?: FakeBackend | null; graceMs?: number; public
   text.channels.set('SECRET', { type: 'voice', userLimit: 0 });
   text.privateChannels.add('SECRET');
   const backend = o.backend === undefined ? new FakeBackend() : o.backend;
-  const voice = createVoiceModule({ backend: () => backend, sweepIntervalMs: 3_600_000, reconcileIntervalMs: 3_600_000 });
+  const voice = createVoiceModule({ backend: () => backend, sweepIntervalMs: 3_600_000, reconcileIntervalMs: 3_600_000, ...o.voice });
   const logs: string[] = [];
   const logger: Logger = {
     info: (m, meta) => logs.push(`${m} ${JSON.stringify(meta ?? {})}`),
@@ -51,7 +53,7 @@ async function setup(o: { backend?: FakeBackend | null; graceMs?: number; public
     publicAddresses: o.publicAddresses,
   });
   servers.push(t);
-  await voice.whenReady();
+  if (o.waitReady !== false) await voice.whenReady();
   return {
     t,
     text,
@@ -194,6 +196,63 @@ describe('voice module: welcome and features', () => {
     const down = await setup({ backend: new GivingUpBackend() });
     expect(await down.voice.whenReady()).toBe(false);
     expect(down.logs.some((l) => l.includes('voice is unavailable'))).toBe(true);
+  });
+
+  function booting(): FakeBackend {
+    const b = new FakeBackend();
+    b.available = false;
+    b.readyOnStart = false;
+    return b;
+  }
+
+  it('tells every session when voice comes and goes (voice.availability), and later welcomes follow', async () => {
+    const late = booting();
+    const s = await setup({ backend: late, waitReady: false, voice: { readyWaitMs: 0 } });
+    const a = await s.client('ana');
+    const b = await s.client('bia');
+    s.text.setBits(b.identity.userId, 'VC1', 0);
+    s.text.setBits(b.identity.userId, 'VC2', 0); // sees no voice channel: the flag is server-wide
+    expect(a.welcome!.features).not.toContain('voice');
+
+    late.up();
+    for (const c of [a, b]) expect((await c.waitEvent('voice.availability')).d).toEqual({ available: true });
+    expect((await s.client()).welcome!.features).toContain('voice');
+    late.up(); // ready again without having gone down: nothing to tell
+    await noEvent(a, 'voice.availability');
+    ok(await a.request('voice.join', { channelId: 'VC1' }));
+    late.join('ch_VC1', `u_${a.identity.userId}`);
+    await nextState(a, 'VC1', 3_000, (st) => st.participants.length === 1);
+
+    late.crash(); // the supervisor restarts it
+    for (const c of [a, b]) expect((await c.waitEvent('voice.availability')).d).toEqual({ available: false });
+    await nextState(a, 'VC1', 3_000, empty); // nobody is connected to a LiveKit that is down
+    const during = await s.client();
+    expect(during.welcome!.features).not.toContain('voice');
+    expect(code(await during.request('voice.join', { channelId: 'VC1' }))).toBe('INTERNAL');
+
+    late.up();
+    expect((await a.waitEvent('voice.availability')).d).toEqual({ available: true });
+    late.crash();
+    expect((await a.waitEvent('voice.availability')).d).toEqual({ available: false });
+    late.giveUp(); // already down: nothing new
+    await noEvent(a, 'voice.availability');
+    expect(await s.voice.whenReady()).toBe(true);
+  });
+
+  it('startup waits briefly for LiveKit, so the first welcomes (the host app) already list voice', async () => {
+    const late = booting();
+    const start = late.start.bind(late);
+    late.start = async (listeners) => {
+      await start(listeners);
+      setTimeout(() => late.up(), 100);
+    };
+    const s = await setup({ backend: late, waitReady: false });
+    expect((await s.client()).welcome!.features).toContain('voice');
+
+    const began = Date.now();
+    const never = await setup({ backend: booting(), waitReady: false, voice: { readyWaitMs: 200 } });
+    expect(Date.now() - began).toBeLessThan(3_000);
+    expect((await never.client()).welcome!.features).not.toContain('voice');
   });
 
   it('the welcome lists participants only in voice channels the user can see', async () => {

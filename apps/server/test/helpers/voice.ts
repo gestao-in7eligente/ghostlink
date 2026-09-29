@@ -73,6 +73,8 @@ export class FakeBackend implements VoiceBackend {
    */
   refuseUpgrades = false;
   readonly afterRefusal: Buffer[] = [];
+  /** false: start() leaves LiveKit booting (unavailable, no onReady) until up(). */
+  readyOnStart = true;
   listeners: VoiceBackendListeners | null = null;
   #server: Server | null = null;
   #wss: WebSocketServer | null = null;
@@ -109,7 +111,25 @@ export class FakeBackend implements VoiceBackend {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     this.#server = server;
     this.#port = (server.address() as AddressInfo).port;
-    listeners.onReady();
+    if (this.readyOnStart) listeners.onReady();
+  }
+
+  /** LiveKit answers (first start, or a restart after a crash). */
+  up(): void {
+    this.available = true;
+    this.listeners?.onReady();
+  }
+
+  /** LiveKit died; the supervisor is restarting it. */
+  crash(): void {
+    this.available = false;
+    this.listeners?.onDown();
+  }
+
+  /** The supervisor gave up restarting LiveKit. */
+  giveUp(): void {
+    this.available = false;
+    this.listeners?.onUnavailable();
   }
 
   async stop(): Promise<void> {

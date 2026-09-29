@@ -39,6 +39,11 @@ export interface VoiceModuleOptions {
   reconcileIntervalMs?: number;
   /** Permission re-check of everyone in voice (safety net behind the Text hooks). */
   sweepIntervalMs?: number;
+  /**
+   * How long start() waits for LiveKit's first answer, so the first welcomes (the host's
+   * own app connects right after startup) already list voice. Default 5 s; 0: no wait.
+   */
+  readyWaitMs?: number;
 }
 
 /** The `voice` module plus the calls other modules and tests may make on it. */
@@ -71,6 +76,14 @@ function defaultBackend(ctx: ModuleContext, options: VoiceServerOptions): VoiceB
   return new LivekitBackend({ ...options, binaryPath, dataDir: ctx.dataDir, logger: ctx.logger });
 }
 
+/** Resolves when `p` settles or after `ms`, whichever comes first. */
+async function waitAtMost(p: Promise<unknown>, ms: number): Promise<void> {
+  if (ms <= 0) return;
+  let timer: NodeJS.Timeout | undefined;
+  await Promise.race([p, new Promise<void>((resolve) => (timer = setTimeout(resolve, ms)))]);
+  clearTimeout(timer);
+}
+
 function permissionKey(p: LivekitPermission): string {
   return `${p.canPublish}:${[...p.canPublishSources].sort().join(',')}`;
 }
@@ -100,6 +113,8 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
   let reconciling = false;
   let sweeping = false;
   let sweepAgain = false;
+  /** Whether sessions were last told voice is available (welcome.features, then voice.availability). */
+  let announced = false;
 
   const access = (): VoiceAccess => opts.access?.(ctx) ?? voiceAccessOf(text) ?? NO_CHANNELS;
   const log = (what: string) => (e: unknown) => ctx.logger.warn(`voice: ${what} failed`, { error: String(e) });
@@ -136,6 +151,20 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       if (a.channel(channelId)?.type !== 'voice' || !has(a.permissions(userId, channelId), P.VIEW_CHANNEL)) continue;
       sendToUser(userId, { t: 'voice.state', d: registry.state(channelId) });
     }
+  };
+
+  /**
+   * `voice.availability` to every session when LiveKit comes or goes (first start, crash,
+   * restart, gave up): welcome.features is only read when a session opens. A server-wide
+   * flag, like features itself, so it has no channel audience. While LiveKit is down
+   * nobody is connected to it: the voice map empties (a restart rebuilds it, spec §7).
+   */
+  const announce = (): void => {
+    const available = !stopped && backend?.available === true;
+    if (!available) broadcast(registry.replacePresence(new Map()));
+    if (available === announced) return;
+    announced = available;
+    ctx.sessions.broadcast({ t: 'voice.availability', d: { available } });
   };
 
   const sendToUser = (userId: string, event: ServerEvent): void => {
@@ -418,8 +447,9 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
         );
       }
       backend = (opts.backend ?? defaultBackend)(c, c.options?.voice ?? {});
+      announced = backend?.available === true;
     },
-    start({ port }) {
+    async start({ port }) {
       publicPort = port;
       if (!backend) return;
       const b = backend;
@@ -427,11 +457,14 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       const first = b.start({
         onReady: () => {
           settleReady(true);
+          announce();
           void reconcile();
         },
         onWebhook,
+        onDown: () => announce(),
         onUnavailable: () => {
           settleReady(false);
+          announce();
           ctx.logger.error('voice is unavailable: LiveKit could not be restarted');
         },
       });
@@ -442,6 +475,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       timers.push(setInterval(() => void reconcile(), opts.reconcileIntervalMs ?? 60_000));
       timers.push(setInterval(() => void refreshPermissions(), opts.sweepIntervalMs ?? 5_000));
       for (const t of timers) t.unref();
+      await waitAtMost(ready, opts.readyWaitMs ?? 5_000);
     },
     async stop() {
       stopped = true;

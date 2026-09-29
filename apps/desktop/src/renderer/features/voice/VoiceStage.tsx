@@ -75,6 +75,7 @@ export function VoiceStage({ channelId }: { channelId: string }) {
   const muted = useVoiceStore((v) => v.selfMuted || v.selfDeafened);
   const deafened = useVoiceStore((v) => v.selfDeafened);
   const serverMuted = useVoiceStore((v) => selfVoice(v)?.serverMuted ?? false);
+  const available = useVoiceStore((v) => v.available);
   const here = call.channelId === channelId && call.status !== 'idle';
   const name = directory.channelName(channelId) ?? '';
 
@@ -129,11 +130,15 @@ export function VoiceStage({ channelId }: { channelId: string }) {
               <PhoneOff size={20} aria-hidden="true" />
             </button>
           </>
-        ) : (
+        ) : available ? (
           <button type="button" className={s.primary} onClick={() => void joinVoice(channelId)} data-voice-join={channelId}>
             <PhoneCall size={18} aria-hidden="true" />
             {t('voice.join')}
           </button>
+        ) : (
+          <p className={s.unavailable} role="status">
+            {t('voice.unavailable')}
+          </p>
         )}
       </footer>
     </section>

@@ -1,6 +1,7 @@
 // Wires the voice session to the app: server events and requests over IPC, the
 // connection store, voice settings, and push-to-talk (in-app keys + the global hook).
 // Started by the first mounted voice component (useVoiceRuntime), stopped by the last.
+// The store sync (welcome + voice.* events) also runs for useVoiceAvailable() alone.
 import { Room, createLocalAudioTrack } from 'livekit-client';
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
@@ -17,6 +18,8 @@ import { useVoiceStore } from './state.js';
 let session: VoiceSession | null = null;
 let users = 0;
 let stopRuntime: (() => void) | null = null;
+let syncUsers = 0;
+let stopSync: (() => void) | null = null;
 let audioContext: AudioContext | null = null;
 const gates = new Set<GateProcessor>();
 let inAppPtt = false;
@@ -67,6 +70,56 @@ function configureGlobalPtt(s: VoiceSettings): void {
   );
 }
 
+/** Keeps the voice store in step with the server: the welcome snapshot, then voice.* events (also to the session, when one runs). */
+function startSync(): () => void {
+  const voice = useVoiceStore;
+  const dispatch = voice.getState().dispatch;
+  const welcome = useConnectionStore.getState().welcome;
+  if (welcome) dispatch({ type: 'welcome', welcome });
+  const offConnection = useConnectionStore.subscribe((c, prev) => {
+    if (c.welcome === prev.welcome) return;
+    // Another server (or none): the call and the snapshot belong to the old one.
+    if (!c.welcome || c.welcome.serverId !== voice.getState().serverId) {
+      void session?.dispose();
+      dispatch({ type: 'reset' });
+    }
+    if (c.welcome) dispatch({ type: 'welcome', welcome: c.welcome });
+  });
+  const offEvents = window.ghostlink.onServerEvent((event) => {
+    if (!event.t.startsWith('voice.')) return;
+    dispatch({ type: 'serverEvent', event });
+    void session?.handleServerEvent(event);
+  });
+  return () => {
+    offEvents();
+    offConnection();
+  };
+}
+
+function useVoiceSync(): void {
+  useEffect(() => {
+    if (syncUsers++ === 0) stopSync = startSync();
+    return () => {
+      if (--syncUsers === 0) {
+        stopSync?.();
+        stopSync = null;
+      }
+    };
+  }, []);
+}
+
+/**
+ * Whether the server's voice runs right now: `voice` in the welcome's features, then the
+ * live `voice.availability` event (LiveKit started, crashed, restarted). Show voice UI
+ * only while it is true. Works without any other voice component mounted.
+ */
+export function useVoiceAvailable(): boolean {
+  useVoiceSync();
+  const welcome = useConnectionStore((c) => c.welcome);
+  // Until the sync has taken this welcome in, the welcome itself is the answer.
+  return useVoiceStore((v) => (welcome && v.serverId !== welcome.serverId ? welcome.features.includes('voice') : v.available));
+}
+
 function start(): () => void {
   const api = window.ghostlink;
   const voice = useVoiceStore;
@@ -86,23 +139,8 @@ function start(): () => void {
   });
   session = current;
 
-  const welcome = useConnectionStore.getState().welcome;
-  if (welcome) dispatch({ type: 'welcome', welcome });
   const offConnection = useConnectionStore.subscribe((c, prev) => {
-    if (c.welcome !== prev.welcome) {
-      // Another server (or none): the call and the snapshot belong to the old one.
-      if (!c.welcome || c.welcome.serverId !== voice.getState().serverId) {
-        void current.dispose();
-        dispatch({ type: 'reset' });
-      }
-      if (c.welcome) dispatch({ type: 'welcome', welcome: c.welcome });
-    }
     if (c.state !== prev.state) void current.handleConnection(c.state);
-  });
-  const offEvents = api.onServerEvent((event) => {
-    if (!event.t.startsWith('voice.')) return;
-    dispatch({ type: 'serverEvent', event });
-    void current.handleServerEvent(event);
   });
 
   const offSelf = voice.subscribe((v, prev) => {
@@ -152,7 +190,6 @@ function start(): () => void {
     offPtt();
     offSettings();
     offSelf();
-    offEvents();
     offConnection();
     void api.ptt.configure({ enabled: false, code: null }).catch(() => {});
     void current.dispose();
@@ -162,6 +199,7 @@ function start(): () => void {
 
 /** Keeps the voice runtime alive while at least one voice component is mounted. */
 export function useVoiceRuntime(): void {
+  useVoiceSync(); // first: the store has the welcome before the session starts
   useEffect(() => {
     if (users++ === 0) stopRuntime = start();
     return () => {

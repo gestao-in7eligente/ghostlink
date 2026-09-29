@@ -19,6 +19,7 @@ export const voice = {
   'voice.deviceUnnamed': 'Dispositivo {n}',
   'voice.openSettings': 'Configurações de voz',
   'voice.join': 'Entrar na voz',
+  'voice.unavailable': 'A voz não está disponível neste servidor agora.',
   'voice.channelType': 'Canal de voz',
   'voice.empty': 'Ninguém na sala ainda',
   'voice.emptyHint': 'Entre para começar a conversa.',

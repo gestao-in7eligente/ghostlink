@@ -44,6 +44,15 @@ export interface VoiceForceMoveEvent {
   toChannelId: string;
 }
 
+/**
+ * `voice.availability` event, to every session: voice (LiveKit) just became available
+ * or unavailable (first start, crash, restart, supervisor gave up). It updates the
+ * welcome's `features` (which lists `voice` only while available) without a reconnect.
+ */
+export interface VoiceAvailabilityEvent {
+  available: boolean;
+}
+
 export const VOICE_MODERATE_ACTIONS = ['mute', 'unmute', 'disconnect', 'move'] as const;
 export type VoiceModerateAction = (typeof VOICE_MODERATE_ACTIONS)[number];
 
@@ -142,3 +151,5 @@ export const voiceJoinResponseSchemaClient: z.ZodType<VoiceJoinResponse> = z.obj
 });
 
 export const voiceForceMoveSchemaClient: z.ZodType<VoiceForceMoveEvent> = z.object({ toChannelId: voiceChannelIdSchema });
+
+export const voiceAvailabilitySchemaClient: z.ZodType<VoiceAvailabilityEvent> = z.object({ available: z.boolean() });

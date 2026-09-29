@@ -1,7 +1,14 @@
 // The `voice` store's state and its pure reducer (spec §11.2). Server data arrives
 // through lenient client schemas (spec §5.1): anything malformed is ignored.
 import { create } from 'zustand';
-import { voiceStateSchemaClient, voiceWelcomeSchemaClient, type Envelope, type VoiceChannelState, type VoiceParticipant } from '@ghostlink/shared';
+import {
+  voiceAvailabilitySchemaClient,
+  voiceStateSchemaClient,
+  voiceWelcomeSchemaClient,
+  type Envelope,
+  type VoiceChannelState,
+  type VoiceParticipant,
+} from '@ghostlink/shared';
 import type { AppErrorCode } from '../../../shared/appErrors.js';
 
 export type CallStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting';
@@ -17,6 +24,8 @@ export interface VoiceState {
   /** The saved server the snapshot belongs to (per-user volumes are stored per server). */
   serverId: string | null;
   selfUserId: string | null;
+  /** The server's voice runs: `voice` in welcome.features, then voice.availability live. The voice UI shows only then. */
+  available: boolean;
   /** channelId → who is in it, as the server reports (only channels this user can see). */
   channels: Readonly<Record<string, VoiceParticipant[]>>;
   /** This app's own call. */
@@ -45,6 +54,7 @@ export interface VoiceState {
 export const initialVoiceState: VoiceState = {
   serverId: null,
   selfUserId: null,
+  available: false,
   channels: {},
   call: { status: 'idle', channelId: null },
   selfMuted: false,
@@ -83,12 +93,13 @@ function channelsFrom(list: VoiceChannelState[]): Record<string, VoiceParticipan
 }
 
 function fromWelcome(s: VoiceState, welcome: unknown): VoiceState {
-  const w = (typeof welcome === 'object' && welcome !== null ? welcome : {}) as { serverId?: unknown; self?: { userId?: unknown }; voice?: unknown };
+  const w = (typeof welcome === 'object' && welcome !== null ? welcome : {}) as { serverId?: unknown; self?: { userId?: unknown }; features?: unknown; voice?: unknown };
   const voice = voiceWelcomeSchemaClient.safeParse(w.voice);
   return {
     ...s,
     serverId: typeof w.serverId === 'string' ? w.serverId : s.serverId,
     selfUserId: typeof w.self?.userId === 'string' ? w.self.userId : s.selfUserId,
+    available: Array.isArray(w.features) && w.features.includes('voice'),
     channels: voice.success ? channelsFrom(voice.data) : {},
   };
 }
@@ -100,6 +111,10 @@ export function voiceReducer(s: VoiceState, a: VoiceAction): VoiceState {
       return fromWelcome(s, a.welcome);
     case 'serverEvent': {
       if (a.event.t === 'welcome') return fromWelcome(s, a.event.d);
+      if (a.event.t === 'voice.availability') {
+        const parsed = voiceAvailabilitySchemaClient.safeParse(a.event.d);
+        return !parsed.success || parsed.data.available === s.available ? s : { ...s, available: parsed.data.available };
+      }
       if (a.event.t !== 'voice.state') return s;
       const parsed = voiceStateSchemaClient.safeParse(a.event.d);
       if (!parsed.success) return s;

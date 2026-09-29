@@ -14,6 +14,8 @@ export interface LivekitProcessOptions {
   prepare(): Promise<{ configPath: string; port: number }>;
   /** After every successful (re)start: the signaling port answers. */
   onReady?(port: number): void;
+  /** The running process stopped unexpectedly; a restart follows (onReady) unless the budget is spent (onGiveUp). */
+  onCrash?(error: Error): void;
   /** The process stopped for good: the restart budget is spent. */
   onGiveUp?(error: Error): void;
   /** Restarts after a crash before giving up (spec §8.1: 5). */
@@ -147,6 +149,8 @@ export class LivekitProcess {
       if (this.#state === 'running') {
         if (Date.now() - startedAt > (this.#opts.stableMs ?? 60_000)) this.#restarts = 0;
         this.#opts.logger.error('LiveKit stopped unexpectedly', { code, signal });
+        this.#state = 'restarting'; // not running from here on, also for onCrash
+        this.#opts.onCrash?.(error);
         this.#scheduleRestart(error);
       }
     });

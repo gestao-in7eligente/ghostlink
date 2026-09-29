@@ -43,7 +43,7 @@ describe.skipIf(!binary)('livekit-server process (real binary)', () => {
     let ready = 0;
     const backend = new LivekitBackend({ binaryPath: binary!, dataDir, logger: silentLogger, nodeIp: '127.0.0.1', ...(await randomMediaPorts()) });
     cleanups.push(() => backend.stop());
-    await backend.start({ onReady: () => ready++, onWebhook: (e) => events.push(e), onUnavailable: () => {} });
+    await backend.start({ onReady: () => ready++, onWebhook: (e) => events.push(e), onDown: () => {}, onUnavailable: () => {} });
     expect(backend.available).toBe(true);
     expect(ready).toBe(1);
     expect(backend.signalPort).toBeGreaterThan(0);
@@ -59,6 +59,21 @@ describe.skipIf(!binary)('livekit-server process (real binary)', () => {
     await backend.stop();
     expect(backend.available).toBe(false);
     expect(existsSync(join(dataDir, 'livekit.pid'))).toBe(false);
+  });
+
+  it('reports a crash (onDown, voice unavailable) and then the supervised restart (onReady again)', async () => {
+    const dataDir = tempDir();
+    let ready = 0;
+    const down: boolean[] = [];
+    const backend = new LivekitBackend({ binaryPath: binary!, dataDir, logger: silentLogger, nodeIp: '127.0.0.1', ...(await randomMediaPorts()) });
+    cleanups.push(() => backend.stop());
+    await backend.start({ onReady: () => ready++, onWebhook: () => {}, onUnavailable: () => {}, onDown: () => down.push(backend.available) });
+    const { pid } = JSON.parse(readFileSync(join(dataDir, 'livekit.pid'), 'utf8')) as { pid: number };
+    process.kill(pid);
+    await expect.poll(() => down, { timeout: 5_000 }).toEqual([false]);
+    await expect.poll(() => ready, { timeout: 15_000 }).toBe(2);
+    expect(backend.available).toBe(true);
+    expect(await backend.listRooms()).toEqual([]);
   });
 
   it('LiveKit refuses a config with an unknown key (strict mode is on)', async () => {
@@ -87,7 +102,7 @@ describe.skipIf(!binary)('livekit-server process (real binary)', () => {
     const backend = new LivekitBackend({ binaryPath: binary!, dataDir, logger: silentLogger, nodeIp: '127.0.0.1', ...(await randomMediaPorts()) });
     cleanups.push(() => backend.stop());
     const events: VoiceWebhookEvent[] = [];
-    await backend.start({ onReady: () => {}, onWebhook: (e) => events.push(e), onUnavailable: () => {} });
+    await backend.start({ onReady: () => {}, onWebhook: (e) => events.push(e), onDown: () => {}, onUnavailable: () => {} });
     const url = readFileSync(join(dataDir, 'livekit.yaml'), 'utf8').match(/"(http:\/\/127\.0\.0\.1:\d+\/livekit\/webhook)"/)![1]!;
     const body = JSON.stringify({ event: 'participant_joined', room: { name: 'ch_x' }, participant: { identity: 'u_0123456789abcdef0123456789abcdef' } });
     expect(await post(url, body)).toBe(401);

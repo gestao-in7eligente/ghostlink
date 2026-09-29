@@ -42,6 +42,7 @@ export {
   setUserVolume,
   toggleDeafen,
   toggleMute,
+  useVoiceAvailable,
   useVoiceDirectory,
   useVoiceRuntime,
 } from './runtime.js';

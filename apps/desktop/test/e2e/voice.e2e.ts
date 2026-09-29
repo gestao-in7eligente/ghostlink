@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEFAULT_EVERYONE_PERMISSIONS, PERMISSIONS } from '@ghostlink/shared';
-import { freeLoopbackPort } from '../../../server/src/livekit/backend.js';
+import { LivekitBackend, freeLoopbackPort, type VoiceBackend, type VoiceServerOptions } from '../../../server/src/livekit/backend.js';
 import { resolveLivekitBinary } from '../../../server/src/livekit/binary.js';
 import { silentLogger, startServer, type GhostServer } from '../../../server/src/index.js';
 import type { ModuleContext, ServerModule, SessionInfo } from '../../../server/src/modules.js';
@@ -144,7 +144,7 @@ async function launch(name: string): Promise<Instance> {
   return instance;
 }
 
-async function onboardAndJoin(page: Page, nickname: string, invite: string): Promise<void> {
+async function onboardAndJoin(page: Page, nickname: string, invite: string, until = '[data-voice-channel="VC1"]'): Promise<void> {
   await page.getByRole('button', { name: 'Começar' }).click();
   await page.getByRole('textbox').fill(nickname);
   await page.getByRole('button', { name: 'Continuar' }).click();
@@ -154,7 +154,7 @@ async function onboardAndJoin(page: Page, nickname: string, invite: string): Pro
   await page.getByRole('button', { name: 'Continuar' }).click();
   await page.getByRole('button', { name: 'Aceitar convite' }).click();
   await page.getByRole('button', { name: 'Conectar' }).click();
-  await page.locator('[data-voice-channel="VC1"]').waitFor({ timeout: 30_000 });
+  await page.locator(until).waitFor({ timeout: 30_000 });
 }
 
 /**
@@ -313,6 +313,65 @@ describe.skipIf(!binary)('voice between two app instances (real LiveKit, fake de
       console.log([...ana.log, ...bia.log].slice(-80).join('\n'));
       await ana.page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-fail-ana.png') }).catch(() => {});
       await bia.page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-fail-bia.png') }).catch(() => {});
+      throw e;
+    }
+  });
+});
+
+describe.skipIf(!binary)('voice that becomes available after the app connected (real LiveKit)', () => {
+  let openGate!: () => void;
+  let late: GhostServer | null = null;
+  let lateDir = '';
+
+  beforeAll(async () => {
+    const port = await freeLoopbackPort();
+    lateDir = mkdtempSync(join(tmpdir(), 'ghostlink-e2e-late-'));
+    speechWav = join(lateDir, 'speech.wav');
+    writeSpeechWav(speechWav);
+    const gate = new Promise<void>((r) => (openGate = r));
+    // The real LiveKit, started only once the gate opens: the app connects while voice is still down.
+    const backend = (ctx: ModuleContext, options: VoiceServerOptions): VoiceBackend => {
+      const real = new LivekitBackend({ ...options, binaryPath: binary!, dataDir: ctx.dataDir, logger: ctx.logger });
+      const start = real.start.bind(real);
+      real.start = async (listeners) => {
+        await gate;
+        return start(listeners);
+      };
+      return real;
+    };
+    late = await startServer({
+      dataDir: lateDir,
+      port,
+      host: '127.0.0.1',
+      name: 'Servidor E2E',
+      publicAddresses: [`127.0.0.1:${port}`],
+      joinMode: 'invite',
+      logger: silentLogger,
+      modules: [new E2eText(), createVoiceModule({ backend, readyWaitMs: 0 })],
+      voice: { binaryPath: binary!, ...(await freeMediaPorts()) },
+    });
+  });
+
+  afterAll(async () => {
+    openGate?.();
+    for (const i of instances.splice(0)) await i.app.close().catch(() => {});
+    for (const dir of profiles.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    await late?.close();
+    if (lateDir) rmSync(lateDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  });
+
+  it('the voice UI appears live (voice.availability), without a reconnect, and joining works', async () => {
+    const cia = await launch('cia');
+    try {
+      await onboardAndJoin(cia.page, 'Cia', late!.createInvite().pasteCode, 'text=Impressão digital do servidor');
+      expect(await cia.page.locator('[data-voice-channel="VC1"]').count()).toBe(0);
+      openGate();
+      await cia.page.locator('[data-voice-channel="VC1"]').waitFor({ timeout: 30_000 });
+      await cia.page.locator('[data-voice-channel="VC1"]').click();
+      await cia.page.locator('[data-voice-panel="connected"]').waitFor({ timeout: 30_000 });
+    } catch (e) {
+      console.log(cia.log.slice(-80).join('\n'));
+      await cia.page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-fail-cia.png') }).catch(() => {});
       throw e;
     }
   });

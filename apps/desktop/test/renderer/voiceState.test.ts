@@ -64,6 +64,31 @@ describe('voice store reducer', () => {
     expect(s).toEqual({ ...initialVoiceState, selfMuted: s.selfMuted, selfDeafened: s.selfDeafened });
   });
 
+  it('voice is available when the welcome lists it, then follows voice.availability live', () => {
+    const withFeatures = (features: unknown) => ({ ...welcome([]), features });
+    const availability = (d: unknown) => ({ type: 'serverEvent' as const, event: { t: 'voice.availability', d } });
+    expect(initialVoiceState.available).toBe(false);
+    let s = run({ type: 'welcome', welcome: withFeatures([]) });
+    expect(s.available).toBe(false);
+    s = voiceReducer(s, availability({ available: true }));
+    expect(s.available).toBe(true);
+    expect(voiceReducer(s, availability({ available: true }))).toBe(s); // unchanged: no re-render
+    s = voiceReducer(s, availability({ available: false }));
+    expect(s.available).toBe(false);
+    // A reconnect welcome is the new truth; leaving the server forgets it.
+    s = voiceReducer(s, { type: 'serverEvent', event: { t: 'welcome', d: withFeatures(['text', 'voice']) } });
+    expect(s.available).toBe(true);
+    expect(voiceReducer(s, { type: 'reset' }).available).toBe(false);
+    for (const features of [undefined, 'voice', [1]]) expect(run({ type: 'welcome', welcome: withFeatures(features) }).available).toBe(false);
+  });
+
+  it('ignores a malformed voice.availability', () => {
+    const s = run({ type: 'welcome', welcome: { ...welcome([]), features: ['voice'] } });
+    for (const d of [undefined, null, {}, { available: 'no' }, { available: 0 }]) {
+      expect(voiceReducer(s, { type: 'serverEvent', event: { t: 'voice.availability', d } })).toBe(s);
+    }
+  });
+
   it('knows my own entry (server mute) in the channel I am in', () => {
     let s = run({ type: 'welcome', welcome: welcome([]) }, { type: 'call', status: 'connected', channelId: 'VC1' });
     expect(selfVoice(s)).toBeNull();

@@ -3,7 +3,7 @@ import { formatFingerprint } from '@ghostlink/shared';
 import type { RendererWelcome } from '../../shared/ipcTypes.js';
 import { ErrorLine, Screen } from '../components/Screen.js';
 import ui from '../components/ui.module.css';
-import { VoiceSandbox } from '../features/voice/index.js';
+import { VoiceSandbox, useVoiceAvailable } from '../features/voice/index.js';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 import { useConnectionStore } from '../stores/connection.js';
 
@@ -12,6 +12,7 @@ export function Connected({ welcome, onLeave }: { welcome: RendererWelcome; onLe
   const t = useT();
   const { state, error } = useConnectionStore();
   const dispatch = useConnectionStore((s) => s.dispatch);
+  const voiceAvailable = useVoiceAvailable();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -26,7 +27,8 @@ export function Connected({ welcome, onLeave }: { welcome: RendererWelcome; onLe
   };
 
   // Voice track, provisional: until the Text track's main layout replaces this screen.
-  if (welcome.features.includes('voice') && state !== 'failed') return <VoiceSandbox welcome={welcome} onLeave={onLeave} />;
+  // Follows voice.availability live: LiveKit often becomes ready after the welcome.
+  if (voiceAvailable && state !== 'failed') return <VoiceSandbox welcome={welcome} onLeave={onLeave} />;
 
   const reconnect = async () => {
     setBusy(true);

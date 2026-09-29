@@ -20,12 +20,15 @@ export interface LivekitParticipant {
 /**
  * Contract: after start(), unless stop() comes first, the backend eventually calls
  * onReady() or, when it gives up (no more restarts), onUnavailable() — also when
- * start() itself rejected.
+ * start() itself rejected. A crash of a running LiveKit calls onDown(), then again
+ * onReady() or onUnavailable(). `available` is already up to date in every callback.
  */
 export interface VoiceBackendListeners {
   /** LiveKit (re)started: rebuild the voice map (spec §7). */
   onReady(): void;
   onWebhook(event: VoiceWebhookEvent): void;
+  /** LiveKit stopped unexpectedly and is being restarted: voice is down meanwhile. */
+  onDown(): void;
   /** LiveKit gave up restarting: voice is unavailable. */
   onUnavailable(): void;
 }
@@ -165,6 +168,7 @@ export class LivekitBackend implements VoiceBackend {
         this.#rooms = new RoomServiceClient(`http://127.0.0.1:${port}`, this.keys.apiKey, this.keys.apiSecret, { requestTimeout: 10 });
         this.#listeners?.onReady();
       },
+      onCrash: () => this.#listeners?.onDown(),
       onGiveUp: () => this.#listeners?.onUnavailable(),
     });
     await this.#process.start();
