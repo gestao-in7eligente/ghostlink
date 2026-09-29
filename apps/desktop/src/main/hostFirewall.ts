@@ -7,9 +7,12 @@
 // created when someone cancelled its "Permitir acesso" prompt (a block rule would
 // win over any allow rule). Paths are embedded as single-quoted PowerShell literals
 // and the whole script travels as -EncodedCommand.
+//
+// Every path here is a Windows path, handled with path.win32 on every OS: the tests (and
+// CI) also run on Linux and macOS, where the host `path` would call C:\… relative.
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { win32 } from 'node:path';
 import type { FirewallFixResult, FirewallState, FirewallStatus } from '../shared/hostTypes.js';
 
 export const FIREWALL_GROUP = 'GhostLink';
@@ -97,7 +100,7 @@ function checkPorts(ports: readonly number[]): string {
 /** The elevated part of "Corrigir firewall". */
 export function firewallFixScript(opts: { programs: readonly string[]; tcpPorts: readonly number[]; udpPorts: readonly number[] }): string {
   if (opts.programs.length === 0) throw new Error('no program to allow');
-  for (const p of opts.programs) if (!isAbsolute(p)) throw new Error('program paths must be absolute');
+  for (const p of opts.programs) if (!win32.isAbsolute(p)) throw new Error('program paths must be absolute');
   const tcp = checkPorts(opts.tcpPorts);
   const udp = checkPorts(opts.udpPorts);
   const lines = [
@@ -107,7 +110,7 @@ export function firewallFixScript(opts: { programs: readonly string[]; tcpPorts:
   ];
   for (const program of opts.programs) {
     const p = psQuote(program);
-    const name = program.split(/[\\/]/).pop() ?? 'GhostLink';
+    const name = win32.basename(program) || 'GhostLink';
     lines.push(
       `  Get-NetFirewallApplicationFilter -Program ${p} -ErrorAction SilentlyContinue | Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.Direction -eq 'Inbound' -and $_.Action -eq 'Block' } | Remove-NetFirewallRule`,
     );
@@ -130,7 +133,7 @@ export function elevatedCommand(script: string): string[] {
 /** Windows PowerShell by absolute path (no PATH lookup). */
 export const runPowerShell: PowerShellRunner = (args) =>
   new Promise((resolve, reject) => {
-    const exe = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const exe = win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
     execFile(exe, args, { windowsHide: true, timeout: 120_000, maxBuffer: 1024 * 1024 }, (error, stdout) => {
       if (error && typeof (error as { code?: unknown }).code !== 'number') return reject(error);
       resolve({ code: error ? ((error as { code: number }).code) : 0, stdout: String(stdout) });
