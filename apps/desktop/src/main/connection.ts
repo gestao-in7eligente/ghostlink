@@ -185,6 +185,19 @@ function parseFrame(data: WebSocket.RawData, isBinary: boolean): { raw: unknown;
   return envelope.success ? { raw, envelope: envelope.data } : undefined;
 }
 
+const M1_WELCOME_KEYS: ReadonlySet<string> = new Set(['self', 'sessionId', 'serverTime', 'server', 'features', 'fileToken', 'protocol']);
+
+/** Welcome keys contributed by server modules; the M1 keys always come from the parsed welcome. */
+function moduleWelcomeFields(d: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (typeof d !== 'object' || d === null || Array.isArray(d)) return out;
+  for (const [key, value] of Object.entries(d)) {
+    if (M1_WELCOME_KEYS.has(key) || key === '__proto__') continue;
+    out[key] = value;
+  }
+  return out;
+}
+
 function codeFromClose(code: number, reason: Buffer): AppErrorCode {
   const text = reason.toString();
   return code === 4000 && isErrorCode(text) ? text : 'CONNECTION_LOST';
@@ -436,7 +449,9 @@ export class ServerConnection extends EventEmitter {
           const welcome = welcomeSchemaClient.safeParse(envelope.d);
           if (!welcome.success) return fail(new ProtocolError('BAD_REQUEST', 'invalid welcome'));
           cleanup();
-          resolve(welcome.data);
+          // Module keys (channels, roles, members, voice…) ride along; the renderer
+          // validates them with its own lenient schemas (spec §5.1).
+          resolve({ ...moduleWelcomeFields(envelope.d), ...welcome.data });
           return;
         }
         fail(new ProtocolError('BAD_REQUEST', `unexpected ${envelope.t}`));

@@ -2,7 +2,7 @@ import { ipcMain, type WebFrameMain } from 'electron';
 import { z } from 'zod';
 import { LIMITS } from '@ghostlink/shared';
 import { toAppErrorCode } from '../shared/appErrors.js';
-import { IPC, type AppInfo, type IpcArgs, type IpcChannel, type IpcResult, type IpcReturn } from '../shared/ipcTypes.js';
+import { IPC, type AppInfo, type ChatNotification, type IpcArgs, type IpcChannel, type IpcResult, type IpcReturn } from '../shared/ipcTypes.js';
 import type { ClientController } from './controller.js';
 import { BACKUP_IPC_ARG_SCHEMAS, createBackupIpcHandlers, type IdentityBackup } from './backup.js';
 import type { DeepLinks } from './deeplink.js';
@@ -18,14 +18,58 @@ export interface IpcDeps {
   appInfo(): AppInfo;
   identity: Pick<IdentityStore, 'status' | 'create' | 'retry' | 'replaceKeepingBackup'>;
   settings: Pick<SettingsStore, 'get' | 'set'>;
-  controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove'>;
+  controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'request'>;
   /** Host mode (spec §9). */
   host?: HostIpcDeps;
   /** Identity backup, import and delete (spec §3.4). */
   backup?: IdentityBackup;
   /** ghostlink:// links (spec §12). */
   deepLinks?: Pick<DeepLinks, 'take'>;
+  /** Confirmed external links and the clipboard (Text track). */
+  shell: { openExternal(url: string): Promise<boolean>; copyText(text: string): void };
+  notifications: { show(n: ChatNotification): boolean };
 }
+
+/** The handshake belongs to the main process alone: the renderer may never send it (release plan "Seams"). */
+export const FORBIDDEN_REQUEST_TYPES: ReadonlySet<string> = new Set(['hello', 'auth.proof']);
+
+/**
+ * The client requests of spec §5.2 the renderer may send, and nothing else: never
+ * the handshake, a response or an event type, nor anything only main should drive.
+ * `upload.begin` joins with files (v0.2).
+ */
+export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
+  // Text track
+  'channel.create', 'channel.update', 'channel.delete', 'channel.reorder', 'channel.read',
+  'msg.history', 'msg.send', 'msg.edit', 'msg.delete', 'msg.react', 'msg.unreact', 'typing',
+  'profile.update', 'role.create', 'role.update', 'role.delete', 'role.reorder',
+  'member.setRoles', 'member.kick', 'member.ban', 'member.unban', 'bans.list',
+  'invite.create', 'invite.list', 'invite.revoke', 'server.update', 'server.transferOwnership', 'server.leave',
+  // Voice track
+  'voice.join', 'voice.leave', 'voice.selfState', 'voice.moderate',
+  'ping',
+]);
+
+/** A server request type the renderer may send (see RENDERER_REQUEST_TYPES). */
+export const requestTypeSchema = z
+  .string()
+  .max(64)
+  .refine((t) => RENDERER_REQUEST_TYPES.has(t) && !FORBIDDEN_REQUEST_TYPES.has(t));
+
+/** A JSON object no bigger than a server frame (spec §5.1: maxPayload 256 KiB, counted in UTF-8 bytes). */
+const requestPayloadSchema = z
+  .record(z.string(), z.unknown())
+  .refine((d) => {
+    try {
+      return Buffer.byteLength(JSON.stringify(d), 'utf8') <= LIMITS.maxPayloadBytes;
+    } catch {
+      return false;
+    }
+  })
+  .optional();
+
+/** The saved server the renderer believes it talks to (a request for another one is refused). */
+const expectedServerId = z.string().min(1).max(64);
 
 // Renderer input is untrusted: strict schemas, bounded sizes. The deeper rules
 // (address syntax, nickname normalization) are enforced again where the data is used.
@@ -35,6 +79,16 @@ const serverId = z.string().min(1).max(64);
 
 export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>> } = {
   [IPC.appInfo]: z.tuple([]),
+  [IPC.appOpenExternal]: z.tuple([z.string().min(1).max(2048)]),
+  [IPC.appCopyText]: z.tuple([z.string().max(8192)]),
+  [IPC.serverRequest]: z.union([
+    z.tuple([requestTypeSchema]),
+    z.tuple([requestTypeSchema, requestPayloadSchema]),
+    z.tuple([requestTypeSchema, requestPayloadSchema, expectedServerId]),
+  ]),
+  [IPC.notificationsShow]: z.tuple([
+    z.strictObject({ title: z.string().min(1).max(256), body: z.string().max(4096), channelId: z.string().regex(/^[A-Z2-7]{26}$/) }),
+  ]),
   [IPC.identityStatus]: z.tuple([]),
   [IPC.identityCreate]: z.tuple([]),
   [IPC.identityRetry]: z.tuple([]),
@@ -69,6 +123,10 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
   const { identity, settings, controller } = deps;
   return {
     [IPC.appInfo]: () => deps.appInfo(),
+    [IPC.appOpenExternal]: (url) => deps.shell.openExternal(url),
+    [IPC.appCopyText]: (text) => deps.shell.copyText(text),
+    [IPC.serverRequest]: (type, payload, serverId) => controller.request(type, payload ?? {}, serverId),
+    [IPC.notificationsShow]: (n) => deps.notifications.show(n),
     [IPC.identityStatus]: () => identity.status,
     [IPC.identityCreate]: () => identity.create(),
     [IPC.identityRetry]: () => identity.retry(),

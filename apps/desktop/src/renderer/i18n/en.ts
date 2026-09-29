@@ -1,5 +1,7 @@
 import { host } from './en/host.js';
 import { identity } from './en/identity.js';
+import { chat } from './chat.en.js';
+import { integration } from './integration.en.js';
 import type { messages as ptBR } from './pt-BR.js';
 
 // Typed against pt-BR: a missing or extra key fails the typecheck (contract §5).
@@ -129,4 +131,6 @@ export const messages: Record<keyof typeof ptBR, string> = {
 
   ...host,
   ...identity,
+  ...chat,
+  ...integration,
 };

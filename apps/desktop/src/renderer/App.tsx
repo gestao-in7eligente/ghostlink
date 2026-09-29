@@ -12,6 +12,9 @@ import { useDeepLinkSync } from './features/deeplink/useDeepLinkSync.js';
 import { IdentityScreens } from './features/identity/IdentityScreens.js';
 import { openIdentitySettings } from './features/identity/identityModel.js';
 import { DEFAULT_LOCALE, errorCodeOf, errorMessage, useT } from './i18n/index.js';
+import { AddServerModal } from './integration/AddServerModal.js';
+import { useAddServerUi } from './integration/addServerUi.js';
+import { useLayoutWiring } from './integration/useLayoutWiring.js';
 import { Connected } from './screens/Connected.js';
 import { IdentityLocked } from './screens/IdentityLocked.js';
 import { Join } from './screens/Join.js';
@@ -56,7 +59,9 @@ export function App() {
 
   useHostStatusSync(attempt);
   useDeepLinkSync(attempt);
+  useLayoutWiring();
   const deepLink = useDeepLinkStore((s) => s.pending);
+  const joinOpen = useAddServerUi((s) => s.join);
 
   useEffect(() => {
     document.documentElement.lang = settings?.locale ?? DEFAULT_LOCALE;
@@ -113,8 +118,17 @@ export function App() {
     };
     return <><Onboarding identity={identity} onDone={done} />{identityDialogs}</>;
   }
-  // Host mode (spec §9): its dialogs open over any screen; the pill shows while hosting.
-  const host = <><HostIndicator /><HostScreens onJoined={joined} />{identityDialogs}</>;
+  // Host mode (spec §9): its dialogs open over any screen. While hosting, the floating
+  // pill shows outside the main layout; inside it the rail shows HostRailButton instead.
+  const connected = connection.welcome !== null && connection.state !== 'idle';
+  const host = (
+    <>
+      {!connected && <HostIndicator />}
+      <HostScreens onJoined={joined} />
+      <AddServerModal />
+      {identityDialogs}
+    </>
+  );
   if (deepLink) {
     // A ghostlink:// link: its invite waits for "Aceitar convite" (spec §12); new links are ignored meanwhile.
     const clearLink = () => useDeepLinkStore.getState().clear();
@@ -126,6 +140,22 @@ export function App() {
           onCancel={clearLink}
           onJoined={(welcome) => {
             clearLink();
+            joined(welcome);
+          }}
+        />
+        {host}
+      </>
+    );
+  }
+  if (joinOpen) {
+    // "+" → "Entrar em um servidor": the Join screen, even over a connected server.
+    const closeJoin = () => useAddServerUi.getState().closeJoin();
+    return (
+      <>
+        <Join
+          onCancel={closeJoin}
+          onJoined={(welcome) => {
+            closeJoin();
             joined(welcome);
           }}
         />

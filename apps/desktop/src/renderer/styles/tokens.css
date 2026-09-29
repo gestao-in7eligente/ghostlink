@@ -29,6 +29,25 @@
   --space-5: 24px;
   --space-6: 32px;
 
+  /* Main screen (owner's UI reference), darkest to lightest surface. */
+  --bg-rail: #0b0e14; /* server rail */
+  --bg-chat: #0b0e14; /* message list */
+  --bg-sidebar: #11151c; /* channel sidebar, member list */
+  --bg-raised: #161b22; /* chat header, composer band, user panel, menus */
+  --bg-hover: #1c232d; /* selected rows, pills, avatar circles */
+  --bg-input: #0d1117; /* composer box */
+  --line: #262c36; /* hairlines between columns */
+  --text-strong: #f0f3f6; /* names, message text */
+  --text-soft: #9da7b3; /* channel names, icons */
+  --text-faint: #656d76; /* timestamps, section headers */
+  --text-ghost: #4b525a; /* # glyphs, group headers */
+  --success: #23a55a; /* online dot */
+  --danger-strong: #f23f43; /* exit icon, mention badges */
+  --accent-soft: #202546; /* blurple badge background */
+  --mention-bg: rgb(88 101 242 / 12%); /* a message that mentions you */
+  --overlay: rgb(0 0 0 / 60%); /* modal backdrop */
+  --shadow-up: 0 -10px 20px rgb(0 0 0 / 25%); /* the user panel over the channel list */
+
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
   --shadow: 0 12px 40px rgb(0 0 0 / 45%);

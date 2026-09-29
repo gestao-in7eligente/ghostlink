@@ -60,6 +60,18 @@ export interface BackupPickResult {
   fileName: string | null;
 }
 
+/** A desktop notification for a mention or a reply (spec §11.1 item 8). */
+export interface ChatNotification {
+  title: string;
+  body: string;
+  channelId: string;
+}
+
+/** Sent when the user clicks a chat notification. */
+export interface OpenChannelEvent {
+  channelId: string;
+}
+
 export interface ConnectionStateEvent {
   state: ConnState;
   serverId: string | null;
@@ -67,7 +79,12 @@ export interface ConnectionStateEvent {
 }
 
 export interface GhostlinkApi {
-  app: { info(): Promise<AppInfo> };
+  app: {
+    info(): Promise<AppInfo>;
+    /** Opens an http(s) link in the browser after a confirmation dialog; false when refused or cancelled. */
+    openExternal(url: string): Promise<boolean>;
+    copyText(text: string): Promise<void>;
+  };
   identity: {
     status(): Promise<IdentityStatus>;
     create(): Promise<void>;
@@ -101,11 +118,22 @@ export interface GhostlinkApi {
   /** spec §12: a ghostlink:// link that arrived before the page listened (then null). */
   deepLink: { take(): Promise<ParsedJoinInput | null> };
   onDeepLink(cb: (link: ParsedJoinInput) => void): () => void;
+  /**
+   * A client request of spec §5.2 to the connected server. With `serverId` (the saved
+   * server the caller believes it talks to), main refuses it after a switch.
+   */
+  server: { request<T = unknown>(type: string, payload?: unknown, serverId?: string): Promise<T> };
+  notifications: { show(n: ChatNotification): Promise<boolean> };
+  onOpenChannel(cb: (e: OpenChannelEvent) => void): () => void;
 }
 
 /** Invoke channels: `ghostlink:<namespace>.<method>`. */
 export const IPC = {
   appInfo: 'ghostlink:app.info',
+  appOpenExternal: 'ghostlink:app.openExternal',
+  appCopyText: 'ghostlink:app.copyText',
+  serverRequest: 'ghostlink:server.request',
+  notificationsShow: 'ghostlink:notifications.show',
   identityStatus: 'ghostlink:identity.status',
   identityCreate: 'ghostlink:identity.create',
   identityRetry: 'ghostlink:identity.retry',
@@ -143,11 +171,16 @@ export const IPC_EVENTS = {
   server: 'ghostlink:event.server',
   host: 'ghostlink:event.host',
   deepLink: 'ghostlink:event.deepLink',
+  openChannel: 'ghostlink:event.openChannel',
 } as const;
 
 /** Arguments and result of every invoke channel; main's handlers and the preload are both typed from it. */
 export interface IpcContract {
   [IPC.appInfo]: { args: []; result: AppInfo };
+  [IPC.appOpenExternal]: { args: [url: string]; result: boolean };
+  [IPC.appCopyText]: { args: [text: string]; result: void };
+  [IPC.serverRequest]: { args: [type: string, payload?: unknown, serverId?: string]; result: unknown };
+  [IPC.notificationsShow]: { args: [notification: ChatNotification]; result: boolean };
   [IPC.identityStatus]: { args: []; result: IdentityStatus };
   [IPC.identityCreate]: { args: []; result: void };
   [IPC.identityRetry]: { args: []; result: IdentityStatus };
