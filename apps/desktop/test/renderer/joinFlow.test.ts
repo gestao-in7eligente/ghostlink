@@ -5,6 +5,7 @@ import {
   buildConnectRequest,
   extractInviteCode,
   findKeyConflict,
+  formatSetupCode,
   initialJoin,
   joinReducer,
   suggestNickname,
@@ -117,6 +118,98 @@ describe('buildConnectRequest', () => {
 
   it('trims the nickname', () => {
     expect(buildConnectRequest({ ...run([{ type: 'confirm' }], viaAddress()), nickname: '  Bia ' }).nickname).toBe('Bia');
+  });
+});
+
+describe('owner setup code (spec §3.3 "Dono")', () => {
+  const CODE = 'b1fe652f-73d05669-090d78d2-a9017231';
+  const withCode = (value: string, s = viaAddress()) => run([{ type: 'owner', open: true }, { type: 'field', field: 'setupCode', value }], s);
+
+  it.each([
+    [CODE, CODE],
+    [`  ${CODE.toUpperCase()}\n`, CODE],
+    ['b1fe652f73d05669090d78d2a9017231', CODE],
+    ['B1FE652F 73D05669 090D78D2 A9017231', CODE],
+    ['b1fe 652f-73d0 5669\t090d-78d2 a901-7231', CODE],
+  ])('formatSetupCode(%j) → the grouped form', (input, expected) => {
+    expect(formatSetupCode(input)).toBe(expected);
+  });
+
+  it.each([
+    '',
+    '   ',
+    'b1fe652f-73d05669-090d78d2',
+    `${CODE}0`,
+    'g1fe652f-73d05669-090d78d2-a9017231',
+    'b1fe652f_73d05669_090d78d2_a9017231',
+    'ABCDEFGH23',
+  ])('formatSetupCode(%j) → null', (input) => {
+    expect(formatSetupCode(input)).toBeNull();
+  });
+
+  it('the grouped form is the one the server prints and writes to setup-code.txt', () => {
+    expect(formatSetupCode('0'.repeat(32))).toMatch(/^[0-9a-f]{8}(?:-[0-9a-f]{8}){3}$/);
+  });
+
+  it('starts closed and sends no code', () => {
+    const s = viaInvite();
+    expect(s).toMatchObject({ owner: false, setupCode: '' });
+    expect(buildConnectRequest(run([{ type: 'confirm' }], s))).not.toHaveProperty('setupCode');
+  });
+
+  it('confirming reformats the typed code, and the request carries it', () => {
+    const s = run([{ type: 'confirm' }], withCode(' B1FE652F73D05669 090D78D2A9017231 '));
+    expect(s).toMatchObject({ step: 'details', owner: true, setupCode: CODE, error: null });
+    expect(buildConnectRequest(s)).toEqual({ addresses: ['192.168.0.2:7700'], serverKeyId: KEY, nickname: 'Ana', setupCode: CODE });
+    expect(run([{ type: 'submit' }], s)).toMatchObject({ step: 'connecting', setupCode: CODE });
+  });
+
+  it('goes along with the invite of a link (the server waives it for the owner)', () => {
+    const s = run([{ type: 'confirm' }], withCode(CODE, viaInvite()));
+    expect(buildConnectRequest(s)).toMatchObject({ inviteCode: 'ABCDEFGH23', setupCode: CODE });
+  });
+
+  it('closing the section forgets the code', () => {
+    const s = run([{ type: 'owner', open: false }, { type: 'confirm' }], withCode(CODE));
+    expect(s).toMatchObject({ step: 'details', owner: false, setupCode: '' });
+    expect(buildConnectRequest(s)).not.toHaveProperty('setupCode');
+  });
+
+  it('a malformed or empty code stops at the confirmation with BAD_SETUP_CODE, and typing clears it', () => {
+    for (const value of ['', 'b1fe652f-73d0']) {
+      const s = run([{ type: 'confirm' }], withCode(value));
+      expect(s).toMatchObject({ step: 'confirm', error: 'BAD_SETUP_CODE', setupCode: value });
+      expect(joinReducer(s, { type: 'field', field: 'setupCode', value: CODE })).toMatchObject({ step: 'confirm', error: null });
+    }
+    expect(run([{ type: 'confirm' }, { type: 'owner', open: false }], withCode('x'))).toMatchObject({ error: null, setupCode: '' });
+  });
+
+  it('a code broken on the details step is not sent', () => {
+    const s = run([{ type: 'confirm' }, { type: 'field', field: 'setupCode', value: 'nope' }], withCode(CODE));
+    expect(joinReducer(s, { type: 'submit' })).toMatchObject({ step: 'details', error: 'BAD_SETUP_CODE' });
+    expect(() => buildConnectRequest(s)).toThrow();
+  });
+
+  it('BAD_SETUP_CODE from the server keeps the section and the code so the user can fix it and retry', () => {
+    const wrong = 'b1fe652f-73d05669-090d78d2-a9017230';
+    const failed = joinReducer(connecting(withCode(wrong)), { type: 'failed', code: 'BAD_SETUP_CODE' });
+    expect(failed).toMatchObject({ step: 'details', owner: true, setupCode: wrong, error: 'BAD_SETUP_CODE' });
+    const fixed = run([{ type: 'field', field: 'setupCode', value: CODE }], failed);
+    expect(fixed.error).toBeNull();
+    const retry = joinReducer(fixed, { type: 'submit' });
+    expect(retry.step).toBe('connecting');
+    expect(buildConnectRequest(retry).setupCode).toBe(CODE);
+  });
+
+  it('success forgets the code', () => {
+    expect(run([{ type: 'joined' }], connecting(withCode(CODE)))).toMatchObject({ step: 'done', setupCode: '' });
+  });
+
+  it('the section only toggles on the confirmation and details steps', () => {
+    const input = run([{ type: 'input', value: 'x' }]);
+    expect(joinReducer(input, { type: 'owner', open: true })).toBe(input);
+    const busy = connecting(withCode(CODE));
+    expect(joinReducer(busy, { type: 'owner', open: false })).toBe(busy);
   });
 });
 

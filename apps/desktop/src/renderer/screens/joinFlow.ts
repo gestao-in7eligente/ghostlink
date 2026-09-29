@@ -28,6 +28,10 @@ export interface JoinState {
   inviteCode: string;
   askPassword: boolean;
   askInvite: boolean;
+  /** "Sou o dono deste servidor" is open: the hello carries the setup code (spec §3.3 "Dono"). */
+  owner: boolean;
+  /** The owner's setup code as typed. It lives only in this state: never saved, never logged. */
+  setupCode: string;
   suggestion: string | null;
   error: AppErrorCode | null;
 }
@@ -37,7 +41,8 @@ export type JoinAction =
   | { type: 'parsed'; parsed: ParsedJoinInput; fingerprint: string | null }
   | { type: 'probed'; serverKeyId: string; fingerprint: string; saved: SavedServer[] }
   | { type: 'confirm' }
-  | { type: 'field'; field: 'nickname' | 'password' | 'inviteCode'; value: string }
+  | { type: 'owner'; open: boolean }
+  | { type: 'field'; field: 'nickname' | 'password' | 'inviteCode' | 'setupCode'; value: string }
   | { type: 'submit' }
   | { type: 'failed'; code: AppErrorCode }
   | { type: 'joined' }
@@ -46,7 +51,7 @@ export type JoinAction =
 export function initialJoin(nickname: string): JoinState {
   return {
     step: 'input', input: '', probeAddress: null, target: null, source: null, fingerprint: null, keyConflict: null,
-    nickname, password: '', inviteCode: '', askPassword: false, askInvite: false, suggestion: null, error: null,
+    nickname, password: '', inviteCode: '', askPassword: false, askInvite: false, owner: false, setupCode: '', suggestion: null, error: null,
   };
 }
 
@@ -76,6 +81,18 @@ export function extractInviteCode(value: string): string | null {
   }
 }
 
+const SETUP_CODE_HEX = /^[0-9a-f]{32}$/;
+
+/**
+ * The owner's setup code in the grouped form the server prints, e.g.
+ * "b1fe652f-73d05669-090d78d2-a9017231". Like the server's normalizeSetupCode it
+ * ignores case, spaces and dashes; null when it is not 32 hex digits.
+ */
+export function formatSetupCode(input: string): string | null {
+  const hex = input.toLowerCase().replace(/[\s-]/g, '');
+  return SETUP_CODE_HEX.test(hex) ? [0, 8, 16, 24].map((i) => hex.slice(i, i + 8)).join('-') : null;
+}
+
 /** The join.connect request for the current state (credentials only when relevant). */
 export function buildConnectRequest(s: JoinState): JoinConnectRequest {
   if (!s.target) throw new Error('no join target');
@@ -83,6 +100,12 @@ export function buildConnectRequest(s: JoinState): JoinConnectRequest {
   const inviteCode = s.askInvite ? extractInviteCode(s.inviteCode) : (s.target.inviteCode ?? null);
   if (inviteCode) req.inviteCode = inviteCode;
   if (s.askPassword && s.password !== '') req.password = s.password;
+  if (s.owner) {
+    const setupCode = formatSetupCode(s.setupCode);
+    // The reducer never lets a malformed code through: never join without it by accident.
+    if (setupCode === null) throw new Error('malformed setup code');
+    req.setupCode = setupCode;
+  }
   if (s.target.name) req.name = s.target.name;
   return req;
 }
@@ -108,18 +131,29 @@ export function joinReducer(s: JoinState, a: JoinAction): JoinState {
         keyConflict: findKeyConflict(a.saved, s.probeAddress, a.serverKeyId),
       };
     case 'confirm':
-      return s.step === 'confirm' ? { ...s, step: 'details', error: null } : s;
+      return s.step === 'confirm' ? advance(s, 'details') : s;
+    case 'owner':
+      if (s.step !== 'confirm' && s.step !== 'details') return s;
+      if (a.open) return { ...s, owner: true };
+      return { ...s, owner: false, setupCode: '', error: s.error === 'BAD_SETUP_CODE' ? null : s.error };
     case 'field':
       return { ...s, [a.field]: a.value, error: null, suggestion: a.field === 'nickname' ? null : s.suggestion };
     case 'submit':
-      return s.step === 'details' && s.target !== null ? { ...s, step: 'connecting', error: null } : s;
+      return s.step === 'details' && s.target !== null ? advance(s, 'connecting') : s;
     case 'joined':
-      return { ...s, step: 'done', password: '', error: null };
+      return { ...s, step: 'done', password: '', setupCode: '', error: null };
     case 'back':
       return s.step === 'details' || s.step === 'confirm' ? { ...initialJoin(s.nickname), input: s.input } : s;
     case 'failed':
       return failed(s, a.code);
   }
+}
+
+/** Moves on, unless the owner section is open with a malformed code: then it stays and says so. */
+function advance(s: JoinState, step: 'details' | 'connecting'): JoinState {
+  if (!s.owner) return { ...s, step, error: null };
+  const setupCode = formatSetupCode(s.setupCode);
+  return setupCode === null ? { ...s, error: 'BAD_SETUP_CODE' } : { ...s, step, setupCode, error: null };
 }
 
 function failed(s: JoinState, code: AppErrorCode): JoinState {
@@ -132,6 +166,9 @@ function failed(s: JoinState, code: AppErrorCode): JoinState {
       return { ...s, step: 'details', askPassword: true, password: '', error: code };
     case 'NICK_TAKEN':
       return { ...s, step: 'details', suggestion: suggestNickname(s.nickname), error: code };
+    case 'BAD_SETUP_CODE':
+      // Wrong or already used: the section stays open with the code, so a typo can be fixed and retried.
+      return { ...s, step: 'details', owner: true, error: code };
     case 'PIN_MISMATCH':
       // The key no longer matches what was confirmed: start over, never retry silently.
       return { ...initialJoin(s.nickname), input: s.input, error: code };

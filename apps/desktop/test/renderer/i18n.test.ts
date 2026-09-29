@@ -25,6 +25,13 @@ describe('i18n catalogs (spec §11)', () => {
     }
   });
 
+  it('the owner-code texts exist in both languages, the hint leaving room for the CLI command once', () => {
+    for (const catalog of [pt, en]) {
+      for (const key of ['join.owner.toggle', 'join.owner.label', 'join.owner.hint'] as const) expect(catalog[key], key).toBeTruthy();
+      expect(catalog['join.owner.hint'].split('{command}')).toHaveLength(2);
+    }
+  });
+
   it('has no empty or untranslated texts', () => {
     const sameOnPurpose = new Set<string>(['app.beta', 'language.pt-BR', 'language.en', ...CHAT_SAME_IN_BOTH]);
     for (const key of Object.keys(pt) as MessageKey[]) {
