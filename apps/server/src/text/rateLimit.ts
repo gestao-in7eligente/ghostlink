@@ -63,6 +63,13 @@ export const DEFAULT_TEXT_RATE_LIMITS: TextRateLimits = {
 
 export class TextLimiters {
   readonly msgSend: TokenBucket;
+  /**
+   * Edits re-broadcast the whole message (up to 4000 characters) to the channel, so
+   * they get the msg.send numbers too; spec §13 has no line for them, and without
+   * one a single message could be re-sent 30 times a second (the general limit).
+   * A bucket of its own, so editing never blocks sending.
+   */
+  readonly msgEdit: TokenBucket;
   readonly typing: SlidingWindowLimiter;
   readonly react: SlidingWindowLimiter;
   readonly profile: SlidingWindowLimiter;
@@ -70,6 +77,7 @@ export class TextLimiters {
 
   constructor(limits: TextRateLimits, now: () => number) {
     this.msgSend = new TokenBucket(limits.msgSendBurst, limits.msgSendRefillMs, now);
+    this.msgEdit = new TokenBucket(limits.msgSendBurst, limits.msgSendRefillMs, now);
     this.typing = new SlidingWindowLimiter(limits.typingPerWindow, limits.typingWindowMs, now);
     this.react = new SlidingWindowLimiter(limits.reactPerWindow, limits.reactWindowMs, now);
     this.profile = new SlidingWindowLimiter(limits.profilePerWindow, limits.profileWindowMs, now);
@@ -78,6 +86,7 @@ export class TextLimiters {
 
   sweep(): void {
     this.msgSend.sweep();
+    this.msgEdit.sweep();
     this.typing.sweep();
     this.react.sweep();
     this.profile.sweep();

@@ -133,6 +133,24 @@ describe('rate limits (spec §13)', () => {
     expect(await f.owner.fail('profile.update', { nickname: 'Dono 9' })).toBe('RATE_LIMITED');
   });
 
+  it('msg.edit: an edit re-broadcasts the whole message, so it gets the msg.send limit too', async () => {
+    const f = await textFixture();
+    const bia = await f.join();
+    const geral = channelId(f.owner, 'geral');
+    const { message } = await f.owner.ok<{ message: Message }>('msg.send', { channelId: geral, content: 'v0', clientMsgId: nextClientMsgId() });
+    // Its own bucket: sending does not use up edits, nor the other way round.
+    for (let i = 1; i <= 10; i++) await f.owner.ok('msg.edit', { id: message.id, content: `v${i}` });
+    expect(await f.owner.fail('msg.edit', { id: message.id, content: 'v11' })).toBe('RATE_LIMITED');
+    await f.owner.ok('msg.send', { channelId: geral, content: 'still free', clientMsgId: nextClientMsgId() });
+    // An edit that changes nothing broadcasts nothing and costs nothing.
+    await f.owner.ok('msg.edit', { id: message.id, content: 'v10' });
+    f.clock.now += 1_000;
+    await f.owner.ok('msg.edit', { id: message.id, content: 'v11' });
+    expect(await f.owner.fail('msg.edit', { id: message.id, content: 'v12' })).toBe('RATE_LIMITED');
+    await bia.sync();
+    expect(bia.seen<{ message: Message }>('msg.updated').map((d) => d.message.content)).toEqual([...Array.from({ length: 10 }, (_, i) => `v${i + 1}`), 'v11']);
+  });
+
   it('invite.create: 10 per hour per user', async () => {
     const f = await textFixture();
     for (let i = 0; i < 10; i++) await f.owner.ok('invite.create', {});

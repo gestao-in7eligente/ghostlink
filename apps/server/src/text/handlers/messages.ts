@@ -173,6 +173,8 @@ const edit: Handler = (core, ctx, payload) => {
   if (row.user_id !== ctx.userId) throw new ProtocolError('FORBIDDEN');
   const text = content(p.content);
   if (text !== row.content) {
+    // Only a real change is broadcast, so only a real change is counted.
+    if (!core.limiters.msgEdit.take(ctx.userId)) throw new ProtocolError('RATE_LIMITED');
     const mentions = resolveMentions(core, ctx.userId, bits, channel, text);
     core.db.tx(() => {
       core.db.run('UPDATE messages SET content = ?, edited_at = ? WHERE id = ?', text, core.now(), row.id);
