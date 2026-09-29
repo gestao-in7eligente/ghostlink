@@ -67,6 +67,12 @@ export class FakeBackend implements VoiceBackend {
   readonly calls: BackendCall[] = [];
   readonly seen: SeenRequest[] = [];
   readonly rooms = new Map<string, Map<string, LivekitParticipant>>();
+  /**
+   * Answer upgrades like LiveKit refusing a join (400) and keep the connection open, as
+   * Go's HTTP server does; whatever arrives on it afterwards lands in `afterRefusal`.
+   */
+  refuseUpgrades = false;
+  readonly afterRefusal: Buffer[] = [];
   listeners: VoiceBackendListeners | null = null;
   #server: Server | null = null;
   #wss: WebSocketServer | null = null;
@@ -88,6 +94,13 @@ export class FakeBackend implements VoiceBackend {
     });
     server.on('upgrade', (req, socket, head) => {
       this.seen.push({ method: req.method ?? '', url: req.url ?? '', upgrade: true, headers: req.headers });
+      if (this.refuseUpgrades) {
+        if (head.length > 0) this.afterRefusal.push(head);
+        socket.on('data', (chunk: Buffer) => this.afterRefusal.push(chunk));
+        socket.on('end', () => socket.end()); // Go closes a kept-alive connection at EOF
+        socket.write('HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\nbad');
+        return;
+      }
       wss.handleUpgrade(req, socket, head, (ws) => {
         ws.send(`hello from livekit ${req.url}`);
         ws.on('message', (data) => ws.send(`echo ${String(data)}`));

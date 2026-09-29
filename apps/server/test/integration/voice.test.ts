@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { request } from 'node:https';
+import { connect as tlsConnect, type TLSSocket } from 'node:tls';
 import { TrackSource } from 'livekit-server-sdk';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
@@ -98,20 +99,25 @@ async function noEvent(c: TestClient, t: string, ms = 300): Promise<void> {
   await expect(c.waitEvent(t, ms)).rejects.toThrow(/no .* event/);
 }
 
-function https(port: number, path: string, method = 'GET'): Promise<{ status: number; body: string; headers: Record<string, unknown> }> {
+function https(
+  port: number,
+  path: string,
+  method = 'GET',
+  o: { headers?: Record<string, string>; body?: string } = {},
+): Promise<{ status: number; body: string; headers: Record<string, unknown> }> {
   return new Promise((resolve, reject) => {
-    request({ host: '127.0.0.1', port, path, method, rejectUnauthorized: false }, (res) => {
+    request({ host: '127.0.0.1', port, path, method, headers: o.headers, rejectUnauthorized: false }, (res) => {
       let body = '';
       res.setEncoding('utf8');
       res.on('data', (c: string) => (body += c));
       res.on('end', () => resolve({ status: res.statusCode ?? 0, body, headers: res.headers }));
-    }).on('error', reject).end();
+    }).on('error', reject).end(o.body);
   });
 }
 
-function wsUpgrade(port: number, path: string): Promise<{ status: number; first?: string; ws?: WebSocket }> {
+function wsUpgrade(port: number, path: string, headers?: Record<string, string>): Promise<{ status: number; first?: string; ws?: WebSocket }> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`wss://127.0.0.1:${port}${path}`, { rejectUnauthorized: false });
+    const ws = new WebSocket(`wss://127.0.0.1:${port}${path}`, { rejectUnauthorized: false, headers });
     ws.once('unexpected-response', (_req, res) => {
       resolve({ status: res.statusCode ?? 0 });
       ws.terminate();
@@ -121,6 +127,26 @@ function wsUpgrade(port: number, path: string): Promise<{ status: number; first?
       if (!/Unexpected server response/.test(String(e))) reject(e);
     });
   });
+}
+
+/** A WebSocket handshake request as raw bytes (what a client can put on one TLS connection). */
+function upgradeRequest(path: string): string {
+  return `GET ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n`;
+}
+
+/** A raw TLS connection to the public port that records everything the server sends back. */
+async function rawTls(port: number): Promise<{ socket: TLSSocket; received(): string; closed(): boolean }> {
+  const socket = tlsConnect({ host: '127.0.0.1', port, rejectUnauthorized: false });
+  let received = '';
+  let closed = false;
+  socket.on('data', (d: Buffer) => (received += d.toString('latin1')));
+  socket.on('close', () => (closed = true));
+  socket.on('error', () => {});
+  await new Promise<void>((resolve, reject) => {
+    socket.once('secureConnect', () => resolve());
+    socket.once('error', reject);
+  });
+  return { socket, received: () => received, closed: () => closed };
 }
 
 function refreshToken(sub: string, room: string, secret = FAKE_KEYS.apiSecret): string {
@@ -471,6 +497,72 @@ describe('the /rtc* proxy (spec §4)', () => {
     const s = await setup();
     const { a } = await joined(s);
     expect((await https(s.t.server.port, `/rtc/v1/validate?access_token=${refreshToken(`u_${a.identity.userId}`, 'ch_VC1')}`)).status).toBe(200);
+  });
+
+  it('refuses any Authorization header: LiveKit would take its token over the authorized query token', async () => {
+    const s = await setup();
+    const { a, token } = await joined(s);
+    const port = s.t.server.port;
+    // Signed with our secret for a room this user was never assigned: LiveKit alone would accept it.
+    const smuggled = refreshToken(`u_${a.identity.userId}`, 'ch_SECRET');
+    for (const [name, value] of [['Authorization', `Bearer ${smuggled}`], ['authorization', `Bearer ${token}`], ['AUTHORIZATION', 'Basic eDp5']] as const) {
+      expect((await https(port, `/rtc/v1/validate?access_token=${token}`, 'GET', { headers: { [name]: value } })).status, name).toBe(403);
+      expect((await wsUpgrade(port, `/rtc/v1?access_token=${token}`, { [name]: value })).status, name).toBe(403);
+    }
+    expect(s.backend!.seen).toEqual([]);
+  });
+
+  it('forwards no credential header: cookies and proxy credentials are stripped, the rest passes', async () => {
+    const s = await setup();
+    const { token } = await joined(s);
+    const port = s.t.server.port;
+    const headers = { Cookie: 'sid=abc', 'Proxy-Authorization': 'Basic eDp5', 'X-Keep': 'yes' };
+    expect((await https(port, `/rtc/validate?access_token=${token}`, 'GET', { headers })).status).toBe(200);
+    const ws = await wsUpgrade(port, `/rtc?access_token=${token}`, headers);
+    expect(ws.status).toBe(101);
+    ws.ws!.close();
+    expect(s.backend!.seen.map((r) => r.upgrade)).toEqual([false, true]);
+    for (const r of s.backend!.seen) {
+      expect(r.headers['x-keep']).toBe('yes');
+      for (const name of ['authorization', 'proxy-authorization', 'cookie']) expect(r.headers, name).not.toHaveProperty(name);
+    }
+  });
+
+  it('refuses a request body: livekit-client sends none, and LiveKit reads form fields from one', async () => {
+    const s = await setup();
+    const { token } = await joined(s);
+    const port = s.t.server.port;
+    const path = `/rtc/validate?access_token=${token}`;
+    const form = { 'Content-Type': 'application/x-www-form-urlencoded' };
+    expect((await https(port, path, 'GET', { headers: { ...form, 'Content-Length': '14' }, body: 'access_token=x' })).status).toBe(403);
+    expect((await https(port, path, 'GET', { headers: { ...form, 'Transfer-Encoding': 'chunked' }, body: 'access_token=x' })).status).toBe(403);
+    expect((await https(port, path, 'GET', { headers: { 'Content-Length': '0' } })).status).toBe(200);
+    expect(s.backend!.seen).toHaveLength(1);
+  });
+
+  it('a refused upgrade leaves no raw pipe: nothing sent after it, or with it, reaches LiveKit', async () => {
+    const s = await setup();
+    const { token } = await joined(s);
+    const port = s.t.server.port;
+    s.backend!.refuseUpgrades = true;
+
+    // LiveKit refuses this join (e.g. a malformed join_request) and would keep the connection open.
+    const c = await rawTls(port);
+    c.socket.write(upgradeRequest(`/rtc/v1?access_token=${token}`));
+    await expect.poll(() => c.received()).toMatch(/^HTTP\/1\.1 400 /);
+    c.socket.write(upgradeRequest(`/rtc?access_token=${token}`));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(Buffer.concat(s.backend!.afterRefusal).toString('latin1')).toBe('');
+    await expect.poll(() => c.closed()).toBe(true);
+    expect(c.received()).not.toMatch(/ 101 /);
+
+    // Bytes pipelined behind the handshake, before any answer, are refused outright.
+    const d = await rawTls(port);
+    d.socket.write(upgradeRequest(`/rtc/v1?access_token=${token}`) + upgradeRequest(`/rtc?access_token=${token}`));
+    await expect.poll(() => d.closed()).toBe(true);
+    expect(d.received()).toMatch(/^HTTP\/1\.1 403 /);
+    expect(s.backend!.seen).toHaveLength(1);
+    expect(s.backend!.afterRefusal).toEqual([]);
   });
 
   it('refuses once the user lost VIEW or CONNECT, was removed or banned, or left voice', async () => {

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { request } from 'node:https';
 import { join } from 'node:path';
+import { connect as tlsConnect } from 'node:tls';
 import {
   AudioFrame,
   AudioSource,
@@ -217,6 +218,46 @@ describe.skipIf(!binary)('voice with the real LiveKit', () => {
     await bypass.connect(`ws://127.0.0.1:${e.livekitPort}`, token, { autoSubscribe: false, dynacast: false });
     await thrownOut;
     await expect.poll(async () => (await e.rs.listParticipants('ch_VC1')).length, { timeout: 5_000 }).toBe(0);
+  });
+
+  it('the proxy lets no second credential reach LiveKit: no Authorization header, nothing after a refused upgrade', async () => {
+    const e = await env();
+    const ana = await e.client('ana');
+    const bia = await e.client('bia');
+    const { token } = ok<{ token: string }>(await ana.request('voice.join', { channelId: 'VC1' }));
+    // Correctly signed, for a user the server never assigned to VC2: LiveKit alone accepts it.
+    const rogue = new AccessToken(e.keys.apiKey, e.keys.apiSecret, { identity: `u_${bia.identity.userId}`, ttl: 60 });
+    rogue.addGrant({ roomJoin: true, room: 'ch_VC2', canSubscribe: true });
+    const rogueJwt = await rogue.toJwt();
+    const port = e.t.server.port;
+
+    // LiveKit prefers `Authorization: Bearer` over the access_token the proxy authorized.
+    const withHeader = await new Promise<number>((resolve) => {
+      const ws = new WebSocket(`wss://127.0.0.1:${port}/rtc?access_token=${token}`, { rejectUnauthorized: false, headers: { Authorization: `Bearer ${rogueJwt}` } });
+      ws.once('unexpected-response', (_req, res) => resolve(res.statusCode ?? 0));
+      ws.once('open', () => {
+        resolve(101);
+        ws.close();
+      });
+      ws.on('error', () => {});
+    });
+    expect(withHeader).toBe(403);
+
+    // /rtc/v1 without join_request: authorized by the proxy, refused by LiveKit (400) on a kept-alive connection.
+    const socket = tlsConnect({ host: '127.0.0.1', port, rejectUnauthorized: false });
+    let received = '';
+    let closed = false;
+    socket.on('data', (d: Buffer) => (received += d.toString('latin1')));
+    socket.on('close', () => (closed = true));
+    socket.on('error', () => {});
+    const handshake = (path: string) =>
+      `GET ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n`;
+    socket.write(handshake(`/rtc/v1?access_token=${token}`));
+    await expect.poll(() => received, { timeout: 5_000 }).toMatch(/^HTTP\/1\.1 400 /);
+    socket.write(handshake(`/rtc?access_token=${rogueJwt}`));
+    await expect.poll(() => closed || / 101 /.test(received), { timeout: 5_000 }).toBe(true);
+    expect(received).not.toMatch(/ 101 /);
+    socket.destroy();
   });
 
   it('reconciliation rebuilds the map and removes whoever the server did not assign', async () => {
