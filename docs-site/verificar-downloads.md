@@ -9,7 +9,7 @@ Cada release do GhostLink é gerada pelo GitHub Actions a partir do código púb
 
 | Arquivo | O que prova |
 |---|---|
-| `checksums-sha256.txt` | O SHA-256 de todos os arquivos da release. |
+| `checksums-sha256.txt` | O SHA-256 de todos os arquivos da release, por nome. Os nomes trazem a versão. |
 | `checksums-sha256.txt.sigstore.json` | Assinatura **Sigstore (cosign)**: o arquivo de checksums saiu do workflow `release.yml` deste repositório, para aquela tag. |
 | `<arquivo>.ed25519` | Assinatura **Ed25519** com a chave de release do GhostLink. É a mesma que o app confere antes de se atualizar e que o `install.sh` confere na VPS. |
 
@@ -48,14 +48,17 @@ MCowBQYDK2VwAyEAHhib591tl4P4Nf9us1fB5FCXXbGOZDBHwvWIu+2FWnc=
 -----END PUBLIC KEY-----
 ```
 
-Confira com o OpenSSL 3 (no Windows, ele vem com o Git for Windows):
+Confira o arquivo de checksums com o OpenSSL 3 (no Windows, ele vem com o Git for Windows) e, depois, os seus arquivos contra ele:
 
 ```bash
 openssl pkeyutl -verify -pubin -inkey ghostlink-release.pem -rawin \
-  -in GhostLink-Setup-0.1.0.exe -sigfile GhostLink-Setup-0.1.0.exe.ed25519
+  -in checksums-sha256.txt -sigfile checksums-sha256.txt.ed25519
+sha256sum --ignore-missing -c checksums-sha256.txt
 ```
 
-O resultado precisa ser `Signature Verified Successfully`. O mesmo vale para o `ghostlink-server-<versão>.tgz`, o `install.sh` e o `checksums-sha256.txt`.
+O OpenSSL precisa dizer `Signature Verified Successfully`, e o `sha256sum` precisa dizer `OK` para cada arquivo que você baixou. A lista assinada amarra cada arquivo ao nome dele, e o nome à versão, então um arquivo antigo não passa por um mais novo. O app confere a mesma coisa antes de se atualizar e recusa qualquer versão que não seja mais nova que a instalada.
+
+Cada arquivo também tem a própria assinatura, conferida do mesmo jeito (`-in GhostLink-Setup-0.1.0.exe -sigfile GhostLink-Setup-0.1.0.exe.ed25519`). Sozinha, ela prova que a chave de release assinou aqueles bytes, mas não diz de qual versão eles são.
 
 A chave também está no código-fonte, em `packages/shared/src/release.ts` (`RELEASE_PUBLIC_KEY`, em base64url). A chave privada existe só num ambiente protegido do GitHub, usado apenas por tags de versão e com aprovação manual.
 

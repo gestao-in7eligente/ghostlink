@@ -30,6 +30,6 @@ Se quiser ter certeza de que o arquivo é o mesmo que o GitHub Actions gerou e a
 
 ## Atualizações
 
-No Windows, o app procura versões novas ao abrir e a cada 6 horas, baixa em segundo plano e mostra **"Nova versão X baixada — Reiniciar para atualizar"**. Antes de instalar, ele confere a assinatura Ed25519 da release: um arquivo sem essa assinatura nunca é instalado. Dá para desligar a procura automática nas configurações, em **Atualizações**.
+No Windows, o app procura versões novas ao abrir e a cada 6 horas, baixa em segundo plano e mostra **"Nova versão X baixada — Reiniciar para atualizar"**. Antes de instalar, ele confere as assinaturas Ed25519 da release e se o instalador é exatamente o listado para aquela versão: um arquivo sem essas assinaturas nunca é instalado, e o app nunca volta para uma versão mais antiga. Dá para desligar a procura automática nas configurações, em **Atualizações**.
 
 Todas as versões ficam na [página de releases](https://github.com/gestao-in7eligente/ghostlink/releases).

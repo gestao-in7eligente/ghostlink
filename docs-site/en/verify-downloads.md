@@ -9,7 +9,7 @@ Every GhostLink release is built by GitHub Actions from the public source and pu
 
 | File | What it proves |
 |---|---|
-| `checksums-sha256.txt` | The SHA-256 of every file in the release. |
+| `checksums-sha256.txt` | The SHA-256 of every file in the release, by name. The names carry the version. |
 | `checksums-sha256.txt.sigstore.json` | A **Sigstore (cosign)** signature: the checksums file came from this repository's `release.yml` workflow, for that tag. |
 | `<file>.ed25519` | An **Ed25519** signature with GhostLink's release key. It is the same one the app checks before updating itself and that `install.sh` checks on a VPS. |
 
@@ -48,14 +48,17 @@ MCowBQYDK2VwAyEAHhib591tl4P4Nf9us1fB5FCXXbGOZDBHwvWIu+2FWnc=
 -----END PUBLIC KEY-----
 ```
 
-Check with OpenSSL 3 (on Windows, it comes with Git for Windows):
+Check the checksums file with OpenSSL 3 (on Windows, it comes with Git for Windows), then your files against it:
 
 ```bash
 openssl pkeyutl -verify -pubin -inkey ghostlink-release.pem -rawin \
-  -in GhostLink-Setup-0.1.0.exe -sigfile GhostLink-Setup-0.1.0.exe.ed25519
+  -in checksums-sha256.txt -sigfile checksums-sha256.txt.ed25519
+sha256sum --ignore-missing -c checksums-sha256.txt
 ```
 
-The result must be `Signature Verified Successfully`. The same works for `ghostlink-server-<version>.tgz`, `install.sh` and `checksums-sha256.txt`.
+OpenSSL must print `Signature Verified Successfully`, and `sha256sum` must print `OK` for every file you downloaded. The signed list ties each file to its name, and the name to its version, so an older file cannot pass for a newer one. The app checks the same before it updates itself, and refuses any version that is not newer than the one installed.
+
+Each file also has its own signature, checked the same way (`-in GhostLink-Setup-0.1.0.exe -sigfile GhostLink-Setup-0.1.0.exe.ed25519`). On its own, it proves that the release key signed those bytes, but not which version they are.
 
 The key is also in the source code, in `packages/shared/src/release.ts` (`RELEASE_PUBLIC_KEY`, base64url). The private key exists only in a protected GitHub environment, used only by version tags and after manual approval.
 

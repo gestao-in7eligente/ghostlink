@@ -18,12 +18,16 @@ For a few people, the smallest VPS is usually enough. All voice goes through the
 
 ## Install
 
-Download `install.sh` from the latest release and, ideally, [verify it](./verify-downloads) before running it:
+Download `install.sh` from the latest release and, ideally, verify it before running it. Save the release public key as `ghostlink-release.pem` first (it is on [Verify downloads](./verify-downloads)):
 
 ```bash
-curl -fsSLO https://github.com/gestao-in7eligente/ghostlink/releases/latest/download/install.sh
-curl -fsSLO https://github.com/gestao-in7eligente/ghostlink/releases/latest/download/checksums-sha256.txt
-sha256sum --ignore-missing -c checksums-sha256.txt   # must print "install.sh: OK"
+BASE=https://github.com/gestao-in7eligente/ghostlink/releases/latest/download
+curl -fsSLO "$BASE/install.sh"
+curl -fsSLO "$BASE/checksums-sha256.txt"
+curl -fsSLO "$BASE/checksums-sha256.txt.ed25519"
+openssl pkeyutl -verify -pubin -inkey ghostlink-release.pem -rawin \
+  -in checksums-sha256.txt -sigfile checksums-sha256.txt.ed25519   # must print "Signature Verified Successfully"
+sha256sum --ignore-missing -c checksums-sha256.txt                  # must print "install.sh: OK"
 sudo bash install.sh
 ```
 
@@ -52,7 +56,7 @@ Keep the fingerprint: anyone who joins without an invite, with just the address,
 The server runs as the `ghostlink` user. To create another invite (here with 10 uses and a 7-day expiry):
 
 ```bash
-sudo -u ghostlink node /opt/ghostlink/dist/cli.js invite --data /var/lib/ghostlink --max-uses 10 --expires 7d
+sudo -u ghostlink node /opt/ghostlink/current/dist/cli.js invite --data /var/lib/ghostlink --max-uses 10 --expires 7d
 ```
 
 | Command | For |

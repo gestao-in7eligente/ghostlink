@@ -30,6 +30,6 @@ To be sure the file is the one GitHub Actions built and signed, [verify the down
 
 ## Updates
 
-On Windows, the app looks for new versions at startup and every 6 hours, downloads them in the background and shows **"New version X downloaded — Restart to update"**. Before installing, it checks the release's Ed25519 signature: a file without that signature is never installed. You can turn automatic checks off in the settings, under **Updates**.
+On Windows, the app looks for new versions at startup and every 6 hours, downloads them in the background and shows **"New version X downloaded — Restart to update"**. Before installing, it checks the release's Ed25519 signatures and that the installer is exactly the one listed for that version: a file without those signatures is never installed, and the app never goes back to an older version. You can turn automatic checks off in the settings, under **Updates**.
 
 Every version is on the [releases page](https://github.com/gestao-in7eligente/ghostlink/releases).

@@ -18,12 +18,16 @@ Para poucas pessoas, a menor VPS costuma bastar. A voz passa toda pelo servidor,
 
 ## Instalar
 
-Baixe o `install.sh` da última release e, de preferência, [confira o arquivo](./verificar-downloads) antes de rodar:
+Baixe o `install.sh` da última release e, de preferência, confira o arquivo antes de rodar. Antes, salve a chave pública de release como `ghostlink-release.pem` (ela está em [Verificar downloads](./verificar-downloads)):
 
 ```bash
-curl -fsSLO https://github.com/gestao-in7eligente/ghostlink/releases/latest/download/install.sh
-curl -fsSLO https://github.com/gestao-in7eligente/ghostlink/releases/latest/download/checksums-sha256.txt
-sha256sum --ignore-missing -c checksums-sha256.txt   # deve dizer "install.sh: OK"
+BASE=https://github.com/gestao-in7eligente/ghostlink/releases/latest/download
+curl -fsSLO "$BASE/install.sh"
+curl -fsSLO "$BASE/checksums-sha256.txt"
+curl -fsSLO "$BASE/checksums-sha256.txt.ed25519"
+openssl pkeyutl -verify -pubin -inkey ghostlink-release.pem -rawin \
+  -in checksums-sha256.txt -sigfile checksums-sha256.txt.ed25519   # deve dizer "Signature Verified Successfully"
+sha256sum --ignore-missing -c checksums-sha256.txt                  # deve dizer "install.sh: OK"
 sudo bash install.sh
 ```
 
@@ -52,7 +56,7 @@ Guarde a impressão digital: quem entrar sem convite, só com o endereço, deve 
 O servidor roda como o usuário `ghostlink`. Para gerar outro convite (aqui com 10 usos e validade de 7 dias):
 
 ```bash
-sudo -u ghostlink node /opt/ghostlink/dist/cli.js invite --data /var/lib/ghostlink --max-uses 10 --expires 7d
+sudo -u ghostlink node /opt/ghostlink/current/dist/cli.js invite --data /var/lib/ghostlink --max-uses 10 --expires 7d
 ```
 
 | Comando | Para quê |
