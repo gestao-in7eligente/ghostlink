@@ -697,6 +697,15 @@ Algumas plataformas de nuvem só expõem um serviço por HTTP ou por um proxy TC
 - Qualquer outro byte fecha a conexão na hora, e quem não envia nada em 5 s também é desconectado.
 - Antes dessa decisão, cada socket já conta para o limite total de §13. Depois, no máximo 1024 conexões ICE-TCP ficam abertas ao mesmo tempo. Sem voz no ar, o ICE-TCP é recusado.
 
+**LiveKit atrás do proxy.** O `livekit.yaml` muda assim (chaves conferidas no `rtcconfig` do LiveKit 1.13.7):
+- `rtc.tcp_port` é a porta **externa** do proxy (ex.: 25889). O LiveKit escuta nela dentro do contêiner e a anuncia nos candidatos ICE-TCP. O proxy leva essa porta até a 7700, e a 7700 encaminha o ICE-TCP para `127.0.0.1:25889`. Por isso a porta externa precisa ser diferente de `--port`; se forem iguais, a voz fica indisponível e o log explica.
+- `rtc.node_ip` é o IPv4 do host do proxy. Ele é resolvido no início e de novo a cada 5 min, e uma mudança reinicia o LiveKit quando ninguém está em voz, como em §8.1. Se o nome não resolver, o LiveKit sobe com o IP da máquina e troca quando o nome resolver. Um `--node-ip` explícito continua ganhando.
+- `rtc.force_tcp: true`: o LiveKit não abre nenhum socket UDP, porque nada chegaria nele. O cliente só recebe candidatos TCP e não perde tempo tentando UDP.
+- `rtc.enable_loopback_candidate: true` e `rtc.ips.includes: ["127.0.0.1/32"]`: o único candidato é o de loopback, que o `node_ip` reescreve para o IP do proxy. O mux TCP do pion acha cada conexão pelo endereço local em que ela chegou, e o encaminhamento chega por `127.0.0.1`. Sem isso, a conexão encaminhada não casaria com nenhum agente ICE, e os IPs internos do contêiner, inúteis para o cliente, seriam anunciados.
+- `use_external_ip: false`, e `advertise_internal_ip` fica desligado.
+- A sinalização (`/rtc`) passa pela mesma porta, dentro do TLS, como sempre.
+- **Limitação:** toda a mídia vai por TCP. Com perda de pacotes, a latência sobe mais do que com UDP, porque um pacote perdido segura os seguintes.
+
 ## 9. Modo Hospedar (no app)
 
 **Processo do servidor**

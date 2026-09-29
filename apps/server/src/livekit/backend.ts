@@ -80,6 +80,12 @@ export interface VoiceServerOptions {
   nodeIp?: string;
 }
 
+/** What the voice module hands the backend: the server's voice options, adjusted behind a proxy. */
+export interface VoiceBackendOptions extends VoiceServerOptions {
+  /** Behind a TCP proxy (spec §8.6): ICE-TCP only, on `tcpPort` (the proxy's external port). */
+  behindProxy?: boolean;
+}
+
 /** A free TCP port on 127.0.0.1 (LiveKit's internal ports are chosen on every start, spec §8.1). */
 export function freeLoopbackPort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -101,7 +107,7 @@ function isNotFound(e: unknown): boolean {
 /** The real backend: livekit-server under a supervisor, its webhooks and its RoomService API. */
 export class LivekitBackend implements VoiceBackend {
   readonly keys: LivekitKeys;
-  readonly #opts: Required<Omit<VoiceServerOptions, 'binaryPath' | 'nodeIp'>> & { binaryPath: string; dataDir: string; logger: Logger };
+  readonly #opts: Required<Omit<VoiceBackendOptions, 'binaryPath' | 'nodeIp'>> & { binaryPath: string; dataDir: string; logger: Logger };
   /** rtc.node_ip for the next (re)start; each start writes it into livekit.yaml. */
   #nodeIp: string;
   #process: LivekitProcess | null = null;
@@ -111,7 +117,7 @@ export class LivekitBackend implements VoiceBackend {
   #stopped = false;
   #starting: Promise<void> | null = null;
 
-  constructor(opts: VoiceServerOptions & { binaryPath: string; dataDir: string; logger: Logger }) {
+  constructor(opts: VoiceBackendOptions & { binaryPath: string; dataDir: string; logger: Logger }) {
     this.keys = loadOrCreateLivekitKeys(opts.dataDir);
     this.#opts = {
       binaryPath: opts.binaryPath,
@@ -119,6 +125,7 @@ export class LivekitBackend implements VoiceBackend {
       logger: opts.logger,
       udpPort: opts.udpPort ?? 7882,
       tcpPort: opts.tcpPort ?? 7881,
+      behindProxy: opts.behindProxy === true,
     };
     this.#nodeIp = opts.nodeIp ?? fallbackNodeIp().ip;
   }
@@ -190,6 +197,7 @@ export class LivekitBackend implements VoiceBackend {
           udpPort: this.#opts.udpPort,
           tcpPort: this.#opts.tcpPort,
           nodeIp: this.#nodeIp,
+          behindProxy: this.#opts.behindProxy,
           ...this.keys,
           webhookUrl,
         });
