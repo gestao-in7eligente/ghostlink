@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+out/
+coverage/
+
+# LiveKit binaries are downloaded at build time (M5)
+apps/desktop/resources/livekit/
+
+# local data and secrets
+.data/
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+
+# logs and OS noise
+*.log
+.DS_Store
+Thumbs.db

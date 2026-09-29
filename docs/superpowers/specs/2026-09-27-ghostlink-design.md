@@ -149,7 +149,7 @@ ALONE_IN_THE_DARK/                 # vira o repositório público "ghostlink"
   - Na última opção, o arquivo antigo é renomeado para `identity.bin.bak-<data>`.
 - **Isolamento:** o renderer **nunca** recebe a seed, as chaves privadas nem o `fileToken`.
 - **Apelido:** a pessoa escolhe um apelido global, que pode ser trocado por servidor.
-- **Apagar a identidade:** nas configurações, com confirmação dupla e a oferta de exportar antes.
+- **Apagar a identidade:** nas configurações, com confirmação dupla e a oferta de exportar antes. O main nunca destrói a chave: renomeia `identity.bin` para `identity.bin.bak-<data>`, como na importação, e a tela diz onde o arquivo ficou.
 
 ### 3.2 Identidade do servidor e chave por servidor
 
@@ -596,6 +596,7 @@ Um IP WAN em `100.64.0.0/10` ou em faixa RFC1918 indica **CGNAT ou NAT duplo**. 
    - validade de 60 s para o join. Depois disso o LiveKit renova o token sozinho.
 4. **Resposta:** `{ livekitUrl: "wss://<host:porta usado pelo cliente>", token, iceServers: [] }`.
 5. **Renderer:**
+   - antes de tudo, confere o destino: `livekitUrl` precisa ser `wss:` no **mesmo host e porta** da conexão atual (o endereço que o main informa no welcome do renderer, o mesmo que o pin cobre), sem credenciais; cada ICE server só pode ser `stun:`/`turn:`/`turns:` nesse mesmo host. Qualquer outra coisa é recusada com `VOICE_URL_REJECTED`, sem chamar o LiveKit, e o cliente envia `voice.leave`;
    - `new Room({ adaptiveStream: true, dynacast: true, webAudioMix: true, audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, voiceIsolation: false } })`;
    - `room.connect(livekitUrl, token, { autoSubscribe: false, rtcConfig: { iceServers } })`.
 
@@ -737,9 +738,9 @@ Um IP WAN em `100.64.0.0/10` ou em faixa RFC1918 indica **CGNAT ou NAT duplo**. 
 ## 11. Interface
 
 **Visual e sons**
-- Tema escuro quase preto (`#0b0d10` a `#161a20`), acento **ciano espectral** (`#5eead4`) e vermelho para ações destrutivas.
+- Tema escuro quase preto (`#0b0d10` a `#161a20`), cor primária **blurple igual à do Discord** (`#5865F2`, hover `#4752C4`, texto branco por cima) e vermelho para ações destrutivas. Decisão do dono em 2026-09-28: nada de verde-água.
 - Fonte Inter embutida e tokens em CSS vars.
-- Ícone e logo originais em SVG: um fantasma formado por um elo de corrente.
+- **Ícone e logo:** um **fantasma** (decisão do dono em 2026-09-28), em arte original SVG. Fantasma branco clássico (topo arredondado, barra ondulada, olhos escuros) sobre um quadrado arredondado em blurple `#5865F2`. É o mesmo símbolo no app, no instalador, na bandeja e no site.
 - Sons originais sintetizados por `scripts/gen-sounds.mjs`.
 - Selo "beta" visível enquanto a versão for `0.x`.
 
@@ -861,6 +862,7 @@ Um IP WAN em `100.64.0.0/10` ou em faixa RFC1918 indica **CGNAT ou NAT duplo**. 
 
 | Área | Limite |
 |---|---|
+| Antes do TLS | Handshake TLS em até 10 s · no máximo 4096 sockets TCP abertos no total e 64 por IP (IPv6 agrupado por /64), contados da conexão ao fechamento, inclusive depois de autenticar · o socket que passa do limite é fechado na hora |
 | Pré-autenticação | `hello` em até 5 s · `auth.proof` em até 10 s · no máximo 256 conexões não autenticadas no total · 20 conexões por IP · `scrypt` com no máximo 2 simultâneos |
 | Autenticação | Falhas por IP: 10/min (sucessos não contam) · desafios pendentes por IP: 5 · IPv6 agrupado por /64 |
 | Membros novos | 5 identidades novas por IP por hora, em qualquer modo de entrada |

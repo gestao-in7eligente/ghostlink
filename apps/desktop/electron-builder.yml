@@ -1,0 +1,74 @@
+# electron-builder 26.15.3 configuration (spec §12 and §15, contract §6).
+# Validated against app-builder-lib/scheme.json; scripts/test/electronBuilderConfig.test.ts pins the security-relevant values.
+appId: app.ghostlink.desktop
+productName: GhostLink
+copyright: Copyright © 2026 GhostLink contributors
+# Written into the packaged package.json. Frozen since 0.1.0 (spec §3.6):
+#   productName -> userData folder (%APPDATA%\GhostLink, ~/Library/Application Support/GhostLink),
+#   name        -> per-user install folder (%LOCALAPPDATA%\Programs\ghostlink).
+# The workspace name "@ghostlink/desktop" would otherwise leak into both.
+extraMetadata:
+  name: ghostlink
+  productName: GhostLink
+directories:
+  output: dist
+  buildResources: build
+icon: build/icon.svg
+files:
+  - out/**
+  - package.json
+asar: true
+# LiveKit (spec §8.1, §15): scripts/fetch-livekit.mjs installs the verified binary in
+# resources/livekit/<os>-<arch>; at run time it is process.resourcesPath/livekit/livekit-server[.exe].
+# ${os} and ${arch} are the target's (win/mac/linux, x64/arm64); never ${platform}, the build host's.
+extraResources:
+  - from: resources/livekit/${os}-${arch}
+    to: livekit
+# Mandatory: @electron/rebuild would try to compile native modules with MSVC (spec §15).
+npmRebuild: false
+# electron-updater's feed (spec §15). Builds run with --publish never (release.yml uploads the files);
+# this still writes latest.yml, the blockmap and resources/app-update.yml.
+publish:
+  provider: github
+  owner: gestao-in7eligente
+  repo: ghostlink
+  releaseType: release
+electronFuses:
+  runAsNode: false
+  enableNodeCliInspectArguments: false
+  enableNodeOptionsEnvironmentVariable: false
+  onlyLoadAppFromAsar: true
+  enableEmbeddedAsarIntegrityValidation: true
+  grantFileProtocolExtraPrivileges: false
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # Written into app-update.yml. Without a publisher name electron-updater skips
+  # verifyUpdateCodeSignature, which is where the Ed25519 release check runs (spec §15).
+  # The installer itself is not Authenticode-signed (paid signing is out of the MVP).
+  signtoolOptions:
+    publisherName: GhostLink contributors
+nsis:
+  oneClick: true
+  perMachine: false
+  # userData holds identity.bin; uninstalling must never delete it (spec §3.1).
+  deleteAppDataOnUninstall: false
+  artifactName: ${productName}-Setup-${version}.${ext}
+  include: build/installer.nsh
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  category: public.app-category.social-networking
+  # Ad-hoc signature. Never null: that skips signing and the fuse-patched binary stops launching.
+  identity: "-"
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  minimumSystemVersion: "13.0"
+  extendInfo:
+    NSMicrophoneUsageDescription: GhostLink uses the microphone for voice chat.
+    NSCameraUsageDescription: GhostLink uses the camera for video calls.
+dmg:
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}

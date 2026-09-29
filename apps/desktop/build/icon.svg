@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- GhostLink app icon: a white ghost on a blurple (#5865f2) rounded tile.
+       The ghost path and eyes are repeated in apps/desktop/src/renderer/components/GhostMark.tsx
+       (scripts/test/icon.test.ts keeps both in sync). -->
+  <defs>
+    <path id="ghost" d="M252 742V456A260 260 0 0 1 772 456V742A86.67 86.67 0 0 1 598.67 742A86.67 86.67 0 0 1 425.33 742A86.67 86.67 0 0 1 252 742Z"/>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="#5865f2"/>
+  <use href="#ghost" fill="#ffffff"/>
+  <ellipse cx="406" cy="480" rx="46" ry="64" fill="#1e1f22"/>
+  <ellipse cx="618" cy="480" rx="46" ry="64" fill="#1e1f22"/>
+</svg>
