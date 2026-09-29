@@ -1,20 +1,29 @@
 // The main window's options and the application menu, as plain data (tested without Electron).
-import type { BrowserWindowConstructorOptions, MenuItemConstructorOptions } from 'electron';
+import type { BrowserWindowConstructorOptions, MenuItemConstructorOptions, NativeImage } from 'electron';
 import { APP_NAME } from '@ghostlink/shared';
+
+/** The system buttons over the page's title bar: --bg-rail and --text-icon (tokens.css). */
+export const TITLE_BAR = { color: '#2c2d32', symbolColor: '#c5c6ca', height: 32 } as const;
 
 /**
  * The renderer runs sandboxed and isolated. DevTools exist only in development: in the
  * packaged app nobody can open a console in the page that holds the session.
+ * `icon` is the ghost for the taskbar and title bar: in development the process is
+ * electron.exe, whose embedded icon is Electron's.
+ * Windows and Linux get Discord's title bar: the page draws it (TitleBar, 32 px, the
+ * rail color) and the system keeps only its minimize/maximize/close buttons over it.
  */
-export function mainWindowOptions(opts: { preload: string; packaged: boolean }): BrowserWindowConstructorOptions {
+export function mainWindowOptions(opts: { preload: string; packaged: boolean; platform: NodeJS.Platform; icon?: NativeImage }): BrowserWindowConstructorOptions {
   return {
     width: 1100,
     height: 760,
     minWidth: 720,
     minHeight: 540,
     show: false,
-    backgroundColor: '#0b0d10',
+    backgroundColor: TITLE_BAR.color,
     title: APP_NAME,
+    ...(opts.icon ? { icon: opts.icon } : {}),
+    ...(opts.platform === 'darwin' ? {} : { titleBarStyle: 'hidden' as const, titleBarOverlay: { ...TITLE_BAR } }),
     autoHideMenuBar: true,
     webPreferences: {
       preload: opts.preload,

@@ -14,7 +14,7 @@ import { openExternalWithConfirm } from './externalLinks.js';
 import { HostFirewall, firewallPrograms } from './hostFirewall.js';
 import { HostManager } from './hostManager.js';
 import { forkServer, hostedServerLogging } from './hostProcess.js';
-import { HostTray, shouldHideOnClose } from './hostTray.js';
+import { HostTray, ghostImage, shouldHideOnClose } from './hostTray.js';
 import { IdentityStore } from './identity.js';
 import { registerIpc } from './ipc.js';
 import { FileLog, consoleMirror, guardStdio, installCrashHandlers, mainLog, safeWrite, setMainLog } from './log.js';
@@ -294,7 +294,12 @@ function createMainWindow(): BrowserWindow {
   const menu = applicationMenuTemplate({ packaged: app.isPackaged, platform: process.platform });
   if (menu !== undefined) Menu.setApplicationMenu(menu === null ? null : Menu.buildFromTemplate(menu));
   const window = new BrowserWindow(
-    mainWindowOptions({ preload: fileURLToPath(new URL('../preload/index.cjs', import.meta.url)), packaged: app.isPackaged }),
+    mainWindowOptions({
+      preload: fileURLToPath(new URL('../preload/index.cjs', import.meta.url)),
+      packaged: app.isPackaged,
+      platform: process.platform,
+      icon: ghostImage(32),
+    }),
   );
   if (!smoke) window.once('ready-to-show', () => window.show());
   return window;
