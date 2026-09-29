@@ -1,6 +1,6 @@
 // Main-process bootstrap (contract §5). Everything testable lives in the modules it
 // wires together; this file is the thin glue that needs a real Electron.
-import { BrowserWindow, Notification, app, clipboard, dialog, net, safeStorage, session, shell } from 'electron';
+import { BrowserWindow, Menu, Notification, app, clipboard, dialog, net, safeStorage, session, shell } from 'electron';
 import { mkdtempSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +27,7 @@ import { SettingsStore } from './settings.js';
 import { runSmoke } from './smoke.js';
 import { Updater, createUpdaterBackend } from './updater.js';
 import { createReleaseFileFetcher } from './updaterSignature.js';
+import { applicationMenuTemplate, mainWindowOptions } from './window.js';
 
 const smoke = process.env.GHOSTLINK_SMOKE === '1';
 // 0. Before anything can fail: a closed console pipe is never fatal, and uncaught errors are
@@ -289,28 +290,12 @@ function hostFirewall(host: HostManager): HostFirewall {
 }
 
 function createMainWindow(): BrowserWindow {
-  const window = new BrowserWindow({
-    width: 1100,
-    height: 760,
-    minWidth: 720,
-    minHeight: 540,
-    show: false,
-    backgroundColor: '#0b0d10',
-    title: APP_NAME,
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: fileURLToPath(new URL('../preload/index.cjs', import.meta.url)),
-      contextIsolation: true,
-      sandbox: true,
-      nodeIntegration: false,
-      webSecurity: true,
-      spellcheck: false,
-      // Remote voice plays without a click first (spec §8.4); room.startAudio() covers the rest.
-      autoplayPolicy: 'no-user-gesture-required',
-      // The microphone gate runs on renderer timers: they must keep their pace while a game has focus.
-      backgroundThrottling: false,
-    },
-  });
+  // Packaged: no reload or DevTools shortcuts (Windows: no menu at all; macOS: app and Edit only).
+  const menu = applicationMenuTemplate({ packaged: app.isPackaged, platform: process.platform });
+  if (menu !== undefined) Menu.setApplicationMenu(menu === null ? null : Menu.buildFromTemplate(menu));
+  const window = new BrowserWindow(
+    mainWindowOptions({ preload: fileURLToPath(new URL('../preload/index.cjs', import.meta.url)), packaged: app.isPackaged }),
+  );
   if (!smoke) window.once('ready-to-show', () => window.show());
   return window;
 }
