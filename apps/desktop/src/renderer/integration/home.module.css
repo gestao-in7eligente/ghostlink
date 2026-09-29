@@ -68,13 +68,6 @@
   color: var(--text-strong);
 }
 
-.navSelected,
-.navSelected:hover {
-  background: var(--bg-selected);
-  color: var(--text-strong);
-  cursor: default;
-}
-
 .sectionHeader {
   display: flex;
   align-items: center;

@@ -84,7 +84,7 @@ describe.skipIf(!binary)('GhostLink v0.1: host in one app, join from another by 
     expect(status.busyMediaPorts).toEqual([]);
   });
 
-  step('join: Bia joins with the invite: onboarding → Home → "Entrar em um servidor" → accept → connect', 90_000, async () => {
+  step('join: Bia joins with the invite: onboarding → Home → "+" → "Entrar em um servidor" → accept → connect', 90_000, async () => {
     // Ana: server menu → "Convidar pessoas" → a fresh invite link.
     await ana.page.getByRole('button', { name: /Menu do servidor/ }).click();
     await ana.page.getByRole('menuitem', { name: 'Convidar pessoas' }).click();
@@ -94,11 +94,12 @@ describe.skipIf(!binary)('GhostLink v0.1: host in one app, join from another by 
     expect(link).toMatch(/\/j\/#GL1-/);
     await invite.getByRole('button', { name: 'Fechar', exact: true }).click();
 
-    // Bia: onboarding, then back to Home and its "Entrar em um servidor" card.
+    // Bia: onboarding, then back to Home and the rail's "+" → "Entrar em um servidor".
     await onboard(bia.page, 'Bia', 'Entrar num servidor');
     await bia.page.getByRole('button', { name: 'Voltar' }).click();
     await bia.page.getByRole('heading', { name: 'Bem-vindo, Bia!' }).waitFor();
-    await bia.page.getByRole('button', { name: /^Entrar em um servidor/ }).click();
+    await bia.page.getByRole('navigation', { name: 'Servidores' }).getByRole('button', { name: 'Adicionar servidor' }).click();
+    await bia.page.getByRole('dialog', { name: 'Adicionar servidor' }).getByRole('button', { name: /^Entrar em um servidor/ }).click();
     await joinWithInvite(bia.page, link);
     await textChannel(bia.page, 'geral').waitFor({ timeout: 30_000 });
 

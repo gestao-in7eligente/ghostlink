@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { EllipsisVertical, KeyRound, LogIn, MessageCircle, Play, Plus, Search, Server } from 'lucide-react';
+import { EllipsisVertical, KeyRound, MessageCircle, Play, Plus, Search, Server } from 'lucide-react';
 import type { RendererWelcome, SavedServer } from '../../shared/ipcTypes.js';
 import { GhostMark } from '../components/GhostMark.js';
 import { useHostStore } from '../features/host/hostStore.js';
@@ -13,13 +13,13 @@ import { ConfirmDialog, Menu, MenuItem, MenuSeparator } from '../layout/primitiv
 import { ServerRail } from '../layout/ServerRail.js';
 import { UserPanel } from '../layout/UserPanel.js';
 import { UserSettings } from '../layout/UserSettings.js';
-import { useAddServerUi } from './addServerUi.js';
 import { filterHomeRows, homeActivity, homeServerRows, type HomeActivity, type HomeServerRow, type HomeTab } from './homeModel.js';
 import h from './home.module.css';
 
 /**
  * The Home screen, laid out like Discord's "Amigos" page (owner's reference, 2026-09-29):
- * rail · sidebar (search, shortcuts, "Seus servidores") · the server list with tabs,
+ * rail · sidebar (search, identity, "Seus servidores"; creating and joining are the
+ * rail's "+", owner's request) · the server list with tabs,
  * search and row actions · "Ativo agora" (the server hosted here). GhostLink has no
  * accounts, so the saved servers stand where Discord lists friends.
  */
@@ -106,24 +106,6 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
         </div>
         <div className={l.channelScroll}>
           <ul className={h.navList}>
-            <li>
-              <button type="button" className={`${h.navItem} ${h.navSelected}`} aria-current="page">
-                <Server size={20} aria-hidden="true" />
-                {t('home.nav.servers')}
-              </button>
-            </li>
-            <li>
-              <button type="button" className={h.navItem} onClick={openHostFlow}>
-                <Plus size={20} aria-hidden="true" />
-                {t('addServer.create.title')}
-              </button>
-            </li>
-            <li>
-              <button type="button" className={h.navItem} onClick={() => useAddServerUi.getState().openJoin()}>
-                <LogIn size={20} aria-hidden="true" />
-                {t('addServer.join.title')}
-              </button>
-            </li>
             <li>
               <button type="button" className={h.navItem} onClick={openIdentitySettings}>
                 <KeyRound size={20} aria-hidden="true" />
