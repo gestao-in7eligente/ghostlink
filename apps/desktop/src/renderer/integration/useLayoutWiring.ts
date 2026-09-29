@@ -7,6 +7,7 @@ import { useTextStore } from '../stores/text.js';
 import { useAddServerUi } from './addServerUi.js';
 import { HostRailButton } from './HostRailButton.js';
 import { IdentitySection } from './IdentitySection.js';
+import { followCallOnStage } from './stageFollow.js';
 import { voiceDirectoryFromText } from './voiceDirectory.js';
 
 /** Plugs the Hosting, Identity, Voice and Release features into the Text track's main layout slots. */
@@ -28,6 +29,8 @@ export function useLayoutWiring(): void {
     // Live names, channels and permissions for the voice UI.
     provideVoiceDirectory(voiceDirectoryFromText(useTextStore.getState()));
     const offDirectory = useTextStore.subscribe((state) => provideVoiceDirectory(voiceDirectoryFromText(state)));
+    // A moderator's move takes the call to another channel: the stage goes with it.
+    const offStage = followCallOnStage();
 
     return () => {
       offSlots();
@@ -35,6 +38,7 @@ export function useLayoutWiring(): void {
       offVoice();
       offUpdates();
       offDirectory();
+      offStage();
       provideVoiceDirectory(null);
     };
   }, []);
