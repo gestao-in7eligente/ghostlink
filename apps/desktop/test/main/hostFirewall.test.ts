@@ -10,6 +10,7 @@ import {
   firewallQueryScript,
   fixFirewall,
   psQuote,
+  runPowerShell,
   type FirewallSnapshot,
   type PowerShellRunner,
 } from '../../src/main/hostFirewall.js';
@@ -62,6 +63,44 @@ describe('PowerShell scripts', () => {
     expect(psQuote("C:\\O'Brien\\x.exe")).toBe("'C:\\O''Brien\\x.exe'");
     expect(() => psQuote('C:\\a\nb')).toThrow();
     expect(() => psQuote('C:\\a\u0000b')).toThrow();
+  });
+
+  // PowerShell ends a single-quoted string at any of these, not only at the ASCII quote.
+  const QUOTES = ["'", '\u2018', '\u2019', '\u201A', '\u201B'];
+
+  it.each(QUOTES.map((q) => [`U+${q.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`, q]))(
+    'psQuote doubles %s, a single quote to PowerShell',
+    (_name, q) => {
+      const path = `C:\\Users\\Joana D${q}Arc\\AppData\\Local\\Programs\\ghostlink\\GhostLink.exe`;
+      expect(psQuote(path)).toBe(`'C:\\Users\\Joana D${q}${q}Arc\\AppData\\Local\\Programs\\ghostlink\\GhostLink.exe'`);
+    },
+  );
+
+  it('psQuote output never ends the literal early, whatever mix of quotes the path has', () => {
+    // PowerShell's rule: inside '…', a quote followed by another quote is one literal
+    // quote (the second one); a lone quote ends the string.
+    const isQuote = (c: string | undefined) => c !== undefined && QUOTES.includes(c);
+    const parse = (literal: string): { value: string; rest: string } => {
+      expect(isQuote(literal[0])).toBe(true);
+      let value = '';
+      for (let i = 1; i < literal.length; i++) {
+        const c = literal[i]!;
+        if (!isQuote(c)) value += c;
+        else if (isQuote(literal[i + 1])) value += literal[++i]!;
+        else return { value, rest: literal.slice(i + 1) };
+      }
+      throw new Error('unterminated');
+    };
+    const path = `C:\\${QUOTES.join('x')}\\${QUOTES.join('')}\\GhostLink.exe`;
+    expect(parse(`${psQuote(path)}; Remove-Item x`)).toEqual({ value: path, rest: '; Remove-Item x' });
+  });
+
+  it.runIf(process.platform === 'win32')('psQuote literals round-trip through the real Windows PowerShell', async () => {
+    const path = `C:\\Users\\Joana D\u2019Arc\\${QUOTES.join('')}\\GhostLink.exe`;
+    const script = `[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(${psQuote(path)}))`;
+    const { code, stdout } = await runPowerShell(['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')]);
+    expect(code).toBe(0);
+    expect(Buffer.from(stdout.trim(), 'base64').toString('utf8')).toBe(path);
   });
 
   it('the query only reads (no Set/New/Remove cmdlets) and quotes every path', () => {

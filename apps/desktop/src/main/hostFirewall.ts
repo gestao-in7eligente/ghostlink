@@ -35,10 +35,19 @@ export interface FirewallSnapshot {
 
 export type PowerShellRunner = (args: string[]) => Promise<{ code: number; stdout: string }>;
 
-/** A single-quoted PowerShell string literal. Control characters are refused, never escaped. */
+/**
+ * PowerShell ends a single-quoted string at any of these: the ASCII quote and the typographic
+ * ‘ ’ ‚ ‛ (a Windows user name such as "Joana D’Arc" puts one into process.execPath).
+ */
+const PS_SINGLE_QUOTES = /['‘’‚‛]/g;
+
+/**
+ * A single-quoted PowerShell string literal: every kind of single quote is doubled (inside
+ * '…' a quote followed by a quote is one literal quote). Control characters are refused, never escaped.
+ */
 export function psQuote(s: string): string {
   if ([...s].some((c) => c.charCodeAt(0) < 0x20 || c === '\u007f')) throw new Error('refusing a control character in a PowerShell literal');
-  return `'${s.replace(/'/g, "''")}'`;
+  return `'${s.replace(PS_SINGLE_QUOTES, (q) => q + q)}'`;
 }
 
 function profileOf(category: string): string {
