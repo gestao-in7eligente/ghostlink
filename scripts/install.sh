@@ -332,7 +332,7 @@ install_server() {
   local work="$WORK/server" key="$RELEASE_PUBLIC_KEY_B64URL"
   [ "$DRY_RUN" = 1 ] && [ -n "${GHOSTLINK_TEST_RELEASE_KEY:-}" ] && key="$GHOSTLINK_TEST_RELEASE_KEY"
   mkdir -p "$work"
-  say "Downloading $tgz…"
+  say "Downloading ${tgz}…"
   download "$base/$tgz" "$work/$tgz"
   download "$base/$sums" "$work/$sums"
   download "$base/$sums.ed25519" "$work/$sums.ed25519"

@@ -127,6 +127,16 @@ describe.skipIf(BASH === null)('install.sh', () => {
     expect(help.out).toMatch(/--allow-downgrade/);
   });
 
+  it('never lets a non-ASCII character touch a bare $name (bash 3.2 reads it as part of the name)', () => {
+    // macOS's /bin/bash 3.2 takes "$tgz…" as the variable "tgz…": unbound under set -u, so
+    // the script stopped right there (the macOS CI job). ${tgz}… is read the same everywhere.
+    const offenders = readFileSync(SCRIPT, 'utf8')
+      .split('\n')
+      .map((line, i) => ({ line: i + 1, text: line }))
+      .filter(({ text }) => /\$[A-Za-z_][A-Za-z0-9_]*[\u0080-￿]/.test(text));
+    expect(offenders).toEqual([]);
+  });
+
   it('pins the real release public key (32-byte Ed25519, base64url)', () => {
     const r = withScript('printf %s "$RELEASE_PUBLIC_KEY_B64URL"');
     expect(r.out).toBe('Hhib591tl4P4Nf9us1fB5FCXXbGOZDBHwvWIu-2FWnc');
