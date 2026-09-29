@@ -148,6 +148,7 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     onUpgrade: (req, socket, head) => gateway.handleUpgrade(req, socket, head),
     moduleRequest: (req, res) => modules.http(req, res),
     moduleUpgrade: (req, socket, head) => modules.upgrade(req, socket, head),
+    limits,
   });
 
   let guards: Array<{ close(cb: () => void): unknown }> = [];

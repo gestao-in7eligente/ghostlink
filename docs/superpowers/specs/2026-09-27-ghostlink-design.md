@@ -861,6 +861,7 @@ Um IP WAN em `100.64.0.0/10` ou em faixa RFC1918 indica **CGNAT ou NAT duplo**. 
 
 | Área | Limite |
 |---|---|
+| Antes do TLS | Handshake TLS em até 10 s · no máximo 4096 sockets TCP abertos no total e 64 por IP (IPv6 agrupado por /64), contados da conexão ao fechamento, inclusive depois de autenticar · o socket que passa do limite é fechado na hora |
 | Pré-autenticação | `hello` em até 5 s · `auth.proof` em até 10 s · no máximo 256 conexões não autenticadas no total · 20 conexões por IP · `scrypt` com no máximo 2 simultâneos |
 | Autenticação | Falhas por IP: 10/min (sucessos não contam) · desafios pendentes por IP: 5 · IPv6 agrupado por /64 |
 | Membros novos | 5 identidades novas por IP por hora, em qualquer modo de entrada |
