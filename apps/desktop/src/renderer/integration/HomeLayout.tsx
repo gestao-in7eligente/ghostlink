@@ -83,7 +83,7 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
 
   return (
     <div ref={shellRef} className={`${l.shell} ${l.noMembers}`}>
-      <ServerRail currentId="" onHome={() => undefined} />
+      <ServerRail currentId="" onHome={() => undefined} homeActive />
 
       <nav className={l.sidebar} aria-label={t('home.yourServers')}>
         <div className={`${l.serverHeader} ${h.homeHeader}`}>

@@ -3,6 +3,7 @@
 // "Criar um servidor" action of the rail's "+" chooser; the app its Join flow; any
 // track a user-settings section. Unfilled slots render nothing (or fall back).
 import type { ComponentType } from 'react';
+import type { SavedServer } from '../../shared/ipcTypes.js';
 import { create } from 'zustand';
 import type { MessageKey } from '../i18n/index.js';
 
@@ -39,6 +40,11 @@ export interface LayoutSlots {
   onJoinServer: (() => void) | null;
   /** Extra round buttons in the server rail, after the saved servers (Hosting). */
   RailExtras: ComponentType | null;
+  /**
+   * Intercepts opening a saved server from the rail; returns true when it handled it
+   * (Hosting: a stopped server hosted here opens the Host flow instead of failing to connect).
+   */
+  onOpenServer: ((server: SavedServer) => boolean) | null;
   /** Sections of the user settings, after Profile and Language. */
   userSettingsSections: readonly UserSettingsSection[];
 }
@@ -55,6 +61,7 @@ const EMPTY: LayoutSlots = {
   onCreateServer: null,
   onJoinServer: null,
   RailExtras: null,
+  onOpenServer: null,
   userSettingsSections: [],
 };
 

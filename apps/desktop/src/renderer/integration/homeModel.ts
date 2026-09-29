@@ -23,6 +23,14 @@ export function homeServerRows(servers: readonly SavedServer[], host: HostStatus
 }
 
 /**
+ * Opening this saved server from the rail should start it instead of connecting:
+ * it is hosted here and not running (a connect could only fail).
+ */
+export function shouldStartInsteadOfConnect(server: SavedServer, host: HostStatus | null): boolean {
+  return homeServerRows([server], host)[0]?.stopped === true;
+}
+
+/**
  * The hosted server to offer "Iniciar <nome>" for: the last Host mode config when
  * the server is not running (HostStatus.config keeps the last settings used).
  */

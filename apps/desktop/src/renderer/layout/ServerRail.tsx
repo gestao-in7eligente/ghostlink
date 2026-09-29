@@ -15,11 +15,12 @@ import { useLayoutSlots } from './slots.js';
  * saved servers. One connection at a time (spec §1.3): opening another server
  * replaces this one.
  */
-export function ServerRail({ currentId, onHome }: { currentId: string; onHome: () => void }) {
+export function ServerRail({ currentId, onHome, homeActive = false }: { currentId: string; onHome: () => void; /** The Home screen is open: the home button shows as selected. */ homeActive?: boolean }) {
   const t = useT();
   const [servers, setServers] = useState<SavedServer[]>([]);
   const [adding, setAdding] = useState(false);
   const RailExtras = useLayoutSlots((s) => s.RailExtras);
+  const onOpenServer = useLayoutSlots((s) => s.onOpenServer);
 
   useEffect(() => {
     let alive = true;
@@ -34,6 +35,8 @@ export function ServerRail({ currentId, onHome }: { currentId: string; onHome: (
 
   const open = async (id: string) => {
     if (id === currentId) return;
+    const server = servers.find((s) => s.id === id);
+    if (server && onOpenServer?.(server)) return;
     try {
       const welcome = await window.ghostlink.servers.connect(id);
       useConnectionStore.getState().dispatch({ type: 'joined', welcome });
@@ -46,8 +49,8 @@ export function ServerRail({ currentId, onHome }: { currentId: string; onHome: (
     switch (e.kind) {
       case 'home':
         return (
-          <div key="home" className={l.railItem}>
-            <button type="button" className={`${l.railButton} ${l.railHome}`} onClick={onHome} aria-label={t('layout.home')} title={t('layout.home')}>
+          <div key="home" className={homeActive ? `${l.railItem} ${l.railActive}` : l.railItem}>
+            <button type="button" className={`${l.railButton} ${l.railHome}`} onClick={onHome} aria-label={t('layout.home')} title={t('layout.home')} aria-current={homeActive ? 'page' : undefined}>
               <House size={20} aria-hidden="true" />
             </button>
           </div>

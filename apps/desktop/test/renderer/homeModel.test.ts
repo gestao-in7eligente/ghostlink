@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { HostStatus } from '../../src/shared/hostTypes.js';
 import type { SavedServer } from '../../src/shared/ipcTypes.js';
-import { homeServerRows, stoppedHostedServer } from '../../src/renderer/integration/homeModel.js';
+import { homeServerRows, shouldStartInsteadOfConnect, stoppedHostedServer } from '../../src/renderer/integration/homeModel.js';
 
 const saved = (id: string, name: string, serverKeyId: string): SavedServer => ({ id, name, serverKeyId, addresses: ['127.0.0.1:7700'], nickname: 'Ana', addedAt: 1 });
 
@@ -73,5 +73,20 @@ describe('"Iniciar <nome>" offer', () => {
     expect(stoppedHostedServer(host({ state: 'starting', config }))).toBeNull();
     expect(stoppedHostedServer(host({ state: 'stopped', config: null }))).toBeNull();
     expect(stoppedHostedServer(null)).toBeNull();
+  });
+});
+
+describe('rail click on a saved server', () => {
+  const casa = saved('a', 'Casa', 'KEY-A');
+
+  it('starts the server hosted here when it is stopped', () => {
+    expect(shouldStartInsteadOfConnect(casa, host({ state: 'stopped', serverKeyId: 'KEY-A', config }))).toBe(true);
+    expect(shouldStartInsteadOfConnect(casa, host({ state: 'failed', serverKeyId: null, config }))).toBe(true);
+  });
+
+  it('connects normally when it is running or not hosted here', () => {
+    expect(shouldStartInsteadOfConnect(casa, host({ state: 'running', serverKeyId: 'KEY-A', config }))).toBe(false);
+    expect(shouldStartInsteadOfConnect(saved('b', 'Amigos', 'KEY-B'), host({ state: 'stopped', serverKeyId: 'KEY-A', config }))).toBe(false);
+    expect(shouldStartInsteadOfConnect(casa, null)).toBe(false);
   });
 });
