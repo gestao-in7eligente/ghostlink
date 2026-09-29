@@ -1,5 +1,6 @@
 import {
   CHAT_LIMITS,
+  LIMITS,
   PERMISSIONS,
   ProtocolError,
   cleanMessageContent,
@@ -11,6 +12,7 @@ import {
   msgReactSchema,
   msgSendSchema,
   typingSchema,
+  type Message,
   type MessageMentions,
 } from '@ghostlink/shared';
 import type { RequestContext } from '../../modules.js';
@@ -88,6 +90,14 @@ export function softDeleteMessage(core: TextCore, id: number): void {
   core.db.run('DELETE FROM mentions WHERE message_id = ?', id);
 }
 
+/**
+ * A history page stays this far under the client's frame cap (spec §5.1: 256 KiB),
+ * leaving room for the `res` envelope. 50 messages of 4000 three-byte characters
+ * are ~600 KB: a page that big would make the client drop the connection, then
+ * reload the same page after reconnecting, forever.
+ */
+export const HISTORY_PAGE_MAX_BYTES = LIMITS.maxPayloadBytes - 4 * 1024;
+
 const history: Handler = (core, ctx, payload) => {
   const p = msgHistorySchema.parse(payload);
   const actor = core.member(ctx.userId);
@@ -97,8 +107,21 @@ const history: Handler = (core, ctx, payload) => {
     `SELECT * FROM messages WHERE channel_id = ? AND deleted_at IS NULL AND id < ? ORDER BY id DESC LIMIT ?`,
     channel.id, p.before ?? Number.MAX_SAFE_INTEGER, limit + 1,
   );
-  const hasMore = rows.length > limit;
-  return { messages: core.repo.toMessages(rows.slice(0, limit).reverse()), hasMore };
+  let hasMore = rows.length > limit;
+  // Newest first, until the byte budget is spent; the rest comes with the next page
+  // (`before` = the oldest message returned). The newest one always goes, so paging advances.
+  const page: Message[] = [];
+  let bytes = 0;
+  for (const message of core.repo.toMessages(rows.slice(0, limit))) {
+    const size = Buffer.byteLength(JSON.stringify(message), 'utf8') + 1;
+    if (page.length > 0 && bytes + size > HISTORY_PAGE_MAX_BYTES) {
+      hasMore = true;
+      break;
+    }
+    page.push(message);
+    bytes += size;
+  }
+  return { messages: page.reverse(), hasMore };
 };
 
 const send: Handler = (core, ctx, payload) => {
