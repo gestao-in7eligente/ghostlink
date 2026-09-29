@@ -16,11 +16,20 @@ import {
   type VoiceJoinResponse,
 } from '@ghostlink/shared';
 import { getMeta } from '../db/serverMeta.js';
-import { LivekitBackend, type LivekitParticipant, type VoiceBackend, type VoiceServerOptions, type VoiceWebhookEvent } from '../livekit/backend.js';
+import {
+  LivekitBackend,
+  type LivekitParticipant,
+  type VoiceBackend,
+  type VoiceBackendListeners,
+  type VoiceServerOptions,
+  type VoiceWebhookEvent,
+} from '../livekit/backend.js';
 import { resolveLivekitBinary } from '../livekit/binary.js';
 import { verifyVoiceToken } from '../livekit/jwt.js';
 import { createJoinToken, livekitPermission, type LivekitPermission } from '../livekit/permissions.js';
 import type { ModuleContext, RequestContext, ServerEvent, ServerModule, SessionInfo } from '../modules.js';
+import { describeNodeIp, fallbackNodeIp, type NodeIpChoice } from '../net/addresses.js';
+import { NET_MODULE, type NetModule } from '../net/netModule.js';
 import { SlidingWindowLimiter } from '../ratelimit/limiter.js';
 import { NO_CHANNELS, textModuleOf, voiceAccessOf, type TextModuleVoiceSeams, type VoiceAccess } from './access.js';
 import { RtcProxy } from './proxy.js';
@@ -44,6 +53,13 @@ export interface VoiceModuleOptions {
    * own app connects right after startup) already list voice. Default 5 s; 0: no wait.
    */
   readyWaitMs?: number;
+  /**
+   * At most this long, start() waits for the `net` module's first UPnP answer before
+   * LiveKit's config is written, so the router's WAN IP is usually known (spec §8.1). Default 8 s.
+   */
+  netWaitMs?: number;
+  /** How often the `net` module's node IP is compared with the one LiveKit announces. Default 5 s. */
+  nodeIpCheckIntervalMs?: number;
 }
 
 /** The `voice` module plus the calls other modules and tests may make on it. */
@@ -63,6 +79,14 @@ export interface VoiceModule extends ServerModule {
   reconcile(): Promise<void>;
   /** Takes a user out of voice at once (kick, ban, leave). */
   removeUser(userId: string, opts?: { notify?: boolean }): Promise<void>;
+  /** The IP LiveKit announces to clients (rtc.node_ip); null until LiveKit is first started. */
+  readonly nodeIp: string | null;
+  /**
+   * Compares the `net` module's node IP with the one LiveKit announces (spec §8.1). When it
+   * changed, LiveKit restarts with it now if nobody is in voice, else as soon as the rooms
+   * are empty. Resolves once a restart it started is done. Runs on a timer as well.
+   */
+  refreshNodeIp(): Promise<void>;
   /** Test/diagnostic view of the in-memory state. */
   readonly registry: VoiceRegistry;
 }
@@ -74,6 +98,15 @@ function defaultBackend(ctx: ModuleContext, options: VoiceServerOptions): VoiceB
     return null;
   }
   return new LivekitBackend({ ...options, binaryPath, dataDir: ctx.dataDir, logger: ctx.logger });
+}
+
+/** The `net` module when this server runs one (the CLI and Host mode do), else null. */
+function netModuleOf(ctx: ModuleContext): NetModule | null {
+  try {
+    return ctx.getModule<NetModule>(NET_MODULE);
+  } catch {
+    return null;
+  }
 }
 
 /** Resolves when `p` settles or after `ms`, whichever comes first. */
@@ -101,7 +134,14 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
   const pushes = new Map<string, Promise<void>>();
   let ctx!: ModuleContext;
   let text: TextModuleVoiceSeams | null = null;
+  let net: NetModule | null = null;
   let backend: VoiceBackend | null = null;
+  /** The node_ip LiveKit announces (spec §8.1); null until LiveKit is first started. */
+  let nodeIp: string | null = null;
+  /** A new node_ip that waits for the rooms to empty. */
+  let pendingNodeIp: NodeIpChoice | null = null;
+  /** The LiveKit restart for a new node_ip in progress. */
+  let restarting: Promise<void> | null = null;
   let publicPort = 0;
   let joinLimiter!: SlidingWindowLimiter;
   let ready: Promise<boolean> = Promise.resolve(false);
@@ -180,8 +220,64 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     applied.delete(userId);
     broadcast(registry.removeEverywhere(userId));
     if (o.notify) sendToUser(userId, { t: 'voice.forceDisconnect', d: {} });
-    if (!backend?.available) return;
-    for (const channelId of channels) await backend.removeParticipant(voiceRoomName(channelId), voiceIdentity(userId)).catch(log('removeParticipant'));
+    if (backend?.available) {
+      for (const channelId of channels) await backend.removeParticipant(voiceRoomName(channelId), voiceIdentity(userId)).catch(log('removeParticipant'));
+    }
+    applyPendingNodeIp();
+  };
+
+  /** The explicit node_ip (CLI --node-ip, voice.nodeIp): it never changes. */
+  const explicitNodeIp = (): string | undefined => ctx.options?.voice?.nodeIp || undefined;
+
+  /**
+   * The IP LiveKit should announce, and why (spec §8.1): the explicit one, else the `net`
+   * module's (the router's public WAN IP from UPnP, else its best reachable local address),
+   * else this machine's best address (a public interface IP, a LAN one, a VPN one) or 127.0.0.1.
+   */
+  const wantedNodeIp = (): NodeIpChoice => {
+    const explicit = explicitNodeIp();
+    if (explicit) return { ip: explicit, source: 'explicit' };
+    return net?.nodeIpChoice() ?? fallbackNodeIp();
+  };
+
+  /** Nobody in a LiveKit room and nobody holding a join (about to connect): a restart drops no one. */
+  const idle = (): boolean => registry.channels().length === 0 && registry.assignments().length === 0;
+
+  const refreshNodeIp = async (): Promise<void> => {
+    if (restarting) return restarting;
+    // Only the net module's answer moves: a late UPnP answer, a new WAN IP, a VPN that connects.
+    if (stopped || !backend || nodeIp === null || !net || explicitNodeIp()) return;
+    const wanted = wantedNodeIp();
+    if (wanted.ip === nodeIp) {
+      pendingNodeIp = null;
+      return;
+    }
+    // A restart drops every call: it waits until nobody is in voice (and LiveKit is up).
+    if (!idle() || !backend.available) {
+      if (pendingNodeIp?.ip !== wanted.ip) {
+        ctx.logger.info(`voice: the node IP is now ${wanted.ip} (${describeNodeIp(wanted)}); LiveKit restarts with it once nobody is in voice`);
+      }
+      pendingNodeIp = wanted;
+      return;
+    }
+    pendingNodeIp = null;
+    ctx.logger.info(`voice: restarting LiveKit to announce ${wanted.ip} (${describeNodeIp(wanted)}) instead of ${nodeIp}`);
+    nodeIp = wanted.ip;
+    // Clients hear voice.availability false, then true (onDown, onReady -> announce()).
+    restarting = backend
+      .restart({ nodeIp: wanted.ip })
+      .catch((e: unknown) => {
+        if (!stopped) ctx.logger.error('LiveKit did not restart; retrying', { error: e instanceof Error ? e.message : String(e) });
+      })
+      .finally(() => {
+        restarting = null;
+      });
+    await restarting;
+  };
+
+  /** A node_ip change that waited for the rooms to empty goes in as soon as they are. */
+  const applyPendingNodeIp = (): void => {
+    if (pendingNodeIp && !restarting && idle()) void refreshNodeIp();
   };
 
   const pushPermission = async (userId: string): Promise<void> => {
@@ -279,6 +375,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     if (!channelId) return;
     if (e.event === 'room_finished') {
       broadcast(registry.clearChannel(channelId));
+      applyPendingNodeIp();
       return;
     }
     const userId = e.identity ? userIdFromIdentity(e.identity) : null;
@@ -308,6 +405,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       case 'participant_left':
       case 'participant_connection_aborted':
         broadcast(registry.leave(channelId, userId, e.participantSid));
+        applyPendingNodeIp();
         return;
       default:
         return;
@@ -338,14 +436,17 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     if (channel.type !== 'voice') throw new ProtocolError('BAD_REQUEST');
     if (!has(bits, P.CONNECT_VOICE)) throw new ProtocolError('FORBIDDEN');
     if (channel.userLimit > 0 && registry.assignedCount(channelId, rc.userId) >= channel.userLimit) throw new ProtocolError('CHANNEL_FULL');
-    if (!backend?.available) {
-      ctx.logger.error('voice.join refused: voice is unavailable (LiveKit is missing or not running)');
+    const unavailable = (): never => {
+      ctx.logger.error('voice.join refused: voice is unavailable (LiveKit is missing, not running or restarting)');
       throw new ProtocolError('INTERNAL');
-    }
+    };
+    if (!backend?.available || restarting) return unavailable();
     const permission = livekitPermission(bits, { serverMuted: registry.isServerMuted(rc.userId) });
     const nickname = ctx.db.get<{ nickname: string }>('SELECT nickname FROM users WHERE id = ?', rc.userId)?.nickname ?? rc.userId.slice(0, 8);
     const token = await createJoinToken({ ...backend.keys, userId: rc.userId, channelId, nickname, permission });
     if (!rc.isCurrent()) return {};
+    // A node_ip restart may have begun meanwhile: this token would lead nowhere.
+    if (!backend.available || restarting) return unavailable();
     const previous = registry.assignedChannel(rc.userId);
     const present = registry.channelOf(rc.userId);
     registry.assign(rc.userId, channelId);
@@ -419,6 +520,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       ctx = c;
       stopped = false;
       text = textModuleOf(c);
+      net = netModuleOf(c);
       joinLimiter = new SlidingWindowLimiter(VOICE_LIMITS.joinPerWindow, VOICE_LIMITS.joinWindowMs, c.now);
       const onRemoved = text?.onMembershipRemoved?.((userId) => void removeUser(userId, { notify: true }));
       if (onRemoved) unsubscribe.push(onRemoved);
@@ -454,7 +556,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       if (!backend) return;
       const b = backend;
       ready = new Promise<boolean>((resolve) => (settleReady = resolve));
-      const first = b.start({
+      const listeners: VoiceBackendListeners = {
         onReady: () => {
           settleReady(true);
           announce();
@@ -467,14 +569,30 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
           announce();
           ctx.logger.error('voice is unavailable: LiveKit could not be restarted');
         },
-      });
+      };
+      const following = net !== null && !explicitNodeIp() ? net : null;
+      // spec §8.1: once UPnP first answered, the router's WAN IP is known; LiveKit's config
+      // is written after that (bounded). A later change goes through refreshNodeIp().
+      const chosen = (async () => {
+        if (following) await waitAtMost(following.ready().catch(() => {}), opts.netWaitMs ?? 8_000);
+        return wantedNodeIp();
+      })();
       // A failed first start is retried by the supervisor, which ends in onReady or onUnavailable.
-      starting = first.catch((e: unknown) => {
-        ctx.logger.error('LiveKit did not start; retrying', { error: e instanceof Error ? e.message : String(e) });
-      });
+      starting = chosen
+        .then((choice) => {
+          if (stopped) return;
+          nodeIp = choice.ip;
+          ctx.logger.info(`voice: LiveKit announces ${choice.ip} to clients (${describeNodeIp(choice)})`);
+          return b.start(listeners, { nodeIp: choice.ip });
+        })
+        .catch((e: unknown) => {
+          ctx.logger.error('LiveKit did not start; retrying', { error: e instanceof Error ? e.message : String(e) });
+        });
       timers.push(setInterval(() => void reconcile(), opts.reconcileIntervalMs ?? 60_000));
       timers.push(setInterval(() => void refreshPermissions(), opts.sweepIntervalMs ?? 5_000));
+      if (following) timers.push(setInterval(() => void refreshNodeIp(), opts.nodeIpCheckIntervalMs ?? 5_000));
       for (const t of timers) t.unref();
+      await chosen;
       await waitAtMost(ready, opts.readyWaitMs ?? 5_000);
     },
     async stop() {
@@ -484,6 +602,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       for (const off of unsubscribe.splice(0)) off();
       await backend?.stop();
       await starting;
+      await restarting;
       await backend?.stop();
     },
     welcome(session: SessionInfo) {
@@ -507,6 +626,10 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     refreshPermissions,
     reconcile,
     removeUser,
+    get nodeIp() {
+      return nodeIp;
+    },
+    refreshNodeIp,
   };
   return module;
 }

@@ -12,6 +12,7 @@ import { createNetModule } from './net/netModule.js';
 import { findFreeTcpPort } from './net/ports.js';
 import { readCertificate } from './tls/certificate.js';
 import { SERVER_VERSION } from './version.js';
+import type { VoiceModule } from './voice/index.js';
 
 export interface CliIo {
   out(line: string): void;
@@ -56,7 +57,8 @@ Options:
   --public-address <h:p>     start: address to put in invites (repeatable);
                              without it, the addresses are detected
   --node-ip <ipv4>           start: IP announced for voice media (default:
-                             UPnP WAN IP, else the LAN IP)
+                             the UPnP WAN IP, else a public IP of this
+                             machine, else the LAN IP)
   --upnp                     start: open the ports on the router via UPnP
   --max-uses <n>             invite: maximum number of uses
   --expires <n>h | <n>d      invite: expiry, e.g. 24h or 7d
@@ -133,6 +135,8 @@ async function cmdStart(values: Values, env: NodeJS.ProcessEnv, io: CliIo, opts:
   const publicAddresses = values['public-address'];
   // Addresses come from --public-address (spec §10); without it they are detected and kept up to date.
   const net = createNetModule({ upnp: values.upnp === true, manageAddresses: publicAddresses === undefined, bindHost: host, nodeIp, mediaPorts: MEDIA_PORTS });
+  const features = defaultModules();
+  const voice = features.find((m): m is VoiceModule => m.name === 'voice');
   let server;
   try {
     server = await startServer({
@@ -143,7 +147,9 @@ async function cmdStart(values: Values, env: NodeJS.ProcessEnv, io: CliIo, opts:
       publicAddresses,
       logger: consoleLogger,
       // `net` first, so later modules (voice) can read its node IP when they start.
-      modules: [net, ...defaultModules()],
+      modules: [net, ...features],
+      // spec §8.1: an explicit --node-ip (install.sh passes the VPS's public IP) wins in voice.
+      voice: nodeIp === undefined ? undefined : { nodeIp },
     });
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'EADDRINUSE') {
@@ -166,7 +172,7 @@ async function cmdStart(values: Values, env: NodeJS.ProcessEnv, io: CliIo, opts:
     const status = net.status();
     const addresses = server.info().publicAddresses;
     io.out(`Public addresses: ${addresses.length > 0 ? addresses.join(', ') : '(none detected; use --public-address host:port)'}`);
-    io.out(`Node IP (announced for voice): ${status.nodeIp ?? '(none; use --node-ip)'}`);
+    io.out(`Node IP (announced for voice): ${voice?.nodeIp ?? status.nodeIp ?? '(none; use --node-ip)'}`);
     if (status.upnp.state === 'off') {
       io.out('UPnP: off (use --upnp to open the ports on a home router)');
     } else {

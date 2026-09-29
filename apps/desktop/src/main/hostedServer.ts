@@ -213,8 +213,11 @@ export async function runHostedServer(port: ParentPortLike, argv: string[], deps
       joinMode: args.joinMode,
       maxMembers: args.maxMembers,
       logger,
-      // `net` first (its node_ip is ready for later modules), then the same feature modules as the CLI.
+      // `net` first: voice waits (bounded) for its first UPnP answer and announces its node_ip
+      // (the router's WAN IP, else the LAN), following later changes (spec §8.1).
       modules: [netModule, ...defaultModules()],
+      // An explicit --node-ip wins in voice as well.
+      voice: args.nodeIp === undefined ? undefined : { nodeIp: args.nodeIp },
     });
   } catch (e) {
     const code = errorCodeOf(e);

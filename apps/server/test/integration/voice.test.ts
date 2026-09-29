@@ -177,8 +177,8 @@ describe('voice module: welcome and features', () => {
   it('whenReady waits through a failed first start that the supervisor retries, and is false only when it gives up', async () => {
     // A first start can fail on a transient cause (a port taken meanwhile); the supervisor restarts LiveKit.
     class RetriedBackend extends FakeBackend {
-      override async start(listeners: Parameters<FakeBackend['start']>[0]): Promise<void> {
-        setTimeout(() => void super.start(listeners), 50);
+      override async start(...args: Parameters<FakeBackend['start']>): Promise<void> {
+        setTimeout(() => void super.start(...args), 50);
         throw new Error('livekit-server exited (code 1)');
       }
     }
@@ -242,8 +242,8 @@ describe('voice module: welcome and features', () => {
   it('startup waits briefly for LiveKit, so the first welcomes (the host app) already list voice', async () => {
     const late = booting();
     const start = late.start.bind(late);
-    late.start = async (listeners) => {
-      await start(listeners);
+    late.start = async (listeners, options) => {
+      await start(listeners, options);
       setTimeout(() => late.up(), 100);
     };
     const s = await setup({ backend: late, waitReady: false });

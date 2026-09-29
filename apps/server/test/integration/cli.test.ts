@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { formatFingerprint, parseJoinInput } from '@ghostlink/shared';
 import { runCli, type CliIo } from '../../src/cli.js';
 import { SERVER_VERSION } from '../../src/index.js';
+import { resolveLivekitBinary } from '../../src/livekit/binary.js';
 import { withDb } from '../helpers/db.js';
 import { connectTestClient, startTestServer, type TestServer } from '../helpers/testClient.js';
 
@@ -168,6 +169,15 @@ describe('ghostlink-server start (spec §10)', () => {
     expect(text).toContain('Public addresses: vps.example.com:7700');
     expect(text).toContain('UPnP: off');
     expect(text).toContain('Shutting down');
+  });
+
+  // install.sh runs `start --node-ip <public IP>` on a VPS (spec §8.1, §10): LiveKit must announce it.
+  it.skipIf(!resolveLivekitBinary())('--node-ip reaches the LiveKit config', async () => {
+    const data = tempData();
+    const { io, code } = await runStart(['--data', data, '--port', String(await freePort()), '--host', '127.0.0.1', '--node-ip', '203.0.113.9']);
+    expect(code, io.stderr.join(' / ')).toBe(0);
+    expect(readFileSync(join(data, 'livekit.yaml'), 'utf8')).toContain('node_ip: "203.0.113.9"');
+    expect(io.stdout).toContain('Node IP (announced for voice): 203.0.113.9');
   });
 
   it('exits 2 on a busy port and suggests the next free one', async () => {

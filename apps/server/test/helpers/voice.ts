@@ -3,9 +3,11 @@ import { createServer, type IncomingMessage, type Server } from 'node:http';
 import { createServer as createTcpServer, type AddressInfo } from 'node:net';
 import { WebSocketServer } from 'ws';
 import { DEFAULT_EVERYONE_PERMISSIONS } from '@ghostlink/shared';
-import type { LivekitParticipant, VoiceBackend, VoiceBackendListeners, VoiceWebhookEvent } from '../../src/livekit/backend.js';
+import type { LivekitParticipant, VoiceBackend, VoiceBackendListeners, VoiceBackendStartOptions, VoiceWebhookEvent } from '../../src/livekit/backend.js';
 import type { LivekitPermission } from '../../src/livekit/permissions.js';
 import type { ModuleContext } from '../../src/modules.js';
+import type { NodeIpChoice } from '../../src/net/addresses.js';
+import type { NetModule, NetStatus } from '../../src/net/netModule.js';
 import type { MembershipRemovedReason, TextModuleVoiceSeams, VoiceAccess } from '../../src/voice/access.js';
 
 export const FAKE_KEYS = { apiKey: 'GLfakeApiKey', apiSecret: 's'.repeat(43) };
@@ -75,6 +77,8 @@ export class FakeBackend implements VoiceBackend {
   readonly afterRefusal: Buffer[] = [];
   /** false: start() leaves LiveKit booting (unavailable, no onReady) until up(). */
   readyOnStart = true;
+  /** The node_ip of the first start and of every restart, in order. */
+  readonly nodeIps: string[] = [];
   listeners: VoiceBackendListeners | null = null;
   #server: Server | null = null;
   #wss: WebSocketServer | null = null;
@@ -84,8 +88,9 @@ export class FakeBackend implements VoiceBackend {
     return this.available ? this.#port : null;
   }
 
-  async start(listeners: VoiceBackendListeners): Promise<void> {
+  async start(listeners: VoiceBackendListeners, options: VoiceBackendStartOptions): Promise<void> {
     this.listeners = listeners;
+    this.nodeIps.push(options.nodeIp);
     const wss = new WebSocketServer({ noServer: true });
     this.#wss = wss;
     const server = createServer((req, res) => {
@@ -112,6 +117,14 @@ export class FakeBackend implements VoiceBackend {
     this.#server = server;
     this.#port = (server.address() as AddressInfo).port;
     if (this.readyOnStart) listeners.onReady();
+  }
+
+  /** A restart with a new config, as LivekitBackend does it: down (onDown), then up again shortly after. */
+  async restart(options: VoiceBackendStartOptions): Promise<void> {
+    this.nodeIps.push(options.nodeIp);
+    this.crash();
+    await new Promise((r) => setTimeout(r, 20));
+    if (this.listeners) this.up();
   }
 
   /** LiveKit answers (first start, or a restart after a crash). */
@@ -192,6 +205,49 @@ export class FakeBackend implements VoiceBackend {
 
   updates(identity: string): LivekitPermission[] {
     return this.calls.filter((c): c is Extract<BackendCall, { op: 'update' }> => c.op === 'update' && c.identity === identity).map((c) => c.permission);
+  }
+}
+
+/**
+ * A `net` module (spec §8.1) whose node IP and first UPnP answer the test controls:
+ * ready() stays pending until answer() when it starts unanswered.
+ */
+export class StubNet implements NetModule {
+  readonly name = 'net';
+  choice: NodeIpChoice | null;
+  readonly #ready: Promise<void>;
+  #settle!: () => void;
+
+  constructor(choice: NodeIpChoice | null, o: { answered?: boolean } = {}) {
+    this.choice = choice;
+    this.#ready = new Promise<void>((resolve) => (this.#settle = resolve));
+    if (o.answered !== false) this.#settle();
+  }
+
+  /** The first UPnP attempt settled (with the router's WAN IP, say). */
+  answer(choice: NodeIpChoice | null): void {
+    this.choice = choice;
+    this.#settle();
+  }
+
+  nodeIp(): string | null {
+    return this.choice?.ip ?? null;
+  }
+
+  nodeIpChoice(): NodeIpChoice | null {
+    return this.choice ? { ...this.choice } : null;
+  }
+
+  ready(): Promise<void> {
+    return this.#ready;
+  }
+
+  status(): NetStatus {
+    return { upnp: { state: 'off', wanIp: null, mappings: [] }, cgnat: false, nodeIp: this.nodeIp(), localAddresses: [] };
+  }
+
+  async refresh(): Promise<NetStatus> {
+    return this.status();
   }
 }
 

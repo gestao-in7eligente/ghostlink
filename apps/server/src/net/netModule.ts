@@ -6,10 +6,11 @@
 // the server's — start() after listen, stop() on close, before the database closes.
 // It is not in defaultModules(): callers put it FIRST, with their options:
 //   modules: [createNetModule({ upnp, manageAddresses, bindHost, nodeIp }), ...defaultModules()]
-// so another module (Voice) can read `ctx.getModule<NetModule>('net').nodeIp()` in its start().
+// so Voice can read `ctx.getModule<NetModule>('net').nodeIpChoice()` in its start(), after
+// waiting (bounded) for ready(), and again later to follow a change (voice/module.ts).
 import { setPublicAddresses } from '../db/serverMeta.js';
 import type { ModuleContext, ServerModule } from '../modules.js';
-import { buildPublicAddresses, isCgnatOrPrivate, localIPv4Addresses, resolveNodeIp, type LocalAddress } from './addresses.js';
+import { buildPublicAddresses, chooseNodeIp, isCgnatOrPrivate, localIPv4Addresses, type LocalAddress, type NodeIpChoice } from './addresses.js';
 import { isWildcardHost } from './ports.js';
 import { PortMapper, UpnpClient, discoverGateway, type MappingResult, type UpnpGateway, type UpnpProtocol } from './upnp.js';
 
@@ -48,7 +49,10 @@ export interface NetModuleOptions {
 
 export interface NetModule extends ServerModule {
   status(): NetStatus;
+  /** node_ip for LiveKit now (spec §8.1): explicit, else a public UPnP WAN IP, else the best reachable local address. */
   nodeIp(): string | null;
+  /** nodeIp() and where it came from (for the voice module's log). */
+  nodeIpChoice(): NodeIpChoice | null;
   /** Re-reads the interfaces and updates public_addresses when they changed. */
   refresh(): Promise<NetStatus>;
   /** Resolves once the first UPnP attempt settled (immediately when UPnP is off). */
@@ -58,7 +62,7 @@ export interface NetModule extends ServerModule {
 export function createNetModule(opts: NetModuleOptions = {}): NetModule {
   const bindHost = opts.bindHost ?? '0.0.0.0';
   const readLocal = opts.localAddresses ?? (() => localIPv4Addresses());
-  if (opts.nodeIp) resolveNodeIp({ explicit: opts.nodeIp, local: [] }); // validates, throws on a bad value
+  if (opts.nodeIp) chooseNodeIp({ explicit: opts.nodeIp, local: [] }); // validates, throws on a bad value
   const upnpEnabled = opts.upnp === true && !/^127\./.test(bindHost) && bindHost !== 'localhost';
 
   let ctx: ModuleContext | null = null;
@@ -84,7 +88,8 @@ export function createNetModule(opts: NetModuleOptions = {}): NetModule {
     setPublicAddresses(ctx.db, next);
   };
 
-  const nodeIp = () => resolveNodeIp({ explicit: opts.nodeIp, wanIp: upnp.wanIp, local: reachable() });
+  const nodeIpChoice = () => chooseNodeIp({ explicit: opts.nodeIp, wanIp: upnp.wanIp, local: reachable() });
+  const nodeIp = () => nodeIpChoice()?.ip ?? null;
 
   const status = (): NetStatus => ({
     upnp: { ...upnp, mappings: upnp.mappings.map((m) => ({ ...m })) },
@@ -157,6 +162,7 @@ export function createNetModule(opts: NetModuleOptions = {}): NetModule {
     },
     status,
     nodeIp,
+    nodeIpChoice,
     ready: () => work,
     async refresh() {
       if (!stopped && port !== 0) {

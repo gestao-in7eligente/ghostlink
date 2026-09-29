@@ -1,8 +1,8 @@
 import { createServer } from 'node:net';
 import type { AddressInfo } from 'node:net';
-import { networkInterfaces } from 'node:os';
 import { RoomServiceClient } from 'livekit-server-sdk';
 import type { Logger } from '../logger.js';
+import { fallbackNodeIp } from '../net/addresses.js';
 import { loadOrCreateLivekitKeys, writeLivekitConfig, type LivekitKeys } from './config.js';
 import type { LivekitPermission } from './permissions.js';
 import { LivekitProcess, type LivekitState } from './process.js';
@@ -20,17 +20,23 @@ export interface LivekitParticipant {
 /**
  * Contract: after start(), unless stop() comes first, the backend eventually calls
  * onReady() or, when it gives up (no more restarts), onUnavailable() — also when
- * start() itself rejected. A crash of a running LiveKit calls onDown(), then again
- * onReady() or onUnavailable(). `available` is already up to date in every callback.
+ * start() itself rejected. A crash of a running LiveKit, and a restart(), call onDown(),
+ * then again onReady() or onUnavailable(). `available` is already up to date in every callback.
  */
 export interface VoiceBackendListeners {
   /** LiveKit (re)started: rebuild the voice map (spec §7). */
   onReady(): void;
   onWebhook(event: VoiceWebhookEvent): void;
-  /** LiveKit stopped unexpectedly and is being restarted: voice is down meanwhile. */
+  /** LiveKit stopped (a crash, or a restart with a new config) and is being restarted: voice is down meanwhile. */
   onDown(): void;
   /** LiveKit gave up restarting: voice is unavailable. */
   onUnavailable(): void;
+}
+
+/** What goes into LiveKit's config at a (re)start. */
+export interface VoiceBackendStartOptions {
+  /** rtc.node_ip: the IP LiveKit announces to clients (spec §8.1), chosen by the voice module. */
+  nodeIp: string;
 }
 
 /**
@@ -42,7 +48,14 @@ export interface VoiceBackend {
   readonly keys: LivekitKeys;
   /** 127.0.0.1 signaling port for the /rtc proxy while available. */
   readonly signalPort: number | null;
-  start(listeners: VoiceBackendListeners): Promise<void>;
+  start(listeners: VoiceBackendListeners, options: VoiceBackendStartOptions): Promise<void>;
+  /**
+   * Stops LiveKit and starts it again with a new config (a new node_ip): onDown(), then
+   * onReady() or onUnavailable() as after a crash. Everyone connected is dropped, so the
+   * voice module only calls it while nobody is in voice. Resolves once LiveKit answers
+   * again; rejects when that attempt failed (the supervisor keeps retrying).
+   */
+  restart(options: VoiceBackendStartOptions): Promise<void>;
   stop(): Promise<void>;
   listRooms(): Promise<string[]>;
   listParticipants(room: string): Promise<LivekitParticipant[]>;
@@ -60,20 +73,11 @@ export interface VoiceServerOptions {
   udpPort?: number;
   /** Public ICE-TCP port. Default 7881. */
   tcpPort?: number;
-  /** IP announced to clients (spec §8.1): explicit > UPnP WAN (Hosting) > first private LAN IPv4 > 127.0.0.1. */
+  /**
+   * Explicit IP announced to clients (CLI --node-ip, spec §8.1). It wins over the `net`
+   * module's choice (UPnP WAN IP, else a local address) and over the address fallback.
+   */
   nodeIp?: string;
-}
-
-const PRIVATE_V4 = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
-
-/** The first private (RFC 1918) LAN IPv4 of this machine, else 127.0.0.1. */
-export function defaultNodeIp(interfaces: ReturnType<typeof networkInterfaces> = networkInterfaces()): string {
-  for (const list of Object.values(interfaces)) {
-    for (const i of list ?? []) {
-      if (i.family === 'IPv4' && !i.internal && PRIVATE_V4.test(i.address)) return i.address;
-    }
-  }
-  return '127.0.0.1';
 }
 
 /** A free TCP port on 127.0.0.1 (LiveKit's internal ports are chosen on every start, spec §8.1). */
@@ -97,7 +101,9 @@ function isNotFound(e: unknown): boolean {
 /** The real backend: livekit-server under a supervisor, its webhooks and its RoomService API. */
 export class LivekitBackend implements VoiceBackend {
   readonly keys: LivekitKeys;
-  readonly #opts: Required<Omit<VoiceServerOptions, 'binaryPath'>> & { binaryPath: string; dataDir: string; logger: Logger };
+  readonly #opts: Required<Omit<VoiceServerOptions, 'binaryPath' | 'nodeIp'>> & { binaryPath: string; dataDir: string; logger: Logger };
+  /** rtc.node_ip for the next (re)start; each start writes it into livekit.yaml. */
+  #nodeIp: string;
   #process: LivekitProcess | null = null;
   #webhooks: WebhookServer | null = null;
   #rooms: RoomServiceClient | null = null;
@@ -113,8 +119,13 @@ export class LivekitBackend implements VoiceBackend {
       logger: opts.logger,
       udpPort: opts.udpPort ?? 7882,
       tcpPort: opts.tcpPort ?? 7881,
-      nodeIp: opts.nodeIp ?? defaultNodeIp(),
     };
+    this.#nodeIp = opts.nodeIp ?? fallbackNodeIp().ip;
+  }
+
+  /** The node_ip LiveKit announces (or will, at its next start). */
+  get nodeIp(): string {
+    return this.#nodeIp;
   }
 
   get available(): boolean {
@@ -129,10 +140,30 @@ export class LivekitBackend implements VoiceBackend {
     return this.#process?.state ?? 'stopped';
   }
 
-  start(listeners: VoiceBackendListeners): Promise<void> {
+  /** `options.nodeIp` overrides the constructor's (the voice module always passes one). */
+  start(listeners: VoiceBackendListeners, options?: Partial<VoiceBackendStartOptions>): Promise<void> {
     this.#stopped = false;
     this.#listeners = listeners;
+    if (options?.nodeIp) this.#nodeIp = options.nodeIp;
     this.#starting = this.#start();
+    return this.#starting;
+  }
+
+  restart(options: VoiceBackendStartOptions): Promise<void> {
+    this.#nodeIp = options.nodeIp;
+    if (this.#stopped || !this.#listeners) return Promise.resolve(); // not started: start() uses it
+    const previous = this.#starting;
+    const run = async (): Promise<void> => {
+      await previous?.catch(() => {});
+      const supervised = this.#process;
+      if (this.#stopped || !supervised) return;
+      await supervised.stop();
+      if (this.#stopped) return;
+      this.#listeners?.onDown();
+      // Its prepare() writes livekit.yaml again, with the new node_ip.
+      await supervised.start();
+    };
+    this.#starting = run();
     return this.#starting;
   }
 
@@ -158,7 +189,7 @@ export class LivekitBackend implements VoiceBackend {
           port,
           udpPort: this.#opts.udpPort,
           tcpPort: this.#opts.tcpPort,
-          nodeIp: this.#opts.nodeIp,
+          nodeIp: this.#nodeIp,
           ...this.keys,
           webhookUrl,
         });

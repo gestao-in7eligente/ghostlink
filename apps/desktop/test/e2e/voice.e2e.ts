@@ -27,9 +27,9 @@ describe.skipIf(!binary)('voice that becomes available after the app connected (
     const backend = (ctx: ModuleContext, options: VoiceServerOptions): VoiceBackend => {
       const real = new LivekitBackend({ ...options, binaryPath: binary!, dataDir: ctx.dataDir, logger: ctx.logger });
       const start = real.start.bind(real);
-      real.start = async (listeners) => {
+      real.start = async (listeners, options) => {
         await gate;
-        return start(listeners);
+        return start(listeners, options);
       };
       return real;
     };

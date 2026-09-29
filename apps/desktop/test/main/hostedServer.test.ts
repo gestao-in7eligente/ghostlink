@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseJoinInput } from '@ghostlink/shared';
 import { silentLogger, type GhostServer } from '../../../server/src/index.js';
+import { resolveLivekitBinary } from '../../../server/src/livekit/binary.js';
 import { discoverGateway } from '../../../server/src/net/upnp.js';
 import { startFakeIgd } from '../../../server/test/helpers/fakeIgd.js';
 import { connectTestClient, startTestServer } from '../../../server/test/helpers/testClient.js';
@@ -281,5 +282,31 @@ describe('networking in the hosted server (spec §8.5)', () => {
     } finally {
       await fake.close();
     }
+  });
+
+  // spec §8.1: in Host mode LiveKit announces the router's WAN IP, so friends on the internet get audio.
+  it.skipIf(!resolveLivekitBinary())("with --upnp: LiveKit announces the router's WAN IP (node_ip)", async () => {
+    const fake = await startFakeIgd();
+    const parent = fakeParentPort();
+    const exit = exitRecorder();
+    try {
+      await runHostedServer(parent.port, ['--data', dir.path, '--port', '0', '--host', '0.0.0.0', '--upnp'], {
+        exit: exit.exit,
+        logger: silentLogger,
+        localAddresses: () => [{ ip: '192.168.0.10', interface: 'Ethernet', kind: 'lan' }],
+        discover: () => discoverGateway({ ssdpAddress: '127.0.0.1', ssdpPort: fake.ssdpPort, interfaces: ['127.0.0.1'], timeoutMs: 1_500 }),
+        mediaPorts: [],
+      });
+      expect(parent.posted[0]).toMatchObject({ type: 'ready' });
+      // The config is written before the server reports ready: UPnP answered first.
+      expect(readFileSync(join(dir.path, 'livekit.yaml'), 'utf8')).toContain('node_ip: "203.0.113.7"');
+    } finally {
+      if (parent.posted[0]?.type === 'ready') {
+        parent.send({ cmd: 'shutdown' });
+        await exit.done;
+      }
+      await fake.close();
+    }
+    expect(exit.codes).toEqual([0]);
   });
 });
