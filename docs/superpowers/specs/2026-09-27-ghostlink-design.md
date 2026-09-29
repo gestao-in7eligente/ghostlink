@@ -733,7 +733,8 @@ Algumas plataformas de nuvem só expõem um serviço por HTTP ou por um proxy TC
 ## 10. Servidor standalone (VPS)
 
 **CLI** (saída em inglês)
-- `ghostlink-server start --data <dir> [--port 7700] [--name "..."] [--node-ip <ip>] [--public-address host:porta]… [--upnp]`
+- `ghostlink-server start --data <dir> [--port 7700] [--name "..."] [--node-ip <ip>] [--public-address host:porta]… [--upnp] [--proxy host:porta]`
+  - `--proxy` liga o modo proxy (§8.6) com o endereço externo do proxy TCP. Sem `--public-address`, esse endereço também vai nos convites.
 - `ghostlink-server invite [--max-uses N] [--expires 24h]`
 - `ghostlink-server setup-code`, `reset-owner`, `status` (versão e impressão digital) e `version`.
 

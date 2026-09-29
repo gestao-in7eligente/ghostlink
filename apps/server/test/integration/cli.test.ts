@@ -8,6 +8,7 @@ import { runCli, type CliIo } from '../../src/cli.js';
 import { SERVER_VERSION } from '../../src/index.js';
 import { resolveLivekitBinary } from '../../src/livekit/binary.js';
 import { withDb } from '../helpers/db.js';
+import { freeMediaPorts } from '../helpers/voice.js';
 import { connectTestClient, startTestServer, type TestServer } from '../helpers/testClient.js';
 
 function capture(): CliIo & { stdout: string[]; stderr: string[] } {
@@ -180,6 +181,42 @@ describe('ghostlink-server start (spec §10)', () => {
     expect(io.stdout).toContain('Node IP (announced for voice): 203.0.113.9');
   });
 
+  it('--proxy: proxy mode, with the proxy as the public address', async () => {
+    const data = tempData();
+    const port = await freePort();
+    const { io, code } = await runStart(['--data', data, '--port', String(port), '--host', '127.0.0.1', '--proxy', 'altaria.proxy.rlwy.net:25889']);
+    expect(code, io.stderr.join(' / ')).toBe(0);
+    const text = io.stdout.join('\n');
+    expect(text).toContain('Proxy mode: behind altaria.proxy.rlwy.net:25889');
+    expect(text).toContain('Public addresses: altaria.proxy.rlwy.net:25889');
+    // The startup lines the app reads from a deployment log keep their exact form.
+    expect(text).toMatch(/^Fingerprint: [A-Z2-7]{8} [A-Z2-7]{8} [A-Z2-7]{8} [A-Z2-7]{8}$/m);
+    expect(text).toMatch(/^Setup code \(use it once to become the owner\): [0-9a-f]{8}-/m);
+    const meta = withDb(data, (db) => db.get<{ public_addresses: string }>('SELECT public_addresses FROM server_meta WHERE id = 1'))!;
+    expect(JSON.parse(meta.public_addresses)).toEqual(['altaria.proxy.rlwy.net:25889']);
+  });
+
+  it('--proxy with --public-address: the given addresses win', async () => {
+    const data = tempData();
+    const { io, code } = await runStart(['--data', data, '--port', String(await freePort()), '--host', '127.0.0.1', '--proxy', '198.51.100.20:25889', '--public-address', 'chat.example.com:25889']);
+    expect(code, io.stderr.join(' / ')).toBe(0);
+    expect(io.stdout).toContain('Public addresses: chat.example.com:25889');
+  });
+
+  // The Docker entrypoint passes --proxy on Railway (spec §8.6): LiveKit must listen on the
+  // proxy's external port, announce the proxy's IP, and use no UDP.
+  it.skipIf(!resolveLivekitBinary())('--proxy reaches the LiveKit config', async () => {
+    const data = tempData();
+    const external = (await freeMediaPorts()).tcpPort;
+    const { io, code } = await runStart(['--data', data, '--port', String(await freePort()), '--host', '127.0.0.1', '--proxy', `198.51.100.20:${external}`]);
+    expect(code, io.stderr.join(' / ')).toBe(0);
+    const yaml = readFileSync(join(data, 'livekit.yaml'), 'utf8');
+    expect(yaml).toContain(`tcp_port: ${external}`);
+    expect(yaml).toContain('node_ip: "198.51.100.20"');
+    expect(yaml).toContain('force_tcp: true');
+    expect(io.stdout).toContain('Node IP (announced for voice): 198.51.100.20');
+  });
+
   it('exits 2 on a busy port and suggests the next free one', async () => {
     const t = await server();
     const io = capture();
@@ -190,9 +227,25 @@ describe('ghostlink-server start (spec §10)', () => {
     expect(text).toMatch(/old invites/i);
   });
 
-  it.each([[['--node-ip', 'example.com']], [['--node-ip', '999.1.1.1']], [['--port', '70000']]])('refuses %j', async (flags) => {
+  it.each([
+    [['--node-ip', 'example.com']],
+    [['--node-ip', '999.1.1.1']],
+    [['--port', '70000']],
+    [['--proxy', 'altaria.proxy.rlwy.net']],
+    [['--proxy', 'altaria.proxy.rlwy.net:0']],
+    [['--proxy', 'altaria.proxy.rlwy.net:70000']],
+    [['--proxy', 'a b:25889']],
+    [['--proxy', '2001:db8::1:25889']],
+  ])('refuses %j', async (flags) => {
     const io = capture();
     expect(await runCli(['start', '--data', tempData(), ...flags], io, {})).toBe(1);
+    expect(io.stderr.join('\n')).toMatch(flags[0] === '--proxy' ? /--proxy must be/ : /./);
+  });
+
+  it('--help documents --proxy', async () => {
+    const io = capture();
+    expect(await runCli(['--help'], io, {})).toBe(0);
+    expect(io.stdout.join('\n')).toMatch(/--proxy <host:port>/);
   });
 });
 
