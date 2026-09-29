@@ -12,6 +12,7 @@ import {
   type IpcChannel,
   type IpcResult,
   type IpcReturn,
+  type PttEvent,
 } from '../shared/ipcTypes.js';
 import type { HostStatus } from '../shared/hostTypes.js';
 import type { UpdateState } from '../shared/updates.js';
@@ -93,6 +94,8 @@ export const api: GhostlinkApi = {
     restart: () => invoke(IPC.updatesRestart),
     onState: (cb) => subscribe<UpdateState>(IPC_EVENTS.updates, cb),
   },
+  ptt: { configure: (config) => invoke(IPC.pttConfigure, config) },
+  onPtt: (cb) => subscribe<PttEvent>(IPC_EVENTS.ptt, cb),
 };
 
 contextBridge.exposeInMainWorld('ghostlink', api);

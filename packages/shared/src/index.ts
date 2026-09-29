@@ -12,3 +12,4 @@ export * from './version.js';
 export * from './chat.js';
 export * from './roles.js';
 export * from './release.js';
+export * from './voice.js';

@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { ErrorCode } from '@ghostlink/shared';
 import type { Db } from './db/database.js';
+import type { VoiceServerOptions } from './livekit/backend.js';
 import type { ServerLimits } from './limits.js';
 import type { Logger } from './logger.js';
 
@@ -57,6 +58,11 @@ export interface SessionsApi {
   isOnlineOrInGrace(userId: string): boolean;
 }
 
+/** Feature options passed to startServer() (StartServerOptions.voice, …). */
+export interface ModuleOptions {
+  voice?: VoiceServerOptions;
+}
+
 /** Shared services handed to every module in init(). */
 export interface ModuleContext {
   readonly db: Db;
@@ -66,6 +72,8 @@ export interface ModuleContext {
   readonly dataDir: string;
   readonly serverKeyId: string;
   readonly sessions: SessionsApi;
+  /** Feature options from startServer(); absent in unit tests that build a context by hand. */
+  readonly options?: Readonly<ModuleOptions>;
   /** Another registered module, for cross-module calls; throws if `name` is not registered. */
   getModule<T extends ServerModule = ServerModule>(name: string): T;
 }
@@ -74,6 +82,11 @@ export interface ModuleContext {
 export interface RequestContext extends ModuleContext {
   readonly userId: string;
   readonly sessionId: string;
+  /**
+   * The raw Host header of this session's WebSocket upgrade: the host:port the client
+   * used (voice answers with it, spec §8.2). Client-controlled: validate before use.
+   */
+  readonly requestHost?: string;
   /** Re-check after every await (spec §5.1): false once the session was replaced or closed. */
   isCurrent(): boolean;
 }
@@ -92,7 +105,7 @@ export type RequestHandler = (ctx: RequestContext, payload: unknown) => unknown;
  */
 export interface ServerModule {
   readonly name: string;
-  /** Static feature flags merged into welcome.features. */
+  /** Feature flags merged into welcome.features; read at every welcome (it may be a getter). */
   readonly features?: readonly string[];
   /** Request types this module answers; a type registered twice fails startup. */
   readonly handlers?: Readonly<Record<string, RequestHandler>>;

@@ -20,6 +20,7 @@ import { registerIpc } from './ipc.js';
 import { FileLog, consoleMirror, guardStdio, installCrashHandlers, mainLog, safeWrite, setMainLog } from './log.js';
 import { ChatNotifier } from './notifications.js';
 import { installRendererPinning, setRendererPin } from './pinning.js';
+import { PushToTalk, type PttHookModule } from './ptt.js';
 import { SavedServersStore } from './savedServers.js';
 import { installSecurity, originOf } from './security.js';
 import { SettingsStore } from './settings.js';
@@ -131,6 +132,17 @@ function start(): BrowserWindow {
     fetchReleaseFile: createReleaseFileFetcher((url, init) => net.fetch(url, init)),
     emit: (state) => send(IPC_EVENTS.updates, state),
   });
+  // Global push-to-talk: the native hook is imported only once the user turns it on (spec §8.4).
+  const ptt = new PushToTalk({
+    platform: process.platform,
+    load: async () => {
+      const m = (await import('uiohook-napi')) as Partial<PttHookModule> & { default?: PttHookModule };
+      return m.uIOhook && m.UiohookKey ? (m as PttHookModule) : m.default!;
+    },
+    emit: (pressed) => send(IPC_EVENTS.ptt, { pressed }),
+    warn: (message) => mainLog.warn(message),
+  });
+  app.on('before-quit', () => void ptt.dispose());
   registerIpc({
     appOrigin,
     identity,
@@ -155,6 +167,7 @@ function start(): BrowserWindow {
       copyText: (text) => clipboard.writeText(text),
     },
     updates: updater,
+    ptt,
     appInfo: () => ({ version: app.getVersion(), platform: process.platform as Platform, locale: app.getLocale() }),
     host: { manager: host, copyText: (text) => clipboard.writeText(text), firewall: hostFirewall(host) },
     backup: identityBackup(window, identity, controller),
@@ -292,6 +305,10 @@ function createMainWindow(): BrowserWindow {
       nodeIntegration: false,
       webSecurity: true,
       spellcheck: false,
+      // Remote voice plays without a click first (spec §8.4); room.startAudio() covers the rest.
+      autoplayPolicy: 'no-user-gesture-required',
+      // The microphone gate runs on renderer timers: they must keep their pace while a game has focus.
+      backgroundThrottling: false,
     },
   });
   if (!smoke) window.once('ready-to-show', () => window.show());

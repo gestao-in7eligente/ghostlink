@@ -20,6 +20,7 @@
     "dev": "npm run dev -w @ghostlink/desktop",
     "smoke:dev": "npm run smoke:dev -w @ghostlink/desktop",
     "smoke": "node scripts/smoke.mjs",
+    "test:e2e": "npm run test:e2e -w @ghostlink/desktop",
     "dist": "npm run dist -w @ghostlink/desktop",
     "docs:dev": "vitepress dev docs-site",
     "docs:build": "vitepress build docs-site",

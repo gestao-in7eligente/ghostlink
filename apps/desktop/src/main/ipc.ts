@@ -9,6 +9,7 @@ import type { DeepLinks } from './deeplink.js';
 import { HOST_IPC_ARG_SCHEMAS, createHostIpcHandlers, type HostIpcDeps } from './hostIpc.js';
 import type { IdentityStore } from './identity.js';
 import { mainLog } from './log.js';
+import type { PushToTalk } from './ptt.js';
 import { originOf } from './security.js';
 import { LOCALES, type SettingsStore } from './settings.js';
 import type { Updater } from './updater.js';
@@ -30,6 +31,8 @@ export interface IpcDeps {
   shell: { openExternal(url: string): Promise<boolean>; copyText(text: string): void };
   notifications: { show(n: ChatNotification): boolean };
   updates: Pick<Updater, 'state' | 'setAutoCheck' | 'restart'>;
+  /** Global push-to-talk (voice track). */
+  ptt: Pick<PushToTalk, 'configure'>;
 }
 
 /** The handshake belongs to the main process alone: the renderer may never send it (release plan "Seams"). */
@@ -120,6 +123,8 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.updatesState]: z.tuple([]),
   [IPC.updatesSetAutoCheck]: z.tuple([z.boolean()]),
   [IPC.updatesRestart]: z.tuple([]),
+  // A DOM KeyboardEvent.code such as "KeyV" or "ControlRight"; main maps it to the hook's keycode.
+  [IPC.pttConfigure]: z.tuple([z.strictObject({ enabled: z.boolean(), code: z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,23}$/).nullable() })]),
 };
 
 type Handlers = { [C in IpcChannel]: (...args: IpcArgs<C>) => IpcReturn<C> | Promise<IpcReturn<C>> };
@@ -151,6 +156,7 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     [IPC.updatesState]: () => updates.state(),
     [IPC.updatesSetAutoCheck]: (enabled) => updates.setAutoCheck(enabled),
     [IPC.updatesRestart]: () => updates.restart(),
+    [IPC.pttConfigure]: (config) => deps.ptt.configure(config),
   };
 }
 

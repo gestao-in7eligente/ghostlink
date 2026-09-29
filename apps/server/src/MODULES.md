@@ -7,7 +7,7 @@ Each feature track (Text/roles, Voice, Hosting) plugs into the server as a `Serv
 1. Create `src/<feature>/` with a factory such as `createTextModule(): ServerModule`. The `name` must be unique.
 2. Register it with one line in `src/defaultModules.ts`, which the CLI `start` command and the desktop Hosting mode both use. List modules after the ones they call through `ctx.getModule()`. In tests, pass it explicitly: `startTestServer({ modules: [createTextModule()] })`.
 3. Lifecycle:
-   - `init(ctx)` runs before listen, after the migrations. Keep `ctx`, which holds `db`, `now`, `logger`, `limits`, `dataDir`, `serverKeyId`, `sessions` and `getModule`.
+   - `init(ctx)` runs before listen, after the migrations. Keep `ctx`, which holds `db`, `now`, `logger`, `limits`, `dataDir`, `serverKeyId`, `sessions`, `options` (feature options from `startServer`, e.g. `voice`) and `getModule`.
    - `start({ port })` runs after listen.
    - `stop()` runs in reverse order on close, after every session has ended and before the DB closes.
    - If `init` or `start` throws, startup is aborted and every module whose `init` succeeded is stopped. A module whose `init` threw must clean up after itself.
@@ -20,7 +20,7 @@ Each feature track (Text/roles, Voice, Hosting) plugs into the server as a `Serv
 5. `welcome(session)` returns extra welcome keys for that session. For example, Text adds `channels`, `roles`, `members` and `readStates`, and Voice adds `voice`.
    - It must be synchronous and must not send events.
    - A key that clashes with an M1 key or with another module's key closes the session with `INTERNAL`.
-   - Static feature flags go in `features`.
+   - Feature flags go in `features`, which is read at every welcome (a getter may turn one on later, as voice does once LiveKit runs).
 6. `http(req, res)` and `upgrade(req, socket, head)` return `true` when they handled the request. Built-in routes and `/ws` always win. Don't log URLs, because `/rtc` query strings carry tokens.
 
 ## Protocol types

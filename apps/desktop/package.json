@@ -12,12 +12,15 @@
     "dev": "node ../../scripts/run-electron.mjs electron-vite dev",
     "start": "node ../../scripts/run-electron.mjs electron .",
     "smoke:dev": "node ../../scripts/run-electron.mjs --smoke electron .",
-    "dist": "npm run build && electron-builder --config electron-builder.yml --publish never"
+    "test:e2e": "npm run build && vitest run --config test/e2e/vitest.config.ts",
+    "dist": "npm run build && node ../../scripts/fetch-livekit.mjs && electron-builder --config electron-builder.yml --publish never"
   },
   "dependencies": {
     "@peculiar/x509": "2.1.0",
     "electron-updater": "6.8.10",
+    "livekit-server-sdk": "2.19.1",
     "reflect-metadata": "0.2.2",
+    "uiohook-napi": "1.5.5",
     "ws": "8.22.0",
     "zod": "4.6.5"
   },
@@ -33,7 +36,9 @@
     "electron": "44.4.5",
     "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
+    "livekit-client": "2.22.3",
     "lucide-react": "1.48.0",
+    "playwright-core": "1.63.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "zustand": "5.0.15"

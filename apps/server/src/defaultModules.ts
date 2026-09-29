@@ -1,5 +1,6 @@
 import type { ServerModule } from './modules.js';
 import { createTextModule } from './text/index.js';
+import { createVoiceModule } from './voice/index.js';
 
 /**
  * The feature modules a real server runs: the CLI `start` command and the
@@ -8,5 +9,6 @@ import { createTextModule } from './text/index.js';
  * that satisfies getModule() dependencies (a module after those it calls in init).
  */
 export function defaultModules(): ServerModule[] {
-  return [createTextModule()];
+  // Text first: the voice module reads channels and permissions from it (VoiceAccess).
+  return [createTextModule(), createVoiceModule()];
 }

@@ -73,6 +73,22 @@ export interface OpenChannelEvent {
   channelId: string;
 }
 
+/** Push-to-talk as the renderer configures it; `code` is a DOM KeyboardEvent.code (voice track). */
+export interface PttConfig {
+  enabled: boolean;
+  code: string | null;
+}
+
+/** Whether the bound key also works while another app has focus (global hook, Windows). */
+export interface PttStatus {
+  global: boolean;
+}
+
+/** The bound push-to-talk key went down or up while another app had focus. */
+export interface PttEvent {
+  pressed: boolean;
+}
+
 export interface ConnectionStateEvent {
   state: ConnState;
   serverId: string | null;
@@ -127,6 +143,8 @@ export interface GhostlinkApi {
   notifications: { show(n: ChatNotification): Promise<boolean> };
   onOpenChannel(cb: (e: OpenChannelEvent) => void): () => void;
   updates: UpdatesApi;
+  ptt: { configure(config: PttConfig): Promise<PttStatus> };
+  onPtt(cb: (e: PttEvent) => void): () => void;
 }
 
 /** Invoke channels: `ghostlink:<namespace>.<method>`. */
@@ -168,6 +186,7 @@ export const IPC = {
   updatesState: 'ghostlink:updates.state',
   updatesSetAutoCheck: 'ghostlink:updates.setAutoCheck',
   updatesRestart: 'ghostlink:updates.restart',
+  pttConfigure: 'ghostlink:ptt.configure',
 } as const;
 
 /** Events pushed from main to the renderer. */
@@ -178,6 +197,7 @@ export const IPC_EVENTS = {
   deepLink: 'ghostlink:event.deepLink',
   openChannel: 'ghostlink:event.openChannel',
   updates: 'ghostlink:event.updates',
+  ptt: 'ghostlink:event.ptt',
 } as const;
 
 /** Arguments and result of every invoke channel; main's handlers and the preload are both typed from it. */
@@ -219,6 +239,7 @@ export interface IpcContract {
   [IPC.updatesState]: { args: []; result: UpdateState };
   [IPC.updatesSetAutoCheck]: { args: [enabled: boolean]; result: UpdateState };
   [IPC.updatesRestart]: { args: []; result: void };
+  [IPC.pttConfigure]: { args: [config: PttConfig]; result: PttStatus };
 }
 
 /** The Host mode channels (spec §9), handled by main/hostIpc.ts. */

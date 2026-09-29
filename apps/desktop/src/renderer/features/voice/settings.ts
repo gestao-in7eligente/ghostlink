@@ -1,0 +1,164 @@
+// Local voice settings (spec §8.4, §11.1 item 7): devices, input mode and key, the
+// voice-activity threshold, mute/deafen and per-user volume per server. They live in
+// this app's localStorage (per userData profile); what is read back is never trusted.
+import { create } from 'zustand';
+
+export type InputMode = 'vad' | 'ptt';
+
+export interface VoiceSettings {
+  /** null = the system default device. */
+  inputDeviceId: string | null;
+  outputDeviceId: string | null;
+  /** Voice activity (default) or push-to-talk. */
+  mode: InputMode;
+  /** Push-to-talk key as a DOM KeyboardEvent.code (e.g. "KeyV"), null until chosen. */
+  pttCode: string | null;
+  /** Voice activity opens the microphone above this level (dBFS, -100..0). */
+  thresholdDb: number;
+  muted: boolean;
+  deafened: boolean;
+  /** serverId → userId → volume in percent (0–200); absent means 100. */
+  volumes: Readonly<Record<string, Readonly<Record<string, number>>>>;
+}
+
+export const defaultVoiceSettings: VoiceSettings = {
+  inputDeviceId: null,
+  outputDeviceId: null,
+  mode: 'vad',
+  pttCode: null,
+  thresholdDb: -50,
+  muted: false,
+  deafened: false,
+  volumes: {},
+};
+
+export const VOICE_SETTINGS_KEY = 'ghostlink.voice.v1';
+export const MIN_THRESHOLD_DB = -100;
+export const MAX_VOLUME = 200;
+
+/** The two Storage methods used (a Map in tests, localStorage in the app). */
+export interface KeyValueStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+const USER_ID = /^[0-9a-f]{32}$/;
+const SERVER_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const PTT_CODE = /^[A-Z][A-Za-z0-9]{0,23}$/;
+const MAX_SERVERS = 100;
+const MAX_USERS_PER_SERVER = 1_000;
+
+export function isPttCode(code: unknown): code is string {
+  return typeof code === 'string' && PTT_CODE.test(code);
+}
+
+function clampVolume(v: number): number {
+  return Math.min(MAX_VOLUME, Math.max(0, Math.round(v)));
+}
+
+function deviceId(v: unknown): string | null {
+  return typeof v === 'string' && v.length > 0 && v.length <= 512 ? v : null;
+}
+
+function own(o: object, key: string): unknown {
+  return Object.hasOwn(o, key) ? (o as Record<string, unknown>)[key] : undefined;
+}
+
+function parseVolumes(raw: unknown): VoiceSettings['volumes'] {
+  const out: Record<string, Record<string, number>> = {};
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return out;
+  for (const serverId of Object.keys(raw).filter((k) => SERVER_ID.test(k)).slice(0, MAX_SERVERS)) {
+    const users = own(raw, serverId);
+    if (typeof users !== 'object' || users === null || Array.isArray(users)) continue;
+    const entries: Record<string, number> = {};
+    for (const userId of Object.keys(users).filter((k) => USER_ID.test(k)).slice(0, MAX_USERS_PER_SERVER)) {
+      const v = own(users, userId);
+      if (typeof v === 'number' && Number.isFinite(v)) entries[userId] = clampVolume(v);
+    }
+    if (Object.keys(entries).length > 0) out[serverId] = entries;
+  }
+  return out;
+}
+
+/** Field by field: every valid value is kept, everything else falls back to the default. */
+export function parseVoiceSettings(raw: unknown): VoiceSettings {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return defaultVoiceSettings;
+  const mode = own(raw, 'mode');
+  const threshold = own(raw, 'thresholdDb');
+  const muted = own(raw, 'muted');
+  const deafened = own(raw, 'deafened');
+  const pttCode = own(raw, 'pttCode');
+  return {
+    inputDeviceId: deviceId(own(raw, 'inputDeviceId')),
+    outputDeviceId: deviceId(own(raw, 'outputDeviceId')),
+    mode: mode === 'ptt' || mode === 'vad' ? mode : defaultVoiceSettings.mode,
+    pttCode: isPttCode(pttCode) ? pttCode : null,
+    thresholdDb:
+      typeof threshold === 'number' && Number.isFinite(threshold)
+        ? Math.min(0, Math.max(MIN_THRESHOLD_DB, Math.round(threshold)))
+        : defaultVoiceSettings.thresholdDb,
+    muted: typeof muted === 'boolean' ? muted : false,
+    deafened: typeof deafened === 'boolean' ? deafened : false,
+    volumes: parseVolumes(own(raw, 'volumes')),
+  };
+}
+
+export function loadVoiceSettings(storage: KeyValueStorage | null): VoiceSettings {
+  try {
+    const text = storage?.getItem(VOICE_SETTINGS_KEY);
+    return text ? parseVoiceSettings(JSON.parse(text)) : defaultVoiceSettings;
+  } catch {
+    return defaultVoiceSettings;
+  }
+}
+
+export function saveVoiceSettings(storage: KeyValueStorage | null, settings: VoiceSettings): void {
+  try {
+    storage?.setItem(VOICE_SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // Storage full or blocked: the settings still apply for this run.
+  }
+}
+
+/** Volume in percent for a user on a server (100 by default). */
+export function volumeOf(settings: VoiceSettings, serverId: string | null, userId: string): number {
+  if (!serverId || !Object.hasOwn(settings.volumes, serverId)) return 100;
+  const users = settings.volumes[serverId]!;
+  return Object.hasOwn(users, userId) ? users[userId]! : 100;
+}
+
+/** Sets a user's volume (clamped to 0–200 %); 100 % removes the entry. */
+export function withVolume(settings: VoiceSettings, serverId: string, userId: string, percent: number): VoiceSettings {
+  const users = { ...(Object.hasOwn(settings.volumes, serverId) ? settings.volumes[serverId] : {}) };
+  const v = clampVolume(percent);
+  if (v === 100) delete users[userId];
+  else users[userId] = v;
+  const volumes = { ...settings.volumes };
+  if (Object.keys(users).length > 0) volumes[serverId] = users;
+  else delete volumes[serverId];
+  return { ...settings, volumes };
+}
+
+function browserStorage(): KeyValueStorage | null {
+  try {
+    return (globalThis as { localStorage?: KeyValueStorage }).localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+interface VoiceSettingsStore {
+  settings: VoiceSettings;
+  update(patch: Partial<VoiceSettings> | ((s: VoiceSettings) => VoiceSettings)): void;
+}
+
+/** The voice settings, loaded once and saved on every change. */
+export const useVoiceSettings = create<VoiceSettingsStore>()((set, get) => ({
+  settings: loadVoiceSettings(browserStorage()),
+  update: (patch) => {
+    const current = get().settings;
+    const next = typeof patch === 'function' ? patch(current) : parseVoiceSettings({ ...current, ...patch });
+    saveVoiceSettings(browserStorage(), next);
+    set({ settings: next });
+  },
+}));

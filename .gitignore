@@ -7,7 +7,7 @@ out/
 coverage/
 
 # LiveKit binaries are downloaded at build time (M5)
-resources/livekit/
+apps/desktop/resources/livekit/
 
 # local data and secrets
 .data/
