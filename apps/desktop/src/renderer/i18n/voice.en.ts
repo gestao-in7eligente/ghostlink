@@ -63,10 +63,4 @@ export const voice: Record<keyof typeof voicePt, string> = {
   'voice.key.space': 'Space',
   'voice.key.left': 'Left {key}',
   'voice.key.right': 'Right {key}',
-
-  'voice.sandbox.voiceChannels': 'Voice channels',
-  'voice.sandbox.noChannels': 'No voice channels on this server.',
-  'voice.sandbox.status': 'Connected',
-  'voice.sandbox.leaveServer': 'Disconnect from server',
-  'voice.sandbox.close': 'Close',
 };

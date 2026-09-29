@@ -17,7 +17,6 @@ export { MemberVolume, ParticipantMenu, UserVolume } from './ParticipantMenu.js'
 export { VoiceChannelParticipants } from './VoiceChannelParticipants.js';
 export { VoiceControls } from './VoiceControls.js';
 export { VoiceNoticeBar, VoicePanel } from './VoicePanel.js';
-export { VoiceSandbox } from './VoiceSandbox.js';
 export { VoiceSettings } from './VoiceSettings.js';
 export { VoiceStage } from './VoiceStage.js';
 

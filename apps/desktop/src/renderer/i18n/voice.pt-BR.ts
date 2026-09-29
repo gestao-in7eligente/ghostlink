@@ -62,10 +62,4 @@ export const voice = {
   'voice.key.space': 'Espaço',
   'voice.key.left': '{key} esquerdo',
   'voice.key.right': '{key} direito',
-
-  'voice.sandbox.voiceChannels': 'Canais de voz',
-  'voice.sandbox.noChannels': 'Nenhum canal de voz neste servidor.',
-  'voice.sandbox.status': 'Conectado',
-  'voice.sandbox.leaveServer': 'Desconectar do servidor',
-  'voice.sandbox.close': 'Fechar',
 } as const;
