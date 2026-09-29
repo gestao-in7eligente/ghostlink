@@ -149,7 +149,7 @@ ALONE_IN_THE_DARK/                 # vira o repositório público "ghostlink"
   - Na última opção, o arquivo antigo é renomeado para `identity.bin.bak-<data>`.
 - **Isolamento:** o renderer **nunca** recebe a seed, as chaves privadas nem o `fileToken`.
 - **Apelido:** a pessoa escolhe um apelido global, que pode ser trocado por servidor.
-- **Apagar a identidade:** nas configurações, com confirmação dupla e a oferta de exportar antes.
+- **Apagar a identidade:** nas configurações, com confirmação dupla e a oferta de exportar antes. O main nunca destrói a chave: renomeia `identity.bin` para `identity.bin.bak-<data>`, como na importação, e a tela diz onde o arquivo ficou.
 
 ### 3.2 Identidade do servidor e chave por servidor
 

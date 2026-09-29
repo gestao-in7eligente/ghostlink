@@ -135,12 +135,34 @@ describe('IdentityStore: export, import, delete (spec §3.1, §3.4)', () => {
     expect(existsSync(join(dir.path, IDENTITY_FILE))).toBe(false);
   });
 
-  it('delete removes the identity from this device', () => {
-    store.create();
-    store.deleteIdentity();
-    expect(store.status).toBe('none');
-    expect(existsSync(join(dir.path, IDENTITY_FILE))).toBe(false);
-    expect(() => store.serverKey(KEY_ID)).toThrow();
+  it('delete takes the identity out of use but only renames identity.bin to identity.bin.bak-<timestamp>', () => {
+    // The double confirmation lives in the renderer; main never destroys the key, so a
+    // buggy or compromised page cannot lose it for good.
+    const at = () => new Date(2026, 8, 28, 14, 30, 5);
+    const dated = IdentityStore.load(dir.path, new FakeSafeStorage(), { now: at });
+    dated.create();
+    const original = readFileSync(join(dir.path, IDENTITY_FILE));
+    dated.deleteIdentity();
+    expect(dated.status).toBe('none');
+    expect(() => dated.serverKey(KEY_ID)).toThrow();
+    expect(readdirSync(dir.path)).toEqual([`${IDENTITY_FILE}.bak-20260928-143005`]);
+    expect(readFileSync(join(dir.path, `${IDENTITY_FILE}.bak-20260928-143005`)).equals(original)).toBe(true);
+    expect(IdentityStore.load(dir.path, new FakeSafeStorage()).status).toBe('none');
+  });
+
+  it('delete never overwrites an older backup, keeps a locked file too, and does nothing without a file', () => {
+    const at = () => new Date(2026, 8, 28, 14, 30, 5);
+    writeFileSync(join(dir.path, IDENTITY_FILE), 'undecryptable');
+    const locked = IdentityStore.load(dir.path, new FakeSafeStorage(), { now: at });
+    expect(locked.status).toBe('locked');
+    locked.deleteIdentity();
+    const again = IdentityStore.load(dir.path, new FakeSafeStorage(), { now: at });
+    again.create();
+    again.deleteIdentity();
+    again.deleteIdentity(); // nothing left to move
+    expect(readdirSync(dir.path).sort()).toEqual([`${IDENTITY_FILE}.bak-20260928-143005`, `${IDENTITY_FILE}.bak-20260928-143005-1`]);
+    expect(readFileSync(join(dir.path, `${IDENTITY_FILE}.bak-20260928-143005`), 'utf8')).toBe('undecryptable');
+    expect(again.status).toBe('none');
   });
 });
 

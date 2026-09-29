@@ -34,13 +34,14 @@ export const identity: Record<keyof typeof ptBR, string> = {
   'identity.import.done': 'Identity restored.',
 
   'identity.delete.title': 'Delete from this computer',
-  'identity.delete.body': 'Removes your identity from this computer. Without a backup it is lost forever.',
+  'identity.delete.body':
+    "Takes your identity out of use on this computer. The file is not destroyed: it is kept as identity.bin.bak-… in GhostLink's data folder. To get rid of it for good, delete that file yourself.",
   'identity.delete.exportFirst': 'Export a backup first',
   'identity.delete.start': 'Delete identity',
   'identity.delete.confirm1':
     'Without the identity, servers stop recognizing you: you lose ownership of your servers and need invites to come back. Export a backup first if you want to keep it.',
   'identity.delete.confirm1Button': 'I want to delete it',
-  'identity.delete.confirm2': 'Last confirmation: delete the identity from this computer now?',
+  'identity.delete.confirm2': 'Last confirmation: delete the identity from this computer now? The old file is kept as identity.bin.bak-….',
   'identity.delete.confirm2Button': 'Delete now',
 
   'identity.onboarding.export': 'Export now',

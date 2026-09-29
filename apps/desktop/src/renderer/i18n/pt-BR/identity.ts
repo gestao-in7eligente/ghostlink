@@ -32,13 +32,14 @@ export const identity = {
   'identity.import.done': 'Identidade restaurada.',
 
   'identity.delete.title': 'Apagar deste computador',
-  'identity.delete.body': 'Remove a sua identidade deste computador. Sem um backup, ela se perde para sempre.',
+  'identity.delete.body':
+    'Tira a sua identidade de uso neste computador. O arquivo não é destruído: ele fica guardado como identity.bin.bak-… na pasta de dados do GhostLink. Para eliminá-lo de vez, apague esse arquivo você mesmo.',
   'identity.delete.exportFirst': 'Exportar um backup antes',
   'identity.delete.start': 'Apagar identidade',
   'identity.delete.confirm1':
     'Sem a identidade, você deixa de ser reconhecido pelos servidores: perde a posse dos seus servidores e precisa de convites para voltar. Exporte um backup antes se quiser guardá-la.',
   'identity.delete.confirm1Button': 'Quero apagar',
-  'identity.delete.confirm2': 'Última confirmação: apagar a identidade deste computador agora?',
+  'identity.delete.confirm2': 'Última confirmação: apagar a identidade deste computador agora? O arquivo antigo fica guardado como identity.bin.bak-….',
   'identity.delete.confirm2Button': 'Apagar agora',
 
   'identity.onboarding.export': 'Exportar agora',

@@ -1,5 +1,5 @@
 import { createPrivateKey, createPublicKey, hkdfSync, randomBytes, sign } from 'node:crypto';
-import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { CRYPTO_LABELS, ProtocolError, utf8 } from '@ghostlink/shared';
 import { AppError } from '../shared/appErrors.js';
@@ -116,7 +116,7 @@ export class IdentityStore {
    */
   replaceKeepingBackup(): void {
     if (this.#status !== 'locked') throw new AppError('BAD_REQUEST', 'only a locked identity can be replaced');
-    renameSync(this.#file, freePath(`${this.#file}.bak-${fileTimestamp(this.#now())}`));
+    this.#moveAside();
     this.#masterSeed = null;
     this.#status = 'none';
   }
@@ -138,15 +138,20 @@ export class IdentityStore {
     const encoded = Buffer.from(seed).toString('base64');
     const blob = this.#crypto.encryptString(encoded);
     if (!this.#decrypts(blob, encoded)) throw new AppError('ENCRYPTION_UNAVAILABLE', 'safeStorage round-trip failed');
-    if (existsSync(this.#file)) renameSync(this.#file, freePath(`${this.#file}.bak-${fileTimestamp(this.#now())}`));
+    if (existsSync(this.#file)) this.#moveAside();
     writeFileAtomic(this.#file, blob);
     this.#masterSeed = Buffer.from(seed);
     this.#status = 'ready';
   }
 
-  /** spec §3.1 "Apagar a identidade": removes identity.bin from this device (after a double confirmation). */
+  /**
+   * spec §3.1 "Apagar a identidade": takes the identity out of use on this device. The
+   * double confirmation happens in the renderer, so main never destroys the key: like
+   * import, identity.bin is renamed to identity.bin.bak-<yyyyMMdd-HHmmss> (never
+   * overwriting an older backup), and a buggy or compromised page cannot lose it for good.
+   */
   deleteIdentity(): void {
-    rmSync(this.#file, { force: true });
+    if (existsSync(this.#file)) this.#moveAside();
     this.#masterSeed?.fill(0);
     this.#masterSeed = null;
     this.#status = 'none';
@@ -155,6 +160,11 @@ export class IdentityStore {
   serverKey(serverKeyId: string): ServerKey {
     if (this.#status !== 'ready' || this.#masterSeed === null) throw new AppError('IDENTITY_UNAVAILABLE');
     return serverKeyFromSeed(deriveServerSeed(this.#masterSeed, serverKeyId));
+  }
+
+  /** identity.bin → identity.bin.bak-<yyyyMMdd-HHmmss>, never overwriting an older backup. */
+  #moveAside(): void {
+    renameSync(this.#file, freePath(`${this.#file}.bak-${fileTimestamp(this.#now())}`));
   }
 
   #decrypts(blob: Buffer, expected: string): boolean {

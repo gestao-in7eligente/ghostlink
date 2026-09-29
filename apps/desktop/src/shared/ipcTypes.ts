@@ -113,7 +113,7 @@ export interface GhostlinkApi {
     pickBackup(): Promise<BackupPickResult>;
     /** Decrypts the picked file and replaces the identity (`replace` = the user confirmed twice). */
     importBackup(password: string, replace: boolean): Promise<IdentityStatus>;
-    /** spec §3.1: removes the identity from this device (after a double confirmation). */
+    /** spec §3.1: takes the identity out of use; main keeps identity.bin as identity.bin.bak-… (after a double confirmation). */
     delete(): Promise<IdentityStatus>;
   };
   settings: { get(): Promise<Settings>; set(patch: Partial<Settings>): Promise<Settings> };

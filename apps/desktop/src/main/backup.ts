@@ -171,7 +171,7 @@ export class IdentityBackup {
     }
   }
 
-  /** spec §3.1: disconnects, then removes the identity from this device. */
+  /** spec §3.1: disconnects, then takes the identity out of use (identity.bin is kept as identity.bin.bak-…). */
   async deleteIdentity(): Promise<IdentityStatus> {
     await this.#d.disconnect();
     this.#picked = null;
