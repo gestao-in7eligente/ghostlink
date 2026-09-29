@@ -29,6 +29,10 @@ export interface LivekitProcessOptions {
 }
 
 const LOG_LINES_KEPT = 40;
+/** stop(): a second SIGTERM after this long (LiveKit forces the stop on its second signal)… */
+const STOP_FORCE_AFTER_MS = 1_000;
+/** …and SIGKILL after this long, counted from the first. */
+const STOP_KILL_AFTER_MS = 5_000;
 const NOTEWORTHY = /\b(ERROR|FATAL|PANIC|WARN)\b|panic:|could not|failed/i;
 
 /** GET http://127.0.0.1:<port>/ → 200 means LiveKit is up (its health route answers "OK"). */
@@ -108,12 +112,19 @@ export class LivekitProcess {
     this.#state = 'stopped';
     this.#port = null;
     if (child && child.exitCode === null && child.signalCode === null) {
-      const exited = new Promise<void>((r) => child.once('exit', () => r()));
+      const exited = new Promise<'exited'>((r) => child.once('exit', () => r('exited')));
+      const within = (ms: number) => Promise.race([exited, new Promise<'timeout'>((r) => setTimeout(() => r('timeout'), ms).unref())]);
+      // On Windows kill() is TerminateProcess and the first call ends it. On POSIX SIGTERM is
+      // a request: LiveKit drops one that arrives before its own "running" flag (up to ~100 ms
+      // after its HTTP port, our readiness, answers) and a graceful stop waits for the
+      // participants to leave. Its second signal forces the stop; SIGKILL is the last resort.
       child.kill();
-      const timeout = new Promise<'timeout'>((r) => setTimeout(() => r('timeout'), 5_000).unref());
-      if ((await Promise.race([exited, timeout])) === 'timeout') {
-        child.kill('SIGKILL');
-        await exited;
+      if ((await within(STOP_FORCE_AFTER_MS)) === 'timeout') {
+        child.kill();
+        if ((await within(STOP_KILL_AFTER_MS - STOP_FORCE_AFTER_MS)) === 'timeout') {
+          child.kill('SIGKILL');
+          await exited;
+        }
       }
     }
     removePidfile(this.#pidfile);
@@ -139,7 +150,12 @@ export class LivekitProcess {
     child.stderr?.on('data', onData);
     let exitedEarly: ((e: Error) => void) | null = null;
     const startedAt = Date.now();
-    child.once('error', (e) => exitedEarly?.(e));
+    // 'on', not 'once': Node may emit 'error' more than once (e.g. per failed kill()), and an
+    // 'error' without a listener would throw. A crash itself always comes as 'exit'.
+    child.on('error', (e) => {
+      if (exitedEarly) exitedEarly(e);
+      else this.#opts.logger.warn('livekit-server process error', { error: e.message });
+    });
     child.once('exit', (code, signal) => {
       const error = new Error(`livekit-server exited (${signal ?? `code ${code}`})${this.#tail()}`);
       exitedEarly?.(error);

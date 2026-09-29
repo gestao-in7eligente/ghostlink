@@ -69,7 +69,10 @@ describe.skipIf(!binary)('livekit-server process (real binary)', () => {
     cleanups.push(() => backend.stop());
     await backend.start({ onReady: () => ready++, onWebhook: () => {}, onUnavailable: () => {}, onDown: () => down.push(backend.available) });
     const { pid } = JSON.parse(readFileSync(join(dataDir, 'livekit.pid'), 'utf8')) as { pid: number };
-    process.kill(pid);
+    // A crash, not a stop request: SIGKILL cannot be caught. A SIGTERM would not do on POSIX:
+    // LiveKit drops one that arrives right after start (before its own "running" flag) and
+    // otherwise stops gracefully. On Windows both are TerminateProcess.
+    process.kill(pid, 'SIGKILL');
     await expect.poll(() => down, { timeout: 5_000 }).toEqual([false]);
     await expect.poll(() => ready, { timeout: 15_000 }).toBe(2);
     expect(backend.available).toBe(true);
