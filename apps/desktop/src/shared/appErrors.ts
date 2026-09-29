@@ -20,6 +20,15 @@ export const CLIENT_ERROR_CODES = [
   'HOST_FAILED', // the hosted server could not start, or stopped by itself
   // Identity backup (spec §3.4); messages in i18n/<locale>/identity.ts.
   'BACKUP_INVALID', // not a .ghostkey file, or unsupported parameters
+  // Railway provisioning (v0.2); messages in i18n/railway.<locale>.ts.
+  'RAILWAY_NOT_CONNECTED', // no Railway token is stored
+  'RAILWAY_TOKEN_INVALID', // Railway refused the token (wrong, revoked, or a project token)
+  'RAILWAY_RATE_LIMITED', // Railway's API answered 429 (Free: 100 requests/hour)
+  'RAILWAY_API_ERROR', // any other Railway API failure, or Railway unreachable
+  'RAILWAY_DEPLOY_FAILED', // the deployment ended FAILED or CRASHED
+  'RAILWAY_TIMEOUT', // a step did not finish in time (proxy, deploy, server start)
+  'RAILWAY_FINGERPRINT_MISMATCH', // the key the address answers with is not the one in the deployment logs
+  'RAILWAY_BUSY', // a provisioning is already running
 ] as const;
 
 export type ClientErrorCode = (typeof CLIENT_ERROR_CODES)[number];

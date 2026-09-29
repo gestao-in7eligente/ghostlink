@@ -1,0 +1,187 @@
+/* The Railway wizard, inside the shared Modal (tokens only). */
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.howto {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+.openTokens {
+  align-self: flex-start;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.input {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border-search);
+  border-radius: 8px;
+  outline: none;
+  background: var(--bg-search);
+  color: var(--text-strong);
+  font-size: 15px;
+}
+
+.input:focus {
+  border-color: var(--accent);
+}
+
+.muted {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+.notice {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.warning {
+  border-left-color: var(--warning);
+  background: var(--warning-bg);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--bg-2);
+  font-size: 14px;
+}
+
+.accountDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+.accountText {
+  flex: 1;
+  color: var(--text-strong);
+}
+
+.linkButton {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.linkButton:hover {
+  text-decoration: underline;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+.step.running,
+.step.done {
+  color: var(--text-strong);
+}
+
+.step.failed {
+  color: var(--danger);
+}
+
+.waiting {
+  color: var(--text-ghost);
+}
+
+.done {
+  color: var(--success);
+}
+
+.failed {
+  color: var(--danger-strong);
+}
+
+.spin {
+  color: var(--accent-text);
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.failure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 12px;
+  border: 1px solid var(--danger-strong);
+  border-radius: 8px;
+  background: var(--danger-bg);
+}
+
+.failureTitle {
+  margin: 0;
+  color: var(--text-strong);
+  font-weight: 700;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

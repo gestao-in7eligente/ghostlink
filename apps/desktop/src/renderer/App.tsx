@@ -5,13 +5,14 @@ import { ErrorLine, Screen } from './components/Screen.js';
 import ui from './components/ui.module.css';
 import { HostIndicator } from './features/host/HostIndicator.js';
 import { HostScreens } from './features/host/HostScreens.js';
-import { openHostFlow } from './features/host/hostUi.js';
 import { useHostStatusSync } from './features/host/useHostStatusSync.js';
 import { joinStartFromLink, useDeepLinkStore } from './features/deeplink/deepLinkStore.js';
 import { useDeepLinkSync } from './features/deeplink/useDeepLinkSync.js';
 import { IdentityScreens } from './features/identity/IdentityScreens.js';
 import { DEFAULT_LOCALE, errorCodeOf, errorMessage, useT } from './i18n/index.js';
 import { useAddServerUi } from './integration/addServerUi.js';
+import { CreateServerScreens } from './integration/CreateServerScreens.js';
+import { openCreateServer } from './integration/createServerUi.js';
 import { HomeLayout } from './integration/HomeLayout.js';
 import { useLayoutWiring } from './integration/useLayoutWiring.js';
 import { Connected } from './screens/Connected.js';
@@ -112,7 +113,8 @@ export function App() {
       setIdentity('ready');
       setOnboarding(false);
       setView(next === 'join' ? 'join' : 'servers');
-      if (next === 'host') openHostFlow();
+      // "Hospedar um servidor" asks where first: this computer or Railway.
+      if (next === 'host') openCreateServer();
     };
     return <><Onboarding identity={identity} onDone={done} />{identityDialogs}</>;
   }
@@ -125,6 +127,7 @@ export function App() {
     <>
       {!inLayout && <HostIndicator />}
       <HostScreens onJoined={joined} />
+      <CreateServerScreens onJoined={joined} />
       {identityDialogs}
     </>
   );

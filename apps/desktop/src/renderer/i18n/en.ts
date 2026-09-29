@@ -3,6 +3,7 @@ import { identity } from './en/identity.js';
 import { chat } from './chat.en.js';
 import { integration } from './integration.en.js';
 import { owner } from './owner.en.js';
+import { railway } from './railway.en.js';
 import type { messages as ptBR } from './pt-BR.js';
 import { releaseEn } from './release.en.js';
 import { voice } from './voice.en.js';
@@ -140,4 +141,5 @@ export const messages: Record<keyof typeof ptBR, string> = {
   ...integration,
   ...owner,
   ...voice,
+  ...railway,
 };

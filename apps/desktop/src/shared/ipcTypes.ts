@@ -4,6 +4,7 @@
 import type { Envelope, ParsedJoinInput, WelcomePayload } from '@ghostlink/shared';
 import type { AppErrorCode } from './appErrors.js';
 import type { FirewallFixResult, FirewallStatus, HostApi, HostConfig, HostInvite, HostInviteOptions, HostStartResult, HostStatus } from './hostTypes.js';
+import type { RailwayAccount, RailwayCreateRequest, RailwayPending, RailwayProgress } from './railwayTypes.js';
 import type { UpdateState, UpdatesApi } from './updates.js';
 
 export type IdentityStatus = 'none' | 'ready' | 'locked';
@@ -149,6 +150,25 @@ export interface GhostlinkApi {
   updates: UpdatesApi;
   ptt: { configure(config: PttConfig): Promise<PttStatus> };
   onPtt(cb: (e: PttEvent) => void): () => void;
+  railway: RailwayApi;
+}
+
+/**
+ * "Criar um servidor" → Railway (v0.2). The token goes in once (connect) and stays encrypted
+ * in main; create/resume report each step through onProgress and end joined as the owner.
+ */
+export interface RailwayApi {
+  status(): Promise<RailwayAccount>;
+  /** Validates the token with Railway, then stores it encrypted (safeStorage). */
+  connect(token: string): Promise<RailwayAccount>;
+  /** Forgets the token (servers already created keep running). */
+  disconnect(): Promise<RailwayAccount>;
+  create(req: RailwayCreateRequest): Promise<RendererWelcome>;
+  pending(): Promise<RailwayPending | null>;
+  resume(): Promise<RendererWelcome>;
+  /** Deletes the unfinished provisioning's Railway project. */
+  discard(): Promise<void>;
+  onProgress(cb: (p: RailwayProgress) => void): () => void;
 }
 
 /** Invoke channels: `ghostlink:<namespace>.<method>`. */
@@ -191,6 +211,13 @@ export const IPC = {
   updatesSetAutoCheck: 'ghostlink:updates.setAutoCheck',
   updatesRestart: 'ghostlink:updates.restart',
   pttConfigure: 'ghostlink:ptt.configure',
+  railwayStatus: 'ghostlink:railway.status',
+  railwayConnect: 'ghostlink:railway.connect',
+  railwayDisconnect: 'ghostlink:railway.disconnect',
+  railwayCreate: 'ghostlink:railway.create',
+  railwayPending: 'ghostlink:railway.pending',
+  railwayResume: 'ghostlink:railway.resume',
+  railwayDiscard: 'ghostlink:railway.discard',
 } as const;
 
 /** Events pushed from main to the renderer. */
@@ -202,6 +229,7 @@ export const IPC_EVENTS = {
   openChannel: 'ghostlink:event.openChannel',
   updates: 'ghostlink:event.updates',
   ptt: 'ghostlink:event.ptt',
+  railway: 'ghostlink:event.railway',
 } as const;
 
 /** Arguments and result of every invoke channel; main's handlers and the preload are both typed from it. */
@@ -244,7 +272,17 @@ export interface IpcContract {
   [IPC.updatesSetAutoCheck]: { args: [enabled: boolean]; result: UpdateState };
   [IPC.updatesRestart]: { args: []; result: void };
   [IPC.pttConfigure]: { args: [config: PttConfig]; result: PttStatus };
+  [IPC.railwayStatus]: { args: []; result: RailwayAccount };
+  [IPC.railwayConnect]: { args: [token: string]; result: RailwayAccount };
+  [IPC.railwayDisconnect]: { args: []; result: RailwayAccount };
+  [IPC.railwayCreate]: { args: [req: RailwayCreateRequest]; result: RendererWelcome };
+  [IPC.railwayPending]: { args: []; result: RailwayPending | null };
+  [IPC.railwayResume]: { args: []; result: RendererWelcome };
+  [IPC.railwayDiscard]: { args: []; result: void };
 }
+
+/** The Railway provisioning channels (v0.2), handled by main/railwayIpc.ts. */
+export type RailwayIpcChannel = Extract<IpcChannel, `ghostlink:railway.${string}`>;
 
 /** The Host mode channels (spec §9), handled by main/hostIpc.ts. */
 export type HostIpcChannel = Extract<IpcChannel, `ghostlink:host.${string}`>;

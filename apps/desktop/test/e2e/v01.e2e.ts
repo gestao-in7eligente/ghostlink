@@ -68,6 +68,8 @@ describe.skipIf(!binary)('GhostLink v0.1: host in one app, join from another by 
     const port = await freeLoopbackPort();
 
     await onboard(ana.page, 'Ana', 'Hospedar um servidor');
+    // "Criar um servidor" asks where the server lives: this computer (Host mode) or Railway.
+    await ana.page.getByRole('dialog', { name: 'Criar um servidor' }).getByRole('button', { name: /^Neste computador/ }).click();
     const form = ana.page.getByRole('dialog', { name: 'Hospedar um servidor' });
     await form.getByLabel('Nome do servidor').fill(SERVER);
     await form.getByLabel('Porta', { exact: true }).fill(String(port));

@@ -6,6 +6,7 @@ import { provideVoiceDirectory, voiceSettingsSection, voiceSlots } from '../feat
 import { registerLayoutSlots, registerUserSettingsSection } from '../layout/slots.js';
 import { useTextStore } from '../stores/text.js';
 import { useAddServerUi } from './addServerUi.js';
+import { openCreateServer } from './createServerUi.js';
 import { shouldStartInsteadOfConnect } from './homeModel.js';
 import { HostRailButton } from './HostRailButton.js';
 import { IdentitySection } from './IdentitySection.js';
@@ -16,8 +17,8 @@ import { voiceDirectoryFromText } from './voiceDirectory.js';
 export function useLayoutWiring(): void {
   useEffect(() => {
     const offSlots = registerLayoutSlots({
-      // Rail "+" → "Adicionar servidor": Criar opens the Host flow, Entrar the Join screen (over the connected server).
-      onCreateServer: openHostFlow,
+      // Rail "+" → "Adicionar servidor": Criar asks where (this computer or Railway), Entrar opens the Join screen.
+      onCreateServer: openCreateServer,
       onJoinServer: () => useAddServerUi.getState().openJoin(),
       RailExtras: HostRailButton,
       // Clicking the server hosted here while it is stopped starts it (a connect could only fail).
