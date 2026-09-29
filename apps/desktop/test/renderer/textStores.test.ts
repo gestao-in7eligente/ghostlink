@@ -242,6 +242,20 @@ describe('messages', () => {
     expect(run(s, { type: 'reset', snapshot: snapshot({}, 'srv-2') }).messages.logs).toEqual({});
   });
 
+  it('a channel left open in the background never grows past the newest messages', () => {
+    let s = run(loaded(), { type: 'select', channelId: RANDOM });
+    s = run(s, { type: 'history.done', channelId: RANDOM, older: false, messages: [message(7, { channelId: RANDOM })], hasMore: false });
+    // A busy #geral while the user reads #random (msg.new, and my own sends from elsewhere).
+    for (let id = 11; id <= 10 + INACTIVE_KEEP * 3; id++) s = run(s, ev({ t: 'msg.new', message: message(id) }));
+    s = run(s, { type: 'message.upsert', message: message(10 + INACTIVE_KEEP * 3 + 1, { authorId: ME }) });
+    expect(log(s).items).toHaveLength(INACTIVE_KEEP);
+    expect(ids(s).at(-1)).toBe(10 + INACTIVE_KEEP * 3 + 1);
+    expect(log(s)).toMatchObject({ hasMore: true, older: 'idle' });
+    // The open channel keeps everything it loaded.
+    for (let id = 1_000; id < 1_000 + INACTIVE_KEEP + 5; id++) s = run(s, ev({ t: 'msg.new', message: message(id, { channelId: RANDOM }) }));
+    expect(log(s, RANDOM).items).toHaveLength(INACTIVE_KEEP + 6);
+  });
+
   it('leaving a channel trims its log to the newest messages', () => {
     const many = Array.from({ length: INACTIVE_KEEP + 30 }, (_, i) => message(i + 1));
     let s = run(start(), { type: 'history.done', channelId: GERAL, older: false, messages: many, hasMore: false });
