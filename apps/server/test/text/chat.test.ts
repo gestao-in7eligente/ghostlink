@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_EVERYONE_PERMISSIONS, PERMISSIONS, has, type Message, type ReadState } from '@ghostlink/shared';
+import { DEFAULT_EVERYONE_PERMISSIONS, LIMITS, PERMISSIONS, has, type Message, type ReadState } from '@ghostlink/shared';
 import { silentLogger, startServer } from '../../src/index.js';
 import { createTextModule } from '../../src/text/index.js';
 import { withDb } from '../helpers/db.js';
@@ -84,6 +84,33 @@ describe('live chat between clients (spec §5.2)', () => {
     expect(page2.messages.map((m) => m.content)).toEqual(['m0', 'm1', 'm2']);
     expect(page2.hasMore).toBe(false);
     expect(await f.owner.fail('msg.history', { channelId: geral, limit: 51 })).toBe('BAD_REQUEST');
+  });
+
+  it('keeps every history page under the client frame cap, so long messages cannot disconnect readers', async () => {
+    // The desktop client drops any frame over LIMITS.maxPayloadBytes (256 KiB) and then reloads
+    // the open channel after reconnecting: an oversized page would loop forever for every reader.
+    const f = await textFixture({ text: { rateLimits: { msgSendBurst: 100 } } });
+    const ana = await f.join();
+    const geral = channelId(ana, 'geral');
+    const sent: number[] = [];
+    // 4000 CJK characters are 12 000 bytes of UTF-8: 50 of them are ~600 KB.
+    for (let i = 0; i < 50; i++) sent.push((await say(ana, geral, `${i}${'字'.repeat(3990)}`)).id);
+    const frameBytes = (d: unknown) => Buffer.byteLength(JSON.stringify({ t: 'res', id: Number.MAX_SAFE_INTEGER, ok: true, d }), 'utf8');
+
+    const seen: number[] = [];
+    let before: number | undefined;
+    for (let pages = 0; pages < 50; pages++) {
+      const page = await f.owner.ok<{ messages: Message[]; hasMore: boolean }>('msg.history', { channelId: geral, ...(before ? { before } : {}) });
+      expect(frameBytes(page)).toBeLessThanOrEqual(LIMITS.maxPayloadBytes);
+      expect(page.messages.length).toBeGreaterThan(0);
+      const ids = page.messages.map((m) => m.id);
+      expect(ids).toEqual([...ids].sort((a, b) => a - b)); // oldest first
+      seen.unshift(...ids);
+      before = ids[0];
+      if (!page.hasMore) break;
+    }
+    // The pages are contiguous: every message exactly once, newest page first.
+    expect(seen).toEqual(sent);
   });
 
   it('returns the original message for a retried clientMsgId, without a second broadcast', async () => {

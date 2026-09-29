@@ -1,32 +1,18 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { openAddServer, useAddServerUi } from '../../src/renderer/integration/addServerUi.js';
+import { useAddServerUi } from '../../src/renderer/integration/addServerUi.js';
 
-describe('rail "+" chooser state', () => {
+describe('"Entrar em um servidor" screen state', () => {
   beforeEach(() => {
-    useAddServerUi.setState({ chooser: false, join: false });
+    useAddServerUi.setState({ join: false });
   });
 
   it('starts closed', () => {
-    const s = useAddServerUi.getState();
-    expect(s.chooser).toBe(false);
-    expect(s.join).toBe(false);
+    expect(useAddServerUi.getState().join).toBe(false);
   });
 
-  it('"+" opens the chooser', () => {
-    openAddServer();
-    expect(useAddServerUi.getState().chooser).toBe(true);
-  });
-
-  it('"Entrar em um servidor" closes the chooser and opens the Join screen', () => {
-    openAddServer();
+  it('opens the Join screen', () => {
     useAddServerUi.getState().openJoin();
-    expect(useAddServerUi.getState()).toMatchObject({ chooser: false, join: true });
-  });
-
-  it('closing the chooser does not open the Join screen', () => {
-    openAddServer();
-    useAddServerUi.getState().closeChooser();
-    expect(useAddServerUi.getState()).toMatchObject({ chooser: false, join: false });
+    expect(useAddServerUi.getState().join).toBe(true);
   });
 
   it('cancelling Join returns to where the user was', () => {

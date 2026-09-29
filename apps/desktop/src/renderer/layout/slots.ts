@@ -1,6 +1,7 @@
 // Slots in the main layout that other tracks fill (release plan "Seams"): the Voice
-// track plugs in its participant list, panel, controls and stage; Hosting its "+"
-// action; any track a user-settings section. Unfilled slots render nothing.
+// track plugs in its participant list, panel, controls and stage; Hosting the
+// "Criar um servidor" action of the rail's "+" chooser; the app its Join flow; any
+// track a user-settings section. Unfilled slots render nothing (or fall back).
 import type { ComponentType } from 'react';
 import { create } from 'zustand';
 import type { MessageKey } from '../i18n/index.js';
@@ -26,9 +27,17 @@ export interface LayoutSlots {
   onJoinVoice: ((channelId: string) => void) | null;
   /** Extra items in a member's context menu, e.g. per-user volume (Voice). */
   MemberMenuExtras: ComponentType<{ userId: string; close: () => void }> | null;
-  /** The round "+" at the bottom of the server rail (Hosting). Default: back to the server list. */
-  onAddServer: (() => void) | null;
-  /** Extra round buttons in the server rail, above the "+" (Hosting). */
+  /**
+   * "Criar um servidor" in the rail's "+" chooser (Hosting's `openHostFlow`).
+   * Default: back to the server list, which offers hosting too.
+   */
+  onCreateServer: (() => void) | null;
+  /**
+   * "Entrar em um servidor" in the rail's "+" chooser (the app's Join flow).
+   * Default: back to the server list, which offers joining too.
+   */
+  onJoinServer: (() => void) | null;
+  /** Extra round buttons in the server rail, after the saved servers (Hosting). */
   RailExtras: ComponentType | null;
   /** Sections of the user settings, after Profile and Language. */
   userSettingsSections: readonly UserSettingsSection[];
@@ -43,7 +52,8 @@ const EMPTY: LayoutSlots = {
   VoiceStage: null,
   onJoinVoice: null,
   MemberMenuExtras: null,
-  onAddServer: null,
+  onCreateServer: null,
+  onJoinServer: null,
   RailExtras: null,
   userSettingsSections: [],
 };

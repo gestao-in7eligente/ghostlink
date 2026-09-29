@@ -54,12 +54,22 @@ function dropTyping(s: MessagesState, channelId: string, userId: string): Messag
   return { ...s, typing: { ...s.typing, [channelId]: next } };
 }
 
-function onMessage(s: MessagesState, m: Message, selfId: string): MessagesState {
+/** Keeps only the newest INACTIVE_KEEP messages of a log that is not on screen (older pages load again on return). */
+function trimmed(log: ChannelLog): ChannelLog {
+  if (log.items.length <= INACTIVE_KEEP) return log;
+  return { ...log, items: log.items.slice(-INACTIVE_KEEP), hasMore: true, older: 'idle' };
+}
+
+function onMessage(s: MessagesState, m: Message, root: TextState): MessagesState {
   let next = dropTyping(s, m.channelId, m.authorId);
   const log = logOf(next, m.channelId);
   if (!log) return next; // not loaded: the history request will bring it
+  const selfId = root.server.selfId;
   const pending = m.authorId === selfId && m.clientMsgId !== null ? log.pending.filter((p) => p.clientMsgId !== m.clientMsgId) : log.pending;
-  next = withLog(next, m.channelId, { ...log, items: upsert(log.items, m), pending });
+  const updated: ChannelLog = { ...log, items: upsert(log.items, m), pending };
+  // A channel loaded earlier keeps receiving messages while another one is open: bound it,
+  // or a busy channel left in the background grows for as long as the app runs.
+  next = withLog(next, m.channelId, root.channels.activeId === m.channelId ? updated : trimmed(updated));
   return next;
 }
 
@@ -98,7 +108,7 @@ export function messagesSlice(s: MessagesState, a: TextAction, root: TextState):
       const previous = root.channels.activeId;
       const log = previous === null || previous === a.channelId ? undefined : logOf(s, previous);
       if (!log || log.items.length <= INACTIVE_KEEP) return s;
-      return withLog(s, previous!, { ...log, items: log.items.slice(-INACTIVE_KEEP), hasMore: true, older: 'idle' });
+      return withLog(s, previous!, trimmed(log));
     }
     case 'history.start': {
       const log = logOf(s, a.channelId);
@@ -129,7 +139,7 @@ export function messagesSlice(s: MessagesState, a: TextAction, root: TextState):
     case 'pending.drop':
       return mapPending(s, a.channelId, a.clientMsgId, () => null);
     case 'message.upsert':
-      return onMessage(s, a.message, root.server.selfId);
+      return onMessage(s, a.message, root);
     case 'typing.prune': {
       let changed = false;
       const typing: Record<string, Record<string, number>> = {};
@@ -149,7 +159,7 @@ export function messagesSlice(s: MessagesState, a: TextAction, root: TextState):
   const e = a.event;
   switch (e.t) {
     case 'msg.new':
-      return onMessage(s, e.message, root.server.selfId);
+      return onMessage(s, e.message, root);
     case 'msg.updated': {
       const log = logOf(s, e.message.channelId);
       if (!log) return s;

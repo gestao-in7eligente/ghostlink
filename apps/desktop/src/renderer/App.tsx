@@ -11,7 +11,6 @@ import { joinStartFromLink, useDeepLinkStore } from './features/deeplink/deepLin
 import { useDeepLinkSync } from './features/deeplink/useDeepLinkSync.js';
 import { IdentityScreens } from './features/identity/IdentityScreens.js';
 import { DEFAULT_LOCALE, errorCodeOf, errorMessage, useT } from './i18n/index.js';
-import { AddServerModal } from './integration/AddServerModal.js';
 import { useAddServerUi } from './integration/addServerUi.js';
 import { HomeLayout } from './integration/HomeLayout.js';
 import { useLayoutWiring } from './integration/useLayoutWiring.js';
@@ -126,7 +125,6 @@ export function App() {
     <>
       {!inLayout && <HostIndicator />}
       <HostScreens onJoined={joined} />
-      <AddServerModal />
       {identityDialogs}
     </>
   );

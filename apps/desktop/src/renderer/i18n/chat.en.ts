@@ -6,7 +6,11 @@ export const chat: Record<keyof typeof ptBR, string> = {
 
   'layout.servers': 'Servers',
   'layout.home': 'Home: your servers',
-  'layout.addServer': 'Join or host a server',
+  'layout.addServer': 'Add a server',
+  'layout.addServer.create': 'Create a server',
+  'layout.addServer.createHint': 'Host it on your computer; you will be the owner',
+  'layout.addServer.join': 'Join a server',
+  'layout.addServer.joinHint': 'Use an invite or an address',
   'layout.channels': 'Channels',
   'layout.serverMenu': 'Server menu',
   'layout.invite': 'Invite people',

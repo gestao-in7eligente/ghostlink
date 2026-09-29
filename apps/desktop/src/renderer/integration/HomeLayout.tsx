@@ -10,7 +10,8 @@ import l from '../layout/layout.module.css';
 import { ServerRail } from '../layout/ServerRail.js';
 import { UserPanel } from '../layout/UserPanel.js';
 import { UserSettings } from '../layout/UserSettings.js';
-import { openAddServer, useAddServerUi } from './addServerUi.js';
+import { AddServerDialog } from '../layout/AddServerDialog.js';
+import { useAddServerUi } from './addServerUi.js';
 import { homeServerRows, stoppedHostedServer } from './homeModel.js';
 import h from './home.module.css';
 import s from './integration.module.css';
@@ -28,6 +29,7 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
 
@@ -92,7 +94,7 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
           <div className={l.section}>
             <div className={l.sectionHeader}>
               <h2 className={l.sectionTitle}>{t('home.yourServers')}</h2>
-              <button type="button" className={l.sectionAdd} onClick={openAddServer} aria-label={t('layout.addServer')} title={t('layout.addServer')}>
+              <button type="button" className={l.sectionAdd} onClick={() => setAdding(true)} aria-haspopup="dialog" aria-label={t('layout.addServer')} title={t('layout.addServer')}>
                 <Plus size={16} aria-hidden="true" />
               </button>
             </div>
@@ -189,6 +191,7 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
 
       <UserPanel ref={panelRef} homeNickname={nickname} onSettings={() => setSettingsOpen(true)} />
       {settingsOpen && <UserSettings offline onClose={() => setSettingsOpen(false)} />}
+      {adding && <AddServerDialog onClose={() => setAdding(false)} onHome={() => undefined} />}
     </div>
   );
 }
