@@ -5,7 +5,11 @@ export const chat = {
 
   'layout.servers': 'Servidores',
   'layout.home': 'Início: seus servidores',
-  'layout.addServer': 'Entrar ou hospedar um servidor',
+  'layout.addServer': 'Adicionar servidor',
+  'layout.addServer.create': 'Criar um servidor',
+  'layout.addServer.createHint': 'Hospede no seu computador; você será o dono',
+  'layout.addServer.join': 'Entrar em um servidor',
+  'layout.addServer.joinHint': 'Use um convite ou endereço',
   'layout.channels': 'Canais',
   'layout.serverMenu': 'Menu do servidor',
   'layout.invite': 'Convidar pessoas',

@@ -15,7 +15,8 @@ describe('layout slots (the seam for the Voice and Hosting tracks)', () => {
     expect(s.VoiceChannelParticipants).toBeNull();
     expect(s.VoiceControls).toBeNull();
     expect(s.onJoinVoice).toBeNull();
-    expect(s.onAddServer).toBeNull();
+    expect(s.onCreateServer).toBeNull();
+    expect(s.onJoinServer).toBeNull();
     expect(s.userSettingsSections).toEqual([]);
   });
 
