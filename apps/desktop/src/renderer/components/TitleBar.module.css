@@ -1,0 +1,29 @@
+/* The title bar and the box below it (#root is a column, see global.css). */
+
+.bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: var(--titlebar-h);
+  overflow: hidden;
+  border-bottom: 1px solid var(--bg-input);
+  background: var(--bg-rail);
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 600;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.title {
+  line-height: 1;
+}
+
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}

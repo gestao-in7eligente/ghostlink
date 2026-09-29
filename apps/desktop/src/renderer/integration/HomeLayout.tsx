@@ -1,37 +1,43 @@
 import { useEffect, useRef, useState } from 'react';
-import { LogIn, Play, Plus, Server, Trash2 } from 'lucide-react';
+import { EllipsisVertical, KeyRound, LogIn, MessageCircle, Play, Plus, Search, Server } from 'lucide-react';
 import type { RendererWelcome, SavedServer } from '../../shared/ipcTypes.js';
 import { GhostMark } from '../components/GhostMark.js';
 import { useHostStore } from '../features/host/hostStore.js';
-import { openHostFlow } from '../features/host/hostUi.js';
+import { openHostFlow, openHostPanel } from '../features/host/hostUi.js';
 import { openIdentitySettings } from '../features/identity/identityModel.js';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
+import { AddServerDialog } from '../layout/AddServerDialog.js';
 import l from '../layout/layout.module.css';
+import { serverInitials } from '../layout/names.js';
+import { ConfirmDialog, Menu, MenuItem, MenuSeparator } from '../layout/primitives.js';
 import { ServerRail } from '../layout/ServerRail.js';
 import { UserPanel } from '../layout/UserPanel.js';
 import { UserSettings } from '../layout/UserSettings.js';
-import { AddServerDialog } from '../layout/AddServerDialog.js';
 import { useAddServerUi } from './addServerUi.js';
-import { homeServerRows, stoppedHostedServer } from './homeModel.js';
+import { filterHomeRows, homeActivity, homeServerRows, type HomeActivity, type HomeServerRow, type HomeTab } from './homeModel.js';
 import h from './home.module.css';
-import s from './integration.module.css';
 
 /**
- * The Home screen (owner requirement: the app opens on the Discord-like layout):
- * the server rail, "Seus servidores" where the channels would be, a welcome with
- * Criar / Entrar in the center, and the user panel at the bottom-left.
+ * The Home screen, laid out like Discord's "Amigos" page (owner's reference, 2026-09-29):
+ * rail · sidebar (search, shortcuts, "Seus servidores") · the server list with tabs,
+ * search and row actions · "Ativo agora" (the server hosted here). GhostLink has no
+ * accounts, so the saved servers stand where Discord lists friends.
  */
 export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined: (welcome: RendererWelcome) => void }) {
   const t = useT();
   const hostStatus = useHostStore((st) => st.status);
   const [servers, setServers] = useState<SavedServer[]>([]);
+  const [tab, setTab] = useState<HomeTab>('all');
+  const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ row: HomeServerRow; anchor: DOMRect } | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<HomeServerRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const reload = () =>
     window.ghostlink.servers.list().then(
@@ -53,18 +59,20 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
   }, []);
 
   const rows = homeServerRows(servers, hostStatus);
-  const stopped = stoppedHostedServer(hostStatus);
+  const shown = filterHomeRows(rows, tab, query);
+  const activity = homeActivity(hostStatus);
+  const hostedRow = rows.find((r) => r.hosted) ?? null;
 
-  const connect = async (id: string, stoppedHere: boolean) => {
+  const open = async (row: HomeServerRow) => {
     setError(null);
     // A server hosted here that is not running: start it (the Host flow prefills the last settings).
-    if (stoppedHere) {
+    if (row.stopped) {
       openHostFlow();
       return;
     }
-    setBusyId(id);
+    setBusyId(row.id);
     try {
-      onJoined(await window.ghostlink.servers.connect(id));
+      onJoined(await window.ghostlink.servers.connect(row.id));
     } catch (e) {
       setError(errorMessage(t, errorCodeOf(e)));
     } finally {
@@ -72,126 +80,258 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
     }
   };
 
-  const remove = async (id: string) => {
-    setConfirmRemove(null);
+  const remove = async (row: HomeServerRow) => {
     try {
-      await window.ghostlink.servers.remove(id);
+      await window.ghostlink.servers.remove(row.id);
     } finally {
       void reload();
     }
   };
 
+  const subtitle = (row: HomeServerRow) => {
+    if (busyId === row.id) return t('home.connecting');
+    if (row.hosted) return row.stopped ? t('home.row.stopped') : t('home.row.running');
+    return row.address ?? '';
+  };
+
   return (
-    <div ref={shellRef} className={`${l.shell} ${l.noMembers}`}>
+    <div ref={shellRef} className={`${l.shell} ${h.shell}`}>
       <ServerRail currentId="" onHome={() => undefined} homeActive />
 
-      <nav className={l.sidebar} aria-label={t('home.yourServers')}>
-        <div className={`${l.serverHeader} ${h.homeHeader}`}>
-          <GhostMark size={22} />
-          <span className={l.serverName}>{t('home.title')}</span>
+      <nav className={l.sidebar} aria-label={t('home.nav')}>
+        <div className={h.sidebarHeader}>
+          <button type="button" className={h.searchOpen} onClick={() => searchRef.current?.focus()}>
+            {t('home.searchOpen')}
+          </button>
         </div>
         <div className={l.channelScroll}>
-          <div className={l.section}>
-            <div className={l.sectionHeader}>
-              <h2 className={l.sectionTitle}>{t('home.yourServers')}</h2>
-              <button type="button" className={l.sectionAdd} onClick={() => setAdding(true)} aria-haspopup="dialog" aria-label={t('layout.addServer')} title={t('layout.addServer')}>
-                <Plus size={16} aria-hidden="true" />
+          <ul className={h.navList}>
+            <li>
+              <button type="button" className={`${h.navItem} ${h.navSelected}`} aria-current="page">
+                <Server size={20} aria-hidden="true" />
+                {t('home.nav.servers')}
               </button>
-            </div>
-            {rows.length === 0 ? (
-              <p className={h.empty}>{t('home.noServers')}</p>
+            </li>
+            <li>
+              <button type="button" className={h.navItem} onClick={openHostFlow}>
+                <Plus size={20} aria-hidden="true" />
+                {t('addServer.create.title')}
+              </button>
+            </li>
+            <li>
+              <button type="button" className={h.navItem} onClick={() => useAddServerUi.getState().openJoin()}>
+                <LogIn size={20} aria-hidden="true" />
+                {t('addServer.join.title')}
+              </button>
+            </li>
+            <li>
+              <button type="button" className={h.navItem} onClick={openIdentitySettings}>
+                <KeyRound size={20} aria-hidden="true" />
+                {t('identity.settings.open')}
+              </button>
+            </li>
+          </ul>
+
+          <div className={h.sectionHeader}>
+            <h2 className={h.sectionTitle}>{t('home.yourServers')}</h2>
+            <button type="button" className={h.sectionAdd} onClick={() => setAdding(true)} aria-haspopup="dialog" aria-label={t('layout.addServer')} title={t('layout.addServer')}>
+              <Plus size={16} aria-hidden="true" />
+            </button>
+          </div>
+          <ul className={h.dmList}>
+            {rows.map((row) => (
+              <li key={row.id}>
+                <button type="button" className={h.dmItem} disabled={busyId !== null} onClick={() => void open(row)}>
+                  <ServerAvatar name={row.name} />
+                  <span className={h.dmName}>{row.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </nav>
+
+      <main className={`${l.center} ${h.center}`}>
+        <header className={h.topbar}>
+          <span className={h.topTitle}>
+            <Server size={20} aria-hidden="true" />
+            {t('home.nav.servers')}
+          </span>
+          <span className={h.topDot} aria-hidden="true" />
+          <div className={h.tabs} role="tablist" aria-label={t('home.tabs')}>
+            {(['all', 'hosted'] as const).map((id) => (
+              <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? `${h.tab} ${h.tabSelected}` : h.tab} onClick={() => setTab(id)}>
+                {t(`home.tab.${id}`)}
+              </button>
+            ))}
+          </div>
+          <button type="button" className={h.addButton} onClick={() => setAdding(true)} aria-haspopup="dialog">
+            {t('layout.addServer')}
+          </button>
+        </header>
+
+        {rows.length === 0 ? (
+          <div className={h.welcome}>
+            <GhostMark size={96} />
+            <h1 className={h.welcomeTitle}>{t('home.welcome', { name: nickname })}</h1>
+            <p className={h.welcomeText}>{t('home.emptyLead')}</p>
+          </div>
+        ) : (
+          <div className={h.listArea}>
+            <label className={h.search}>
+              <Search size={18} aria-hidden="true" />
+              <input ref={searchRef} type="search" className={h.searchInput} placeholder={t('home.search')} aria-label={t('home.search')} value={query} onChange={(e) => setQuery(e.target.value)} />
+            </label>
+            {error && (
+              <p className={h.error} role="alert">
+                {error}
+              </p>
+            )}
+            <h2 className={h.count}>{t(`home.count.${tab}`, { count: String(shown.length) })}</h2>
+            {shown.length === 0 ? (
+              <p className={h.none}>{tab === 'hosted' && query.trim() === '' ? t('home.noHosted') : t('home.noMatch')}</p>
             ) : (
-              <ul className={l.channelList}>
-                {rows.map((row) => (
-                  <li key={row.id} className={`${l.channelItem} ${h.serverItem}`}>
-                    {confirmRemove === row.id ? (
-                      <div className={h.confirm}>
-                        <span className={h.confirmText}>{t('home.removeConfirm', { name: row.name })}</span>
-                        <button type="button" className={h.confirmYes} onClick={() => void remove(row.id)}>
-                          {t('home.remove')}
-                        </button>
-                        <button type="button" className={h.confirmNo} onClick={() => setConfirmRemove(null)}>
-                          {t('home.cancel')}
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <button type="button" className={l.channel} disabled={busyId !== null} onClick={() => void connect(row.id, row.stopped)}>
-                          <span className={h.initials} aria-hidden="true">
-                            {row.name.slice(0, 1).toUpperCase()}
-                          </span>
-                          <span className={h.serverRowName}>{busyId === row.id ? t('home.connecting') : row.name}</span>
-                          {row.hosted && <span className={h.badge}>{row.stopped ? t('home.hostedStopped') : t('home.hosted')}</span>}
-                        </button>
-                        <button
-                          type="button"
-                          className={h.removeButton}
-                          onClick={() => setConfirmRemove(row.id)}
-                          aria-label={t('home.removeLabel', { name: row.name })}
-                          title={t('home.removeLabel', { name: row.name })}
-                        >
-                          <Trash2 size={15} aria-hidden="true" />
-                        </button>
-                      </>
-                    )}
+              <ul className={h.rows}>
+                {shown.map((row) => (
+                  <li key={row.id} className={h.row}>
+                    <button type="button" className={h.rowMain} disabled={busyId !== null} onClick={() => void open(row)}>
+                      <ServerAvatar name={row.name} />
+                      <span className={h.rowText}>
+                        <span className={h.rowName}>{row.name}</span>
+                        <span className={h.rowSub}>{subtitle(row)}</span>
+                      </span>
+                    </button>
+                    <div className={h.rowActions}>
+                      <button
+                        type="button"
+                        className={h.roundButton}
+                        disabled={busyId !== null}
+                        onClick={() => void open(row)}
+                        aria-label={row.stopped ? t('home.row.start', { name: row.name }) : t('home.row.open', { name: row.name })}
+                        title={row.stopped ? t('home.row.start', { name: row.name }) : t('home.row.open', { name: row.name })}
+                      >
+                        {row.stopped ? <Play size={18} aria-hidden="true" /> : <MessageCircle size={18} aria-hidden="true" />}
+                      </button>
+                      <button
+                        type="button"
+                        className={h.roundButton}
+                        aria-haspopup="menu"
+                        aria-expanded={menu?.row.id === row.id}
+                        aria-label={t('home.row.more', { name: row.name })}
+                        title={t('home.row.more', { name: row.name })}
+                        onClick={(e) => setMenu({ row, anchor: e.currentTarget.getBoundingClientRect() })}
+                      >
+                        <EllipsisVertical size={18} aria-hidden="true" />
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
             )}
           </div>
-        </div>
-      </nav>
-
-      <main className={`${l.center} ${h.center}`}>
-        <div className={h.hero}>
-          <GhostMark size={72} />
-          <h1 className={h.title}>{t('home.welcome', { name: nickname })}</h1>
-          <p className={h.lead}>{t('home.lead')}</p>
-          {error && (
-            <p className={h.error} role="alert">
-              {error}
-            </p>
-          )}
-          <div className={`${s.options} ${h.options}`}>
-            {stopped && (
-              <button type="button" className={`${s.option} ${h.startOption}`} onClick={openHostFlow}>
-                <span className={s.optionIcon} aria-hidden="true">
-                  <Play size={22} />
-                </span>
-                <span className={s.optionText}>
-                  <span className={s.optionTitle}>{t('home.startHosted', { name: stopped.name })}</span>
-                  <span className={s.optionDesc}>{t('home.startHostedDesc')}</span>
-                </span>
-              </button>
-            )}
-            <button type="button" className={s.option} onClick={openHostFlow}>
-              <span className={s.optionIcon} aria-hidden="true">
-                <Server size={22} />
-              </span>
-              <span className={s.optionText}>
-                <span className={s.optionTitle}>{t('addServer.create.title')}</span>
-                <span className={s.optionDesc}>{t('addServer.create.desc')}</span>
-              </span>
-            </button>
-            <button type="button" className={s.option} onClick={() => useAddServerUi.getState().openJoin()}>
-              <span className={s.optionIcon} aria-hidden="true">
-                <LogIn size={22} />
-              </span>
-              <span className={s.optionText}>
-                <span className={s.optionTitle}>{t('addServer.join.title')}</span>
-                <span className={s.optionDesc}>{t('addServer.join.desc')}</span>
-              </span>
-            </button>
-          </div>
-          <button type="button" className={h.link} onClick={openIdentitySettings}>
-            {t('identity.settings.open')}
-          </button>
-        </div>
+        )}
       </main>
 
+      <aside className={h.active} aria-label={t('home.active.title')}>
+        <h2 className={h.activeTitle}>{t('home.active.title')}</h2>
+        {activity ? (
+          <ActivityCard activity={activity} onOpen={hostedRow && activity.state === 'running' ? () => void open(hostedRow) : null} />
+        ) : (
+          <div className={h.activeEmpty}>
+            <p className={h.activeEmptyTitle}>{t('home.active.emptyTitle')}</p>
+            <p className={h.activeEmptyText}>{t('home.active.emptyText')}</p>
+          </div>
+        )}
+      </aside>
+
       <UserPanel ref={panelRef} homeNickname={nickname} onSettings={() => setSettingsOpen(true)} />
+      {menu && (
+        <Menu anchor={menu.anchor} label={t('home.row.more', { name: menu.row.name })} align="end" onClose={() => setMenu(null)}>
+          <MenuItem
+            onSelect={() => {
+              setMenu(null);
+              void open(menu.row);
+            }}
+          >
+            {menu.row.stopped ? t('home.active.start') : t('home.active.open')}
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem
+            danger
+            onSelect={() => {
+              setMenu(null);
+              setConfirmRemove(menu.row);
+            }}
+          >
+            {t('home.remove')}
+          </MenuItem>
+        </Menu>
+      )}
+      {confirmRemove && (
+        <ConfirmDialog
+          title={t('home.removeConfirm', { name: confirmRemove.name })}
+          body={t('home.removeBody')}
+          confirmLabel={t('home.remove')}
+          onConfirm={() => remove(confirmRemove)}
+          onClose={() => setConfirmRemove(null)}
+        />
+      )}
       {settingsOpen && <UserSettings offline onClose={() => setSettingsOpen(false)} />}
       {adding && <AddServerDialog onClose={() => setAdding(false)} onHome={() => undefined} />}
     </div>
+  );
+}
+
+/** A server without an icon: its initials on a rounded tile, like the rail. */
+function ServerAvatar({ name }: { name: string }) {
+  return (
+    <span className={h.avatar} aria-hidden="true">
+      {serverInitials(name)}
+    </span>
+  );
+}
+
+/** "Ativo agora": the server hosted on this computer, its state and what to do with it. */
+function ActivityCard({ activity, onOpen }: { activity: HomeActivity; onOpen: (() => void) | null }) {
+  const t = useT();
+  const idle = activity.state === 'stopped' || activity.state === 'failed';
+  return (
+    <section className={h.card} aria-label={activity.name}>
+      <div className={h.cardHead}>
+        <ServerAvatar name={activity.name} />
+        <span className={h.rowText}>
+          <span className={h.rowName}>{activity.name}</span>
+          <span className={h.rowSub}>{t('home.active.hostedHere')}</span>
+        </span>
+      </div>
+      <div className={h.cardBody}>
+        <p className={h.cardState}>
+          <span className={`${h.stateDot} ${h[activity.state]}`} aria-hidden="true" />
+          {t(`home.active.${activity.state}`)}
+          {activity.members !== null && activity.maxMembers !== null && (
+            <span className={h.cardMeta}> · {t('home.active.members', { count: String(activity.members), max: String(activity.maxMembers) })}</span>
+          )}
+        </p>
+        {activity.address && <p className={h.cardAddress}>{t('home.active.address', { address: activity.address })}</p>}
+        <div className={h.cardActions}>
+          {idle ? (
+            <button type="button" className={h.cardPrimary} onClick={openHostFlow}>
+              {t('home.active.start')}
+            </button>
+          ) : (
+            <>
+              {onOpen && (
+                <button type="button" className={h.cardPrimary} onClick={onOpen}>
+                  {t('home.active.open')}
+                </button>
+              )}
+              <button type="button" className={h.cardSecondary} onClick={openHostPanel}>
+                {t('home.active.manage')}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }

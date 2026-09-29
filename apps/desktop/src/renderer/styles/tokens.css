@@ -1,15 +1,16 @@
-/* Design tokens (spec §11): near-black dark theme, Discord-style blurple (#5865f2) as the primary color, red for destructive actions. */
+/* Design tokens (spec §11): Discord's dark palette (measured on the owner's reference screenshot,
+   2026-09-29), blurple (#5865f2) as the primary color, red for destructive actions. */
 :root {
   color-scheme: dark;
 
-  --bg-0: #0b0d10; /* window */
-  --bg-1: #10141a; /* cards */
-  --bg-2: #161a20; /* inputs, raised surfaces */
-  --border: #242b35;
-  --border-strong: #334050;
+  --bg-0: #2c2d32; /* window */
+  --bg-1: #323339; /* cards */
+  --bg-2: #393a3f; /* inputs, raised surfaces */
+  --border: #3e3f45;
+  --border-strong: #4e4f56;
 
-  --text: #e6edf3;
-  --text-muted: #8b98a8;
+  --text: #dbdee1;
+  --text-muted: #abacb2;
 
   --accent: #5865f2;
   --accent-hover: #4752c4;
@@ -29,21 +30,26 @@
   --space-5: 24px;
   --space-6: 32px;
 
-  /* Main screen (owner's UI reference), darkest to lightest surface. */
-  --bg-rail: #0b0e14; /* server rail */
-  --bg-chat: #0b0e14; /* message list */
-  --bg-sidebar: #11151c; /* channel sidebar, member list */
-  --bg-raised: #161b22; /* chat header, composer band, user panel, menus */
-  --bg-hover: #1c232d; /* selected rows, pills, avatar circles */
-  --bg-input: #0d1117; /* composer box */
-  --line: #262c36; /* hairlines between columns */
-  --text-strong: #f0f3f6; /* names, message text */
-  --text-soft: #9da7b3; /* channel names, icons */
-  --text-faint: #656d76; /* timestamps, section headers */
-  --text-ghost: #4b525a; /* # glyphs, group headers */
-  --success: #23a55a; /* online dot */
+  /* Main screen (Discord's layout), darkest to lightest surface. */
+  --bg-rail: #2c2d32; /* server rail, title bar */
+  --bg-chat: #323339; /* message list, chat header, composer band, Home content */
+  --bg-sidebar: #2c2d32; /* channel sidebar, member list */
+  --bg-raised: #36373e; /* user panel, menus, popovers */
+  --bg-hover: #3e3f45; /* hovered rows, pills, avatar circles */
+  --bg-selected: #414248; /* the selected sidebar row */
+  --bg-3: #414248; /* selected rows, pills, avatars, raised buttons */
+  --bg-input: #393a3f; /* composer box, sidebar search button */
+  --bg-search: #2e2f35; /* search fields */
+  --border-search: #43444a;
+  --line: #3e3f45; /* hairlines between columns and rows */
+  --text-strong: #f3f3f4; /* names, message text */
+  --text-icon: #c5c6ca; /* toolbar icons, inactive tabs */
+  --text-soft: #abacb2; /* channel names, secondary lines */
+  --text-faint: #999aa1; /* timestamps, section headers, hints */
+  --text-ghost: #80818a; /* # glyphs, group headers */
+  --success: #23a55a; /* online dot, "voice connected", speaking ring */
   --danger-strong: #f23f43; /* exit icon, mention badges */
-  --accent-soft: #202546; /* blurple badge background */
+  --accent-soft: #3c4067; /* blurple badge background */
   --mention-bg: rgb(88 101 242 / 12%); /* a message that mentions you */
   --overlay: rgb(0 0 0 / 60%); /* modal backdrop */
   --shadow-up: 0 -10px 20px rgb(0 0 0 / 25%); /* the user panel over the channel list */
@@ -51,9 +57,4 @@
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
   --shadow: 0 12px 40px rgb(0 0 0 / 45%);
-
-  /* Main-screen reference (added for voice; new variables only): */
-  --bg-3: #1c232d; /* selected rows, pills, avatars, raised buttons */
-  --success: #23a55a; /* online dot, "voice connected", speaking ring */
-  --text-faint: #656d76; /* section headers and hints */
 }

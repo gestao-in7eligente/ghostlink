@@ -1,9 +1,11 @@
-import type { HostStatus } from '../../shared/hostTypes.js';
+import type { HostAddressKind, HostState, HostStatus } from '../../shared/hostTypes.js';
 import type { SavedServer } from '../../shared/ipcTypes.js';
 
 export interface HomeServerRow {
   id: string;
   name: string;
+  /** The first saved address (host:port), the row's second line. */
+  address: string | null;
   /** This app hosts that server (same serverKeyId as the Host mode's). */
   hosted: boolean;
   /** Hosted here but not running: connecting cannot work, it has to be started first. */
@@ -18,7 +20,7 @@ export function homeServerRows(servers: readonly SavedServer[], host: HostStatus
   return servers.map((s) => {
     // While stopped the Host mode may not know its key yet (fresh app start): fall back to the last hosted name.
     const hosted = hostedKey !== null ? s.serverKeyId === hostedKey : hostedName !== null && s.name === hostedName;
-    return { id: s.id, name: s.name, hosted, stopped: hosted && !running };
+    return { id: s.id, name: s.name, address: s.addresses[0] ?? null, hosted, stopped: hosted && !running };
   });
 }
 
@@ -38,4 +40,42 @@ export function stoppedHostedServer(host: HostStatus | null): { name: string } |
   if (!host || !host.config) return null;
   if (host.state === 'running' || host.state === 'starting') return null;
   return { name: host.config.name };
+}
+
+/** The Home list's tabs: every saved server, or only the one hosted on this computer. */
+export type HomeTab = 'all' | 'hosted';
+
+const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+/** The rows of a tab that match the search box (name or address, case and accents ignored). */
+export function filterHomeRows(rows: readonly HomeServerRow[], tab: HomeTab, query: string): HomeServerRow[] {
+  const q = fold(query.trim());
+  return rows.filter((r) => (tab === 'all' || r.hosted) && (q === '' || fold(r.name).includes(q) || (r.address !== null && fold(r.address).includes(q))));
+}
+
+export interface HomeActivity {
+  name: string;
+  state: HostState;
+  /** Online members, only while running. */
+  members: number | null;
+  maxMembers: number | null;
+  /** The address to share, best reach first; null while not running. */
+  address: string | null;
+}
+
+/** Reach order for the address shown in "Ativo agora": never loopback (this computer only). */
+const SHARE_ORDER: readonly HostAddressKind[] = ['public', 'radmin', 'tailscale', 'zerotier', 'virtual', 'lan'];
+
+/** "Ativo agora": the server hosted here (running, starting, stopped or failed), or null. */
+export function homeActivity(host: HostStatus | null): HomeActivity | null {
+  if (!host || !host.config) return null;
+  const running = host.state === 'running';
+  const shared = running ? SHARE_ORDER.map((kind) => host.addresses.find((a) => a.kind === kind)).find((a) => a !== undefined) : undefined;
+  return {
+    name: host.config.name,
+    state: host.state,
+    members: running ? host.members : null,
+    maxMembers: host.maxMembers ?? host.config.maxMembers,
+    address: shared?.address ?? null,
+  };
 }

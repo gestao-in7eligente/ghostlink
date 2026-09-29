@@ -34,7 +34,7 @@
 
 .backdrop {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-h) 0 0;
   z-index: 100;
   display: grid;
   place-items: center;
@@ -47,7 +47,7 @@
   scrollbar-color: var(--bg-hover) transparent;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 48px);
+  max-height: calc(100vh - var(--titlebar-h) - 48px);
   width: 100%;
   background: var(--bg-raised);
   border: 1px solid var(--line);
@@ -68,7 +68,7 @@
 
 .full {
   max-width: 1040px;
-  height: calc(100vh - 48px);
+  height: calc(100vh - var(--titlebar-h) - 48px);
 }
 
 .dialogHeader {
