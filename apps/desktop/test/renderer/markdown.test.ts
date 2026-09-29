@@ -167,10 +167,28 @@ describe('markdown: pathological input stays linear (ReDoS)', () => {
     ['mixed nesting', '**_~~*'.repeat(20_000)],
     ['everyone', '@everyone@'.repeat(20_000)],
   ];
-  it.each(cases)('%s', (_name, src) => {
+  /** Parse + render time of `src`, in ms. */
+  const timeOf = (src: string): number => {
     const started = performance.now();
-    const blocks = parseMarkdown(src, { everyone: true });
-    renderToStaticMarkup(createElement('div', null, renderMarkdown(blocks, ctx)));
-    expect(performance.now() - started).toBeLessThan(1500);
+    renderToStaticMarkup(createElement('div', null, renderMarkdown(parseMarkdown(src, { everyone: true }), ctx)));
+    return performance.now() - started;
+  };
+  const WELL_FORMED = `**negrito** _itálico_ ~~riscado~~ \`código\` <@${USER}> https://x.test/a @everyone\n`;
+
+  // Each case takes well under 200 ms on an idle machine, but the full suite can slow a run
+  // down twentyfold (1.8 s was seen). Catastrophic backtracking on inputs this long takes
+  // seconds to minutes, on every run. So the limit is 20× a well-formed document of the same
+  // length timed just before (a busy machine slows both), at least 1.5 s, and a case fails
+  // only when 3 tries in a row exceed it.
+  it.each(cases)('%s', (_name, src) => {
+    const baseline = WELL_FORMED.repeat(Math.ceil(src.length / WELL_FORMED.length)).slice(0, src.length);
+    const failures: string[] = [];
+    while (failures.length < 3) {
+      const limit = Math.max(1_500, 20 * timeOf(baseline));
+      const took = timeOf(src);
+      if (took < limit) break;
+      failures.push(`${Math.round(took)} ms (limit ${Math.round(limit)} ms)`);
+    }
+    expect(failures.length, `parse + render took ${failures.join(', ')}`).toBeLessThan(3);
   });
 });
