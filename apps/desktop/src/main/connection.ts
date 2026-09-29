@@ -43,6 +43,14 @@ export interface ConnectionTiming {
   backoffMaxMs: number;
 }
 
+/**
+ * Largest frame accepted FROM the server. spec §5.1's 256 KiB cap protects the server
+ * from clients; server→client frames (a welcome listing thousands of members, a
+ * history page) can legitimately be bigger and come only from the pinned server.
+ * 16 MiB still bounds memory against a misbehaving one.
+ */
+export const MAX_INBOUND_FRAME_BYTES = 16 * 1024 * 1024;
+
 export const DEFAULT_TIMING: ConnectionTiming = {
   staggerMs: 250,
   attemptTimeoutMs: 5_000,
@@ -400,7 +408,7 @@ export class ServerConnection extends EventEmitter {
     const pin = this.#serverKeyId;
     const ws = new WebSocket(`wss://${address}/ws`, {
       perMessageDeflate: false,
-      maxPayload: LIMITS.maxPayloadBytes,
+      maxPayload: MAX_INBOUND_FRAME_BYTES,
       handshakeTimeout: this.#timing.attemptTimeoutMs,
       // @types/ws types this as the overloaded net.createConnection, hence the cast.
       createConnection: ((options: ClientRequestArgs) => pinnedTlsConnect(options, pin)) as unknown as typeof netCreateConnection,

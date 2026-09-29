@@ -57,6 +57,18 @@ describe('ServerConnection — pinned handshake (spec §3.3)', () => {
     expect(conn.connectedAddress).toBeNull();
   });
 
+  it('accepts server frames far larger than the 256 KiB client→server cap (big welcome / history)', async () => {
+    // spec §5.1's 256 KiB protects the server from clients. Server→client frames (a welcome
+    // listing thousands of members, a history page) can be bigger and come from the pinned server.
+    const big = 'x'.repeat(1024 * 1024);
+    const t = await server({ modules: [{ name: 'big', handlers: { 'test.big': () => ({ big }) } }] });
+    const { conn } = connection({ addresses: [local(t)], serverKeyId: t.server.serverKeyId });
+    await conn.connect();
+    const res = await conn.request<{ big: string }>('test.big');
+    expect(res.big.length).toBe(big.length);
+    expect(conn.state).toBe('connected');
+  });
+
   it('refuses a server with another key before a single HTTP byte is sent', async () => {
     const t = await server();
     const decoy = await countingServer(t.dataDir); // presents t's certificate
