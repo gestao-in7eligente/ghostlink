@@ -108,14 +108,66 @@ export function buildPublicAddresses(input: { port: number; wanIp?: string | nul
   return out.slice(0, LIMITS.inviteMaxAddresses);
 }
 
+/** Where the announced node_ip came from: the value itself, UPnP, the kind of local address, or nothing usable. */
+export type NodeIpSource = 'explicit' | 'upnp' | Exclude<LocalAddressKind, 'virtual'> | 'loopback';
+
+export interface NodeIpChoice {
+  ip: string;
+  source: NodeIpSource;
+  /** The interface that holds `ip`, for a local address. */
+  interface?: string;
+}
+
+/** Local addresses in the order node_ip prefers them; virtual adapters never qualify. */
+const NODE_IP_ORDER: readonly LocalAddressKind[] = ['public', 'lan', 'radmin', 'tailscale', 'zerotier'];
+
 /**
- * The IP LiveKit announces as `node_ip` (spec §8.1): an explicit value, else the
- * UPnP WAN IP when it is not CGNAT, else the first local address (LAN before VPNs).
+ * The IP LiveKit announces as `node_ip`, and why (spec §8.1): an explicit value, else the
+ * UPnP WAN IP unless it is CGNAT or private (RFC 1918), else the best local address —
+ * a public IPv4 on an interface (a VPS) before a private LAN one, then Radmin, Tailscale
+ * and ZeroTier — whatever the order of `local`. null when nothing qualifies.
  */
-export function resolveNodeIp(input: { explicit?: string | null; wanIp?: string | null; local: readonly LocalAddress[] }): string | null {
+export function chooseNodeIp(input: { explicit?: string | null; wanIp?: string | null; local: readonly LocalAddress[] }): NodeIpChoice | null {
   if (input.explicit) {
     if (toInt(input.explicit) === null) throw new Error(`the node IP must be an IPv4 address, got "${input.explicit}"`);
-    return input.explicit;
+    return { ip: input.explicit, source: 'explicit' };
   }
-  return usableWan(input.wanIp) ?? input.local.find((l) => l.kind !== 'virtual')?.ip ?? null;
+  const wan = usableWan(input.wanIp);
+  if (wan) return { ip: wan, source: 'upnp' };
+  let best: LocalAddress | null = null;
+  for (const l of input.local) {
+    const rank = NODE_IP_ORDER.indexOf(l.kind);
+    if (rank !== -1 && (best === null || rank < NODE_IP_ORDER.indexOf(best.kind))) best = l;
+  }
+  return best ? { ip: best.ip, source: best.kind as NodeIpSource, interface: best.interface } : null;
+}
+
+/** The IP of chooseNodeIp(), or null. */
+export function resolveNodeIp(input: { explicit?: string | null; wanIp?: string | null; local: readonly LocalAddress[] }): string | null {
+  return chooseNodeIp(input)?.ip ?? null;
+}
+
+/**
+ * node_ip from this machine's interfaces alone (no `net` module): a public IPv4 on an
+ * interface first (a VPS), then a private LAN one, then a VPN one, else 127.0.0.1.
+ */
+export function fallbackNodeIp(local: readonly LocalAddress[] = localIPv4Addresses()): NodeIpChoice {
+  return chooseNodeIp({ local }) ?? { ip: '127.0.0.1', source: 'loopback' };
+}
+
+const SOURCE_WORDS: Record<NodeIpSource, string> = {
+  explicit: 'explicit --node-ip / voice.nodeIp',
+  upnp: "the router's public WAN IP, from UPnP",
+  public: 'public IPv4',
+  lan: 'LAN IPv4',
+  radmin: 'Radmin VPN IPv4',
+  tailscale: 'Tailscale IPv4',
+  zerotier: 'ZeroTier IPv4',
+  loopback: 'no usable network address; only this computer can reach voice',
+};
+
+/** Why this node_ip, in words for the server log. */
+export function describeNodeIp(choice: NodeIpChoice): string {
+  const words = SOURCE_WORDS[choice.source];
+  return choice.interface ? `${words} on interface "${choice.interface}"` : words;
 }

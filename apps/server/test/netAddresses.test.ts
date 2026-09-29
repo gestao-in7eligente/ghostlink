@@ -2,7 +2,10 @@ import type { NetworkInterfaceInfo } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import {
   buildPublicAddresses,
+  chooseNodeIp,
   classifyIPv4,
+  describeNodeIp,
+  fallbackNodeIp,
   isCgnatOrPrivate,
   localIPv4Addresses,
   resolveNodeIp,
@@ -145,7 +148,7 @@ describe('buildPublicAddresses (spec §3.5)', () => {
   });
 });
 
-describe('resolveNodeIp (spec §8.1: explicit > UPnP WAN > LAN)', () => {
+describe('resolveNodeIp (spec §8.1: explicit > UPnP WAN > public interface > LAN > VPN)', () => {
   it('prefers the explicit value, then a public WAN, then the LAN', () => {
     expect(resolveNodeIp({ explicit: '198.51.100.9', wanIp: '203.0.113.7', local })).toBe('198.51.100.9');
     expect(resolveNodeIp({ wanIp: '203.0.113.7', local })).toBe('203.0.113.7');
@@ -160,5 +163,74 @@ describe('resolveNodeIp (spec §8.1: explicit > UPnP WAN > LAN)', () => {
 
   it('rejects an explicit value that is not an IPv4 address', () => {
     expect(() => resolveNodeIp({ explicit: 'example.com', local })).toThrow(/node IP/);
+  });
+
+  it('prefers a public IPv4 on an interface (a VPS) over private ones, whatever the order of the list', () => {
+    const vps: LocalAddress[] = [
+      { ip: '10.0.0.5', interface: 'eth1', kind: 'lan' },
+      { ip: '100.101.102.103', interface: 'tailscale0', kind: 'tailscale' },
+      { ip: '198.51.100.4', interface: 'eth0', kind: 'public' },
+    ];
+    expect(resolveNodeIp({ local: vps })).toBe('198.51.100.4');
+    expect(resolveNodeIp({ local: [...vps].reverse() })).toBe('198.51.100.4');
+    // A public UPnP WAN still comes first (spec §8.1 order).
+    expect(resolveNodeIp({ wanIp: '203.0.113.7', local: vps })).toBe('203.0.113.7');
+  });
+
+  it('keeps the LAN before the VPNs, and the VPNs in a fixed order, whatever the order of the list', () => {
+    const shuffled: LocalAddress[] = [
+      { ip: '10.147.17.5', interface: 'ZeroTier One [abcdef]', kind: 'zerotier' },
+      { ip: '100.101.102.103', interface: 'Tailscale', kind: 'tailscale' },
+      { ip: '26.1.2.3', interface: 'Radmin VPN', kind: 'radmin' },
+      { ip: '192.168.0.10', interface: 'Ethernet', kind: 'lan' },
+    ];
+    expect(resolveNodeIp({ local: shuffled })).toBe('192.168.0.10');
+    expect(resolveNodeIp({ local: shuffled.slice(0, 3) })).toBe('26.1.2.3');
+    expect(resolveNodeIp({ local: shuffled.slice(0, 2) })).toBe('100.101.102.103');
+    expect(resolveNodeIp({ local: shuffled.slice(0, 1) })).toBe('10.147.17.5');
+  });
+
+  it.each(['100.64.0.1', '100.127.255.254', '10.1.2.3', '172.16.0.1', '192.168.1.1', '127.0.0.1', '169.254.1.1', 'not-an-ip'])(
+    'never announces the WAN IP %s as the public one (CGNAT, RFC 1918 or unusable)',
+    (wanIp) => {
+      expect(resolveNodeIp({ wanIp, local })).toBe('192.168.0.10');
+      expect(resolveNodeIp({ wanIp, local: [] })).toBeNull();
+    },
+  );
+});
+
+describe('chooseNodeIp / fallbackNodeIp (the IP and why, for the logs)', () => {
+  it('says where the IP came from', () => {
+    expect(chooseNodeIp({ explicit: '198.51.100.9', wanIp: '203.0.113.7', local })).toEqual({ ip: '198.51.100.9', source: 'explicit' });
+    expect(chooseNodeIp({ wanIp: '203.0.113.7', local })).toEqual({ ip: '203.0.113.7', source: 'upnp' });
+    expect(chooseNodeIp({ wanIp: '100.72.1.1', local })).toEqual({ ip: '192.168.0.10', source: 'lan', interface: 'Ethernet' });
+    expect(chooseNodeIp({ local: [{ ip: '198.51.100.4', interface: 'eth0', kind: 'public' }] })).toEqual({ ip: '198.51.100.4', source: 'public', interface: 'eth0' });
+    expect(chooseNodeIp({ local: [] })).toBeNull();
+  });
+
+  it('without the net module: a public interface IP (VPS) first, then the LAN, then 127.0.0.1', () => {
+    expect(fallbackNodeIp(localIPv4Addresses({ lo: [v4('127.0.0.1', true)], ens3: [v4('198.51.100.4')], docker0: [v4('172.17.0.1')] }))).toEqual({
+      ip: '198.51.100.4',
+      source: 'public',
+      interface: 'ens3',
+    });
+    expect(fallbackNodeIp(localIPv4Addresses({ Ethernet: [v4('192.168.0.10')], 'Radmin VPN': [v4('26.1.2.3')] })).ip).toBe('192.168.0.10');
+    expect(fallbackNodeIp(localIPv4Addresses({ lo: [v4('127.0.0.1', true)], 'VMware Network Adapter VMnet8': [v4('192.168.51.1')] }))).toEqual({
+      ip: '127.0.0.1',
+      source: 'loopback',
+    });
+    expect(fallbackNodeIp([])).toEqual({ ip: '127.0.0.1', source: 'loopback' });
+  });
+
+  it('reads the real interfaces by default and always answers an IPv4', () => {
+    expect(fallbackNodeIp().ip).toMatch(/^\d{1,3}(\.\d{1,3}){3}$/);
+  });
+
+  it('explains each source in plain words', () => {
+    expect(describeNodeIp({ ip: '198.51.100.9', source: 'explicit' })).toMatch(/explicit/);
+    expect(describeNodeIp({ ip: '203.0.113.7', source: 'upnp' })).toMatch(/WAN IP.*UPnP/);
+    expect(describeNodeIp({ ip: '198.51.100.4', source: 'public', interface: 'eth0' })).toMatch(/public IPv4 on interface "eth0"/);
+    expect(describeNodeIp({ ip: '192.168.0.10', source: 'lan', interface: 'Ethernet' })).toMatch(/LAN .*"Ethernet"/);
+    expect(describeNodeIp({ ip: '127.0.0.1', source: 'loopback' })).toMatch(/no usable network address/);
   });
 });
