@@ -15,6 +15,7 @@ import {
   type PttEvent,
 } from '../shared/ipcTypes.js';
 import type { HostStatus } from '../shared/hostTypes.js';
+import type { RailwayProgress } from '../shared/railwayTypes.js';
 import type { UpdateState } from '../shared/updates.js';
 
 /** Invokes a channel and turns `{ ok: false, code }` into `Error(code)` (contract §5: the message is the code). */
@@ -96,6 +97,16 @@ export const api: GhostlinkApi = {
   },
   ptt: { configure: (config) => invoke(IPC.pttConfigure, config) },
   onPtt: (cb) => subscribe<PttEvent>(IPC_EVENTS.ptt, cb),
+  railway: {
+    status: () => invoke(IPC.railwayStatus),
+    connect: (token) => invoke(IPC.railwayConnect, token),
+    disconnect: () => invoke(IPC.railwayDisconnect),
+    create: (req) => invoke(IPC.railwayCreate, req),
+    pending: () => invoke(IPC.railwayPending),
+    resume: () => invoke(IPC.railwayResume),
+    discard: () => invoke(IPC.railwayDiscard),
+    onProgress: (cb) => subscribe<RailwayProgress>(IPC_EVENTS.railway, cb),
+  },
 };
 
 contextBridge.exposeInMainWorld('ghostlink', api);

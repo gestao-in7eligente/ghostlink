@@ -59,6 +59,23 @@ function ipv6Groups(address: string): number[] | null {
   return groups.length === 8 ? groups.map((g) => parseInt(g, 16)) : null;
 }
 
+/** How the server tells clients apart for its per-address limits and IP bans (spec §13). */
+export interface ClientAddressing {
+  /** The rate-limit key of a socket's remote address. */
+  keyOf(address: string): string;
+  /** false behind a TCP proxy: the address is the proxy's, so it is neither stored (last_ip) nor banned. */
+  readonly real: boolean;
+}
+
+/** The key every client shares behind a TCP proxy that hides their addresses. */
+export const SHARED_ADDRESS_KEY = 'proxy';
+
+/** Direct connections: one key per address (IPv6 per /64). */
+export const PER_ADDRESS: ClientAddressing = { keyOf: (address) => ipKey(address), real: true };
+
+/** Behind a TCP proxy (spec §8.6): everyone arrives from the proxy, so everyone shares one key. */
+export const SHARED_ADDRESS: ClientAddressing = { keyOf: () => SHARED_ADDRESS_KEY, real: false };
+
 /**
  * Rate-limit key for a remote address: IPv4 as-is, IPv4-mapped IPv6 as its IPv4,
  * and native IPv6 grouped by /64 (one subscriber usually owns a whole /64).

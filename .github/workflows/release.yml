@@ -7,6 +7,8 @@
 #     scripts/verify-release.mjs refuses to publish a release they would reject;
 #   - the GitHub release is published as a normal, *latest* release (electron-updater and
 #     releases/latest ignore pre-releases and drafts; the "beta" label is in the title).
+#   - the server's Docker image goes to ghcr.io/<owner>/ghostlink-server:<version>, signed with cosign;
+#     the desktop app provisions Railway servers from exactly that tag, so the release waits for it.
 # Actions are pinned by commit SHA, every job has minimal permissions, untrusted values reach
 # scripts only through env. scripts/test/releaseWorkflow.test.ts enforces these rules.
 name: Release
@@ -210,9 +212,58 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  image:
+    name: Server image (GHCR)
+    # After the approval: the image is what every Railway server created by the app runs.
+    needs: [version, sign]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # Sigstore keyless signature of the image
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      IMAGE: ghcr.io/${{ github.repository_owner }}/ghostlink-server
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The Docker CLI of the runner only: no third-party build action.
+      - name: Build the image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          docker build -f apps/server/docker/Dockerfile \
+            --label "org.opencontainers.image.source=https://github.com/${REPOSITORY}" \
+            --label "org.opencontainers.image.version=${VERSION}" \
+            -t "${IMAGE}:${VERSION}" .
+      - name: Smoke test the image
+        run: test "$(docker run --rm --entrypoint node "${IMAGE}:${VERSION}" /opt/ghostlink/dist/cli.js version)" = "${VERSION}"
+      - name: Push
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker push "${IMAGE}:${VERSION}"
+          echo "DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE}:${VERSION}")" >> "$GITHUB_ENV"
+          docker logout ghcr.io
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Sign the image with Sigstore
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          printf '%s' "$GH_TOKEN" | cosign login ghcr.io -u "$ACTOR" --password-stdin
+          cosign sign --yes "$DIGEST"
+
   publish:
     name: Publish the GitHub release
-    needs: [version, sign]
+    # The release waits for the image: an app version must never point at a missing image.
+    needs: [version, sign, image]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

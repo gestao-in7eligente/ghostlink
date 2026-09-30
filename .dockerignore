@@ -1,0 +1,11 @@
+# Keep the docker build context small (docker build -f apps/server/docker/Dockerfile .)
+**/node_modules
+**/dist
+**/out
+.git
+docs
+docs-site
+apps/desktop/resources
+*.log
+.env
+.env.*

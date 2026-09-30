@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { ProtocolError, formatFingerprint } from '@ghostlink/shared';
+import { ProtocolError, formatFingerprint, formatHostPort, parseHostPort } from '@ghostlink/shared';
 import { ensureSetupCode, resetSetupCode } from './auth/setupCode.js';
 import { dataPaths } from './config/paths.js';
 import { Db, DatabaseTooNewError } from './db/database.js';
@@ -10,6 +10,7 @@ import { buildInviteInfo, createInvite } from './invites/invites.js';
 import { resolveNodeIp } from './net/addresses.js';
 import { createNetModule } from './net/netModule.js';
 import { findFreeTcpPort } from './net/ports.js';
+import type { ProxyEndpoint } from './modules.js';
 import { readCertificate } from './tls/certificate.js';
 import { SERVER_VERSION } from './version.js';
 import type { VoiceModule } from './voice/index.js';
@@ -60,6 +61,12 @@ Options:
                              the UPnP WAN IP, else a public IP of this
                              machine, else the LAN IP)
   --upnp                     start: open the ports on the router via UPnP
+  --proxy <host:port>        start: run behind a TCP proxy (e.g. Railway's)
+                             with this external address: HTTPS/WSS and voice
+                             (ICE-TCP only) share the port, LiveKit announces
+                             the proxy's IPv4 and port, and the per-IP limits
+                             become server-wide. It is also the public address
+                             unless --public-address is given
   --max-uses <n>             invite: maximum number of uses
   --expires <n>h | <n>d      invite: expiry, e.g. 24h or 7d
   -h, --help                 Show this help`;
@@ -74,6 +81,7 @@ const OPTIONS = {
   'public-address': { type: 'string', multiple: true },
   'node-ip': { type: 'string' },
   upnp: { type: 'boolean' },
+  proxy: { type: 'string' },
   'max-uses': { type: 'string' },
   expires: { type: 'string' },
   help: { type: 'boolean', short: 'h' },
@@ -120,6 +128,20 @@ function nodeIpOf(values: Values): string | undefined {
   return ip;
 }
 
+/** --proxy: the proxy's external host:port, with an explicit port (spec §8.6). */
+function proxyOf(values: Values): ProxyEndpoint | undefined {
+  const text = values.proxy?.trim();
+  if (text === undefined) return undefined;
+  const bad = new UsageError("--proxy must be the proxy's external host:port, e.g. altaria.proxy.rlwy.net:25889.");
+  // The port is the whole point: LiveKit announces it (parseHostPort would default to 7700).
+  if (!/^(?:\[[^\]]+\]|[^:]+):\d+$/.test(text)) throw bad;
+  try {
+    return parseHostPort(text);
+  } catch {
+    throw bad;
+  }
+}
+
 function waitForSignal(): Promise<void> {
   return new Promise<void>((done) => {
     process.once('SIGINT', done);
@@ -132,7 +154,9 @@ async function cmdStart(values: Values, env: NodeJS.ProcessEnv, io: CliIo, opts:
   const port = values.port === undefined ? 7700 : integer(values.port, '--port', 0, 65535);
   const host = values.host ?? '0.0.0.0';
   const nodeIp = nodeIpOf(values);
-  const publicAddresses = values['public-address'];
+  const proxy = proxyOf(values);
+  // Behind a proxy, the proxy's address is the way in (spec §8.6).
+  const publicAddresses = values['public-address'] ?? (proxy ? [formatHostPort(proxy.host, proxy.port)] : undefined);
   // Addresses come from --public-address (spec §10); without it they are detected and kept up to date.
   const net = createNetModule({ upnp: values.upnp === true, manageAddresses: publicAddresses === undefined, bindHost: host, nodeIp, mediaPorts: MEDIA_PORTS });
   const features = defaultModules();
@@ -150,6 +174,7 @@ async function cmdStart(values: Values, env: NodeJS.ProcessEnv, io: CliIo, opts:
       modules: [net, ...features],
       // spec §8.1: an explicit --node-ip (install.sh passes the VPS's public IP) wins in voice.
       voice: nodeIp === undefined ? undefined : { nodeIp },
+      proxy,
     });
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'EADDRINUSE') {
@@ -171,6 +196,7 @@ async function cmdStart(values: Values, env: NodeJS.ProcessEnv, io: CliIo, opts:
   const report = () => {
     const status = net.status();
     const addresses = server.info().publicAddresses;
+    if (proxy) io.out(`Proxy mode: behind ${formatHostPort(proxy.host, proxy.port)} (HTTPS/WSS and voice share port ${server.port}; per-IP limits are server-wide)`);
     io.out(`Public addresses: ${addresses.length > 0 ? addresses.join(', ') : '(none detected; use --public-address host:port)'}`);
     io.out(`Node IP (announced for voice): ${voice?.nodeIp ?? status.nodeIp ?? '(none; use --node-ip)'}`);
     if (status.upnp.state === 'off') {

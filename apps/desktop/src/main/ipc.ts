@@ -10,6 +10,7 @@ import { HOST_IPC_ARG_SCHEMAS, createHostIpcHandlers, type HostIpcDeps } from '.
 import type { IdentityStore } from './identity.js';
 import { mainLog } from './log.js';
 import type { PushToTalk } from './ptt.js';
+import { RAILWAY_IPC_ARG_SCHEMAS, createRailwayIpcHandlers, type RailwayIpcDeps } from './railwayIpc.js';
 import { originOf } from './security.js';
 import { LOCALES, type SettingsStore } from './settings.js';
 import type { Updater } from './updater.js';
@@ -33,6 +34,8 @@ export interface IpcDeps {
   updates: Pick<Updater, 'state' | 'setAutoCheck' | 'restart'>;
   /** Global push-to-talk (voice track). */
   ptt: Pick<PushToTalk, 'configure'>;
+  /** "Criar um servidor" on Railway (v0.2). */
+  railway?: RailwayIpcDeps;
 }
 
 /** The handshake belongs to the main process alone: the renderer may never send it (release plan "Seams"). */
@@ -119,6 +122,7 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.serversRemove]: z.tuple([serverId]),
   ...HOST_IPC_ARG_SCHEMAS,
   ...BACKUP_IPC_ARG_SCHEMAS,
+  ...RAILWAY_IPC_ARG_SCHEMAS,
   [IPC.deepLinkTake]: z.tuple([]),
   [IPC.updatesState]: z.tuple([]),
   [IPC.updatesSetAutoCheck]: z.tuple([z.boolean()]),
@@ -152,6 +156,7 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     [IPC.serversRemove]: (id) => controller.remove(id),
     ...createHostIpcHandlers(deps.host),
     ...createBackupIpcHandlers(deps.backup),
+    ...createRailwayIpcHandlers(deps.railway),
     [IPC.deepLinkTake]: () => deps.deepLinks?.take() ?? null,
     [IPC.updatesState]: () => updates.state(),
     [IPC.updatesSetAutoCheck]: (enabled) => updates.setAutoCheck(enabled),

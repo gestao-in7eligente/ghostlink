@@ -687,6 +687,30 @@ Um IP WAN em `100.64.0.0/10` ou em faixa RFC1918 indica **CGNAT ou NAT duplo**. 
 - **`public_addresses`:** IP WAN (quando não é CGNAT), IP da LAN e VPNs (Radmin `26.0.0.0/8`, Tailscale `100.64.0.0/10`, ZeroTier pelo nome da interface).
 - **Aviso de banda:** 13 pessoas com câmera exigem cerca de 20–25 Mbps de upload do host. Nesse caso a VPS é recomendada.
 
+### 8.6 Atrás de um proxy TCP (Railway e parecidos)
+
+Algumas plataformas de nuvem só expõem um serviço por HTTP ou por um proxy TCP, **sem UDP**. O Railway permite **um** proxy TCP por instância: um endereço externo aleatório (ex.: `altaria.proxy.rlwy.net:25889`) ligado a uma porta interna (7700). Para isso existe o **modo proxy** (`--proxy <host:porta>`, com o endereço externo do proxy). Nele, a porta pública carrega tudo.
+
+**Uma porta, dois protocolos.** O primeiro byte de cada conexão decide:
+- `0x16`, um registro de handshake TLS: a conexão vai para o servidor HTTPS/WSS de sempre, sem nenhum byte lido. O prazo do handshake e os limites de §13 continuam valendo.
+- `0x00` a `0x02`: ICE-TCP (RFC 4571). A conexão começa com os 2 bytes do tamanho de um STUN binding request, que o LiveKit lê em até 512 bytes. Ela é encaminhada para a porta ICE-TCP do LiveKit em `127.0.0.1`, com backpressure nos dois sentidos, e sem Nagle. Quando um lado fecha, o outro fecha junto.
+- Qualquer outro byte fecha a conexão na hora, e quem não envia nada em 5 s também é desconectado.
+- Antes dessa decisão, cada socket já conta para o limite total de §13. Depois, no máximo 1024 conexões ICE-TCP ficam abertas ao mesmo tempo. Sem voz no ar, o ICE-TCP é recusado.
+
+**LiveKit atrás do proxy.** O `livekit.yaml` muda assim (chaves conferidas no `rtcconfig` do LiveKit 1.13.7):
+- `rtc.tcp_port` é a porta **externa** do proxy (ex.: 25889). O LiveKit escuta nela dentro do contêiner e a anuncia nos candidatos ICE-TCP. O proxy leva essa porta até a 7700, e a 7700 encaminha o ICE-TCP para `127.0.0.1:25889`. Por isso a porta externa precisa ser diferente de `--port`; se forem iguais, a voz fica indisponível e o log explica.
+- `rtc.node_ip` é o IPv4 do host do proxy. Ele é resolvido no início e de novo a cada 5 min, e uma mudança reinicia o LiveKit quando ninguém está em voz, como em §8.1. Se o nome não resolver, o LiveKit sobe com o IP da máquina e troca quando o nome resolver. Um `--node-ip` explícito continua ganhando.
+- `rtc.force_tcp: true`: o LiveKit não abre nenhum socket UDP, porque nada chegaria nele. O cliente só recebe candidatos TCP e não perde tempo tentando UDP.
+- `rtc.enable_loopback_candidate: true` e `rtc.ips.includes: ["127.0.0.1/32"]`: o único candidato é o de loopback, que o `node_ip` reescreve para o IP do proxy. O mux TCP do pion acha cada conexão pelo endereço local em que ela chegou, e o encaminhamento chega por `127.0.0.1`. Sem isso, a conexão encaminhada não casaria com nenhum agente ICE, e os IPs internos do contêiner, inúteis para o cliente, seriam anunciados.
+- `use_external_ip: false`, e `advertise_internal_ip` fica desligado.
+- A sinalização (`/rtc`) passa pela mesma porta, dentro do TLS, como sempre.
+- **Limitação:** toda a mídia vai por TCP. Com perda de pacotes, a latência sobe mais do que com UDP, porque um pacote perdido segura os seguintes.
+
+**Contêiner.** A imagem (`apps/server/docker/Dockerfile`) expõe só a 7700/TCP e é configurada pelo `entrypoint.sh`:
+- No Railway, o modo proxy liga sozinho quando o serviço tem um proxy TCP: o Railway define `RAILWAY_TCP_PROXY_DOMAIN` e `RAILWAY_TCP_PROXY_PORT`, e o servidor escuta na `RAILWAY_TCP_APPLICATION_PORT` se `GHOSTLINK_PORT` não for dado. O endereço do proxy vai nos convites, a menos que `GHOSTLINK_PUBLIC_ADDRESS` diga outro.
+- Em outros hosts, `GHOSTLINK_PROXY_ADDRESS=<host:porta>` liga o modo proxy, ou `GHOSTLINK_PROXY_MODE=1` com o primeiro `GHOSTLINK_PUBLIC_ADDRESS`. `GHOSTLINK_PROXY_MODE=0` desliga, mesmo no Railway.
+- A voz só roda com `GHOSTLINK_VOICE=1`.
+
 ## 9. Modo Hospedar (no app)
 
 **Processo do servidor**
@@ -711,10 +735,42 @@ Um IP WAN em `100.64.0.0/10` ou em faixa RFC1918 indica **CGNAT ou NAT duplo**. 
 - **Atualização:** o servidor vem embutido no app. Atualizar o app atualiza o servidor, com alguns segundos fora do ar.
 - **Migrar para VPS:** o guia explica como copiar a pasta de dados. Isso preserva o certificado (e com ele o `serverKeyId`), as identidades e os convites.
 
+### 9.1 Criar na nuvem (Railway), pelo app (v0.2)
+
+"Criar um servidor" (o **+** da barra e o onboarding) primeiro pergunta onde o servidor fica: **Neste computador** (o Modo Hospedar acima) ou **Na nuvem (Railway)**.
+
+**Token**
+- A pessoa cola um token da conta Railway (de conta ou de workspace; token de projeto não serve). O main valida com `apiToken { workspaces }` (ou `me`) e só então guarda.
+- Fica em `<userData>/railway-token.bin`, cifrado com `safeStorage` como a `identity.bin`. Sem cifragem disponível, o app recusa (`ENCRYPTION_UNAVAILABLE`).
+- **Só o main fala com o Railway** (`https://backboard.railway.com/graphql/v2`, `Authorization: Bearer`, sem seguir redirecionamentos). O token nunca volta ao renderer, nunca entra em log nem em mensagem de erro.
+- "Desconectar" apaga o arquivo. Os servidores criados continuam.
+
+**Provisionamento** (etapas mostradas na tela, nesta ordem)
+
+| Etapa | O que o main faz |
+|---|---|
+| `project` | `projectCreate` no workspace escolhido, com o nome `ghostlink-<slug>` e a descrição "Managed by GhostLink". |
+| `service` | `serviceCreate` sem fonte e `serviceInstanceUpdate`: região, 1 réplica, reinício `ON_FAILURE`, sem dormir, sem healthcheck. |
+| `volume` | `volumeCreate` em `/data`. |
+| `proxy` | `environmentPatchCommit` com `tcpProxies {"7700": {}}` e espera o proxy existir. Guarda `domain:proxyPort`. |
+| `variables` | `GHOSTLINK_NAME`, `GHOSTLINK_VOICE=1`, `GHOSTLINK_PORT=7700`, `PORT=7700`, `GHOSTLINK_DATA=/data`. Remove qualquer domínio HTTP. O contêiner liga o modo proxy sozinho (§8.6). |
+| `deploy` | Define a imagem `ghcr.io/gestao-in7eligente/ghostlink-server:<versão do app>`, publica e espera `SUCCESS` (até 10 min). |
+| `start` | Lê os logs da implantação até achar `Fingerprint: …` e `Setup code …: …` (até 3 min). |
+| `join` | Sonda `domain:proxyPort`, compara a impressão digital respondida com a dos logs e entra com o código de setup, virando dono. |
+
+- **O pin não é TOFU cego:** os logs chegam pela API autenticada do Railway. Se a chave que o endereço responde não bate com a impressão digital dos logs, o app **não entra** (`RAILWAY_FINGERPRINT_MISMATCH`).
+- O código de setup nunca vai ao renderer nem ao disco.
+- **Retomar e excluir:** depois de cada etapa, o main grava `<userData>/railway.json` (ids, nome, região, última etapa; sem token e sem código). Uma criação que falhou ou ficou pela metade oferece **Tentar de novo** (continua da primeira etapa incompleta) e **Excluir o que foi criado** (`projectDelete`).
+- Só uma criação roda por vez (`RAILWAY_BUSY`). Fechar a janela não interrompe: o progresso volta ao reabrir.
+- **Avisos antes de criar:** plano Free ou de teste (o servidor não fica no ar o mês todo) e voz por TCP (§8.6).
+- **Em desenvolvimento**, `GHOSTLINK_RAILWAY_IMAGE` troca a imagem. No app empacotado a variável é ignorada.
+- **Ainda fora:** tela para atualizar, reiniciar e apagar servidores já criados (por enquanto, pelo painel do Railway) e login OAuth no lugar do token colado.
+
 ## 10. Servidor standalone (VPS)
 
 **CLI** (saída em inglês)
-- `ghostlink-server start --data <dir> [--port 7700] [--name "..."] [--node-ip <ip>] [--public-address host:porta]… [--upnp]`
+- `ghostlink-server start --data <dir> [--port 7700] [--name "..."] [--node-ip <ip>] [--public-address host:porta]… [--upnp] [--proxy host:porta]`
+  - `--proxy` liga o modo proxy (§8.6) com o endereço externo do proxy TCP. Sem `--public-address`, esse endereço também vai nos convites.
 - `ghostlink-server invite [--max-uses N] [--expires 24h]`
 - `ghostlink-server setup-code`, `reset-owner`, `status` (versão e impressão digital) e `version`.
 
@@ -864,13 +920,23 @@ Um IP WAN em `100.64.0.0/10` ou em faixa RFC1918 indica **CGNAT ou NAT duplo**. 
 |---|---|
 | Antes do TLS | Handshake TLS em até 10 s · no máximo 4096 sockets TCP abertos no total e 64 por IP (IPv6 agrupado por /64), contados da conexão ao fechamento, inclusive depois de autenticar · o socket que passa do limite é fechado na hora |
 | Pré-autenticação | `hello` em até 5 s · `auth.proof` em até 10 s · no máximo 256 conexões não autenticadas no total · 20 conexões por IP · `scrypt` com no máximo 2 simultâneos |
-| Autenticação | Falhas por IP: 10/min (sucessos não contam) · desafios pendentes por IP: 5 · IPv6 agrupado por /64 |
+| Autenticação | Falhas por IP: 10/min (sucessos não contam; um membro que entra só com a chave, sem código de setup, nunca é barrado, porque não tem nada a adivinhar) · desafios pendentes por IP: 5 · IPv6 agrupado por /64 |
 | Membros novos | 5 identidades novas por IP por hora, em qualquer modo de entrada |
 | Chat | `msg.send`: 5 a cada 5 s por usuário, com rajada de 10 · `typing`: 1 a cada 3 s · `msg.react`: 10 a cada 5 s |
 | Voz e perfil | `voice.join`: 5 a cada 10 s · `profile.update`: 5/min |
 | Geral | `upload.begin`: 10/min · requisições gerais: 30/s por sessão · `invite.create`: 10/h por usuário |
 | Upload | Corpo cortado ao passar de `size` · 3 uploads simultâneos por sessão · 60 s sem progresso derruba a conexão |
 | Tamanhos | Frame de 256 KiB · mensagem de 4000 caracteres · 10 anexos · apelido de 1 a 32 caracteres visíveis · nome de canal com até 100 |
+
+**Atrás de um proxy TCP (§8.6)**
+- Todo cliente chega pelo endereço do proxy, e o proxy TCP do Railway não oferece o PROXY protocol (v1/v2): nenhum cabeçalho com o IP real chega ao servidor. Um limite por IP valeria para todos juntos. Por isso, no modo proxy, os limites por IP viram limites do servidor inteiro, dimensionados para ele:
+  - sockets TCP: 4096 no total (o limite de 64 por IP deixa de existir);
+  - pré-autenticação: 256 conexões não autenticadas no total e até 256 desafios pendentes;
+  - falhas de autenticação: 100/min no servidor inteiro, e um membro que entra só com a chave continua nunca sendo barrado;
+  - membros novos: 30 identidades novas por hora no servidor inteiro;
+  - o `last_ip` não é gravado, porque seria o do proxy. Banir por IP deixa de ter efeito, e o ban por identidade continua.
+- O servidor registra no log, uma vez na inicialização, que o modo proxy está ligado e quais limites valem.
+- **Trade-off:** quem abusa atinge todo mundo. Pode ocupar as 256 conexões pré-autenticação, esgotar as 100 falhas por minuto ou as 30 entradas por hora e atrasar a entrada de gente nova. Os membros existentes continuam entrando. A força bruta continua impraticável: os códigos de convite têm 50 bits, o `scrypt` roda no máximo 2 por vez e as falhas têm teto global.
 
 **Reconexão do cliente**
 - Backoff exponencial de 1 a 30 s, com jitter.

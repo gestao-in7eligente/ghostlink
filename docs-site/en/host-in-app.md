@@ -18,7 +18,7 @@ The copy button copies the `https://…/ghostlink/j/#GL1-…` link, which works 
 The server keeps running while you chat on another server. Closing the window keeps GhostLink in the Windows **tray**; to stop the server, use **Quit** in the tray menu.
 
 ::: tip The server only works while your computer is on
-For a server that is always online, use a [VPS](./host-on-vps).
+For a server that is always online, create one [on Railway](./host-on-railway) from the app itself, or use a [VPS](./host-on-vps).
 :::
 
 ## Ports

@@ -65,8 +65,11 @@ export class E2eRun {
     return this.#speechWav;
   }
 
-  /** Starts the built app (out/) with its own profile. `env` adds variables, e.g. GHOSTLINK_HOST_BIND. */
-  async launch(name: string, env: Record<string, string> = {}): Promise<Instance> {
+  /**
+   * Starts the built app (out/) with its own profile. `env` adds variables, e.g. GHOSTLINK_HOST_BIND;
+   * `args` adds Chromium switches, e.g. --force-webrtc-ip-handling-policy.
+   */
+  async launch(name: string, env: Record<string, string> = {}, args: readonly string[] = []): Promise<Instance> {
     const userData = this.tempDir(name);
     const childEnv: Record<string, string> = {};
     for (const [key, value] of Object.entries(process.env)) {
@@ -80,7 +83,7 @@ export class E2eRun {
     Object.assign(childEnv, env, { GHOSTLINK_USER_DATA: userData });
     // Playwright finds Electron itself and preloads its loader (it skips the loader with executablePath).
     const app = await electron.launch({
-      args: [desktopDir, '--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${this.speechWav()}`, '--lang=pt-BR'],
+      args: [desktopDir, '--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${this.speechWav()}`, '--lang=pt-BR', ...args],
       env: childEnv,
       timeout: 60_000,
     });

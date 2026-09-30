@@ -68,6 +68,8 @@ describe.skipIf(!binary)('GhostLink v0.1: host in one app, join from another by 
     const port = await freeLoopbackPort();
 
     await onboard(ana.page, 'Ana', 'Hospedar um servidor');
+    // "Criar um servidor" asks where the server lives: this computer (Host mode) or Railway.
+    await ana.page.getByRole('dialog', { name: 'Criar um servidor' }).getByRole('button', { name: /^Neste computador/ }).click();
     const form = ana.page.getByRole('dialog', { name: 'Hospedar um servidor' });
     await form.getByLabel('Nome do servidor').fill(SERVER);
     await form.getByLabel('Porta', { exact: true }).fill(String(port));
@@ -84,7 +86,7 @@ describe.skipIf(!binary)('GhostLink v0.1: host in one app, join from another by 
     expect(status.busyMediaPorts).toEqual([]);
   });
 
-  step('join: Bia joins with the invite: onboarding → Home → "Entrar em um servidor" → accept → connect', 90_000, async () => {
+  step('join: Bia joins with the invite: onboarding → Home → "+" → "Entrar em um servidor" → accept → connect', 90_000, async () => {
     // Ana: server menu → "Convidar pessoas" → a fresh invite link.
     await ana.page.getByRole('button', { name: /Menu do servidor/ }).click();
     await ana.page.getByRole('menuitem', { name: 'Convidar pessoas' }).click();
@@ -94,11 +96,12 @@ describe.skipIf(!binary)('GhostLink v0.1: host in one app, join from another by 
     expect(link).toMatch(/\/j\/#GL1-/);
     await invite.getByRole('button', { name: 'Fechar', exact: true }).click();
 
-    // Bia: onboarding, then back to Home and its "Entrar em um servidor" card.
+    // Bia: onboarding, then back to Home and the rail's "+" → "Entrar em um servidor".
     await onboard(bia.page, 'Bia', 'Entrar num servidor');
     await bia.page.getByRole('button', { name: 'Voltar' }).click();
     await bia.page.getByRole('heading', { name: 'Bem-vindo, Bia!' }).waitFor();
-    await bia.page.getByRole('button', { name: /^Entrar em um servidor/ }).click();
+    await bia.page.getByRole('navigation', { name: 'Servidores' }).getByRole('button', { name: 'Adicionar servidor' }).click();
+    await bia.page.getByRole('dialog', { name: 'Adicionar servidor' }).getByRole('button', { name: /^Entrar em um servidor/ }).click();
     await joinWithInvite(bia.page, link);
     await textChannel(bia.page, 'geral').waitFor({ timeout: 30_000 });
 
@@ -267,7 +270,7 @@ describe.skipIf(!binary)('GhostLink v0.1: host in one app, join from another by 
 
     // Back home, the saved server does not let her in again (spec §7: blocked, then a new invite is needed).
     await lost.getByRole('button', { name: 'Voltar aos servidores' }).click();
-    await bia.page.getByRole('navigation', { name: 'Seus servidores' }).getByRole('button', { name: SERVER, exact: true }).click();
+    await bia.page.getByRole('navigation', { name: 'Início' }).getByRole('button', { name: SERVER, exact: true }).click();
     await bia.page.getByRole('alert').filter({ hasText: 'Você foi expulso há pouco' }).waitFor({ timeout: 20_000 });
     expect(await textChannel(bia.page, 'geral').count()).toBe(0);
     await members(ana.page).getByRole('button', { name: /^Ana, Online/ }).waitFor();

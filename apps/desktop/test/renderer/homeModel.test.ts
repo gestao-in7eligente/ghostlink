@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { HostStatus } from '../../src/shared/hostTypes.js';
 import type { SavedServer } from '../../src/shared/ipcTypes.js';
-import { homeServerRows, shouldStartInsteadOfConnect, stoppedHostedServer } from '../../src/renderer/integration/homeModel.js';
+import { filterHomeRows, homeActivity, homeServerRows, shouldStartInsteadOfConnect, stoppedHostedServer } from '../../src/renderer/integration/homeModel.js';
 
 const saved = (id: string, name: string, serverKeyId: string): SavedServer => ({ id, name, serverKeyId, addresses: ['127.0.0.1:7700'], nickname: 'Ana', addedAt: 1 });
 
@@ -35,8 +35,8 @@ describe('Home screen server list', () => {
 
   it('lists saved servers without a host', () => {
     expect(homeServerRows(servers, null)).toEqual([
-      { id: 'a', name: 'Casa', hosted: false, stopped: false },
-      { id: 'b', name: 'Amigos', hosted: false, stopped: false },
+      { id: 'a', name: 'Casa', address: '127.0.0.1:7700', hosted: false, stopped: false },
+      { id: 'b', name: 'Amigos', address: '127.0.0.1:7700', hosted: false, stopped: false },
     ]);
   });
 
@@ -88,5 +88,54 @@ describe('rail click on a saved server', () => {
     expect(shouldStartInsteadOfConnect(casa, host({ state: 'running', serverKeyId: 'KEY-A', config }))).toBe(false);
     expect(shouldStartInsteadOfConnect(saved('b', 'Amigos', 'KEY-B'), host({ state: 'stopped', serverKeyId: 'KEY-A', config }))).toBe(false);
     expect(shouldStartInsteadOfConnect(casa, null)).toBe(false);
+  });
+});
+
+describe('Home list filters (tabs and search)', () => {
+  const rows = homeServerRows(
+    [saved('a', 'Casa do Zé', 'KEY-A'), { ...saved('b', 'Amigos', 'KEY-B'), addresses: ['altaria.proxy.rlwy.net:25889'] }, { ...saved('c', 'Sem endereço', 'KEY-C'), addresses: [] }],
+    host({ state: 'running', serverKeyId: 'KEY-A', config }),
+  );
+
+  it('shows everything on "Todos" and only the server hosted here on "Hospedados"', () => {
+    expect(filterHomeRows(rows, 'all', '').map((r) => r.id)).toEqual(['a', 'b', 'c']);
+    expect(filterHomeRows(rows, 'hosted', '').map((r) => r.id)).toEqual(['a']);
+  });
+
+  it('searches names and addresses, ignoring case, accents and surrounding spaces', () => {
+    expect(filterHomeRows(rows, 'all', '  casa do ze ').map((r) => r.id)).toEqual(['a']);
+    expect(filterHomeRows(rows, 'all', 'RLWY').map((r) => r.id)).toEqual(['b']);
+    expect(filterHomeRows(rows, 'all', 'nada')).toEqual([]);
+  });
+
+  it('keeps a row without an address', () => {
+    expect(rows[2]!.address).toBeNull();
+  });
+});
+
+describe('"Ativo agora" (the server hosted here)', () => {
+  it('is empty without a hosted server', () => {
+    expect(homeActivity(null)).toBeNull();
+    expect(homeActivity(host({ state: 'stopped', config: null }))).toBeNull();
+  });
+
+  it('shows the running server with its members and the address to share', () => {
+    const status = host({
+      state: 'running',
+      config,
+      members: 3,
+      maxMembers: 100,
+      addresses: [
+        { address: '127.0.0.1:7700', kind: 'loopback' },
+        { address: '192.168.0.10:7700', kind: 'lan' },
+        { address: '203.0.113.7:7700', kind: 'public' },
+      ],
+    });
+    expect(homeActivity(status)).toEqual({ name: 'Casa', state: 'running', members: 3, maxMembers: 100, address: '203.0.113.7:7700' });
+  });
+
+  it('falls back to a LAN address, and shows a stopped or failed server without members', () => {
+    expect(homeActivity(host({ state: 'running', config, addresses: [{ address: '192.168.0.10:7700', kind: 'lan' }] }))?.address).toBe('192.168.0.10:7700');
+    expect(homeActivity(host({ state: 'failed', config, members: 2 }))).toEqual({ name: 'Casa', state: 'failed', members: null, maxMembers: 100, address: null });
   });
 });

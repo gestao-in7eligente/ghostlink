@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SlidingWindowLimiter, ipKey } from '../src/ratelimit/limiter.js';
+import { PER_ADDRESS, SHARED_ADDRESS, SHARED_ADDRESS_KEY, SlidingWindowLimiter, ipKey } from '../src/ratelimit/limiter.js';
 
 describe('SlidingWindowLimiter', () => {
   it('allows `limit` hits per window and then refuses', () => {
@@ -67,5 +67,19 @@ describe('ipKey', () => {
 
   it('passes unknown formats through unchanged', () => {
     expect(ipKey('unknown')).toBe('unknown');
+  });
+});
+
+describe('client addressing (spec §13)', () => {
+  it('per address: the same keys as ipKey, and the address is real', () => {
+    expect(PER_ADDRESS.real).toBe(true);
+    expect(PER_ADDRESS.keyOf('::ffff:203.0.113.5')).toBe('203.0.113.5');
+    expect(PER_ADDRESS.keyOf('2001:db8:1:2::9')).toBe(ipKey('2001:db8:1:2::9'));
+  });
+
+  it('behind a proxy: one key for everyone, and the address is not the client\'s', () => {
+    expect(SHARED_ADDRESS.real).toBe(false);
+    expect(SHARED_ADDRESS.keyOf('100.64.0.2')).toBe(SHARED_ADDRESS.keyOf('100.64.0.3'));
+    expect(SHARED_ADDRESS.keyOf('::1')).toBe(SHARED_ADDRESS_KEY);
   });
 });

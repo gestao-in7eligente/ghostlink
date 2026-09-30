@@ -1,16 +1,16 @@
 /* The main screen (owner's UI reference): rail · channels · chat · members. */
 
 .shell {
-  --rail-w: 60px;
-  --sidebar-w: 280px;
+  --rail-w: 72px;
+  --sidebar-w: 300px;
   --members-w: 220px;
-  --header-h: 52px;
+  --header-h: 48px;
   --panel-h: 60px;
 
   position: relative;
   display: grid;
   grid-template-columns: var(--rail-w) var(--sidebar-w) minmax(0, 1fr) var(--members-w);
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
   background: var(--bg-chat);
   color: var(--text-strong);
@@ -58,12 +58,12 @@
 .railButton {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: none;
-  border-radius: 50%;
-  background: var(--bg-hover);
+  border-radius: 12px;
+  background: var(--bg-input);
   color: var(--text-strong);
   font-size: 15px;
   font-weight: 600;
@@ -74,23 +74,23 @@
 }
 
 .railButton:hover {
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--accent);
   color: var(--accent-ink);
 }
 
 .railActive .railButton {
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--accent);
   color: var(--accent-ink);
 }
 
 .railHome {
-  background: var(--bg-hover);
+  background: var(--bg-input);
 }
 
-.railHome:hover {
-  background: var(--bg-hover);
+.railHome:not([aria-current]):hover {
+  background: var(--bg-selected);
   color: var(--text-strong);
 }
 
@@ -101,7 +101,7 @@
   left: 0;
   top: 50%;
   width: 4px;
-  height: 36px;
+  height: 40px;
   border-radius: 0 4px 4px 0;
   background: var(--text-strong);
   transform: translateY(-50%);
@@ -117,8 +117,8 @@
 }
 
 .railAdd {
-  background: var(--bg-hover);
-  color: var(--accent-text);
+  background: var(--bg-input);
+  color: var(--text-strong);
 }
 
 /* ---- "Adicionar servidor" chooser (opened by the rail's "+") ---- */
@@ -192,7 +192,6 @@
   flex-direction: column;
   min-height: 0;
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--line);
 }
 
 .serverHeader {

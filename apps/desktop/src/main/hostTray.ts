@@ -70,10 +70,18 @@ export function renderTrayIcon(size: number): Buffer {
   return out;
 }
 
-function trayImage(): NativeImage {
-  const image = nativeImage.createFromBitmap(renderTrayIcon(16), { width: 16, height: 16, scaleFactor: 1 });
-  image.addRepresentation({ scaleFactor: 2, width: 32, height: 32, buffer: renderTrayIcon(32) });
+/** The ghost at `size` points, with 1.5× and 2× representations for high-DPI screens. */
+export function ghostImage(size: number): NativeImage {
+  const image = nativeImage.createFromBitmap(renderTrayIcon(size), { width: size, height: size, scaleFactor: 1 });
+  for (const scaleFactor of [1.5, 2]) {
+    const pixels = Math.round(size * scaleFactor);
+    image.addRepresentation({ scaleFactor, width: pixels, height: pixels, buffer: renderTrayIcon(pixels) });
+  }
   return image;
+}
+
+function trayImage(): NativeImage {
+  return ghostImage(16);
 }
 
 export interface HostTrayDeps {

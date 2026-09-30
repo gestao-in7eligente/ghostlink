@@ -11,7 +11,8 @@ export interface AdmissionRequest {
   publicKey: Uint8Array;
   nickname: { display: string; norm: string };
   locale: string;
-  ip: string;
+  /** Stored as last_ip; null behind a TCP proxy, where it would be the proxy's (spec §13). */
+  ip: string | null;
   ipKey: string;
   password?: string;
   inviteCode?: string;

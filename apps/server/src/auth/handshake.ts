@@ -40,6 +40,13 @@ export interface HandshakeDeps {
   authFailures: SlidingWindowLimiter;
   newIdentities: SlidingWindowLimiter;
   logger: Logger;
+  /** false behind a TCP proxy: conn.ip is the proxy's, so it is not stored as last_ip (spec §13). Default true. */
+  realAddresses?: boolean;
+}
+
+/** True when `publicKey` belongs to a current member (not removed). */
+function isMember(db: Db, publicKey: Uint8Array): boolean {
+  return db.get('SELECT 1 AS x FROM users WHERE public_key = ? AND removed_at IS NULL', publicKey) !== undefined;
 }
 
 /** Thrown after the connection was already closed with `code`. */
@@ -81,7 +88,6 @@ export async function runHandshake(conn: Connection, deps: HandshakeDeps): Promi
   // ---- hello ----
   conn.setDeadline(deps.limits.helloTimeoutMs, () => fail('BAD_REQUEST', { counts: true }));
   const helloEnvelope = await next();
-  if (!deps.authFailures.peek(conn.ipKey)) throw fail('RATE_LIMITED', { counts: false });
   if (helloEnvelope.t !== 'hello') throw fail('BAD_REQUEST', { counts: true });
   const parsed = helloSchema.safeParse(helloEnvelope.d);
   if (!parsed.success) throw fail('BAD_REQUEST', { counts: true });
@@ -98,6 +104,11 @@ export async function runHandshake(conn: Connection, deps: HandshakeDeps): Promi
     throw fail('BAD_REQUEST', { counts: true });
   }
   if (publicKey.length !== 32 || isWeakPublicKey(publicKey)) throw fail('BAD_REQUEST', { counts: true });
+  // The failure limit is there against guessing invites, passwords and setup codes. A member
+  // who signs in with the key alone has nothing to guess, so a flood of failures from their
+  // address (behind a TCP proxy: from anywhere, spec §13) never locks them out.
+  const guessing = hello.setupCode !== undefined || !isMember(deps.db, publicKey);
+  if (guessing && !deps.authFailures.peek(conn.ipKey)) throw fail('RATE_LIMITED', { counts: false });
 
   const nonce = deps.challenges.issue(conn.id, conn.ipKey);
   if (nonce === null) throw fail('RATE_LIMITED', { counts: false });
@@ -127,7 +138,7 @@ export async function runHandshake(conn: Connection, deps: HandshakeDeps): Promi
       publicKey,
       nickname,
       locale: hello.locale,
-      ip: conn.ip,
+      ip: deps.realAddresses === false ? null : conn.ip,
       ipKey: conn.ipKey,
       password: hello.password,
       inviteCode: hello.inviteCode,

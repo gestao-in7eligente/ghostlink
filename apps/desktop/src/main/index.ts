@@ -14,13 +14,15 @@ import { openExternalWithConfirm } from './externalLinks.js';
 import { HostFirewall, firewallPrograms } from './hostFirewall.js';
 import { HostManager } from './hostManager.js';
 import { forkServer, hostedServerLogging } from './hostProcess.js';
-import { HostTray, shouldHideOnClose } from './hostTray.js';
+import { HostTray, ghostImage, shouldHideOnClose } from './hostTray.js';
 import { IdentityStore } from './identity.js';
 import { registerIpc } from './ipc.js';
 import { FileLog, consoleMirror, guardStdio, installCrashHandlers, mainLog, safeWrite, setMainLog } from './log.js';
 import { ChatNotifier } from './notifications.js';
 import { installRendererPinning, setRendererPin } from './pinning.js';
 import { PushToTalk, type PttHookModule } from './ptt.js';
+import { railwayImage } from './railway/image.js';
+import { RailwayProvisioner } from './railway/provisioner.js';
 import { SavedServersStore } from './savedServers.js';
 import { installSecurity, originOf } from './security.js';
 import { SettingsStore } from './settings.js';
@@ -144,6 +146,16 @@ function start(): BrowserWindow {
     warn: (message) => mainLog.warn(message),
   });
   app.on('before-quit', () => void ptt.dispose());
+  // "Criar um servidor" on Railway (v0.2): the token stays encrypted here; only main talks to Railway.
+  const railway = new RailwayProvisioner({
+    userDataDir: userData,
+    safeStorage,
+    fetch: (url, init) => net.fetch(url, init),
+    image: railwayImage({ version: app.getVersion(), packaged: app.isPackaged, env: process.env }),
+    probe: (address) => controller.probe(address),
+    join: (req) => controller.join(req),
+    emit: (progress) => send(IPC_EVENTS.railway, progress),
+  });
   registerIpc({
     appOrigin,
     identity,
@@ -173,6 +185,7 @@ function start(): BrowserWindow {
     host: { manager: host, copyText: (text) => clipboard.writeText(text), firewall: hostFirewall(host) },
     backup: identityBackup(window, identity, controller),
     deepLinks: deepLinks ?? undefined,
+    railway,
   });
   updater.start();
   app.on('before-quit', () => {
@@ -294,7 +307,12 @@ function createMainWindow(): BrowserWindow {
   const menu = applicationMenuTemplate({ packaged: app.isPackaged, platform: process.platform });
   if (menu !== undefined) Menu.setApplicationMenu(menu === null ? null : Menu.buildFromTemplate(menu));
   const window = new BrowserWindow(
-    mainWindowOptions({ preload: fileURLToPath(new URL('../preload/index.cjs', import.meta.url)), packaged: app.isPackaged }),
+    mainWindowOptions({
+      preload: fileURLToPath(new URL('../preload/index.cjs', import.meta.url)),
+      packaged: app.isPackaged,
+      platform: process.platform,
+      icon: ghostImage(32),
+    }),
   );
   if (!smoke) window.once('ready-to-show', () => window.show());
   return window;

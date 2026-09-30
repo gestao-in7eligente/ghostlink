@@ -17,6 +17,9 @@ apps/desktop/resources/livekit/
 .env
 .env.*
 
+# local agent worktrees
+.claude/
+
 # logs and OS noise
 *.log
 .DS_Store

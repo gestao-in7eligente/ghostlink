@@ -21,15 +21,16 @@ import {
   type LivekitParticipant,
   type VoiceBackend,
   type VoiceBackendListeners,
-  type VoiceServerOptions,
+  type VoiceBackendOptions,
   type VoiceWebhookEvent,
 } from '../livekit/backend.js';
 import { resolveLivekitBinary } from '../livekit/binary.js';
 import { verifyVoiceToken } from '../livekit/jwt.js';
 import { createJoinToken, livekitPermission, type LivekitPermission } from '../livekit/permissions.js';
-import type { ModuleContext, RequestContext, ServerEvent, ServerModule, SessionInfo } from '../modules.js';
+import type { ModuleContext, ProxyEndpoint, RequestContext, ServerEvent, ServerModule, SessionInfo } from '../modules.js';
 import { describeNodeIp, fallbackNodeIp, type NodeIpChoice } from '../net/addresses.js';
 import { NET_MODULE, type NetModule } from '../net/netModule.js';
+import { ProxyAddress } from '../net/proxyAddress.js';
 import { SlidingWindowLimiter } from '../ratelimit/limiter.js';
 import { NO_CHANNELS, textModuleOf, voiceAccessOf, type TextModuleVoiceSeams, type VoiceAccess } from './access.js';
 import { RtcProxy } from './proxy.js';
@@ -41,7 +42,7 @@ const VIEW_AND_CONNECT = P.VIEW_CHANNEL | P.CONNECT_VOICE;
 
 export interface VoiceModuleOptions {
   /** Test seam: the LiveKit backend (default: livekit-server, or null when its binary is missing). */
-  backend?(ctx: ModuleContext, options: VoiceServerOptions): VoiceBackend | null;
+  backend?(ctx: ModuleContext, options: VoiceBackendOptions): VoiceBackend | null;
   /** VoiceAccess when the text module does not expose one (tests; integration binds Text's). */
   access?(ctx: ModuleContext): VoiceAccess;
   /** Full reconciliation with LiveKit (spec §7: every 60 s). */
@@ -60,6 +61,10 @@ export interface VoiceModuleOptions {
   netWaitMs?: number;
   /** How often the `net` module's node IP is compared with the one LiveKit announces. Default 5 s. */
   nodeIpCheckIntervalMs?: number;
+  /** Behind a TCP proxy: how the proxy's name is resolved (test seam; default: the system resolver). */
+  proxyLookup?(host: string): Promise<string[]>;
+  /** Behind a TCP proxy: how often its name is resolved again. Default 5 min. */
+  proxyRefreshMs?: number;
 }
 
 /** The `voice` module plus the calls other modules and tests may make on it. */
@@ -91,7 +96,7 @@ export interface VoiceModule extends ServerModule {
   readonly registry: VoiceRegistry;
 }
 
-function defaultBackend(ctx: ModuleContext, options: VoiceServerOptions): VoiceBackend | null {
+function defaultBackend(ctx: ModuleContext, options: VoiceBackendOptions): VoiceBackend | null {
   const binaryPath = resolveLivekitBinary({ explicit: options.binaryPath });
   if (!binaryPath) {
     ctx.logger.warn('voice is unavailable: livekit-server was not found (run "node scripts/fetch-livekit.mjs", or set voice.binaryPath / GHOSTLINK_LIVEKIT_BIN)');
@@ -107,6 +112,12 @@ function netModuleOf(ctx: ModuleContext): NetModule | null {
   } catch {
     return null;
   }
+}
+
+/** Where a node IP that may change comes from: the `net` module, or the TCP proxy's name. */
+interface NodeIpSource {
+  ready(): Promise<void>;
+  nodeIpChoice(): NodeIpChoice | null;
 }
 
 /** Resolves when `p` settles or after `ms`, whichever comes first. */
@@ -135,6 +146,9 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
   let ctx!: ModuleContext;
   let text: TextModuleVoiceSeams | null = null;
   let net: NetModule | null = null;
+  /** Behind a TCP proxy (spec §8.6): its external endpoint, and its name resolved to the node IP. */
+  let proxy: ProxyEndpoint | null = null;
+  let proxyAddress: ProxyAddress | null = null;
   let backend: VoiceBackend | null = null;
   /** The node_ip LiveKit announces (spec §8.1); null until LiveKit is first started. */
   let nodeIp: string | null = null;
@@ -237,7 +251,16 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
   const wantedNodeIp = (): NodeIpChoice => {
     const explicit = explicitNodeIp();
     if (explicit) return { ip: explicit, source: 'explicit' };
-    return net?.nodeIpChoice() ?? fallbackNodeIp();
+    return following()?.nodeIpChoice() ?? fallbackNodeIp();
+  };
+
+  /**
+   * The node IP source LiveKit follows (spec §8.1): the TCP proxy's name behind a proxy, else
+   * the `net` module; none with an explicit node IP, which never changes.
+   */
+  const following = (): NodeIpSource | null => {
+    if (explicitNodeIp()) return null;
+    return proxyAddress ?? net;
   };
 
   /** Nobody in a LiveKit room and nobody holding a join (about to connect): a restart drops no one. */
@@ -245,8 +268,9 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
 
   const refreshNodeIp = async (): Promise<void> => {
     if (restarting) return restarting;
-    // Only the net module's answer moves: a late UPnP answer, a new WAN IP, a VPN that connects.
-    if (stopped || !backend || nodeIp === null || !net || explicitNodeIp()) return;
+    // Only the net module's answer moves (a late UPnP answer, a new WAN IP, a VPN that connects),
+    // or the proxy's address behind a proxy.
+    if (stopped || !backend || nodeIp === null || !following()) return;
     const wanted = wantedNodeIp();
     if (wanted.ip === nodeIp) {
       pendingNodeIp = null;
@@ -416,7 +440,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
   const livekitUrl = (rc: RequestContext): string =>
     livekitUrlFor(rc.requestHost, getMeta(ctx.db).publicAddresses[0] ?? `127.0.0.1:${publicPort}`);
 
-  const proxy = new RtcProxy({
+  const rtcProxy = new RtcProxy({
     target: () => (backend?.available ? backend.signalPort : null),
     authorize: (token) => {
       if (!token || !backend) return false;
@@ -521,6 +545,10 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       stopped = false;
       text = textModuleOf(c);
       net = netModuleOf(c);
+      proxy = c.options?.proxy ?? null;
+      proxyAddress = proxy
+        ? new ProxyAddress({ host: proxy.host, lookup: opts.proxyLookup, refreshMs: opts.proxyRefreshMs, logger: c.logger })
+        : null;
       joinLimiter = new SlidingWindowLimiter(VOICE_LIMITS.joinPerWindow, VOICE_LIMITS.joinWindowMs, c.now);
       const onRemoved = text?.onMembershipRemoved?.((userId) => void removeUser(userId, { notify: true }));
       if (onRemoved) unsubscribe.push(onRemoved);
@@ -548,11 +576,21 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
           }),
         );
       }
-      backend = (opts.backend ?? defaultBackend)(c, c.options?.voice ?? {});
+      const voiceOptions = c.options?.voice ?? {};
+      // Behind a proxy LiveKit's ICE-TCP port is the proxy's external port: the candidates carry it.
+      backend = (opts.backend ?? defaultBackend)(c, proxy ? { ...voiceOptions, tcpPort: proxy.port, behindProxy: true } : voiceOptions);
       announced = backend?.available === true;
     },
     async start({ port }) {
       publicPort = port;
+      if (backend && proxy?.port === port) {
+        // LiveKit would have to listen on the port this server holds.
+        ctx.logger.error(
+          `voice is unavailable: the TCP proxy's external port ${port} is also this server's port; ` +
+            `LiveKit listens on the external port, so run the server on another one (e.g. --port ${port === 7700 ? 7701 : 7700})`,
+        );
+        backend = null;
+      }
       if (!backend) return;
       const b = backend;
       ready = new Promise<boolean>((resolve) => (settleReady = resolve));
@@ -570,11 +608,13 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
           ctx.logger.error('voice is unavailable: LiveKit could not be restarted');
         },
       };
-      const following = net !== null && !explicitNodeIp() ? net : null;
-      // spec §8.1: once UPnP first answered, the router's WAN IP is known; LiveKit's config
-      // is written after that (bounded). A later change goes through refreshNodeIp().
+      proxyAddress?.start();
+      const source = following();
+      // spec §8.1: once UPnP first answered, the router's WAN IP is known (behind a proxy: once
+      // its name resolved); LiveKit's config is written after that (bounded). A later change
+      // goes through refreshNodeIp().
       const chosen = (async () => {
-        if (following) await waitAtMost(following.ready().catch(() => {}), opts.netWaitMs ?? 8_000);
+        if (source) await waitAtMost(source.ready().catch(() => {}), opts.netWaitMs ?? 8_000);
         return wantedNodeIp();
       })();
       // A failed first start is retried by the supervisor, which ends in onReady or onUnavailable.
@@ -590,7 +630,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
         });
       timers.push(setInterval(() => void reconcile(), opts.reconcileIntervalMs ?? 60_000));
       timers.push(setInterval(() => void refreshPermissions(), opts.sweepIntervalMs ?? 5_000));
-      if (following) timers.push(setInterval(() => void refreshNodeIp(), opts.nodeIpCheckIntervalMs ?? 5_000));
+      if (source) timers.push(setInterval(() => void refreshNodeIp(), opts.nodeIpCheckIntervalMs ?? 5_000));
       for (const t of timers) t.unref();
       await chosen;
       await waitAtMost(ready, opts.readyWaitMs ?? 5_000);
@@ -598,6 +638,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     async stop() {
       stopped = true;
       settleReady(false);
+      proxyAddress?.stop();
       for (const t of timers.splice(0)) clearInterval(t);
       for (const off of unsubscribe.splice(0)) off();
       await backend?.stop();
@@ -619,8 +660,10 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
         registry.forget(session.userId);
       }
     },
-    http: (req, res) => proxy.http(req, res),
-    upgrade: (req, socket, head) => proxy.upgrade(req, socket, head),
+    http: (req, res) => rtcProxy.http(req, res),
+    upgrade: (req, socket, head) => rtcProxy.upgrade(req, socket, head),
+    // Behind a TCP proxy, the public port pipes ICE-TCP to LiveKit's tcp_port (spec §8.6).
+    iceTcpPort: () => (proxy && backend?.available ? proxy.port : null),
     whenReady: () => ready,
     channelState: (channelId) => registry.state(channelId),
     refreshPermissions,

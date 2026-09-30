@@ -5,13 +5,31 @@ const PRELOAD = 'C:\\app\\out\\preload\\index.cjs';
 
 describe('mainWindowOptions', () => {
   it('turns DevTools off in the packaged app and keeps them in development', () => {
-    expect(mainWindowOptions({ preload: PRELOAD, packaged: true }).webPreferences?.devTools).toBe(false);
-    expect(mainWindowOptions({ preload: PRELOAD, packaged: false }).webPreferences?.devTools).toBe(true);
+    expect(mainWindowOptions({ preload: PRELOAD, platform: 'win32', packaged: true }).webPreferences?.devTools).toBe(false);
+    expect(mainWindowOptions({ preload: PRELOAD, platform: 'win32', packaged: false }).webPreferences?.devTools).toBe(true);
+  });
+
+  it('uses the given icon (the ghost) instead of the executable one', () => {
+    const icon = {} as Electron.NativeImage;
+    expect(mainWindowOptions({ preload: PRELOAD, platform: 'win32', packaged: false, icon }).icon).toBe(icon);
+    expect(mainWindowOptions({ preload: PRELOAD, platform: 'win32', packaged: true })).not.toHaveProperty('icon');
+  });
+
+  it("draws Discord's title bar on Windows and Linux, and keeps the native one on macOS", () => {
+    for (const platform of ['win32', 'linux'] as const) {
+      expect(mainWindowOptions({ preload: PRELOAD, platform, packaged: true })).toMatchObject({
+        titleBarStyle: 'hidden',
+        titleBarOverlay: { color: '#2c2d32', symbolColor: '#c5c6ca', height: 32 },
+      });
+    }
+    const mac = mainWindowOptions({ preload: PRELOAD, platform: 'darwin', packaged: true });
+    expect(mac).not.toHaveProperty('titleBarStyle');
+    expect(mac).not.toHaveProperty('titleBarOverlay');
   });
 
   it('keeps the renderer sandboxed and isolated either way', () => {
     for (const packaged of [true, false]) {
-      expect(mainWindowOptions({ preload: PRELOAD, packaged }).webPreferences).toMatchObject({
+      expect(mainWindowOptions({ preload: PRELOAD, platform: 'win32', packaged }).webPreferences).toMatchObject({
         preload: PRELOAD,
         contextIsolation: true,
         sandbox: true,

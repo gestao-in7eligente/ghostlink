@@ -115,6 +115,21 @@ describe('authentication failure limit (10/min per IP, failures only)', () => {
     expect((await connectTestClient(t.server)).welcome).toBeDefined();
   });
 
+  it('never locks out a member who signs in with the key alone: there is nothing to guess', async () => {
+    const t = await server();
+    const seed = new Uint8Array(32).fill(7);
+    const first = await connectTestClient(t.server, { seed });
+    expect(first.welcome).toBeDefined();
+    first.close();
+    for (let i = 0; i < 10; i++) await failOnce(t);
+    expect((await connectTestClient(t.server)).error?.code).toBe('RATE_LIMITED'); // a newcomer
+    const again = await connectTestClient(t.server, { seed });
+    expect(again.welcome).toBeDefined();
+    again.close();
+    // A setup code is a secret to guess: with one, the member is limited like anyone.
+    expect((await connectTestClient(t.server, { seed, setupCode: 'ABCD-EFGH-JKLM' })).error?.code).toBe('RATE_LIMITED');
+  });
+
   it('counts wrong invites, so invite codes cannot be brute-forced', async () => {
     const t = await server({ joinMode: 'invite' });
     for (let i = 0; i < 10; i++) {

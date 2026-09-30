@@ -72,7 +72,8 @@ describe('release.yml trigger and supply chain (spec §15)', () => {
     expect(job('server').permissions).toEqual({ contents: 'read' });
     expect(job('sign').permissions).toEqual({ contents: 'read', 'id-token': 'write' });
     expect(job('publish').permissions).toEqual({ contents: 'write' });
-    expect(Object.keys(workflow.jobs).sort()).toEqual(['publish', 'server', 'sign', 'version', 'windows']);
+    expect(job('image').permissions).toEqual({ contents: 'read', packages: 'write', 'id-token': 'write' });
+    expect(Object.keys(workflow.jobs).sort()).toEqual(['image', 'publish', 'server', 'sign', 'version', 'windows']);
   });
 
   it('never leaves a token in .git/config and never caches dependencies', () => {
@@ -122,7 +123,8 @@ describe('release.yml builds', () => {
     expect(job('version').outputs).toEqual({ version: '${{ steps.version.outputs.version }}' });
     for (const name of ['windows', 'server']) expect(job(name).needs).toBe('version');
     expect(job('sign').needs).toEqual(['version', 'windows', 'server']);
-    expect(job('publish').needs).toEqual(['version', 'sign']);
+    expect(job('image').needs).toEqual(['version', 'sign']);
+    expect(job('publish').needs).toEqual(['version', 'sign', 'image']);
   });
 
   it('builds the NSIS installer on Windows with LiveKit when available, smoke tests it and keeps the update files', () => {
@@ -203,6 +205,36 @@ describe('release.yml signing and publishing', () => {
   });
 });
 
+describe('release.yml server image (Railway provisioning, v0.2)', () => {
+  const image = job('image');
+
+  it('builds the image from the server Dockerfile only after the approval, with the Docker CLI', () => {
+    expect(image.env).toEqual({ VERSION: '${{ needs.version.outputs.version }}', IMAGE: 'ghcr.io/${{ github.repository_owner }}/ghostlink-server' });
+    expect(image.environment).toBeUndefined();
+    const run = runOf(image);
+    expect(run).toContain('docker build -f apps/server/docker/Dockerfile');
+    expect(run).toContain('-t "${IMAGE}:${VERSION}" .');
+    expect(image.steps.filter((s) => s.uses).map((s) => s.uses!.split('@')[0])).toEqual(['actions/checkout', 'sigstore/cosign-installer']);
+  });
+
+  it('checks the version inside the image before pushing it, then signs the pushed digest', () => {
+    const at = (text: string) => image.steps.findIndex((s) => s.run?.includes(text));
+    const smoke = at('/opt/ghostlink/dist/cli.js version)" = "${VERSION}"');
+    const push = at('docker push "${IMAGE}:${VERSION}"');
+    const sign = at('cosign sign --yes "$DIGEST"');
+    expect(smoke).toBeGreaterThan(0);
+    expect(push).toBeGreaterThan(smoke);
+    expect(sign).toBeGreaterThan(push);
+  });
+
+  it('logs in to GHCR with the job token through stdin only', () => {
+    for (const step of image.steps.filter((s) => s.run?.includes('login ghcr.io'))) {
+      expect(step.env).toEqual({ GH_TOKEN: '${{ github.token }}', ACTOR: '${{ github.actor }}' });
+      expect(step.run).toMatch(/printf '%s' "\$GH_TOKEN" \| (docker|cosign) login ghcr\.io -u "\$ACTOR" --password-stdin/);
+    }
+  });
+});
+
 describe('release-notes/0.1.0.md', () => {
   const notes = read('release-notes/0.1.0.md');
 
@@ -224,5 +256,35 @@ describe('release-notes/0.1.0.md', () => {
   it('does not promise features that are out of v0.1', () => {
     expect(notes).toMatch(/Ainda não tem:\*\* câmera, compartilhamento de tela, arquivos e imagens, avatares e a versão para macOS/);
     expect(notes).toMatch(/Not yet:\*\* camera, screen sharing, files and images, avatars and the macOS app/);
+  });
+});
+
+describe('release-notes/0.2.0.md', () => {
+  const notes = read('release-notes/0.2.0.md');
+
+  it('is bilingual and carries the SmartScreen instructions', () => {
+    expect(notes).toContain('## Português');
+    expect(notes).toContain('## English');
+    expect(notes).toContain('Mais informações → Executar assim mesmo');
+    expect(notes).toContain('More info → Run anyway');
+  });
+
+  it('explains verification with the real cosign identity and release key, for the files and the image', () => {
+    const identity = '--certificate-identity "https://github.com/gestao-in7eligente/ghostlink/.github/workflows/release.yml@refs/tags/v0.2.0"';
+    // Twice per language: the checksums and the server image.
+    expect(notes.split(identity)).toHaveLength(5);
+    expect(notes).toContain('cosign verify ghcr.io/gestao-in7eligente/ghostlink-server:0.2.0');
+    const pem = publicKeyPem(RELEASE_PUBLIC_KEY).trim().split('\n');
+    for (const line of pem) expect(notes).toContain(`   ${line}`);
+    expect(notes).not.toContain('0.1.0.exe');
+  });
+
+  it('says what Railway hosting costs and that voice goes over TCP there, and promises nothing unbuilt', () => {
+    expect(notes).toMatch(/O custo vai para a sua conta Railway/);
+    expect(notes).toMatch(/The cost goes to your Railway account/);
+    expect(notes).toMatch(/No Railway a voz passa por TCP/);
+    expect(notes).toMatch(/On Railway, voice goes over TCP/);
+    expect(notes).toMatch(/Ainda não tem:\*\* amigos e mensagens diretas/);
+    expect(notes).toMatch(/Not yet:\*\* friends and direct messages/);
   });
 });

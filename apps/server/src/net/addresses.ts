@@ -109,13 +109,15 @@ export function buildPublicAddresses(input: { port: number; wanIp?: string | nul
 }
 
 /** Where the announced node_ip came from: the value itself, UPnP, the kind of local address, or nothing usable. */
-export type NodeIpSource = 'explicit' | 'upnp' | Exclude<LocalAddressKind, 'virtual'> | 'loopback';
+export type NodeIpSource = 'explicit' | 'upnp' | 'proxy' | Exclude<LocalAddressKind, 'virtual'> | 'loopback';
 
 export interface NodeIpChoice {
   ip: string;
   source: NodeIpSource;
   /** The interface that holds `ip`, for a local address. */
   interface?: string;
+  /** The name `ip` was resolved from, for the TCP proxy's IP (spec §8.6). */
+  host?: string;
 }
 
 /** Local addresses in the order node_ip prefers them; virtual adapters never qualify. */
@@ -158,6 +160,7 @@ export function fallbackNodeIp(local: readonly LocalAddress[] = localIPv4Address
 const SOURCE_WORDS: Record<NodeIpSource, string> = {
   explicit: 'explicit --node-ip / voice.nodeIp',
   upnp: "the router's public WAN IP, from UPnP",
+  proxy: "the TCP proxy's IPv4",
   public: 'public IPv4',
   lan: 'LAN IPv4',
   radmin: 'Radmin VPN IPv4',
@@ -169,5 +172,6 @@ const SOURCE_WORDS: Record<NodeIpSource, string> = {
 /** Why this node_ip, in words for the server log. */
 export function describeNodeIp(choice: NodeIpChoice): string {
   const words = SOURCE_WORDS[choice.source];
+  if (choice.host) return `${words} (${choice.host})`;
   return choice.interface ? `${words} on interface "${choice.interface}"` : words;
 }

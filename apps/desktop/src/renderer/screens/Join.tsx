@@ -1,11 +1,78 @@
-import { useReducer, type FormEvent } from 'react';
+import { useEffect, useReducer, useRef, type FormEvent, type RefObject } from 'react';
 import { formatFingerprint } from '@ghostlink/shared';
 import type { RendererWelcome } from '../../shared/ipcTypes.js';
 import { ErrorLine, Screen } from '../components/Screen.js';
 import ui from '../components/ui.module.css';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 import { useSettingsStore } from '../stores/settings.js';
-import { buildConnectRequest, initialJoin, joinReducer, type JoinState } from './joinFlow.js';
+import { buildConnectRequest, initialJoin, joinReducer, type JoinAction, type JoinState } from './joinFlow.js';
+
+/** The server CLI command that prints the setup code (spec §10); shown verbatim, never translated. */
+const SETUP_CODE_COMMAND = 'ghostlink-server setup-code';
+
+/**
+ * "Sou o dono deste servidor" (spec §3.3 "Dono"): collapsed until asked for.
+ * The code stays in the Join state only and goes into this one join.connect.
+ */
+function OwnerCode({
+  s,
+  dispatch,
+  inputRef,
+  disabled = false,
+  autoFocus = false,
+  onEnter,
+}: {
+  s: JoinState;
+  dispatch: (action: JoinAction) => void;
+  inputRef: RefObject<HTMLInputElement | null>;
+  disabled?: boolean;
+  autoFocus?: boolean;
+  /** Enter in the field, where it is not inside a form. */
+  onEnter?: () => void;
+}) {
+  const t = useT();
+  const [hintBefore, hintAfter] = t('join.owner.hint').split('{command}');
+  return (
+    <>
+      <button
+        type="button"
+        className={ui.link}
+        aria-expanded={s.owner}
+        disabled={disabled}
+        onClick={() => dispatch({ type: 'owner', open: !s.owner })}
+      >
+        {t('join.owner.toggle')}
+      </button>
+      {s.owner && (
+        <label className={ui.field}>
+          <span className={ui.label}>{t('join.owner.label')}</span>
+          <input
+            ref={inputRef}
+            className={`${ui.input} ${ui.mono}`}
+            value={s.setupCode}
+            autoFocus={autoFocus}
+            autoComplete="off"
+            spellCheck={false}
+            disabled={disabled}
+            aria-invalid={s.error === 'BAD_SETUP_CODE'}
+            onChange={(e) => dispatch({ type: 'field', field: 'setupCode', value: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && onEnter) {
+                e.preventDefault();
+                onEnter();
+              }
+            }}
+          />
+          <span className={ui.hint}>
+            {hintBefore}
+            <code className={ui.mono}>{SETUP_CODE_COMMAND}</code>
+            {hintAfter}
+          </span>
+        </label>
+      )}
+    </>
+  );
+}
 
 /**
  * spec §11.1 "Entrar": paste a link, a GL1- code or host:port → confirm the invite
@@ -25,6 +92,14 @@ export function Join({
   const nickname = useSettingsStore((s) => s.settings?.nickname ?? '');
   const [s, dispatch] = useReducer(joinReducer, nickname, (n) => start ?? initialJoin(n));
   const api = window.ghostlink;
+  const setupCodeInput = useRef<HTMLInputElement>(null);
+
+  // A wrong or malformed owner code: put the cursor back in it so it can be fixed and retried.
+  useEffect(() => {
+    if (s.error !== 'BAD_SETUP_CODE') return;
+    setupCodeInput.current?.focus();
+    setupCodeInput.current?.select();
+  }, [s.error]);
 
   const submitInput = async (event: FormEvent) => {
     event.preventDefault();
@@ -43,8 +118,10 @@ export function Join({
 
   const connect = async (event: FormEvent) => {
     event.preventDefault();
-    const request = buildConnectRequest(s);
+    const next = joinReducer(s, { type: 'submit' });
     dispatch({ type: 'submit' });
+    if (next.step !== 'connecting') return; // refused, e.g. a malformed owner code: the error is on screen
+    const request = buildConnectRequest(next);
     try {
       const welcome = await api.join.connect(request);
       dispatch({ type: 'joined' });
@@ -115,6 +192,8 @@ export function Join({
           <span className={ui.label}>{t('join.fingerprint')}</span>
           <p className={ui.fingerprint}>{s.fingerprint}</p>
         </div>
+        <OwnerCode s={s} dispatch={dispatch} inputRef={setupCodeInput} autoFocus onEnter={() => dispatch({ type: 'confirm' })} />
+        <ErrorLine text={error} />
         <div className={ui.actions}>
           <button type="button" className={ui.button} onClick={() => dispatch({ type: 'back' })}>
             {t('common.back')}
@@ -177,6 +256,7 @@ export function Join({
             <span className={ui.hint}>{t('join.details.inviteCodeHint')}</span>
           </label>
         )}
+        {s.owner && <OwnerCode s={s} dispatch={dispatch} inputRef={setupCodeInput} disabled={connecting} />}
         <ErrorLine text={error} />
         {connecting && <p className={ui.hint}>{t('join.connecting')}</p>}
         <div className={ui.actions}>

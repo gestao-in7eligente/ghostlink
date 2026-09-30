@@ -58,9 +58,17 @@ export interface SessionsApi {
   isOnlineOrInGrace(userId: string): boolean;
 }
 
+/** The external endpoint of a TCP proxy in front of the server (spec §8.5 "Atrás de um proxy TCP"). */
+export interface ProxyEndpoint {
+  host: string;
+  port: number;
+}
+
 /** Feature options passed to startServer() (StartServerOptions.voice, …). */
 export interface ModuleOptions {
   voice?: VoiceServerOptions;
+  /** Proxy mode: the proxy's external host:port (canonical, validated). */
+  proxy?: ProxyEndpoint;
 }
 
 /** Shared services handed to every module in init(). */
@@ -125,4 +133,10 @@ export interface ServerModule {
   http?(req: IncomingMessage, res: ServerResponse): boolean;
   /** Upgrade request outside /ws (e.g. /rtc); return true when handled (you own `socket`). */
   upgrade?(req: IncomingMessage, socket: Duplex, head: Buffer): boolean;
+  /**
+   * Proxy mode only (spec §8.5): the 127.0.0.1 port where ICE-TCP connections that arrive
+   * on the public port are piped (LiveKit's rtc.tcp_port), or null while there is none.
+   * Called once per such connection, so it must be cheap.
+   */
+  iceTcpPort?(): number | null;
 }

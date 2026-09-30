@@ -53,6 +53,31 @@ describe('data/livekit.yaml (spec §8.1)', () => {
     expect(() => renderLivekitConfig({ ...input, udpPort: 70000 })).toThrow();
   });
 
+  it("behind a TCP proxy: ICE-TCP only, on the proxy's external port, one loopback candidate announced as the proxy's IP (spec §8.6)", () => {
+    const proxied: LivekitConfigInput = { ...input, tcpPort: 25_889, nodeIp: '66.33.22.220', behindProxy: true };
+    expect(parse(renderLivekitConfig(proxied))).toEqual({
+      port: 17880,
+      bind_addresses: ['127.0.0.1'],
+      rtc: {
+        // LiveKit listens on the external port and announces it: the proxy maps that port to ours.
+        tcp_port: 25_889,
+        // No UDP socket at all: nothing could reach it, and no client waits on UDP candidates.
+        force_tcp: true,
+        use_external_ip: false,
+        node_ip: '66.33.22.220',
+        // The public port pipes ICE-TCP to 127.0.0.1, and pion's TCP mux finds each connection by
+        // the local address it arrived on: the only host candidate is loopback, rewritten to node_ip.
+        enable_loopback_candidate: true,
+        ips: { includes: ['127.0.0.1/32'] },
+      },
+      keys: { GLtestkey123: 'a'.repeat(43) },
+      webhook: { api_key: 'GLtestkey123', urls: ['http://127.0.0.1:17881/livekit/webhook'] },
+    });
+    // An IPv6 node_ip would not rewrite the IPv4 loopback candidate: 127.0.0.1 would be announced.
+    expect(() => renderLivekitConfig({ ...proxied, nodeIp: '2001:db8::1' })).toThrow(/IPv4/);
+    expect(() => renderLivekitConfig({ ...proxied, tcpPort: 0 })).toThrow();
+  });
+
   it('writes the file readable by the owner only', () => {
     const dir = tempDir();
     const path = writeLivekitConfig(dir, input);

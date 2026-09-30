@@ -20,6 +20,8 @@ export interface HttpServerDeps {
   /** Module upgrades for any path but /ws; true when handled. */
   moduleUpgrade?: (req: IncomingMessage, socket: Duplex, head: Buffer) => boolean;
   limits: SocketLimits;
+  /** The per-address key of a socket (default ipKey; one shared key behind a TCP proxy, spec §13). */
+  addressKey?: (address: string) => string;
 }
 
 function pathOf(url: string | undefined): string {
@@ -54,7 +56,7 @@ function route(deps: HttpServerDeps, req: IncomingMessage, res: ServerResponse):
  * TLS sees it. The sockets guardAddresses() forwards arrive through this same event
  * (server.emit('connection')), so they are counted here, exactly once.
  */
-function capSockets(server: Server, limits: SocketLimits): void {
+function capSockets(server: Server, limits: SocketLimits, keyOf: (address: string) => string): void {
   const perIp = new Map<string, number>();
   let total = 0;
   server.prependListener('connection', (socket: Socket) => {
@@ -63,7 +65,7 @@ function capSockets(server: Server, limits: SocketLimits): void {
       socket.destroy(); // already gone: nothing to count
       return;
     }
-    const key = ipKey(address);
+    const key = keyOf(address);
     const fromHere = perIp.get(key) ?? 0;
     if (total >= limits.maxSockets || fromHere >= limits.maxSocketsPerIp) {
       socket.destroy();
@@ -99,7 +101,7 @@ export function createHttpServer(deps: HttpServerDeps): Server {
   );
   // The kernel-level cap for direct connections; capSockets also covers the forwarded ones.
   server.maxConnections = deps.limits.maxSockets;
-  capSockets(server, deps.limits);
+  capSockets(server, deps.limits, deps.addressKey ?? ipKey);
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     if (pathOf(req.url) === '/ws') {
       deps.onUpgrade(req, socket, head);
