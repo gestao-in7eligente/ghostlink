@@ -270,7 +270,7 @@ describe.skipIf(!binary)('GhostLink v0.1: host in one app, join from another by 
 
     // Back home, the saved server does not let her in again (spec §7: blocked, then a new invite is needed).
     await lost.getByRole('button', { name: 'Voltar aos servidores' }).click();
-    await bia.page.getByRole('navigation', { name: 'Seus servidores' }).getByRole('button', { name: SERVER, exact: true }).click();
+    await bia.page.getByRole('navigation', { name: 'Início' }).getByRole('button', { name: SERVER, exact: true }).click();
     await bia.page.getByRole('alert').filter({ hasText: 'Você foi expulso há pouco' }).waitFor({ timeout: 20_000 });
     expect(await textChannel(bia.page, 'geral').count()).toBe(0);
     await members(ana.page).getByRole('button', { name: /^Ana, Online/ }).waitFor();
