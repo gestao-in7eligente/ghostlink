@@ -20,6 +20,7 @@ export interface FetchInit {
   method: 'POST';
   headers: Record<string, string>;
   body: string;
+  redirect: 'error';
   signal: AbortSignal;
 }
 
@@ -175,6 +176,8 @@ export class RailwayClient {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json', authorization: `Bearer ${this.#token}` },
         body: JSON.stringify({ query: op.doc, variables, operationName: op.name }),
+        // The Bearer token goes to this one URL only, never along a redirect.
+        redirect: 'error',
         signal: abort.signal,
       });
       const text = await res.text();
