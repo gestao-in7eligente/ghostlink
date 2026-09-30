@@ -478,6 +478,26 @@ describe('FriendsEngine: following the identity and the switches (friends spec Â
     expect(warnings.join('\n')).toMatch(/did not start/);
   });
 
+  it('a node that cannot announce itself is stopped, and the renderer hears that it is off', async () => {
+    let stopped = 0;
+    const node = {
+      connectTo: () => {},
+      disconnectFrom: () => {},
+      onLink: () => () => true,
+      setInbox: () => Promise.resolve(),
+      requestVia: () => Promise.reject(new Error('no network')),
+      listen: () => Promise.reject(new Error('bind EACCES')),
+      stop: async () => {
+        stopped++;
+      },
+    };
+    const ana = await app('Ana', { deps: { createNode: () => Promise.resolve(node) } }).start();
+    await until(async () => !(await ana.engine.state()).running);
+    expect(stopped).toBe(1);
+    expect(ana.snapshots.at(-1)).toMatchObject({ running: false, available: true });
+    expect(await codeOf(ana.engine.add('GLF1-NOPE'))).toBe('P2P_UNAVAILABLE');
+  });
+
   it('refuses keys that are not keys', async () => {
     const ana = await app('Ana').start();
     expect(await codeOf(ana.engine.accept('not-a-key'))).toBe('BAD_REQUEST');

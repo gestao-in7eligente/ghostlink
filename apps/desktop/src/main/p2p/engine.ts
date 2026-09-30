@@ -148,7 +148,7 @@ export class FriendsEngine {
   // window.ghostlink.friends.
 
   state(): Promise<FriendsSnapshot> {
-    return this.#run(() => this.#snapshot());
+    return this.#run(() => {});
   }
 
   add(code: string): Promise<FriendsSnapshot> {
@@ -282,25 +282,31 @@ export class FriendsEngine {
   async #startNode(session: Session): Promise<void> {
     // Two nodes with one key must not overlap: the old one's goodbye would erase the new one's announcement.
     await this.#leaving;
+    let node: FriendsNode | null = null;
     try {
-      const node = await this.#createNode({
+      node = await this.#createNode({
         seed: session.seed,
         allow: (remoteKey) => session.friends.allows(remoteKey),
         bootstrap: this.#d.bootstrap,
         bindHost: this.#d.bindHost,
       });
-      session.node = node;
       session.friends.attach(node);
-      // Announcing takes seconds on the public DHT; requests and links already work meanwhile.
-      node.listen().catch((e: unknown) => {
-        if (session.node !== node) return; // stopped meanwhile
-        this.#d.log?.error('[friends] the P2P engine could not announce itself:', e);
-        this.#stopNode(session);
-        this.#changed();
-      });
+      session.node = node;
     } catch (e) {
+      // No network stack (a native module did not load, no socket): the app goes on without friends online.
       this.#d.log?.error('[friends] the P2P engine did not start:', e);
+      session.friends.detach();
+      node?.stop().catch(() => {});
+      return;
     }
+    // Announcing takes seconds on the public DHT; the node already reaches out meanwhile.
+    const started = node;
+    started.listen().catch((e: unknown) => {
+      if (session.node !== started) return; // stopped meanwhile
+      this.#d.log?.error('[friends] the P2P engine could not announce itself:', e);
+      this.#stopNode(session);
+      this.#changed();
+    });
   }
 
   #stopNode(session: Session): void {
