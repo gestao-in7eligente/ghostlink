@@ -4,7 +4,7 @@
 import { randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, type StatementSync } from 'node:sqlite';
 import type { FriendState } from '../../shared/friendsTypes.js';
 import { fileTimestamp, freePath } from '../files.js';
 import { INVITE_SECRET_BYTES } from './friendCode.js';
@@ -143,6 +143,8 @@ function setAside(path: string, suffix: string): void {
 
 export class FriendsStore {
   readonly #db: DatabaseSync;
+  /** Prepared once: the firewall asks get() for every knock on the friend key. */
+  readonly #statements = new Map<string, StatementSync>();
   #me: Me;
 
   private constructor(db: DatabaseSync, me: Me) {
@@ -186,56 +188,64 @@ export class FriendsStore {
   }
 
   setInviteSecret(inviteSecret: Uint8Array): void {
-    this.#db.prepare('UPDATE me SET invite_secret = ? WHERE id = 1').run(inviteSecret);
+    this.#prepare('UPDATE me SET invite_secret = ? WHERE id = 1').run(inviteSecret);
     this.#me = { ...this.#me, inviteSecret };
   }
 
   setInboxEnabled(inboxEnabled: boolean): void {
-    this.#db.prepare('UPDATE me SET inbox_enabled = ? WHERE id = 1').run(inboxEnabled ? 1 : 0);
+    this.#prepare('UPDATE me SET inbox_enabled = ? WHERE id = 1').run(inboxEnabled ? 1 : 0);
     this.#me = { ...this.#me, inboxEnabled };
   }
 
   setAvailable(available: boolean): void {
-    this.#db.prepare('UPDATE me SET available = ? WHERE id = 1').run(available ? 1 : 0);
+    this.#prepare('UPDATE me SET available = ? WHERE id = 1').run(available ? 1 : 0);
     this.#me = { ...this.#me, available };
   }
 
   get(key: Uint8Array): FriendRow | undefined {
-    const row = this.#db.prepare('SELECT * FROM friends WHERE key = ?').get(key) as FriendSqlRow | undefined;
+    const row = this.#prepare('SELECT * FROM friends WHERE key = ?').get(key) as FriendSqlRow | undefined;
     return row && toRow(row);
   }
 
   list(): FriendRow[] {
-    return (this.#db.prepare('SELECT * FROM friends ORDER BY key').all() as unknown as FriendSqlRow[]).map(toRow);
+    return (this.#prepare('SELECT * FROM friends ORDER BY key').all() as unknown as FriendSqlRow[]).map(toRow);
   }
 
   /** Inserts the row, or replaces the one with the same key. */
   put(row: FriendRow): void {
-    this.#db
-      .prepare(
-        `INSERT INTO friends (key, nickname, local_name, state, since, invite_secret) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT (key) DO UPDATE SET nickname = excluded.nickname, local_name = excluded.local_name,
-           state = excluded.state, since = excluded.since, invite_secret = excluded.invite_secret`,
-      )
-      .run(row.key, row.nickname, row.localName, row.state, row.since, row.inviteSecret);
+    this.#prepare(
+      `INSERT INTO friends (key, nickname, local_name, state, since, invite_secret) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT (key) DO UPDATE SET nickname = excluded.nickname, local_name = excluded.local_name,
+         state = excluded.state, since = excluded.since, invite_secret = excluded.invite_secret`,
+    ).run(row.key, row.nickname, row.localName, row.state, row.since, row.inviteSecret);
   }
 
   remove(key: Uint8Array): boolean {
-    return Number(this.#db.prepare('DELETE FROM friends WHERE key = ?').run(key).changes) > 0;
+    return Number(this.#prepare('DELETE FROM friends WHERE key = ?').run(key).changes) > 0;
   }
 
   count(...states: FriendState[]): number {
     const marks = states.map(() => '?').join(', ');
-    return Number((this.#db.prepare(`SELECT count(*) AS n FROM friends WHERE state IN (${marks})`).get(...states) as { n: number }).n);
+    return Number((this.#prepare(`SELECT count(*) AS n FROM friends WHERE state IN (${marks})`).get(...states) as { n: number }).n);
   }
 
   /** The row that has been in that state the longest. */
   oldest(state: FriendState): FriendRow | undefined {
-    const row = this.#db.prepare('SELECT * FROM friends WHERE state = ? ORDER BY since, key LIMIT 1').get(state) as FriendSqlRow | undefined;
+    const row = this.#prepare('SELECT * FROM friends WHERE state = ? ORDER BY since, key LIMIT 1').get(state) as FriendSqlRow | undefined;
     return row && toRow(row);
   }
 
   close(): void {
+    this.#statements.clear();
     if (this.#db.isOpen) this.#db.close();
+  }
+
+  #prepare(sql: string): StatementSync {
+    let statement = this.#statements.get(sql);
+    if (!statement) {
+      statement = this.#db.prepare(sql);
+      this.#statements.set(sql, statement);
+    }
+    return statement;
   }
 }
