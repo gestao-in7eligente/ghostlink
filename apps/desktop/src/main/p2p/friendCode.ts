@@ -62,8 +62,8 @@ export function decodeFriendCode(input: string): FriendCode {
   if (code === null) throw invalid();
   const bytes = fromBase32(code.slice(FRIEND_CODE_PREFIX.length - 1).replaceAll('-', ''));
   if (bytes === null || bytes.length !== BODY_BYTES) throw invalid();
-  const friendPub = bytes.subarray(0, FRIEND_KEY_BYTES);
-  const inviteSecret = bytes.subarray(FRIEND_KEY_BYTES, FRIEND_KEY_BYTES + INVITE_SECRET_BYTES);
+  const friendPub = bytes.slice(0, FRIEND_KEY_BYTES);
+  const inviteSecret = bytes.slice(FRIEND_KEY_BYTES, FRIEND_KEY_BYTES + INVITE_SECRET_BYTES);
   const checksum = labelled(CRYPTO_LABELS.friendCode, friendPub, inviteSecret).subarray(0, CHECKSUM_BYTES);
   if (!checksum.equals(bytes.subarray(BODY_BYTES - CHECKSUM_BYTES))) throw invalid();
   return { friendPub, inviteSecret };

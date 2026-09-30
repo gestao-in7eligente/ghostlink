@@ -77,20 +77,21 @@ export function knock(link: FriendLink, opts: KnockOptions): Promise<boolean> {
     let proven = false;
     let taken = false;
     const deadline = opts.timers.setTimeout(() => link.close(), INBOX_TIMEOUT_MS);
+    link.onClose(() => {
+      opts.timers.clearTimeout(deadline);
+      resolve(taken);
+    });
+    link.onEnd(() => {
+      taken = proven;
+      link.end();
+    });
+    // Last, so that nothing the owner already said is handled before the listeners above exist.
     link.onData((data) => {
       // The owner says one thing only: its proof. Whoever cannot give it never sees the request.
       const message = proven ? null : read(data);
       if (message?.t !== 'inbox.hello' || !verifyInboxProof(opts.friendPub, link.handshakeHash, signatureBytes(message.sig))) return link.close();
       proven = true;
       link.send(encodeMessage({ t: 'friend.request', nickname: opts.nickname }));
-    });
-    link.onEnd(() => {
-      taken = proven;
-      link.end();
-    });
-    link.onClose(() => {
-      opts.timers.clearTimeout(deadline);
-      resolve(taken);
     });
   });
 }
