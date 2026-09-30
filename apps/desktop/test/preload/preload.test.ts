@@ -20,7 +20,7 @@ describe('preload bridge', () => {
     expect(Object.keys(electron.exposed)).toEqual(['ghostlink']);
     expect(electron.exposed.ghostlink).toBe(api);
     expect(Object.keys(api).sort()).toEqual([
-      'app', 'deepLink', 'host', 'identity', 'join', 'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onPtt', 'onServerEvent', 'ptt', 'railway', 'server', 'servers', 'settings', 'updates',
+      'app', 'deepLink', 'friends', 'host', 'identity', 'join', 'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onPtt', 'onServerEvent', 'ptt', 'railway', 'server', 'servers', 'settings', 'updates',
     ]);
     expect(Object.keys(api.host).sort()).toEqual(['copyText', 'firewall', 'fixFirewall', 'invite', 'join', 'logs', 'recoverOwnership', 'restart', 'start', 'status', 'stop']);
     expect(Object.keys(api.app).sort()).toEqual(['copyText', 'info', 'openExternal']);
@@ -32,6 +32,7 @@ describe('preload bridge', () => {
     expect(Object.keys(api.servers).sort()).toEqual(['connect', 'disconnect', 'list', 'remove']);
     expect(Object.keys(api.settings).sort()).toEqual(['get', 'set']);
     expect(Object.keys(api.updates).sort()).toEqual(['onState', 'restart', 'setAutoCheck', 'state']);
+    expect(Object.keys(api.friends).sort()).toEqual(['accept', 'add', 'block', 'dismiss', 'newCode', 'onChange', 'remove', 'rename', 'setAvailable', 'setInbox', 'state']);
     expect(Object.keys(api.railway).sort()).toEqual(['connect', 'create', 'discard', 'disconnect', 'onProgress', 'pending', 'resume', 'status']);
   });
 
@@ -77,6 +78,16 @@ describe('preload bridge', () => {
     ['updates.setAutoCheck', () => api.updates.setAutoCheck(false), IPC.updatesSetAutoCheck, [false]],
     ['updates.restart', () => api.updates.restart(), IPC.updatesRestart, []],
     ['ptt.configure', () => api.ptt.configure({ enabled: true, code: 'KeyV' }), IPC.pttConfigure, [{ enabled: true, code: 'KeyV' }]],
+    ['friends.state', () => api.friends.state(), IPC.friendsState, []],
+    ['friends.add', () => api.friends.add('GLF1-AAAA'), IPC.friendsAdd, ['GLF1-AAAA']],
+    ['friends.accept', () => api.friends.accept('k'), IPC.friendsAccept, ['k']],
+    ['friends.dismiss', () => api.friends.dismiss('k'), IPC.friendsDismiss, ['k']],
+    ['friends.remove', () => api.friends.remove('k'), IPC.friendsRemove, ['k']],
+    ['friends.block', () => api.friends.block('k'), IPC.friendsBlock, ['k']],
+    ['friends.rename', () => api.friends.rename('k', 'Bia'), IPC.friendsRename, ['k', 'Bia']],
+    ['friends.newCode', () => api.friends.newCode(), IPC.friendsNewCode, []],
+    ['friends.setInbox', () => api.friends.setInbox(false), IPC.friendsSetInbox, [false]],
+    ['friends.setAvailable', () => api.friends.setAvailable(true), IPC.friendsSetAvailable, [true]],
     ['railway.status', () => api.railway.status(), IPC.railwayStatus, []],
     ['railway.connect', () => api.railway.connect('tok'), IPC.railwayConnect, ['tok']],
     ['railway.disconnect', () => api.railway.disconnect(), IPC.railwayDisconnect, []],
@@ -119,6 +130,8 @@ describe('preload bridge', () => {
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.updates);
     api.onPtt(() => {});
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.ptt);
+    api.friends.onChange(() => {});
+    expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.friends);
     api.railway.onProgress(() => {});
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.railway);
   });

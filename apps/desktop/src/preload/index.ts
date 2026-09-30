@@ -14,6 +14,7 @@ import {
   type IpcReturn,
   type PttEvent,
 } from '../shared/ipcTypes.js';
+import type { FriendsSnapshot } from '../shared/friendsTypes.js';
 import type { HostStatus } from '../shared/hostTypes.js';
 import type { RailwayProgress } from '../shared/railwayTypes.js';
 import type { UpdateState } from '../shared/updates.js';
@@ -106,6 +107,19 @@ export const api: GhostlinkApi = {
     resume: () => invoke(IPC.railwayResume),
     discard: () => invoke(IPC.railwayDiscard),
     onProgress: (cb) => subscribe<RailwayProgress>(IPC_EVENTS.railway, cb),
+  },
+  friends: {
+    state: () => invoke(IPC.friendsState),
+    add: (code) => invoke(IPC.friendsAdd, code),
+    accept: (key) => invoke(IPC.friendsAccept, key),
+    dismiss: (key) => invoke(IPC.friendsDismiss, key),
+    remove: (key) => invoke(IPC.friendsRemove, key),
+    block: (key) => invoke(IPC.friendsBlock, key),
+    rename: (key, localName) => invoke(IPC.friendsRename, key, localName),
+    newCode: () => invoke(IPC.friendsNewCode),
+    setInbox: (enabled) => invoke(IPC.friendsSetInbox, enabled),
+    setAvailable: (enabled) => invoke(IPC.friendsSetAvailable, enabled),
+    onChange: (cb) => subscribe<FriendsSnapshot>(IPC_EVENTS.friends, cb),
   },
 };
 

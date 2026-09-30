@@ -4,6 +4,7 @@
 import type { Envelope, ParsedJoinInput, WelcomePayload } from '@ghostlink/shared';
 import type { AppErrorCode } from './appErrors.js';
 import type { FirewallFixResult, FirewallStatus, HostApi, HostConfig, HostInvite, HostInviteOptions, HostStartResult, HostStatus } from './hostTypes.js';
+import type { FriendsApi, FriendsSnapshot } from './friendsTypes.js';
 import type { RailwayAccount, RailwayCreateRequest, RailwayPending, RailwayProgress } from './railwayTypes.js';
 import type { UpdateState, UpdatesApi } from './updates.js';
 
@@ -151,6 +152,7 @@ export interface GhostlinkApi {
   ptt: { configure(config: PttConfig): Promise<PttStatus> };
   onPtt(cb: (e: PttEvent) => void): () => void;
   railway: RailwayApi;
+  friends: FriendsApi;
 }
 
 /**
@@ -218,6 +220,16 @@ export const IPC = {
   railwayPending: 'ghostlink:railway.pending',
   railwayResume: 'ghostlink:railway.resume',
   railwayDiscard: 'ghostlink:railway.discard',
+  friendsState: 'ghostlink:friends.state',
+  friendsAdd: 'ghostlink:friends.add',
+  friendsAccept: 'ghostlink:friends.accept',
+  friendsDismiss: 'ghostlink:friends.dismiss',
+  friendsRemove: 'ghostlink:friends.remove',
+  friendsBlock: 'ghostlink:friends.block',
+  friendsRename: 'ghostlink:friends.rename',
+  friendsNewCode: 'ghostlink:friends.newCode',
+  friendsSetInbox: 'ghostlink:friends.setInbox',
+  friendsSetAvailable: 'ghostlink:friends.setAvailable',
 } as const;
 
 /** Events pushed from main to the renderer. */
@@ -230,6 +242,7 @@ export const IPC_EVENTS = {
   updates: 'ghostlink:event.updates',
   ptt: 'ghostlink:event.ptt',
   railway: 'ghostlink:event.railway',
+  friends: 'ghostlink:event.friends',
 } as const;
 
 /** Arguments and result of every invoke channel; main's handlers and the preload are both typed from it. */
@@ -279,7 +292,20 @@ export interface IpcContract {
   [IPC.railwayPending]: { args: []; result: RailwayPending | null };
   [IPC.railwayResume]: { args: []; result: RendererWelcome };
   [IPC.railwayDiscard]: { args: []; result: void };
+  [IPC.friendsState]: { args: []; result: FriendsSnapshot };
+  [IPC.friendsAdd]: { args: [code: string]; result: FriendsSnapshot };
+  [IPC.friendsAccept]: { args: [key: string]; result: FriendsSnapshot };
+  [IPC.friendsDismiss]: { args: [key: string]; result: FriendsSnapshot };
+  [IPC.friendsRemove]: { args: [key: string]; result: FriendsSnapshot };
+  [IPC.friendsBlock]: { args: [key: string]; result: FriendsSnapshot };
+  [IPC.friendsRename]: { args: [key: string, localName: string | null]; result: FriendsSnapshot };
+  [IPC.friendsNewCode]: { args: []; result: FriendsSnapshot };
+  [IPC.friendsSetInbox]: { args: [enabled: boolean]; result: FriendsSnapshot };
+  [IPC.friendsSetAvailable]: { args: [enabled: boolean]; result: FriendsSnapshot };
 }
+
+/** The friends channels (v0.3), handled by main/friendsIpc.ts. */
+export type FriendsIpcChannel = Extract<IpcChannel, `ghostlink:friends.${string}`>;
 
 /** The Railway provisioning channels (v0.2), handled by main/railwayIpc.ts. */
 export type RailwayIpcChannel = Extract<IpcChannel, `ghostlink:railway.${string}`>;
