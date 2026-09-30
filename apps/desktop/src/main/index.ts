@@ -8,7 +8,7 @@ import { APP_ID, APP_NAME, DEFAULT_PORT } from '@ghostlink/shared';
 import { IPC_EVENTS, type Platform } from '../shared/ipcTypes.js';
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges } from './appProtocol.js';
 import { ClientController } from './controller.js';
-import { GHOSTKEY_EXTENSION, IdentityBackup } from './backup.js';
+import { GHOSTKEY_EXTENSION, IdentityBackup, type IdentityBackupDeps } from './backup.js';
 import { DeepLinks, extractDeepLink, registerProtocolClient } from './deeplink.js';
 import { openExternalWithConfirm } from './externalLinks.js';
 import { HostFirewall, firewallPrograms } from './hostFirewall.js';
@@ -19,7 +19,7 @@ import { IdentityStore } from './identity.js';
 import { registerIpc } from './ipc.js';
 import { FileLog, consoleMirror, guardStdio, installCrashHandlers, mainLog, safeWrite, setMainLog } from './log.js';
 import { ChatNotifier } from './notifications.js';
-import { p2pSelfTest } from './p2p/selfTest.js';
+import { FriendsEngine, friendsEnv, watchIdentity } from './p2p/engine.js';
 import { installRendererPinning, setRendererPin } from './pinning.js';
 import { PushToTalk, type PttHookModule } from './ptt.js';
 import { railwayImage } from './railway/image.js';
@@ -120,6 +120,19 @@ function start(): BrowserWindow {
     clientName: `ghostlink/${app.getVersion()} (${process.platform})`,
   });
   const host = startHostMode(window, controller, servers, settings, send);
+  // Friends over P2P (v0.3): the engine follows the identity; the smoke run has its own self-test on loopback.
+  const friends = new FriendsEngine({
+    identity,
+    settings,
+    userDataDir: userData,
+    emit: (snapshot) => send(IPC_EVENTS.friends, snapshot),
+    log: mainLog,
+    ...(smoke ? { network: false } : friendsEnv(process.env, app.isPackaged)),
+  });
+  // What IPC and the backup do to the identity (create, unlock, import, delete) reaches the engine.
+  const watchedIdentity = watchIdentity(identity, () => void friends.sync());
+  void friends.sync();
+  app.on('before-quit', () => void friends.dispose());
   // Windows shows toasts (and routes their clicks) only for a known AppUserModelID.
   if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
   const notifier = new ChatNotifier({
@@ -159,8 +172,16 @@ function start(): BrowserWindow {
   });
   registerIpc({
     appOrigin,
-    identity,
-    settings,
+    identity: watchedIdentity,
+    // A new global nickname is announced to the friends with an open link.
+    settings: {
+      get: () => settings.get(),
+      set: (patch) => {
+        const next = settings.set(patch);
+        if (patch.nickname !== undefined) friends.nicknameChanged();
+        return next;
+      },
+    },
     controller,
     notifications: notifier,
     shell: {
@@ -184,9 +205,10 @@ function start(): BrowserWindow {
     ptt,
     appInfo: () => ({ version: app.getVersion(), platform: process.platform as Platform, locale: app.getLocale() }),
     host: { manager: host, copyText: (text) => clipboard.writeText(text), firewall: hostFirewall(host) },
-    backup: identityBackup(window, identity, controller),
+    backup: identityBackup(window, watchedIdentity, controller),
     deepLinks: deepLinks ?? undefined,
     railway,
+    friends,
   });
   updater.start();
   app.on('before-quit', () => {
@@ -274,7 +296,7 @@ function startHostMode(
 }
 
 /** spec §3.4: .ghostkey export/import through the native dialogs; the seed stays in this process. */
-function identityBackup(window: BrowserWindow, identity: IdentityStore, controller: ClientController): IdentityBackup {
+function identityBackup(window: BrowserWindow, identity: IdentityBackupDeps['identity'], controller: ClientController): IdentityBackup {
   const filters = [{ name: 'GhostLink', extensions: [GHOSTKEY_EXTENSION] }];
   return new IdentityBackup({
     identity,
@@ -332,7 +354,8 @@ function startSmoke(window: BrowserWindow): void {
       )) === true,
     forkServer: () =>
       forkServer({ dataDir: mkdtempSync(join(app.getPath('temp'), 'ghostlink-smoke-')), port: 0, ...hostedServerLogging(mainLog) }),
-    p2p: () => p2pSelfTest(),
+    // Loaded only here: the native modules of the P2P stack must never be needed just to start the app.
+    p2p: async () => (await import('./p2p/selfTest.js')).p2pSelfTest(),
     exit: (code) => app.exit(code),
     // `npm run smoke` reads "smoke: OK" from stdout; in development the log mirror prints it.
     log: (message) => {
