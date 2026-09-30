@@ -1,4 +1,5 @@
-/* The Home screen: Discord's "Amigos" page (measured on the owner's screenshot, 2026-09-29). */
+/* The Home screen's frame: Discord's Friends page (measured on the owner's screenshot,
+   2026-09-29). The friends page itself is features/friends/friends.module.css. */
 
 /* Doubled class: wins over layout.module.css's .shell whatever the bundle order. */
 .shell.shell {
@@ -33,16 +34,10 @@
   color: var(--text-strong);
 }
 
-.navList,
-.dmList,
-.rows {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
 .navList {
+  margin: 0;
   padding: 0 8px;
+  list-style: none;
 }
 
 .navItem {
@@ -68,6 +63,30 @@
   color: var(--text-strong);
 }
 
+.navSelected,
+.navSelected:hover {
+  background: var(--bg-selected);
+  color: var(--text-strong);
+  cursor: default;
+}
+
+.navLabel {
+  flex: 1;
+}
+
+.navBadge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--danger-strong);
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
 .sectionHeader {
   display: flex;
   align-items: center;
@@ -83,330 +102,28 @@
   font-weight: 500;
 }
 
-.sectionTitle:hover {
-  color: var(--text-strong);
-}
-
-.sectionAdd {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--text-faint);
-  cursor: pointer;
-}
-
-.sectionAdd:hover {
-  color: var(--text-strong);
-}
-
-.dmList {
-  padding: 0 8px;
-}
-
-.dmItem {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  height: 44px;
-  margin-bottom: 2px;
-  padding: 0 8px;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  color: var(--text-soft);
-  font-size: 16px;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-}
-
-.dmItem:hover:not(:disabled) {
-  background: var(--bg-input);
-  color: var(--text-strong);
-}
-
-.dmName {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.avatar {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-ink);
+.sectionEmpty {
+  margin: 8px 18px;
+  color: var(--text-ghost);
   font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
 }
 
-/* ---- center: top bar ---- */
+/* ---- center ---- */
 
 .center {
   background: var(--bg-chat);
 }
 
-.topbar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: var(--header-h);
-  padding: 0 16px;
-  border-bottom: 1px solid var(--line);
-  overflow: hidden;
-}
-
-.topTitle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-strong);
-  font-size: 16px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.topTitle svg {
-  color: var(--text-icon);
-}
-
-.topDot {
-  flex: none;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--border-strong);
-}
-
-.tabs {
-  display: flex;
-  gap: 8px;
-}
-
-.tab,
-.addButton {
-  height: 32px;
-  padding: 0 12px;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.tab {
-  background: none;
-  color: var(--text-icon);
-}
-
-.tab:hover {
-  background: var(--bg-input);
-  color: var(--text-strong);
-}
-
-.tabSelected,
-.tabSelected:hover {
-  background: var(--bg-selected);
-  color: var(--text-strong);
-}
-
-.addButton {
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-
-.addButton:hover {
-  background: var(--accent-hover);
-}
-
-/* ---- center: search and list ---- */
-
-.listArea {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 12px 16px 16px 24px;
-}
-
-.search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 12px;
-  border: 1px solid var(--border-search);
-  border-radius: 8px;
-  background: var(--bg-search);
-  color: var(--text-soft);
-}
-
-.search:focus-within {
-  border-color: var(--accent);
-}
-
-.searchInput {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  outline: none;
-  background: none;
-  color: var(--text-strong);
-  font-size: 16px;
-}
-
-.searchInput::placeholder {
-  color: var(--text-soft);
-}
-
-.count {
-  margin: 24px 0 16px;
-  color: var(--text-strong);
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.none {
-  margin: 8px 0;
-  color: var(--text-soft);
-  font-size: 14px;
-}
-
+/* A server in the rail that could not be opened. */
 .error {
-  margin: 12px 0 0;
-  color: var(--danger);
-  font-size: 14px;
-}
-
-.row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  height: 62px;
-  margin: 0 -10px;
-  padding: 0 10px;
-  border-top: 1px solid var(--line);
+  flex: none;
+  margin: 12px 16px 0 24px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger-strong);
   border-radius: 8px;
-}
-
-/* The hovered row's own top line and the next row's go away (Discord hides both). */
-.row:hover,
-.row:hover + .row,
-.row:focus-within,
-.row:focus-within + .row {
-  border-top-color: transparent;
-}
-
-.row:hover,
-.row:focus-within {
-  background: var(--bg-hover);
-}
-
-.rowMain {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  height: 100%;
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.rowText {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  line-height: 1.25;
-}
-
-.rowName,
-.rowSub {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rowName {
+  background: var(--danger-bg);
   color: var(--text-strong);
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.rowSub {
-  color: var(--text-soft);
   font-size: 14px;
-}
-
-.rowActions {
-  display: flex;
-  gap: 10px;
-  margin-left: 12px;
-}
-
-.roundButton {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: none;
-  color: var(--text-icon);
-  cursor: pointer;
-}
-
-.row:hover .roundButton,
-.row:focus-within .roundButton {
-  background: var(--bg-rail);
-}
-
-.roundButton:hover:not(:disabled) {
-  color: var(--text-strong);
-}
-
-/* No servers yet: Discord's empty illustration spot. */
-.welcome {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 32px;
-  text-align: center;
-}
-
-.welcomeTitle {
-  margin: 8px 0 0;
-  color: var(--text-strong);
-  font-size: 24px;
-  font-weight: 700;
-}
-
-.welcomeText {
-  max-width: 440px;
-  margin: 0;
-  color: var(--text-soft);
-  font-size: 16px;
 }
 
 /* ---- "Ativo agora" ---- */
@@ -447,6 +164,20 @@
   font-size: 14px;
 }
 
+.avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
 .card {
   overflow: hidden;
   border: 1px solid var(--line);
@@ -460,6 +191,31 @@
   gap: 12px;
   padding: 16px;
   background: var(--bg-hover);
+}
+
+.cardText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.cardName,
+.cardSub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardName {
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.cardSub {
+  color: var(--text-soft);
+  font-size: 14px;
 }
 
 .cardBody {

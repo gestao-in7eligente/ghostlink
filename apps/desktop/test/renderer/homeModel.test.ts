@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { HostStatus } from '../../src/shared/hostTypes.js';
 import type { SavedServer } from '../../src/shared/ipcTypes.js';
-import { filterHomeRows, homeActivity, homeServerRows, shouldStartInsteadOfConnect, stoppedHostedServer } from '../../src/renderer/integration/homeModel.js';
+import { homeActivity, homeServerRows, shouldStartInsteadOfConnect, stoppedHostedServer } from '../../src/renderer/integration/homeModel.js';
 
 const saved = (id: string, name: string, serverKeyId: string): SavedServer => ({ id, name, serverKeyId, addresses: ['127.0.0.1:7700'], nickname: 'Ana', addedAt: 1 });
 
@@ -88,28 +88,6 @@ describe('rail click on a saved server', () => {
     expect(shouldStartInsteadOfConnect(casa, host({ state: 'running', serverKeyId: 'KEY-A', config }))).toBe(false);
     expect(shouldStartInsteadOfConnect(saved('b', 'Amigos', 'KEY-B'), host({ state: 'stopped', serverKeyId: 'KEY-A', config }))).toBe(false);
     expect(shouldStartInsteadOfConnect(casa, null)).toBe(false);
-  });
-});
-
-describe('Home list filters (tabs and search)', () => {
-  const rows = homeServerRows(
-    [saved('a', 'Casa do Zé', 'KEY-A'), { ...saved('b', 'Amigos', 'KEY-B'), addresses: ['altaria.proxy.rlwy.net:25889'] }, { ...saved('c', 'Sem endereço', 'KEY-C'), addresses: [] }],
-    host({ state: 'running', serverKeyId: 'KEY-A', config }),
-  );
-
-  it('shows everything on "Todos" and only the server hosted here on "Hospedados"', () => {
-    expect(filterHomeRows(rows, 'all', '').map((r) => r.id)).toEqual(['a', 'b', 'c']);
-    expect(filterHomeRows(rows, 'hosted', '').map((r) => r.id)).toEqual(['a']);
-  });
-
-  it('searches names and addresses, ignoring case, accents and surrounding spaces', () => {
-    expect(filterHomeRows(rows, 'all', '  casa do ze ').map((r) => r.id)).toEqual(['a']);
-    expect(filterHomeRows(rows, 'all', 'RLWY').map((r) => r.id)).toEqual(['b']);
-    expect(filterHomeRows(rows, 'all', 'nada')).toEqual([]);
-  });
-
-  it('keeps a row without an address', () => {
-    expect(rows[2]!.address).toBeNull();
   });
 });
 

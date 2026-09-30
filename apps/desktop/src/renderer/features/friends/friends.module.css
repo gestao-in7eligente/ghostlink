@@ -1,0 +1,464 @@
+/* The Friends page in the center of the Home screen (Discord's layout, tokens only). */
+
+/* ---- top bar ---- */
+
+.topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--header-h);
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.topTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.topTitle svg {
+  color: var(--text-icon);
+}
+
+.topDot {
+  flex: none;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tab,
+.addButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab {
+  background: none;
+  color: var(--text-icon);
+}
+
+.tab:hover {
+  background: var(--bg-input);
+  color: var(--text-strong);
+}
+
+.tabSelected,
+.tabSelected:hover {
+  background: var(--bg-selected);
+  color: var(--text-strong);
+}
+
+.addButton {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.addButton:hover {
+  background: var(--accent-hover);
+}
+
+/* Discord turns the selected "Adicionar amigo" into blurple text on a tinted pill. */
+.addSelected,
+.addSelected:hover {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--danger-strong);
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* ---- engine off / failed ---- */
+
+.banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 12px 16px 0 24px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-raised);
+}
+
+.bannerText {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+.bannerText strong {
+  color: var(--text-strong);
+}
+
+/* ---- search and list ---- */
+
+.listArea {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px 16px 24px;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border-search);
+  border-radius: 8px;
+  background: var(--bg-search);
+  color: var(--text-soft);
+}
+
+.search:focus-within {
+  border-color: var(--accent);
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--text-strong);
+  font-size: 16px;
+}
+
+.searchInput::placeholder {
+  color: var(--text-soft);
+}
+
+.count {
+  margin: 24px 0 16px;
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.note {
+  margin: 8px 0;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+.listArea > .note:first-child,
+.note:only-child {
+  padding: 24px;
+}
+
+.error {
+  margin: 12px 0 0;
+  color: var(--danger);
+  font-size: 14px;
+}
+
+.success {
+  margin: 12px 0 0;
+  color: var(--success);
+  font-size: 14px;
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 62px;
+  margin: 0 -10px;
+  padding: 0 10px;
+  border-top: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+/* The hovered row's own top line and the next row's go away (Discord hides both). */
+.row:hover,
+.row:hover + .row,
+.row:focus-within,
+.row:focus-within + .row {
+  border-top-color: transparent;
+}
+
+.row:hover,
+.row:focus-within {
+  background: var(--bg-hover);
+}
+
+.avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* Presence, bottom-right of the avatar, ringed in the surface behind it. */
+.dot {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 14px;
+  height: 14px;
+  border: 3px solid var(--bg-chat);
+  border-radius: 50%;
+  background: var(--text-ghost);
+}
+
+.row:hover .dot,
+.row:focus-within .dot {
+  border-color: var(--bg-hover);
+}
+
+.dotOn {
+  background: var(--success);
+}
+
+.rowText {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.rowName,
+.rowSub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowName {
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.rowSub {
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+.rowActions {
+  display: flex;
+  gap: 10px;
+}
+
+.roundButton {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-rail);
+  color: var(--text-icon);
+  cursor: pointer;
+}
+
+.roundButton:hover {
+  color: var(--text-strong);
+}
+
+.accept:hover {
+  color: var(--success);
+}
+
+.decline:hover {
+  color: var(--danger-strong);
+}
+
+/* ---- no friends yet ---- */
+
+.welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 32px;
+  text-align: center;
+}
+
+.welcomeTitle {
+  margin: 8px 0 0;
+  color: var(--text-strong);
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.welcomeText {
+  max-width: 440px;
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 16px;
+}
+
+/* ---- "Adicionar amigo" ---- */
+
+.addArea {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 20px 24px;
+}
+
+.addForm,
+.codeCard,
+.renameForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.codeCard {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-raised);
+}
+
+.addTitle {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.addLead {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+.addRow {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.addInput {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border-search);
+  border-radius: 8px;
+  outline: none;
+  background: var(--bg-search);
+  color: var(--text-strong);
+  font-size: 15px;
+}
+
+.addInput:focus {
+  border-color: var(--accent);
+}
+
+.code {
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--bg-search);
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.codeActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.codeCard .codeActions {
+  justify-content: flex-start;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.toggle input {
+  accent-color: var(--accent);
+}
+
+.fieldLabel {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
