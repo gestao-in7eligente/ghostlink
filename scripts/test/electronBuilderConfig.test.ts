@@ -109,8 +109,9 @@ describe('apps/desktop/package.json (packaging)', () => {
   // These are exactly the packages the main-process bundles import at run time (plan 1b's
   // build.test.ts checks that ws and zod stay external and that reflect-metadata loads before x509).
   // Add one only for a package that must stay external (a native module, electron-updater…).
-  // livekit-server-sdk: the hosted server's LiveKit client; uiohook-napi: native global push-to-talk hook.
-  const RUNTIME_DEPENDENCIES = ['@peculiar/x509', 'electron-updater', 'livekit-server-sdk', 'reflect-metadata', 'uiohook-napi', 'ws', 'zod'];
+  // livekit-server-sdk: the hosted server's LiveKit client; uiohook-napi: native global push-to-talk hook;
+  // hyperswarm + hyperdht: the P2P engine for friends and DMs (native prebuilds udx-native, sodium-native).
+  const RUNTIME_DEPENDENCIES = ['@peculiar/x509', 'electron-updater', 'hyperdht', 'hyperswarm', 'livekit-server-sdk', 'reflect-metadata', 'uiohook-napi', 'ws', 'zod'];
 
   it('ships only the packages the bundles load at run time', () => {
     expect(Object.keys(pkg.dependencies ?? {}).sort()).toEqual(RUNTIME_DEPENDENCIES);

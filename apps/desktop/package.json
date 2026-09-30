@@ -18,6 +18,8 @@
   "dependencies": {
     "@peculiar/x509": "2.1.0",
     "electron-updater": "6.8.10",
+    "hyperdht": "6.34.0",
+    "hyperswarm": "4.17.2",
     "livekit-server-sdk": "2.19.1",
     "reflect-metadata": "0.2.2",
     "uiohook-napi": "1.5.5",
