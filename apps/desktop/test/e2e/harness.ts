@@ -31,6 +31,10 @@ const INHERITED_NOT = new Set([
   'GHOSTLINK_HOST_BIND',
   'GHOSTLINK_SMOKE',
   'GHOSTLINK_REGISTER_PROTOCOL',
+  'GHOSTLINK_P2P',
+  'GHOSTLINK_DHT_BOOTSTRAP',
+  'GHOSTLINK_P2P_BIND',
+  'GHOSTLINK_RAILWAY_IMAGE',
 ]);
 
 /**
@@ -80,7 +84,8 @@ export class E2eRun {
       if (value === undefined || INHERITED_NOT.has(upper)) continue;
       childEnv[key] = value;
     }
-    Object.assign(childEnv, env, { GHOSTLINK_USER_DATA: userData });
+    // Friends over P2P stay off unless a test gives a private DHT: no test may reach the public one.
+    Object.assign(childEnv, env.GHOSTLINK_DHT_BOOTSTRAP ? {} : { GHOSTLINK_P2P: '0' }, env, { GHOSTLINK_USER_DATA: userData });
     // Playwright finds Electron itself and preloads its loader (it skips the loader with executablePath).
     const app = await electron.launch({
       args: [desktopDir, '--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${this.speechWav()}`, '--lang=pt-BR', ...args],
