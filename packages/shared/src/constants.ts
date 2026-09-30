@@ -10,6 +10,10 @@ export const CRYPTO_LABELS = {
   keyFileMagic: 'GLKEY',
   pastePrefix: 'GL1-',
   scheme: 'ghostlink',
+  // Friends over P2P (v0.3, spec 2026-09-30 §2): the friend seed, the friend code checksum, the inbox key and proof.
+  friendSalt: 'ghostlink/friend/v1',
+  friendCode: 'ghostlink/friendcode/v1',
+  friendInbox: 'ghostlink/inbox/v1',
 } as const; // FROZEN — never change (spec §3.6)
 
 export const LIMITS = {

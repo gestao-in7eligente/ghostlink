@@ -11,6 +11,10 @@ describe('frozen constants (spec §3.6)', () => {
       keyFileMagic: 'GLKEY',
       pastePrefix: 'GL1-',
       scheme: 'ghostlink',
+      // Friends over P2P (v0.3, spec 2026-09-30 §2).
+      friendSalt: 'ghostlink/friend/v1',
+      friendCode: 'ghostlink/friendcode/v1',
+      friendInbox: 'ghostlink/inbox/v1',
     });
     expect(APP_ID).toBe('app.ghostlink.desktop');
   });
