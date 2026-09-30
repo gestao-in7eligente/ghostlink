@@ -258,3 +258,33 @@ describe('release-notes/0.1.0.md', () => {
     expect(notes).toMatch(/Not yet:\*\* camera, screen sharing, files and images, avatars and the macOS app/);
   });
 });
+
+describe('release-notes/0.2.0.md', () => {
+  const notes = read('release-notes/0.2.0.md');
+
+  it('is bilingual and carries the SmartScreen instructions', () => {
+    expect(notes).toContain('## Português');
+    expect(notes).toContain('## English');
+    expect(notes).toContain('Mais informações → Executar assim mesmo');
+    expect(notes).toContain('More info → Run anyway');
+  });
+
+  it('explains verification with the real cosign identity and release key, for the files and the image', () => {
+    const identity = '--certificate-identity "https://github.com/gestao-in7eligente/ghostlink/.github/workflows/release.yml@refs/tags/v0.2.0"';
+    // Twice per language: the checksums and the server image.
+    expect(notes.split(identity)).toHaveLength(5);
+    expect(notes).toContain('cosign verify ghcr.io/gestao-in7eligente/ghostlink-server:0.2.0');
+    const pem = publicKeyPem(RELEASE_PUBLIC_KEY).trim().split('\n');
+    for (const line of pem) expect(notes).toContain(`   ${line}`);
+    expect(notes).not.toContain('0.1.0.exe');
+  });
+
+  it('says what Railway hosting costs and that voice goes over TCP there, and promises nothing unbuilt', () => {
+    expect(notes).toMatch(/O custo vai para a sua conta Railway/);
+    expect(notes).toMatch(/The cost goes to your Railway account/);
+    expect(notes).toMatch(/No Railway a voz passa por TCP/);
+    expect(notes).toMatch(/On Railway, voice goes over TCP/);
+    expect(notes).toMatch(/Ainda não tem:\*\* amigos e mensagens diretas/);
+    expect(notes).toMatch(/Not yet:\*\* friends and direct messages/);
+  });
+});

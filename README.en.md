@@ -9,16 +9,16 @@
   <a href="README.md">Português</a>
 </p>
 
-GhostLink is a free and open-source desktop app for text and voice chat. **Anyone can host their own server**, from the app (one click on **Host**) or on a Linux VPS. There is no account and no central server: your identity is a key that stays on your computer, and every server gets a different derived key.
+GhostLink is a free and open-source desktop app for text and voice chat. **Anyone can host their own server**: on their own computer, in the cloud (the app creates the server on your Railway account) or on a Linux VPS. There is no account and no central server: your identity is a key that stays on your computer, and every server gets a different derived key.
 
-> **Beta (0.x).** Version 0.1 is Windows-only. Camera, screen sharing, files and the macOS app come in the next versions.
+> **Beta (0.x).** Windows-only for now. Friends and direct messages, camera, screen sharing, files and the macOS app come in the next versions.
 
-## In 0.1
+## In 0.2
 
 - **Text:** channels, history, replies, editing, reactions, mentions, unread counts, safe markdown and notifications.
 - **Voice** (LiveKit): mute, deafen, speaking indicator, devices, per-person volume and push-to-talk (global on Windows).
 - **Roles and moderation:** permissions enforced by the server, private channels, invites with limits and expiry, kick, ban, ownership transfer and recovery.
-- **Hosting:** in the app, with UPnP, CGNAT detection and a firewall fix; or on a VPS with `install.sh`.
+- **Hosting:** in the app, with UPnP, CGNAT detection and a firewall fix; in the cloud, with a server the app creates on your Railway account; or on a VPS with `install.sh`.
 - **Security:** TLS with the server certificate pinned, identity on the device only, `.ghostkey` backup, no telemetry, automatic updates checked with Ed25519.
 
 Read [Privacy and security](https://gestao-in7eligente.github.io/ghostlink/en/privacy) before using it: **whoever hosts a server sees what goes through it** (there is no end-to-end encryption).
@@ -87,7 +87,8 @@ A protected `v<X.Y.Z>` tag triggers `.github/workflows/release.yml`:
 1. checks that the tag, the `package.json` versions and `release-notes/<X.Y.Z>.md` agree;
 2. builds the Windows installer (with LiveKit, the smoke test and the auto-update `latest.yml`) and `ghostlink-server-<X.Y.Z>.tgz` for VPS hosting;
 3. after manual approval in the `release` environment, signs every file with the Ed25519 release key (which only exists as that environment's secret), writes `checksums-sha256.txt` and signs it with cosign keyless;
-4. publishes a normal, *latest* release (never a pre-release: auto-update and `releases/latest` ignore pre-releases).
+4. publishes the server's Docker image to `ghcr.io/gestao-in7eligente/ghostlink-server:<X.Y.Z>`, signed with cosign (the app creates Railway servers from it);
+5. publishes a normal, *latest* release (never a pre-release: auto-update and `releases/latest` ignore pre-releases).
 
 The public key is in `packages/shared/src/release.ts` (`RELEASE_PUBLIC_KEY`). The app only installs an update with a valid signature from that key.
 

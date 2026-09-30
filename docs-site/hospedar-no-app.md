@@ -18,7 +18,7 @@ O botão de copiar copia o link `https://…/ghostlink/j/#GL1-…`, que funciona
 O servidor continua no ar enquanto você conversa em outro servidor. Fechar a janela mantém o GhostLink na **bandeja** do Windows; para desligar o servidor, use **Sair** no menu da bandeja.
 
 ::: tip O servidor só funciona com o seu computador ligado
-Para um servidor sempre no ar, use uma [VPS](./hospedar-em-vps).
+Para um servidor sempre no ar, crie um [no Railway](./hospedar-no-railway) pelo próprio app, ou use uma [VPS](./hospedar-em-vps).
 :::
 
 ## Portas
