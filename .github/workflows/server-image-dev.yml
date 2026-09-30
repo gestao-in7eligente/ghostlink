@@ -1,0 +1,54 @@
+# Test image for the Railway provisioning while v0.2 is in development (owner-approved,
+# 2026-09-29): ghcr.io/<owner>/ghostlink-server:0.2.0-dev, rebuilt on every push of the
+# work branch that touches the server. The development app points at it with
+# GHOSTLINK_RAILWAY_IMAGE. Delete this file before merging: releases publish the
+# versioned, signed image from release.yml.
+name: Server image (dev)
+
+on:
+  push:
+    branches: ['v0.2-railway']
+    paths:
+      - 'apps/server/**'
+      - 'packages/shared/**'
+      - 'package-lock.json'
+      - '.github/workflows/server-image-dev.yml'
+
+permissions: {}
+
+concurrency:
+  group: server-image-dev
+  cancel-in-progress: true
+
+jobs:
+  image:
+    name: Build and push 0.2.0-dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/ghostlink-server:0.2.0-dev
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          docker build -f apps/server/docker/Dockerfile \
+            --label "org.opencontainers.image.source=https://github.com/${REPOSITORY}" \
+            -t "${IMAGE}" .
+      - name: Smoke test the image
+        run: docker run --rm --entrypoint node "${IMAGE}" /opt/ghostlink/dist/cli.js version
+      - name: Push
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker push "${IMAGE}"
+          docker logout ghcr.io
