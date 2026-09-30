@@ -9,8 +9,14 @@ declare module 'hyperdht' {
     /** The address the UDP sockets bind to (default: every interface). */
     host?: string;
   }
+  export interface KeyPair {
+    publicKey: Buffer;
+    secretKey: Buffer;
+  }
   export default class DHT {
     constructor(opts?: DhtOptions);
+    /** The Ed25519 key pair of a 32-byte seed (libsodium crypto_sign_seed_keypair). */
+    static keyPair(seed?: Buffer): KeyPair;
     destroy(): Promise<void>;
   }
 }
