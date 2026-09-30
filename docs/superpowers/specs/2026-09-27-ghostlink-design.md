@@ -735,6 +735,37 @@ Algumas plataformas de nuvem só expõem um serviço por HTTP ou por um proxy TC
 - **Atualização:** o servidor vem embutido no app. Atualizar o app atualiza o servidor, com alguns segundos fora do ar.
 - **Migrar para VPS:** o guia explica como copiar a pasta de dados. Isso preserva o certificado (e com ele o `serverKeyId`), as identidades e os convites.
 
+### 9.1 Criar na nuvem (Railway), pelo app (v0.2)
+
+"Criar um servidor" (o **+** da barra e o onboarding) primeiro pergunta onde o servidor fica: **Neste computador** (o Modo Hospedar acima) ou **Na nuvem (Railway)**.
+
+**Token**
+- A pessoa cola um token da conta Railway (de conta ou de workspace; token de projeto não serve). O main valida com `apiToken { workspaces }` (ou `me`) e só então guarda.
+- Fica em `<userData>/railway-token.bin`, cifrado com `safeStorage` como a `identity.bin`. Sem cifragem disponível, o app recusa (`ENCRYPTION_UNAVAILABLE`).
+- **Só o main fala com o Railway** (`https://backboard.railway.com/graphql/v2`, `Authorization: Bearer`, sem seguir redirecionamentos). O token nunca volta ao renderer, nunca entra em log nem em mensagem de erro.
+- "Desconectar" apaga o arquivo. Os servidores criados continuam.
+
+**Provisionamento** (etapas mostradas na tela, nesta ordem)
+
+| Etapa | O que o main faz |
+|---|---|
+| `project` | `projectCreate` no workspace escolhido, com o nome `ghostlink-<slug>` e a descrição "Managed by GhostLink". |
+| `service` | `serviceCreate` sem fonte e `serviceInstanceUpdate`: região, 1 réplica, reinício `ON_FAILURE`, sem dormir, sem healthcheck. |
+| `volume` | `volumeCreate` em `/data`. |
+| `proxy` | `environmentPatchCommit` com `tcpProxies {"7700": {}}` e espera o proxy existir. Guarda `domain:proxyPort`. |
+| `variables` | `GHOSTLINK_NAME`, `GHOSTLINK_VOICE=1`, `GHOSTLINK_PORT=7700`, `PORT=7700`, `GHOSTLINK_DATA=/data`. Remove qualquer domínio HTTP. O contêiner liga o modo proxy sozinho (§8.6). |
+| `deploy` | Define a imagem `ghcr.io/gestao-in7eligente/ghostlink-server:<versão do app>`, publica e espera `SUCCESS` (até 10 min). |
+| `start` | Lê os logs da implantação até achar `Fingerprint: …` e `Setup code …: …` (até 3 min). |
+| `join` | Sonda `domain:proxyPort`, compara a impressão digital respondida com a dos logs e entra com o código de setup, virando dono. |
+
+- **O pin não é TOFU cego:** os logs chegam pela API autenticada do Railway. Se a chave que o endereço responde não bate com a impressão digital dos logs, o app **não entra** (`RAILWAY_FINGERPRINT_MISMATCH`).
+- O código de setup nunca vai ao renderer nem ao disco.
+- **Retomar e excluir:** depois de cada etapa, o main grava `<userData>/railway.json` (ids, nome, região, última etapa; sem token e sem código). Uma criação que falhou ou ficou pela metade oferece **Tentar de novo** (continua da primeira etapa incompleta) e **Excluir o que foi criado** (`projectDelete`).
+- Só uma criação roda por vez (`RAILWAY_BUSY`). Fechar a janela não interrompe: o progresso volta ao reabrir.
+- **Avisos antes de criar:** plano Free ou de teste (o servidor não fica no ar o mês todo) e voz por TCP (§8.6).
+- **Em desenvolvimento**, `GHOSTLINK_RAILWAY_IMAGE` troca a imagem. No app empacotado a variável é ignorada.
+- **Ainda fora:** tela para atualizar, reiniciar e apagar servidores já criados (por enquanto, pelo painel do Railway) e login OAuth no lugar do token colado.
+
 ## 10. Servidor standalone (VPS)
 
 **CLI** (saída em inglês)

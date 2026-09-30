@@ -20,6 +20,7 @@ function sidebarPt(): DefaultTheme.SidebarItem[] {
       text: 'Hospedar',
       items: [
         { text: 'No app', link: '/hospedar-no-app' },
+        { text: 'No Railway', link: '/hospedar-no-railway' },
         { text: 'Numa VPS', link: '/hospedar-em-vps' },
       ],
     },
@@ -47,6 +48,7 @@ function sidebarEn(): DefaultTheme.SidebarItem[] {
       text: 'Host',
       items: [
         { text: 'In the app', link: '/en/host-in-app' },
+        { text: 'On Railway', link: '/en/host-on-railway' },
         { text: 'On a VPS', link: '/en/host-on-vps' },
       ],
     },

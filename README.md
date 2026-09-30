@@ -9,16 +9,16 @@
   <a href="README.en.md">English</a>
 </p>
 
-GhostLink é um app desktop gratuito e de código aberto para chat de texto e voz. **Qualquer pessoa hospeda o próprio servidor**, pelo app (um clique em **Hospedar**) ou numa VPS Linux. Não existe conta nem servidor central: sua identidade é uma chave que fica no seu computador, e cada servidor recebe uma chave derivada diferente.
+GhostLink é um app desktop gratuito e de código aberto para chat de texto e voz. **Qualquer pessoa hospeda o próprio servidor**: no próprio computador, na nuvem (o app cria o servidor na sua conta Railway) ou numa VPS Linux. Não existe conta nem servidor central: sua identidade é uma chave que fica no seu computador, e cada servidor recebe uma chave derivada diferente.
 
-> **Beta (0.x).** A versão 0.1 é só para Windows. Câmera, compartilhamento de tela, arquivos e o app para macOS vêm nas próximas versões.
+> **Beta (0.x).** Por enquanto só para Windows. Amigos e mensagens diretas, câmera, compartilhamento de tela, arquivos e o app para macOS vêm nas próximas versões.
 
-## O que tem na 0.1
+## O que tem na 0.2
 
 - **Texto:** canais, histórico, respostas, edição, reações, menções, não lidas, markdown seguro e notificações.
 - **Voz** (LiveKit): mutar, ensurdecer, indicador de fala, dispositivos, volume por pessoa e push-to-talk (global no Windows).
 - **Cargos e moderação:** permissões aplicadas pelo servidor, canais privados, convites com limite e validade, expulsar, banir, transferir e recuperar a posse.
-- **Hospedar:** no app, com UPnP, detecção de CGNAT e correção do firewall; ou numa VPS com `install.sh`.
+- **Hospedar:** no app, com UPnP, detecção de CGNAT e correção do firewall; na nuvem, com um servidor criado pelo app na sua conta Railway; ou numa VPS com `install.sh`.
 - **Segurança:** TLS com o certificado do servidor fixado, identidade só no dispositivo, backup `.ghostkey`, sem telemetria, atualização automática conferida com Ed25519.
 
 Leia [Privacidade e segurança](https://gestao-in7eligente.github.io/ghostlink/privacidade) antes de usar: **quem hospeda o servidor vê o que passa por ele** (não há criptografia ponta a ponta).
@@ -87,7 +87,8 @@ Uma tag protegida `v<X.Y.Z>` dispara o `.github/workflows/release.yml`:
 1. confere que a tag, as versões dos `package.json` e `release-notes/<X.Y.Z>.md` batem;
 2. gera o instalador do Windows (com o LiveKit, o smoke test e o `latest.yml` do auto-update) e o `ghostlink-server-<X.Y.Z>.tgz` para VPS;
 3. depois da aprovação manual no ambiente `release`, assina cada arquivo com a chave Ed25519 de release (que só existe como segredo desse ambiente), gera o `checksums-sha256.txt` e assina com cosign keyless;
-4. publica a release como normal e *latest* (nunca pre-release: o auto-update e o `releases/latest` ignoram pre-releases).
+4. publica a imagem Docker do servidor em `ghcr.io/gestao-in7eligente/ghostlink-server:<X.Y.Z>`, assinada com cosign (é dela que o app cria servidores no Railway);
+5. publica a release como normal e *latest* (nunca pre-release: o auto-update e o `releases/latest` ignoram pre-releases).
 
 A chave pública fica em `packages/shared/src/release.ts` (`RELEASE_PUBLIC_KEY`). O app só instala uma atualização com assinatura válida dessa chave.
 

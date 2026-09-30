@@ -16,7 +16,15 @@ beforeAll(() => {
   execFileSync(process.execPath, ['scripts/build.mjs'], { cwd: serverRoot, stdio: 'pipe' });
   dataDir = mkdtempSync(join(tmpdir(), 'ghostlink-bundle-'));
 }, 60_000);
-afterAll(() => rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
+afterAll(() => {
+  // Best effort: on Windows under load the spawned CLI can still hold the database for a
+  // moment (EPERM). A leftover temp folder must not fail the run.
+  try {
+    rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch {
+    // The system temp cleaner takes it.
+  }
+});
 
 describe('bundled CLI (dist/cli.js)', () => {
   it('ships the migrations next to the bundle', () => {
