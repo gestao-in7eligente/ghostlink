@@ -101,3 +101,10 @@ describe('FriendSwarm (spec §3.2) over a loopback DHT', () => {
     expect(closed).toBe(true);
   });
 });
+
+describe('p2pSelfTest (the smoke run\'s P2P check)', () => {
+  it('links two nodes over its own loopback DHT and cleans up', async () => {
+    const { p2pSelfTest } = await import('../../src/main/p2p/selfTest.js');
+    await expect(p2pSelfTest()).resolves.toBeUndefined();
+  });
+});

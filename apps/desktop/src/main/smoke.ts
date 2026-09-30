@@ -9,6 +9,8 @@ export interface SmokeDeps {
   /** True once the page rendered and reached the main process through window.ghostlink. */
   rendererReady(): Promise<boolean>;
   forkServer(): Promise<Pick<ForkedServer, 'port' | 'shutdown'>>;
+  /** The P2P engine's self-test (friends and DMs); omitted where it cannot run. */
+  p2p?(): Promise<void>;
   exit(code: number): void;
   log(message: string): void;
   timeoutMs?: number;
@@ -17,9 +19,10 @@ export interface SmokeDeps {
 
 /**
  * GHOSTLINK_SMOKE=1 (contract §5, spec §14): proves the built app works end to end —
- * the renderer loaded through app://, the preload bridge and IPC answer, and a
- * hosted server starts in a utility process, serves TLS and stops. Exits 0 on
- * success and 1 on any failure or after the timeout; exit() is called exactly once.
+ * the renderer loaded through app://, the preload bridge and IPC answer, a hosted
+ * server starts in a utility process, serves TLS and stops, and the P2P engine's
+ * native modules load and link two nodes. Exits 0 on success and 1 on any failure
+ * or after the timeout; exit() is called exactly once.
  */
 export async function runSmoke(deps: SmokeDeps): Promise<void> {
   let finished = false;
@@ -43,7 +46,8 @@ export async function runSmoke(deps: SmokeDeps): Promise<void> {
     } finally {
       await server.shutdown();
     }
-    finish(0, `smoke: OK (renderer ready, hosted server served TLS on port ${server.port} and stopped)`);
+    if (deps.p2p) await deps.p2p();
+    finish(0, `smoke: OK (renderer ready, hosted server served TLS on port ${server.port} and stopped${deps.p2p ? ', P2P link exchanged a message' : ''})`);
   } catch (e) {
     finish(1, `smoke: FAILED (${e instanceof Error ? e.message : String(e)})`);
   }

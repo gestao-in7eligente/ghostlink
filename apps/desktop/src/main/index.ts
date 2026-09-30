@@ -19,6 +19,7 @@ import { IdentityStore } from './identity.js';
 import { registerIpc } from './ipc.js';
 import { FileLog, consoleMirror, guardStdio, installCrashHandlers, mainLog, safeWrite, setMainLog } from './log.js';
 import { ChatNotifier } from './notifications.js';
+import { p2pSelfTest } from './p2p/selfTest.js';
 import { installRendererPinning, setRendererPin } from './pinning.js';
 import { PushToTalk, type PttHookModule } from './ptt.js';
 import { railwayImage } from './railway/image.js';
@@ -331,6 +332,7 @@ function startSmoke(window: BrowserWindow): void {
       )) === true,
     forkServer: () =>
       forkServer({ dataDir: mkdtempSync(join(app.getPath('temp'), 'ghostlink-smoke-')), port: 0, ...hostedServerLogging(mainLog) }),
+    p2p: () => p2pSelfTest(),
     exit: (code) => app.exit(code),
     // `npm run smoke` reads "smoke: OK" from stdout; in development the log mirror prints it.
     log: (message) => {
