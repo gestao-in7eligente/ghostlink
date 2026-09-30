@@ -222,6 +222,24 @@ describe('FriendsEngine: two people over a loopback DHT (friends spec §5.1, §1
     await until(async () => (await bia.sees(ana)) === undefined);
   });
 
+  it('a friendship ended while the other was away comes back when their code is added again', async () => {
+    const ana = await app('Ana').start();
+    const bia = await app('Bia').start();
+    await befriend(ana, bia);
+    await ana.engine.dispose();
+    await bia.engine.remove(await ana.key()); // the goodbye never reaches Ana
+
+    // Ana still has Bia as a friend and reaches for her; Bia's firewall refuses her key.
+    await ana.restart();
+    await pause(2_500);
+    expect(await ana.sees(bia)).toBe('friend');
+    expect(await bia.sees(ana)).toBeUndefined();
+
+    // That refusal must not stick: once Bia asks again, the link opens and Ana's side confirms.
+    await bia.engine.add(await ana.code());
+    await until(async () => (await ana.sees(bia)) === 'friend online' && (await bia.sees(ana)) === 'friend online', 20_000);
+  }, 40_000);
+
   it('block: the friendship ends and later requests are dropped', async () => {
     const ana = await app('Ana').start();
     const bia = await app('Bia').start();
@@ -237,7 +255,7 @@ describe('FriendsEngine: two people over a loopback DHT (friends spec §5.1, §1
     // Unblocked, the request that kept retrying gets through.
     await ana.engine.dismiss(await bia.key());
     await until(async () => (await ana.sees(bia)) === 'pending_in', 15_000);
-  });
+  }, 40_000);
 
   it('a new code makes the old one unreachable; requests by code can be turned off', async () => {
     const ana = await app('Ana').start();
@@ -304,7 +322,7 @@ describe('FriendsEngine: strangers (friends spec §3.2, §11)', () => {
     expect(await ana.sees(bia)).toBeUndefined();
     for (const link of open) link.close();
     await until(async () => (await ana.sees(bia)) === 'pending_in', 15_000);
-  });
+  }, 40_000);
 
   it('a fake inbox (the right inbox key, another friend key) never sees the request', async () => {
     const ana = await app('Ana').start();
