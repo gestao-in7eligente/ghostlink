@@ -9,7 +9,7 @@ import { LIMITS, sanitizeLabel } from '@ghostlink/shared';
 import { AppError } from '../../shared/appErrors.js';
 import type { Friend } from '../../shared/friendsTypes.js';
 import type { Log } from '../log.js';
-import { P2P_VERSION, decodeMessage, encodeMessage, type P2pMessage } from './frames.js';
+import { P2P_VERSION, decodeMessage, encodeMessage, wireNickname, type P2pMessage } from './frames.js';
 import { INVITE_SECRET_BYTES, decodeFriendCode, encodeFriendCode, inboxPublicKey, inboxSeed, shortCode } from './friendCode.js';
 import { keyToText, sameKey, type FriendKey } from './friendKey.js';
 import { InboxLimiter, knock, serveInbox, type Timers } from './inbox.js';
@@ -93,7 +93,7 @@ export class Friends {
     this.#limiter = new InboxLimiter(this.#now);
   }
 
-  // ── What the renderer sees ──────────────────────────────────────────────────────────────
+  // What the renderer sees.
 
   /** This person's friend code (spec §2). */
   code(): string {
@@ -117,7 +117,7 @@ export class Friends {
     return reaches(this.#store.get(remoteKey));
   }
 
-  // ── What the person does ────────────────────────────────────────────────────────────────
+  // What the person does.
 
   /** spec §5.1: the row exists when this returns; the request travels in the background. */
   add(code: string): void {
@@ -200,7 +200,7 @@ export class Friends {
     for (const session of this.#sessions.values()) this.#hello(session.link);
   }
 
-  // ── The network ─────────────────────────────────────────────────────────────────────────
+  // The network.
 
   /** The node is up: reach for friends and for the people we asked, open the inbox, resume requests. */
   attach(network: FriendsNetwork): void {
@@ -231,7 +231,7 @@ export class Friends {
     }
   }
 
-  // ── Friend links (spec §3.3) ────────────────────────────────────────────────────────────
+  // Friend links (spec §3.3).
 
   #onLink(link: FriendLink): void {
     // The firewall let this key in a moment ago; a removal may have come in between.
@@ -301,7 +301,7 @@ export class Friends {
   }
 
   #hello(link: FriendLink): void {
-    this.#send(link, { t: 'hello', v: P2P_VERSION, nickname: this.#d.nickname().slice(0, 256) });
+    this.#send(link, { t: 'hello', v: P2P_VERSION, nickname: wireNickname(this.#d.nickname()) });
   }
 
   #send(link: FriendLink, message: P2pMessage): void {
@@ -318,7 +318,7 @@ export class Friends {
     }
   }
 
-  // ── Becoming friends, and parting ───────────────────────────────────────────────────────
+  // Becoming friends, and parting.
 
   #checkLimit(): void {
     if (this.#store.count('friend', 'pending_out') >= FRIENDS_MAX) throw new AppError('FRIEND_LIMIT');
@@ -352,7 +352,7 @@ export class Friends {
     session.link.onClose(() => this.#timers.clearTimeout(timer));
   }
 
-  // ── Requests we send (spec §5.1) ────────────────────────────────────────────────────────
+  // Requests we send (spec §5.1).
 
   #deliver(key: Uint8Array): void {
     const id = hexOf(key);
@@ -381,7 +381,7 @@ export class Friends {
       .then(async (link) => {
         if (!current()) return link.close();
         delivery.link = link;
-        const taken = await knock(link, { friendPub: row.key, nickname: this.#d.nickname().slice(0, 256), timers: this.#timers });
+        const taken = await knock(link, { friendPub: row.key, nickname: wireNickname(this.#d.nickname()), timers: this.#timers });
         delivery.link = null;
         if (!current()) return;
         if (!taken) return retry();
@@ -402,7 +402,7 @@ export class Friends {
     delivery.link?.close();
   }
 
-  // ── Requests we receive (spec §3.2) ─────────────────────────────────────────────────────
+  // Requests we receive (spec §3.2).
 
   #applyInbox(): void {
     if (!this.#network) return;
@@ -414,7 +414,11 @@ export class Friends {
           onLink: (link: FriendLink) => this.#safely(link, () => this.#onInboxLink(link)),
         }
       : null;
-    this.#network.setInbox(opts).catch((e: unknown) => this.#d.log?.warn(`[friends] the inbox did not change: ${e instanceof Error ? e.message : String(e)}`));
+    const network = this.#network;
+    network.setInbox(opts).catch((e: unknown) => {
+      // A node that was stopped meanwhile refuses the change; that is no news.
+      if (this.#network === network) this.#d.log?.warn(`[friends] the inbox did not change: ${e instanceof Error ? e.message : String(e)}`);
+    });
   }
 
   /** The inbox's firewall: never a blocked key; people we already reach for do not count against the limits. */

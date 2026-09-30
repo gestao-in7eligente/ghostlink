@@ -145,7 +145,7 @@ export class FriendsEngine {
     this.#run(() => this.#session?.friends.announceNickname()).catch(() => {});
   }
 
-  // ── window.ghostlink.friends ────────────────────────────────────────────────────────────
+  // window.ghostlink.friends.
 
   state(): Promise<FriendsSnapshot> {
     return this.#run(() => this.#snapshot());
@@ -193,7 +193,7 @@ export class FriendsEngine {
     });
   }
 
-  // ── Inside ──────────────────────────────────────────────────────────────────────────────
+  // Inside.
 
   /** Runs `step` after everything queued before it and answers with the snapshot that follows it. */
   #run(step: () => unknown): Promise<FriendsSnapshot> {

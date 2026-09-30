@@ -14,8 +14,21 @@ export const MAX_JSON_BYTES = LIMITS.maxPayloadBytes;
 /** spec §3.2: an inbox connection carries one friend.request of at most 1 KiB. */
 export const MAX_INBOX_REQUEST_BYTES = 1024;
 
+/** The longest nickname on the wire. Even at 3 UTF-8 bytes per character a request stays under 1 KiB. */
+export const NICKNAME_WIRE_MAX = 256;
+
 /** A nickname as announced: the receiver cleans it again before showing it; '' means none was set. */
-const nickname = z.string().max(256);
+const nickname = z.string().max(NICKNAME_WIRE_MAX);
+
+/** A nickname cut to what the wire takes, never in the middle of a character. */
+export function wireNickname(name: string): string {
+  let out = '';
+  for (const char of name) {
+    if (out.length + char.length > NICKNAME_WIRE_MAX) break;
+    out += char;
+  }
+  return out;
+}
 
 const messageSchema = z.discriminatedUnion('t', [
   z.strictObject({ t: z.literal('hello'), v: z.literal(P2P_VERSION), nickname }),

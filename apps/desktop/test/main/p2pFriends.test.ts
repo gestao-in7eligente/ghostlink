@@ -442,12 +442,43 @@ describe('the inbox owner\'s rules (friends spec §3.2, §3.4)', () => {
     const { person } = setup();
     const bia = person('Bia').start();
     const ana = person('Ana').start();
-    ana.state.nickname = `  A‮na\u0000 ${'x'.repeat(60)}`;
+    ana.state.nickname = `  A\u202Ena\u0000 ${'x'.repeat(60)}`;
     ana.friends.add(bia.code());
     await flush();
     const nickname = bia.row(ana)!.nickname;
     expect(nickname.startsWith('Ana x')).toBe(true);
     expect([...nickname]).toHaveLength(32);
+  });
+
+  it('sends the longest nickname the settings allow, whole, within the frame limits', async () => {
+    const { world, person } = setup();
+    const bia = person('Bia').start();
+    const ana = person('Ana').start();
+    // 32 graphemes of 10 code points each pass normalizeNickname; that is 320 characters.
+    ana.state.nickname = `\u0E01${'\u0E49'.repeat(9)}`.repeat(32);
+    ana.friends.add(bia.code());
+    await flush();
+    expect(bia.sees(ana)).toBe('pending_in');
+    const seen = bia.row(ana)!.nickname;
+    expect(seen.length).toBeGreaterThan(200);
+    expect(ana.state.nickname.startsWith(seen)).toBe(true);
+    bia.friends.accept(ana.key);
+    await world.settle();
+    expect(bia.sees(ana)).toBe('friend online');
+  });
+
+  it('never cuts a nickname in the middle of a character', async () => {
+    const { world, person } = setup();
+    const bia = person('Bia').start();
+    const ana = person('Ana').start();
+    ana.state.nickname = `a${'\u{1F600}'.repeat(200)}`;
+    ana.friends.add(bia.code());
+    await flush();
+    bia.friends.accept(ana.key);
+    await world.settle();
+    const hello = ana.node.links.get(hexOf(bia.key))!.messages[0]!;
+    // 'a' and 127 whole emoji: never half of a surrogate pair.
+    expect(hello.t === 'hello' && !/\p{Cs}/u.test(hello.nickname) && hello.nickname.length).toBe(255);
   });
 
   it('a repeated request only refreshes the nickname', async () => {

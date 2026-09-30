@@ -4,8 +4,10 @@ import {
   FrameError,
   MAX_INBOX_REQUEST_BYTES,
   MAX_JSON_BYTES,
+  NICKNAME_WIRE_MAX,
   decodeMessage,
   encodeMessage,
+  wireNickname,
   type P2pMessage,
 } from '../../src/main/p2p/frames.js';
 
@@ -93,6 +95,18 @@ describe('frames (friends spec §3.3)', () => {
     ['__proto__ as the type carrier', frame(1, '{"__proto__":{"t":"ping"}}')],
   ])('refuses %s', (_label, bytes) => {
     expect(() => decodeMessage(bytes)).toThrow(FrameError);
+  });
+
+  it('cuts a nickname to 256 characters without splitting one, so any request fits in 1 KiB', () => {
+    expect(wireNickname('Ana')).toBe('Ana');
+    expect(wireNickname('a'.repeat(300))).toHaveLength(NICKNAME_WIRE_MAX);
+    const emoji = wireNickname(`a${'\u{1F600}'.repeat(200)}`);
+    expect(emoji).toHaveLength(255);
+    expect(emoji).not.toMatch(/\p{Cs}/u); // no half of a surrogate pair
+    // The worst case in UTF-8: 3 bytes for every character.
+    const request = encodeMessage({ t: 'friend.request', nickname: wireNickname('\u0E49'.repeat(400)) });
+    expect(request.length).toBeLessThanOrEqual(MAX_INBOX_REQUEST_BYTES);
+    expect(decodeMessage(request, MAX_INBOX_REQUEST_BYTES).t).toBe('friend.request');
   });
 
   it('never sends what it would refuse', () => {

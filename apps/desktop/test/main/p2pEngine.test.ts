@@ -269,7 +269,7 @@ describe('FriendsEngine: two people over a loopback DHT (friends spec §5.1, §1
     await befriend(ana, bia);
     expect((await ana.engine.rename(await bia.key(), 'Bia do trabalho')).friends).toMatchObject([{ localName: 'Bia do trabalho', nickname: 'Bia' }]);
     expect((await ana.engine.rename(await bia.key(), null)).friends).toMatchObject([{ localName: null }]);
-    expect((await ana.engine.rename(await bia.key(), 'B‮ia\u0000')).friends).toMatchObject([{ localName: 'Bia' }]);
+    expect((await ana.engine.rename(await bia.key(), 'B\u202Eia\u0000')).friends).toMatchObject([{ localName: 'Bia' }]);
 
     bia.settings.nickname = 'Beatriz';
     bia.engine.nicknameChanged();
