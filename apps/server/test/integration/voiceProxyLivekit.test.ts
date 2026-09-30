@@ -199,7 +199,9 @@ describe.runIf(binary && process.platform === 'win32' && lan)('voice behind a TC
     // The media itself came back through the fake Railway: LiveKit answered both peers over
     // those ICE-TCP connections (STUN, DTLS, then SRTP). A connection LiveKit did not match to
     // its ICE agent gets no answer at all, and LiveKit has no UDP socket to go around it.
-    const answered = railway.iceConnections.filter((c) => c.down > 2_000);
+    // Over 1 kB down is more than STUN answers alone (the DTLS flight with the certificate);
+    // the speaker's side stays small (RTCP only), so a higher bar fails under load.
+    const answered = railway.iceConnections.filter((c) => c.down > 1_000);
     expect(answered.length, JSON.stringify(railway.connections)).toBeGreaterThanOrEqual(2);
   }, 90_000);
 });
