@@ -4,6 +4,7 @@ import type { RendererWelcome, SavedServer } from '../../shared/ipcTypes.js';
 import { ErrorLine, Screen } from '../components/Screen.js';
 import ui from '../components/ui.module.css';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
+import { ServerIcon } from '../layout/primitives.js';
 import { useSettingsStore } from '../stores/settings.js';
 import { buildConnectRequest, initialJoin, joinReducer, savedServerFor, type JoinAction, type JoinState } from './joinFlow.js';
 
@@ -216,6 +217,8 @@ export function Join({
       : t('join.tofu.title');
     return (
       <Screen title={title}>
+        {/* An invite carries no icon: the server's initials (spec 2026-10-01-icone-do-servidor). */}
+        {invite && s.target.name && <ServerIcon name={s.target.name} size={56} />}
         {invite && s.target.name && <p className={ui.hint}>{t('join.invite.nameHint')}</p>}
         {invite ? (
           <div className={ui.field}>

@@ -281,6 +281,11 @@ export async function updateServer(patch: ServerPatch): Promise<ServerInfo> {
   return request('server.update', { ...patch }, serverInfoSchemaClient);
 }
 
+/** Back to the server's initials (MANAGE_SERVER); setting an icon goes through profile.setServerIcon. */
+export async function clearServerIcon(): Promise<void> {
+  await request('server.iconClear', {}, empty);
+}
+
 export async function transferOwnership(userId: string): Promise<void> {
   await request('server.transferOwnership', { userId }, empty);
 }
