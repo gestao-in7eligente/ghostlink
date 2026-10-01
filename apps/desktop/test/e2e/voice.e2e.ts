@@ -100,8 +100,8 @@ describe.skipIf(!binary)('voice that becomes available after the app connected (
       await cia.page.getByRole('tab', { name: 'Voz' }).click();
       const settings = cia.page.locator('[data-voice-settings]');
       await settings.waitFor();
-      // One title: the tab's (the section no longer repeats it).
-      expect(await cia.page.getByRole('heading', { name: 'Voz', exact: true }).count()).toBe(1);
+      // One title: the tab's, "Voz e vídeo" (the section no longer repeats it).
+      expect(await cia.page.getByRole('heading', { name: 'Voz e vídeo', exact: true }).count()).toBe(1);
       const noise = settings.getByRole('combobox', { name: /supressão de ruído/i });
       await expect.poll(() => noise.textContent()).toBe('RNNoise — neural');
       const group = settings.locator('[data-voice-noise]');
