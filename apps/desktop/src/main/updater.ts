@@ -1,8 +1,9 @@
 // Automatic updates (spec §15), Windows NSIS builds only in v0.1. electron-updater downloads a
 // new release in the background; before it may install, the installer must be newer than the running
 // app, carry a valid Ed25519 signature by the release key and match its line in the release's signed
-// checksums-sha256.txt (updaterSignature.ts). The check runs at startup and every 6 h, can be turned
-// off, and is the app's only contact with a third party (GitHub).
+// checksums-sha256.txt (updaterSignature.ts). The check runs at startup and every 6 h and can be turned
+// off. GitHub is the app's only third party besides the friends network (v0.3: the public Hyperswarm
+// DHT and friends' computers, only while "Ficar disponível para amigos" is on).
 // "Atualizar ao abrir" (docs/superpowers/specs/2026-10-01-atualizar-ao-abrir-design.md): when the
 // app opens, checkAtStartup runs the first check behind the splash and installs a verified update
 // before the main window exists; once the app is open, an update still waits for "Restart to update".

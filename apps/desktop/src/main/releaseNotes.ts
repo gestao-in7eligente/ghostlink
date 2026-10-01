@@ -1,6 +1,6 @@
 // "O que muda na <versão>" on the Updates page (v0.2.3): the notes of a new version are the body of
-// its GitHub release. GitHub stays the app's only third party: the request goes to
-// https://api.github.com alone, never along a redirect, reads at most 64 KB, gives up after 15 s,
+// its GitHub release. No new third party (GitHub, plus the friends network while it is on): the
+// request goes to https://api.github.com alone, never along a redirect, reads at most 64 KB, gives up after 15 s,
 // and is made only when the updater finds a version (or the person clicks "Procurar
 // atualizações"), once per version. The page reads what was fetched; it never triggers a request.
 import { z } from 'zod';

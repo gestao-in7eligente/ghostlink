@@ -14,7 +14,7 @@ export const releaseEn: Record<keyof typeof releasePtBR, string> = {
   'updates.settings.title': 'Updates',
   'updates.settings.autoCheck': 'Check for updates automatically',
   'updates.settings.autoCheckHint':
-    'At startup and every 6 hours, the app looks at the GhostLink releases on GitHub. It is the app’s only contact with a third party. An update is only installed when it carries the signature of the official release key.',
+    'At startup and every 6 hours, the app looks at the GhostLink releases on GitHub. An update is only installed when it carries the signature of the official release key. Besides GitHub, the app only talks to third parties while "Be available to friends" is on: it then uses the public friends network (the Hyperswarm DHT) and connects straight to your friends’ computers.',
   'updates.settings.version': 'Installed version: {version}',
   'updates.settings.unsupported': 'Automatic updates only work in the installed Windows app. New versions are on the GhostLink site.',
 
