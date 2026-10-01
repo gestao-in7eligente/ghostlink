@@ -15,6 +15,9 @@ describe('frozen constants (spec §3.6)', () => {
       friendSalt: 'ghostlink/friend/v1',
       friendCode: 'ghostlink/friendcode/v1',
       friendInbox: 'ghostlink/inbox/v1',
+      // Direct messages (v0.3 phase 2, spec 2026-09-30 §4.1, §4.2).
+      dm: 'ghostlink/dm/v1',
+      entry: 'ghostlink/entry/v1',
     });
     expect(APP_ID).toBe('app.ghostlink.desktop');
   });
