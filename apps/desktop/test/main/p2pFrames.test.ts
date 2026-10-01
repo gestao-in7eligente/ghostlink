@@ -1,6 +1,12 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { dmConversationId } from '../../src/main/p2p/conversations.js';
+import { entryBodyJson, signEntry } from '../../src/main/p2p/entries.js';
+import { friendKeyFromSeed, keyToText } from '../../src/main/p2p/friendKey.js';
 import {
   FRAME_HEADER_BYTES,
+  HAVE_CONVS_MAX,
+  HAVE_HEADS_MAX,
   FrameError,
   MAX_INBOX_REQUEST_BYTES,
   MAX_JSON_BYTES,
@@ -25,6 +31,13 @@ function frame(type: number, body: Uint8Array | string, declared?: number): Buff
 }
 const json = (value: unknown) => frame(1, JSON.stringify(value));
 
+const ana = friendKeyFromSeed(createHash('sha256').update('Ana').digest());
+const bia = friendKeyFromSeed(createHash('sha256').update('Bia').digest());
+const CONV = dmConversationId(ana.publicKey, bia.publicKey);
+const ANA = keyToText(ana.publicKey);
+const BIA = keyToText(bia.publicKey);
+const ENTRY = signEntry(ana, { conv: CONV, seq: 1, ts: 1_700_000_000_000, kind: 'msg', body: entryBodyJson({ kind: 'msg', id: 'ab'.repeat(16), text: 'oi', replyTo: null }) });
+
 describe('frames (friends spec §3.3)', () => {
   it.each<[P2pMessage]>([
     [{ t: 'hello', v: 1, nickname: 'Ana' }],
@@ -35,6 +48,13 @@ describe('frames (friends spec §3.3)', () => {
     [{ t: 'friend.remove' }],
     [{ t: 'ping' }],
     [{ t: 'pong' }],
+    [{ t: 'sync.have', convs: [] }],
+    [{ t: 'sync.have', convs: [{ id: CONV, heads: {} }] }],
+    [{ t: 'sync.have', convs: [{ id: CONV, heads: { [ANA]: 3, [BIA]: 1 } }] }],
+    [{ t: 'sync.want', conv: CONV, author: BIA, from: 1, to: 500 }],
+    [{ t: 'sync.want', conv: CONV, author: ANA, from: 7, to: 7 }],
+    [{ t: 'entry', entry: ENTRY }],
+    [{ t: 'typing', conv: CONV }],
   ])('round-trips %j', (message) => {
     expect(decodeMessage(encodeMessage(message))).toEqual(message);
   });
@@ -80,7 +100,7 @@ describe('frames (friends spec §3.3)', () => {
     ['a JSON string', json('ping')],
     ['null', json(null)],
     ['no type', json({ nickname: 'Ana' })],
-    ['an unknown type', json({ t: 'sync.have' })],
+    ['an unknown type', json({ t: 'file.want', hash: 'x', offset: 0 })],
     ['a type that is not a string', json({ t: 1 })],
     ['an extra key on ping', json({ t: 'ping', at: 1 })],
     ['an extra key on hello', json({ t: 'hello', v: 1, nickname: 'Ana', admin: true })],
@@ -97,6 +117,28 @@ describe('frames (friends spec §3.3)', () => {
     ['a short signature', json({ t: 'inbox.hello', sig: SIG.slice(1) })],
     ['a signature that is not base64url', json({ t: 'inbox.hello', sig: `${SIG.slice(1)}+` })],
     ['__proto__ as the type carrier', frame(1, '{"__proto__":{"t":"ping"}}')],
+    // Direct messages (friends spec §3.3, §4.3).
+    ['sync.have without convs', json({ t: 'sync.have' })],
+    ['sync.have with a conversation id in upper case', json({ t: 'sync.have', convs: [{ id: CONV.toUpperCase(), heads: {} }] })],
+    ['sync.have with a short conversation id', json({ t: 'sync.have', convs: [{ id: CONV.slice(1), heads: {} }] })],
+    ['sync.have with an author that is not a key', json({ t: 'sync.have', convs: [{ id: CONV, heads: { ana: 1 } }] })],
+    ['sync.have with __proto__ as an author', frame(1, `{"t":"sync.have","convs":[{"id":"${CONV}","heads":{"__proto__":1}}]}`)],
+    ['sync.have with a head of 0', json({ t: 'sync.have', convs: [{ id: CONV, heads: { [ANA]: 0 } }] })],
+    ['sync.have with a fractional head', json({ t: 'sync.have', convs: [{ id: CONV, heads: { [ANA]: 1.5 } }] })],
+    ['sync.have with a head as text', json({ t: 'sync.have', convs: [{ id: CONV, heads: { [ANA]: '1' } }] })],
+    ['sync.have with an extra key', json({ t: 'sync.have', convs: [{ id: CONV, heads: {}, name: 'x' }] })],
+    ['sync.have with too many authors', json({ t: 'sync.have', convs: [{ id: CONV, heads: Object.fromEntries(Array.from({ length: HAVE_HEADS_MAX + 1 }, (_, i) => [keyToText(new Uint8Array(32).fill(i)), 1])) }] })],
+    ['sync.have with too many conversations', json({ t: 'sync.have', convs: Array.from({ length: HAVE_CONVS_MAX + 1 }, () => ({ id: CONV, heads: {} })) })],
+    ['sync.want without an author', json({ t: 'sync.want', conv: CONV, from: 1, to: 2 })],
+    ['sync.want from 0', json({ t: 'sync.want', conv: CONV, author: ANA, from: 0, to: 2 })],
+    ['sync.want backwards', json({ t: 'sync.want', conv: CONV, author: ANA, from: 3, to: 2 })],
+    ['sync.want with an extra key', json({ t: 'sync.want', conv: CONV, author: ANA, from: 1, to: 2, all: true })],
+    ['entry without the entry', json({ t: 'entry' })],
+    ['entry with a broken entry', json({ t: 'entry', entry: { ...ENTRY, seq: 0 } })],
+    ['entry with an extra key in the entry', json({ t: 'entry', entry: { ...ENTRY, extra: 1 } })],
+    ['entry with an extra key', json({ t: 'entry', entry: ENTRY, from: ANA })],
+    ['typing without a conversation', json({ t: 'typing' })],
+    ['typing with an extra key', json({ t: 'typing', conv: CONV, text: 'oi' })],
   ])('refuses %s', (_label, bytes) => {
     expect(() => decodeMessage(bytes)).toThrow(FrameError);
   });
