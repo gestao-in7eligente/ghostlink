@@ -95,6 +95,11 @@ describe('profile IPC (spec 2026-10-01 §3)', () => {
     expect(profile.avatar).not.toHaveBeenCalled();
   });
 
+  it('leaves the photo requests to main: the renderer cannot send upload.begin or avatar.clear', async () => {
+    const { requestTypeSchema } = await import('../../src/main/ipc.js');
+    for (const t of ['upload.begin', 'avatar.clear']) expect(requestTypeSchema.safeParse(t).success, t).toBe(false);
+  });
+
   it('answers setAvatar before any upload: no connection is needed', async () => {
     const bytes = webp();
     expect(await invoke(IPC.profileSetAvatar, TOP, bytes)).toEqual({ ok: true, value: { hash: sha256Hex(bytes), mime: 'image/webp' } });
