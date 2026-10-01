@@ -41,7 +41,9 @@ export default defineConfig({
     build: {
       target: 'node24',
       rollupOptions: {
-        input: { index: here('src/preload/index.ts') },
+        // index: the main window. splash: the update splash (main/updateSplash.ts); the two share no
+        // module, so each stays one file (a sandboxed preload cannot require a chunk).
+        input: { index: here('src/preload/index.ts'), splash: here('src/preload/splash.ts') },
         // A sandboxed preload cannot be an ES module; .cjs keeps Node from reading it as ESM.
         output: { format: 'cjs', entryFileNames: '[name].cjs' },
       },
@@ -52,7 +54,8 @@ export default defineConfig({
     plugins: [react()],
     build: {
       target: 'chrome152',
-      rollupOptions: { input: { index: here('src/renderer/index.html') } },
+      // splash.html: the update splash shown while the app checks for updates (app://ghostlink/splash.html).
+      rollupOptions: { input: { index: here('src/renderer/index.html'), splash: here('src/renderer/splash.html') } },
     },
   },
 });

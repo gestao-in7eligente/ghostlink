@@ -1,0 +1,129 @@
+/* The update splash (Discord's startup window): the app's palette and font. @import is inlined
+   by Vite into this page's own stylesheet, so the main window's bundle stays as it is. */
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/latin-600.css';
+@import '../styles/tokens.css';
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg-0);
+  color: var(--text-strong);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+/* Frameless: the whole window moves when dragged, except the link. */
+body {
+  -webkit-app-region: drag;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.splash {
+  box-sizing: border-box;
+  height: 100%;
+  padding: 0 var(--space-5) 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo {
+  display: block;
+  animation: float 2.6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo {
+    animation: none;
+  }
+}
+
+.name {
+  margin: 20px 0 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.status {
+  margin: 10px 0 0;
+  min-height: 18px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-soft);
+  text-align: center;
+}
+
+.progress {
+  appearance: none;
+  display: block;
+  width: 168px;
+  height: 4px;
+  margin-top: 14px;
+  border: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--bg-3);
+}
+
+.progress::-webkit-progress-bar {
+  background: var(--bg-3);
+  border-radius: 2px;
+}
+
+.progress::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+
+.skip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 20px;
+  margin: 0 auto;
+  width: max-content;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.skip:hover {
+  text-decoration: underline;
+}
+
+.skip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.skip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

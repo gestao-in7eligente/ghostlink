@@ -50,15 +50,21 @@ describe('electron-vite build', () => {
     for (const module of ['node:sqlite', '@peculiar/x509', 'reflect-metadata']) expect(main, module).not.toContain(module);
   });
 
-  it('emits the sandboxed preload as CommonJS that only requires electron', () => {
-    const preload = read('preload/index.cjs');
+  it.each(['index', 'splash'])('emits the sandboxed %s preload as CommonJS that only requires electron', (name) => {
+    const preload = read(`preload/${name}.cjs`);
     expect(preload).not.toMatch(/^\s*(import|export)\s/m);
     expect([...preload.matchAll(/require\("([^"]+)"\)/g)].map((m) => m[1])).toEqual(['electron']);
   });
 
-  it('emits a renderer that app:// can serve under the CSP: relative assets, no inline script', () => {
-    const html = read('renderer/index.html');
-    expect(html).toMatch(/<script type="module" crossorigin src="\.\/assets\/index-[\w-]+\.js"><\/script>/);
+  it.each(['index', 'splash'])('emits a renderer page (%s.html) that app:// can serve under the CSP: relative assets, no inline script', (name) => {
+    const html = read(`renderer/${name}.html`);
+    expect(html).toMatch(new RegExp(`<script type="module" crossorigin src="\\./assets/${name}-[\\w-]+\\.js"></script>`));
     expect(html).not.toMatch(/<script(?![^>]*\ssrc=)[^>]*>/);
+  });
+
+  it('keeps the update splash page apart from the main window bundle', () => {
+    const index = read('renderer/index.html');
+    expect(index).not.toMatch(/splash/);
+    expect(read('renderer/splash.html')).not.toMatch(/assets\/index-/);
   });
 });
