@@ -121,10 +121,7 @@ export const host: Record<keyof typeof ptBR, string> = {
   'host.indicator.open': 'Open the hosted server panel',
 
   'host.tray.tooltip': 'GhostLink — hosting {name}',
-  'host.tray.open': 'Open GhostLink',
   'host.tray.stopAndQuit': 'Stop server and quit',
-  'host.tray.noticeTitle': 'GhostLink is still running',
-  'host.tray.noticeBody': 'Your server stays online. To stop it, use "Stop server and quit" in the tray icon.',
 
   'errors.PORT_IN_USE': 'That port is already in use by another program.',
   'errors.HOST_NOT_RUNNING': 'The hosted server is not running.',

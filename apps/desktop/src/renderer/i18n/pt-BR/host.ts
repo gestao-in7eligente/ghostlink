@@ -123,10 +123,7 @@ export const host = {
   'host.indicator.open': 'Abrir o painel do servidor hospedado',
 
   'host.tray.tooltip': 'GhostLink — hospedando {name}',
-  'host.tray.open': 'Abrir GhostLink',
   'host.tray.stopAndQuit': 'Parar servidor e sair',
-  'host.tray.noticeTitle': 'O GhostLink continua aberto',
-  'host.tray.noticeBody': 'Seu servidor segue no ar. Para parar, use "Parar servidor e sair" no ícone da bandeja.',
 
   'errors.PORT_IN_USE': 'Essa porta já está em uso por outro programa.',
   'errors.HOST_NOT_RUNNING': 'O servidor hospedado não está rodando.',
