@@ -1,7 +1,7 @@
 // Sandboxed preload (spec §12): the whole renderer API, nothing else. It imports
 // only `electron` and type-only modules, so the bundle stays a single CJS file.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { Envelope, ParsedJoinInput } from '@ghostlink/shared';
+import type { ParsedJoinInput } from '@ghostlink/shared';
 import {
   IPC,
   IPC_EVENTS,
@@ -13,6 +13,7 @@ import {
   type IpcResult,
   type IpcReturn,
   type PttEvent,
+  type ServerEventMessage,
 } from '../shared/ipcTypes.js';
 import type { DmEvent } from '../shared/dmTypes.js';
 import type { FriendsSnapshot } from '../shared/friendsTypes.js';
@@ -70,6 +71,7 @@ export const api: GhostlinkApi = {
     checkExit: (id) => invoke(IPC.serversCheckExit, id),
     leave: (id, deleteMyMessages) => invoke(IPC.serversLeave, id, deleteMyMessages),
     delete: (id) => invoke(IPC.serversDelete, id),
+    setCall: (serverId) => invoke(IPC.serversSetCall, serverId),
   },
   host: {
     status: () => invoke(IPC.hostStatus),
@@ -85,7 +87,7 @@ export const api: GhostlinkApi = {
     fixFirewall: () => invoke(IPC.hostFixFirewall),
   },
   onConnectionState: (cb) => subscribe<ConnectionStateEvent>(IPC_EVENTS.connectionState, cb),
-  onServerEvent: (cb) => subscribe<Envelope>(IPC_EVENTS.server, cb),
+  onServerEvent: (cb) => subscribe<ServerEventMessage>(IPC_EVENTS.server, (m) => cb(m.event, m.serverId)),
   onHostStatus: (cb) => subscribe<HostStatus>(IPC_EVENTS.host, cb),
   deepLink: { take: () => invoke(IPC.deepLinkTake) },
   onDeepLink: (cb) => subscribe<ParsedJoinInput>(IPC_EVENTS.deepLink, cb),

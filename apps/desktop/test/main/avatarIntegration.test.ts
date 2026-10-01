@@ -61,7 +61,7 @@ function client(name: string): Client {
     identity,
     settings: SettingsStore.load(dir, 'pt-BR'),
     servers: SavedServersStore.load(dir),
-    setRendererPin: async () => {},
+    setRendererPins: async () => {},
     emitConnectionState: () => {},
     emitServerEvent: (e) => events.push(e),
     clientName: 'ghostlink/0.2.2 (test)',

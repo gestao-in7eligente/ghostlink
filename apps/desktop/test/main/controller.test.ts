@@ -32,7 +32,7 @@ async function server(opts: Parameters<typeof startTestServer>[0] = {}): Promise
 let identity: IdentityStore;
 let servers: SavedServersStore;
 let controller: ClientController;
-let pins: Array<RendererPin | null>;
+let pins: RendererPin[][];
 let states: ConnectionStateEvent[];
 let events: Envelope[];
 
@@ -41,8 +41,8 @@ function makeController(id: IdentityStore) {
     identity: id,
     settings: SettingsStore.load(dir.path, 'pt-BR'),
     servers,
-    setRendererPin: async (pin) => {
-      pins.push(pin);
+    setRendererPins: async (set) => {
+      pins.push(set);
     },
     emitConnectionState: (e) => states.push(e),
     emitServerEvent: (e) => events.push(e),
@@ -83,7 +83,7 @@ describe('ClientController.join', () => {
     expect(welcome.serverId).toBe(saved!.id);
     expect(welcome.address).toBe(local(t)); // what the renderer pin covers; voice checks livekitUrl against it
     expect(welcome.server.name).toBe('Casa do Zé');
-    expect(pins).toEqual([{ hostname: '127.0.0.1', serverKeyId: t.server.serverKeyId }]);
+    expect(pins.at(-1)).toEqual([{ hostname: '127.0.0.1', serverKeyId: t.server.serverKeyId }]);
     expect(states).toEqual([
       { state: 'connecting', serverId: null },
       { state: 'authenticating', serverId: null },
@@ -111,7 +111,7 @@ describe('ClientController.join', () => {
     expect((error as ProtocolError).code).toBe('INVITE_REQUIRED');
     expect(states.at(-1)).toEqual({ state: 'failed', serverId: null, error: 'INVITE_REQUIRED' });
     expect(servers.list()).toEqual([]);
-    expect(pins.filter((p) => p !== null)).toEqual([]);
+    expect(pins.flat()).toEqual([]);
   });
 
   it('refuses to connect without a ready identity', async () => {
@@ -124,13 +124,13 @@ describe('ClientController.join', () => {
     expect((error as AppError).code).toBe('IDENTITY_UNAVAILABLE');
   });
 
-  it('keeps one server at a time: joining another one disconnects the first', async () => {
+  it('without a call, keeps one server at a time: joining another one disconnects the first', async () => {
     const a = await server({ joinMode: 'open' });
     const b = await server({ joinMode: 'open' });
     const first = await joinOpen(a);
     await joinOpen(b);
     expect(states).toContainEqual({ state: 'idle', serverId: first.serverId });
-    expect(pins.at(-1)).toEqual({ hostname: '127.0.0.1', serverKeyId: b.server.serverKeyId });
+    expect(pins.at(-1)).toEqual([{ hostname: '127.0.0.1', serverKeyId: b.server.serverKeyId }]);
     expect(servers.list()).toHaveLength(2);
   });
 });
@@ -140,7 +140,7 @@ describe('ClientController — saved servers', () => {
     const t = await server();
     const first = await joinOpen(t, { inviteCode: t.server.createInvite().code });
     await controller.disconnect();
-    expect(pins.at(-1)).toBeNull();
+    expect(pins.at(-1)).toEqual([]);
     expect(states.at(-1)).toEqual({ state: 'idle', serverId: first.serverId });
     const again = await controller.connectSaved(first.serverId);
     expect(again.self.userId).toBe(first.self.userId);
@@ -156,7 +156,7 @@ describe('ClientController — saved servers', () => {
     const welcome = await joinOpen(t);
     await controller.remove(welcome.serverId);
     expect(servers.list()).toEqual([]);
-    expect(pins.at(-1)).toBeNull();
+    expect(pins.at(-1)).toEqual([]);
     expect(states.at(-1)).toEqual({ state: 'idle', serverId: welcome.serverId });
   });
 });
@@ -193,7 +193,7 @@ describe('ClientController — after joining', () => {
     await other.connect();
     await waitFor(() => states.at(-1)?.state === 'failed');
     expect(states.at(-1)).toEqual({ state: 'failed', serverId: welcome.serverId, error: 'SESSION_REPLACED' });
-    expect(pins.at(-1)).toBeNull();
+    expect(pins.at(-1)).toEqual([]);
   });
 
   it('probe() returns the key id and its fingerprint for the TOFU screen', async () => {

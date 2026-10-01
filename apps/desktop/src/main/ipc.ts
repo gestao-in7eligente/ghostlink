@@ -28,7 +28,7 @@ export interface IpcDeps {
   appInfo(): AppInfo;
   identity: Pick<IdentityStore, 'status' | 'create' | 'retry' | 'replaceKeepingBackup'>;
   settings: Pick<SettingsStore, 'get' | 'set'>;
-  controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'request' | 'checkExit' | 'leaveSaved' | 'deleteSaved'>;
+  controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'request' | 'checkExit' | 'leaveSaved' | 'deleteSaved' | 'setCall'>;
   /** Host mode (spec §9). */
   host?: HostIpcDeps;
   /** Identity backup, import and delete (spec §3.4). */
@@ -101,7 +101,7 @@ const requestPayloadSchema = z
   })
   .optional();
 
-/** The saved server the renderer believes it talks to (a request for another one is refused). */
+/** The saved server a request is for: the one on screen or the call's (a request for any other one is refused). */
 const expectedServerId = z.string().min(1).max(64);
 
 // Renderer input is untrusted: strict schemas, bounded sizes. The deeper rules
@@ -148,6 +148,7 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.serversCheckExit]: z.tuple([serverId]),
   [IPC.serversLeave]: z.tuple([serverId, z.boolean()]),
   [IPC.serversDelete]: z.tuple([serverId]),
+  [IPC.serversSetCall]: z.tuple([serverId.nullable()]),
   ...HOST_IPC_ARG_SCHEMAS,
   ...BACKUP_IPC_ARG_SCHEMAS,
   ...RAILWAY_IPC_ARG_SCHEMAS,
@@ -193,6 +194,7 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     [IPC.serversCheckExit]: (id) => controller.checkExit(id),
     [IPC.serversLeave]: (id, deleteMyMessages) => controller.leaveSaved(id, deleteMyMessages),
     [IPC.serversDelete]: (id) => controller.deleteSaved(id),
+    [IPC.serversSetCall]: (id) => controller.setCall(id),
     ...createHostIpcHandlers(deps.host),
     ...createBackupIpcHandlers(deps.backup),
     ...createRailwayIpcHandlers(deps.railway),

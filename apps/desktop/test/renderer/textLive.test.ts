@@ -62,7 +62,7 @@ async function launch(t: TestServer, name: string, nickname: string, extra: { se
     identity,
     settings: SettingsStore.load(userData, 'pt-BR'),
     servers: SavedServersStore.load(userData),
-    setRendererPin: async () => {},
+    setRendererPins: async () => {},
     emitConnectionState: (e) => states.push(e),
     emitServerEvent: (e) => events.push(e),
     clientName: 'ghostlink/0.1.0 (test)',

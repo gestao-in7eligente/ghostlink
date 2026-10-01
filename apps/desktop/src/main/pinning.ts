@@ -1,11 +1,14 @@
 import { X509Certificate, createHash } from 'node:crypto';
 import type { Session } from 'electron';
 
-/** The one server whose certificate the renderer may trust (spec §4). */
+/** A server whose certificate the renderer may trust (spec §4): the one on screen, or the call's (chamada-continua §2). */
 export interface RendererPin {
   hostname: string;
   serverKeyId: string;
 }
+
+/** Never more than the server on screen and the call's (chamada-continua §2). */
+export const MAX_RENDERER_PINS = 2;
 
 /** The two Session methods pinning needs (a fake in tests). */
 export type PinSession = Pick<Session, 'setCertificateVerifyProc' | 'closeAllConnections'>;
@@ -29,41 +32,69 @@ function bareHost(hostname: string): string {
 }
 
 /**
- * The decision behind setCertificateVerifyProc (spec §4): the pinned hostname is
- * trusted only with the pinned key (never falling back to CA validation); any other
- * hostname gets Chromium's normal verification. The API does not tell the port,
- * which is why only the currently connected server is ever pinned.
+ * The decision behind setCertificateVerifyProc (spec §4): a pinned hostname is trusted
+ * only with one of its pinned keys (never falling back to CA validation); any other
+ * hostname gets Chromium's normal verification. The API does not tell the port, so two
+ * servers on one host (both pinned) accept each other's key there: both are servers the
+ * app is connected to right now.
  */
-export function verifyWithPin(pin: RendererPin | null, hostname: string, certificatePem: string): VerifyResult {
-  if (pin === null || bareHost(hostname) !== bareHost(pin.hostname)) return -3;
+export function verifyWithPins(pins: readonly RendererPin[], hostname: string, certificatePem: string): VerifyResult {
+  const host = bareHost(hostname);
+  const keys = pins.filter((p) => bareHost(p.hostname) === host).map((p) => p.serverKeyId);
+  if (keys.length === 0) return -3;
   let keyId: string | null;
   try {
     keyId = serverKeyIdFromCertificate(certificatePem);
   } catch {
     keyId = null;
   }
-  return keyId === pin.serverKeyId ? 0 : -2;
+  return keyId !== null && keys.includes(keyId) ? 0 : -2;
 }
 
-let active: { session: PinSession; pin: RendererPin | null } | null = null;
+/** The single-pin form of verifyWithPins (null: nothing pinned). */
+export function verifyWithPin(pin: RendererPin | null, hostname: string, certificatePem: string): VerifyResult {
+  return verifyWithPins(pin === null ? [] : [pin], hostname, certificatePem);
+}
+
+const pinKey = (p: RendererPin) => `${bareHost(p.hostname)} ${p.serverKeyId}`;
+
+/** Copies, normalizes and de-duplicates; more than MAX_RENDERER_PINS is a bug, refused. */
+export function normalizePins(pins: readonly RendererPin[]): RendererPin[] {
+  const out = new Map<string, RendererPin>();
+  for (const p of pins) out.set(pinKey(p), { hostname: bareHost(p.hostname), serverKeyId: p.serverKeyId });
+  if (out.size > MAX_RENDERER_PINS) throw new Error(`at most ${MAX_RENDERER_PINS} renderer pins`);
+  return [...out.values()];
+}
+
+/** Whether going from `before` to `after` takes trust away from some host and key (connections must then close). */
+export function pinsWithdrawn(before: readonly RendererPin[], after: readonly RendererPin[]): boolean {
+  const kept = new Set(after.map(pinKey));
+  return before.some((p) => !kept.has(pinKey(p)));
+}
+
+let active: { session: PinSession; pins: RendererPin[] } | null = null;
 
 /** Installs the verify proc on the session (after app ready). Starts with no pin. */
 export function installRendererPinning(session: PinSession): void {
-  const state = { session, pin: null as RendererPin | null };
+  const state = { session, pins: [] as RendererPin[] };
   active = state;
   session.setCertificateVerifyProc((request, callback) => {
-    callback(verifyWithPin(state.pin, request.hostname, request.certificate.data));
+    callback(verifyWithPins(state.pins, request.hostname, request.certificate.data));
   });
 }
 
 /**
- * Pins the connected server for the renderer (after `welcome`) or clears the pin
- * (on disconnect or server switch). Existing connections are closed on every
- * change so nothing keeps talking under the previous decision (spec §4); the
- * `CacheCertVerification` feature is disabled at startup for the same reason.
+ * The renderer's pins: the server on screen and the call's, when they differ (chamada-continua
+ * §2); never more. They follow `welcome`s and are withdrawn on a switch or a disconnect.
+ * Existing connections are closed whenever a pin is withdrawn, so nothing keeps talking
+ * under a trust that is gone (spec §4); `CacheCertVerification` is disabled at startup for
+ * the same reason. A pin that only joins the set closes nothing: what is open was verified
+ * under rules that still hold, and the call's LiveKit signaling goes on undisturbed.
  */
-export async function setRendererPin(pin: RendererPin | null): Promise<void> {
+export async function setRendererPins(pins: readonly RendererPin[]): Promise<void> {
   if (active === null) throw new Error('installRendererPinning() must run first');
-  active.pin = pin === null ? null : { hostname: pin.hostname, serverKeyId: pin.serverKeyId };
-  await active.session.closeAllConnections();
+  const next = normalizePins(pins);
+  const withdrawn = pinsWithdrawn(active.pins, next);
+  active.pins = next;
+  if (withdrawn) await active.session.closeAllConnections();
 }

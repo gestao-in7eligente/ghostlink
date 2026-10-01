@@ -70,7 +70,7 @@ beforeEach(() => {
     identity,
     settings,
     servers,
-    setRendererPin: async () => {},
+    setRendererPins: async () => {},
     emitConnectionState: (e) => states.push(e),
     emitServerEvent: () => {},
     clientName: 'ghostlink/0.1.0 (test)',
