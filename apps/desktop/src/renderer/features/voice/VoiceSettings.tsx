@@ -1,11 +1,12 @@
 import { useEffect, useId, useState } from 'react';
 import { useT } from '../../i18n/index.js';
+import { Select, type SelectOption } from '../../layout/primitives.js';
 import { startLevelMeter } from './gateProcessor.js';
 import { SILENCE_DB } from './gateLogic.js';
 import { keyLabel } from './keys.js';
 import { captureFor } from './noiseSuppression.js';
-import { resolveNoiseSuppression, setKeyCapture, useVoiceRuntime, voiceAudioContext } from './runtime.js';
-import { MIN_THRESHOLD_DB, isPttCode, useVoiceSettings, type NoiseSuppression } from './settings.js';
+import { resolveNoiseSuppression, setKeyCapture, useNoiseFailures, useVoiceRuntime, voiceAudioContext } from './runtime.js';
+import { MIN_THRESHOLD_DB, NOISE_SUPPRESSIONS, isPttCode, useVoiceSettings, type NoiseSuppression } from './settings.js';
 import { useVoiceStore } from './state.js';
 import { useDevices } from './VoiceControls.js';
 import s from './voice.module.css';
@@ -59,15 +60,19 @@ function Meter({ levelDb, thresholdDb, gated }: { levelDb: number; thresholdDb: 
   );
 }
 
+/** How the failure note names a suppressor (product names, the same in every language). */
+const SUPPRESSOR_NAMES: Readonly<Record<NoiseSuppression, string>> = { rnnoise: 'RNNoise', speex: 'Speex', gtcrn: 'GTCRN', webrtc: 'WebRTC', off: '' };
+
 /**
  * Voice settings (spec §11.1 item 7): input and output devices, the input level and the
- * voice-activity threshold, voice activity or push-to-talk and its key. Meant to be
- * embedded in the user settings screen; per-user volume lives in each participant's menu.
+ * voice-activity threshold, voice activity or push-to-talk and its key, and noise
+ * suppression (noise spec §1). Meant to be embedded in the user settings screen; per-user
+ * volume lives in each participant's menu.
  */
 export function VoiceSettings() {
   useVoiceRuntime();
   const t = useT();
-  const ids = { input: useId(), output: useId(), sensitivity: useId(), mode: useId() };
+  const ids = { input: useId(), output: useId(), sensitivity: useId(), mode: useId(), noise: useId() };
   const settings = useVoiceSettings((st) => st.settings);
   const update = useVoiceSettings((st) => st.update);
   const globalPtt = useVoiceStore((v) => v.globalPtt);
@@ -77,6 +82,7 @@ export function VoiceSettings() {
   const [testing, setTesting] = useState(false);
   const [recording, setRecording] = useState(false);
   const level = useMicLevel(testing, settings.inputDeviceId, settings.noiseSuppression);
+  const noiseFailed = useNoiseFailures((f) => f.failed.includes(settings.noiseSuppression));
 
   useEffect(() => {
     if (!recording) return;
@@ -94,16 +100,12 @@ export function VoiceSettings() {
     };
   }, [recording, update]);
 
-  const deviceOptions = (list: MediaDeviceInfo[]) => [
-    <option key="" value="">
-      {t('voice.defaultDevice')}
-    </option>,
-    ...list.map((d, i) => (
-      <option key={d.deviceId} value={d.deviceId}>
-        {d.label || t('voice.deviceUnnamed', { n: i + 1 })}
-      </option>
-    )),
+  // '' is the system default device.
+  const deviceOptions = (list: MediaDeviceInfo[]): SelectOption<string>[] => [
+    { value: '', label: t('voice.defaultDevice') },
+    ...list.map((d, i) => ({ value: d.deviceId, label: d.label || t('voice.deviceUnnamed', { n: i + 1 }) })),
   ];
+  const noiseOptions = NOISE_SUPPRESSIONS.map((mode) => ({ value: mode, label: t(`voice.noise.${mode}`) }));
 
   return (
     <section className={s.settings} aria-labelledby={`${ids.mode}-title`} data-voice-settings="">
@@ -111,20 +113,16 @@ export function VoiceSettings() {
 
       <div className={s.twoColumns}>
         <div className={s.settingsGroup}>
-          <label className={s.settingsLabel} htmlFor={ids.input}>
+          <span id={ids.input} className={s.settingsLabel}>
             {t('voice.inputDevice')}
-          </label>
-          <select id={ids.input} className={s.select} value={settings.inputDeviceId ?? ''} onChange={(e) => update({ inputDeviceId: e.target.value || null })}>
-            {deviceOptions(inputs)}
-          </select>
+          </span>
+          <Select labelledBy={ids.input} value={settings.inputDeviceId ?? ''} options={deviceOptions(inputs)} onChange={(v) => update({ inputDeviceId: v || null })} />
         </div>
         <div className={s.settingsGroup}>
-          <label className={s.settingsLabel} htmlFor={ids.output}>
+          <span id={ids.output} className={s.settingsLabel}>
             {t('voice.outputDevice')}
-          </label>
-          <select id={ids.output} className={s.select} value={settings.outputDeviceId ?? ''} onChange={(e) => update({ outputDeviceId: e.target.value || null })}>
-            {deviceOptions(outputs)}
-          </select>
+          </span>
+          <Select labelledBy={ids.output} value={settings.outputDeviceId ?? ''} options={deviceOptions(outputs)} onChange={(v) => update({ outputDeviceId: v || null })} />
         </div>
       </div>
 
@@ -182,6 +180,19 @@ export function VoiceSettings() {
               {testing ? t('voice.settings.micTestStop') : t('voice.settings.micTestStart')}
             </button>
           </div>
+        )}
+      </div>
+
+      <div className={s.settingsGroup} data-voice-noise="">
+        <span id={ids.noise} className={s.settingsLabel}>
+          {t('voice.settings.noise')}
+        </span>
+        <Select labelledBy={ids.noise} value={settings.noiseSuppression} options={noiseOptions} onChange={(v) => update({ noiseSuppression: v })} />
+        <p className={s.hint}>{t('voice.settings.noiseHint')}</p>
+        {noiseFailed && (
+          <p className={s.noiseFailed} role="status">
+            {t('voice.settings.noiseFailed', { mode: SUPPRESSOR_NAMES[settings.noiseSuppression] })}
+          </p>
         )}
       </div>
 

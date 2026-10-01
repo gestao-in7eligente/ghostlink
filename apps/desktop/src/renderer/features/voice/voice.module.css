@@ -889,6 +889,11 @@ button.tile {
   color: var(--text-muted);
   font-size: 13px;
 }
+.noiseFailed {
+  margin: 0;
+  color: var(--warning);
+  font-size: 13px;
+}
 .meter {
   position: relative;
   height: 10px;
