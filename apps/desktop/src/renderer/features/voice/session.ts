@@ -233,7 +233,11 @@ export class VoiceSession {
     } finally {
       this.#shareStarting = false;
     }
-    if (this.#room !== room) return;
+    if (this.#room !== room) {
+      // The call ended just as the share went live: the room is gone, stop the capture.
+      if (outcome.kind === 'live') for (const track of [outcome.share.video, outcome.share.audio]) track?.stop();
+      return;
+    }
     if (outcome.kind === 'failed') this.#deps.dispatch({ type: 'notice', notice: { kind: 'screenFailed' } });
     if (outcome.kind !== 'live') return;
     const { share } = outcome;
