@@ -1,4 +1,4 @@
-import { HeadphoneOff, Headphones, Mic, MicOff, PhoneCall, PhoneOff, Volume2 } from 'lucide-react';
+import { HeadphoneOff, Headphones, Mic, MicOff, MonitorUp, MonitorX, PhoneCall, PhoneOff, Volume2 } from 'lucide-react';
 import { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { VoiceParticipant } from '@ghostlink/shared';
@@ -6,8 +6,12 @@ import { useT } from '../../i18n/index.js';
 import { ParticipantMenu } from './ParticipantMenu.js';
 import { StateIcons, VoiceAvatar } from './parts.js';
 import { joinVoice, leaveVoice, toggleDeafen, toggleMute, useVoiceDirectory, useVoiceRuntime } from './runtime.js';
-import { isSpeaking, participantsOf, selfVoice, useVoiceStore } from './state.js';
+import { LiveBadge } from './screenParts.js';
+import { OwnStreamTile, StreamTile, StreamView, useScreenShareButton } from './ScreenStage.js';
+import { isSpeaking, liveIn, participantsOf, selfVoice, streamLayout, useVoiceStore } from './state.js';
 import s from './voice.module.css';
+
+const NONE: string[] = [];
 
 function Tile({ p, channelId, isSelf, speaking, receiving }: { p: VoiceParticipant; channelId: string; isSelf: boolean; speaking: boolean; receiving: boolean }) {
   const t = useT();
@@ -19,8 +23,11 @@ function Tile({ p, channelId, isSelf, speaking, receiving }: { p: VoiceParticipa
     <>
       <VoiceAvatar size={72} speaking={speaking} />
       <span className={s.tileName}>
-        {name}
-        {isSelf && ` (${t('voice.you')})`}
+        {p.screen && <LiveBadge />}
+        <span className={s.tileNameText}>
+          {name}
+          {isSelf && ` (${t('voice.you')})`}
+        </span>
         {speaking && <span className={s.srOnly}>, {t('voice.speaking')}</span>}
       </span>
       {(p.muted || p.deafened || p.serverMuted) && (
@@ -59,9 +66,29 @@ function Tile({ p, channelId, isSelf, speaking, receiving }: { p: VoiceParticipa
   );
 }
 
+/** The screen share button of the call bar (same rules as the panel's). */
+function ShareButton({ channelId }: { channelId: string }) {
+  const button = useScreenShareButton(channelId);
+  return (
+    <button
+      type="button"
+      className={s.roundButton}
+      aria-pressed={button.sharing}
+      aria-disabled={!button.enabled || undefined}
+      aria-label={button.label}
+      title={button.title}
+      onClick={button.onClick}
+    >
+      {button.sharing ? <MonitorX size={20} aria-hidden="true" /> : <MonitorUp size={20} aria-hidden="true" />}
+    </button>
+  );
+}
+
 /**
  * The center view of a voice channel: a grid of participant tiles with speaking rings,
- * and the call bar (join, or mute / deafen / leave while in this channel).
+ * the screens (spec 2026-10-01 §5: a tile with "Assistir" per live person; what I watch
+ * large, or in a grid when several, a click focusing one), and the call bar (join, or
+ * mute / deafen / share / leave while in this channel).
  */
 export function VoiceStage({ channelId }: { channelId: string }) {
   useVoiceRuntime();
@@ -78,6 +105,33 @@ export function VoiceStage({ channelId }: { channelId: string }) {
   const available = useVoiceStore((v) => v.available);
   const here = call.channelId === channelId && call.status !== 'idle';
   const name = directory.channelName(channelId) ?? '';
+  // Screens are watched from inside the call only (a subscription in my room).
+  const live = useVoiceStore(useShallow((v) => (here ? liveIn(v, channelId).filter((u) => u !== v.selfUserId) : NONE)));
+  const watching = useVoiceStore((v) => v.watching);
+  const sharing = useVoiceStore((v) => here && v.sharing !== null);
+  const [focus, setFocus] = useState<string | null>(null);
+  const streams = streamLayout(live, watching, focus);
+  const others = streams.focused ? streams.shown.filter((u) => u !== streams.focused) : [];
+  const tiles = (
+    <>
+      {sharing && selfUserId && <OwnStreamTile userId={selfUserId} />}
+      {live
+        .filter((u) => !streams.shown.includes(u))
+        .map((u) => (
+          <StreamTile key={'screen-' + u} userId={u} />
+        ))}
+      {participants.map((p) => (
+        <Tile
+          key={p.userId}
+          p={p}
+          channelId={channelId}
+          isSelf={p.userId === selfUserId}
+          speaking={here && speakers.includes(p.userId)}
+          receiving={here && receiving.includes(p.userId)}
+        />
+      ))}
+    </>
+  );
 
   return (
     <section className={s.stage} aria-label={name} data-voice-stage={channelId}>
@@ -86,7 +140,7 @@ export function VoiceStage({ channelId }: { channelId: string }) {
         <h2>{name}</h2>
         <span className={s.pill}>{t('voice.channelType')}</span>
       </header>
-      <div className={s.stageBody}>
+      <div className={streams.shown.length > 0 ? s.stageBody + ' ' + s.stageBodyWatching : s.stageBody}>
         {participants.length === 0 ? (
           <div className={s.empty}>
             <span className={s.emptyIcon}>
@@ -95,19 +149,26 @@ export function VoiceStage({ channelId }: { channelId: string }) {
             <h3>{t('voice.empty')}</h3>
             <p>{t('voice.emptyHint')}</p>
           </div>
+        ) : streams.shown.length > 0 ? (
+          <>
+            {streams.focused ? (
+              <StreamView userId={streams.focused} size="large" onShowAll={streams.shown.length > 1 ? () => setFocus(null) : undefined} />
+            ) : (
+              <div className={s.streamGrid}>
+                {streams.shown.map((u) => (
+                  <StreamView key={u} userId={u} size="grid" onFocus={() => setFocus(u)} />
+                ))}
+              </div>
+            )}
+            <div className={s.strip}>
+              {others.map((u) => (
+                <StreamView key={u} userId={u} size="compact" onFocus={() => setFocus(u)} />
+              ))}
+              {tiles}
+            </div>
+          </>
         ) : (
-          <div className={s.grid}>
-            {participants.map((p) => (
-              <Tile
-                key={p.userId}
-                p={p}
-                channelId={channelId}
-                isSelf={p.userId === selfUserId}
-                speaking={here && speakers.includes(p.userId)}
-                receiving={here && receiving.includes(p.userId)}
-              />
-            ))}
-          </div>
+          <div className={s.grid}>{tiles}</div>
         )}
       </div>
       <footer className={s.stageBar}>
@@ -126,6 +187,7 @@ export function VoiceStage({ channelId }: { channelId: string }) {
             <button type="button" className={s.roundButton} aria-pressed={deafened} aria-label={t(deafened ? 'voice.undeafen' : 'voice.deafen')} onClick={() => void toggleDeafen()}>
               {deafened ? <HeadphoneOff size={20} aria-hidden="true" /> : <Headphones size={20} aria-hidden="true" />}
             </button>
+            <ShareButton channelId={channelId} />
             <button type="button" className={`${s.roundButton} ${s.roundDanger}`} aria-label={t('voice.disconnect')} onClick={() => void leaveVoice()}>
               <PhoneOff size={20} aria-hidden="true" />
             </button>

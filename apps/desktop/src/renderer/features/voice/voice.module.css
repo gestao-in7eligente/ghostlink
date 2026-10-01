@@ -189,12 +189,113 @@ button.participantRow:hover {
 
 /* ---- voice panel: the top row of the user card ---- */
 .panel {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: grid;
+  gap: 8px;
   padding: 2px 2px 10px;
   margin-bottom: 8px;
   border-bottom: 1px solid var(--border);
+}
+.panelRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+/* Discord's wide panel buttons (camera / screen): a gray block with an icon. */
+.panelWide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--bg-hover);
+  color: var(--text-icon);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.panelWide:hover {
+  background: var(--bg-selected);
+  color: var(--text-strong);
+}
+.panelWide[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.panelWide[aria-disabled='true']:hover {
+  background: var(--bg-hover);
+  color: var(--text-icon);
+}
+.panelWideDanger,
+.panelWideDanger:hover {
+  color: var(--danger-strong);
+}
+.panelWideDanger:hover {
+  background: var(--danger-bg);
+}
+
+/* ---- my own share in the panel ---- */
+.sharing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.sharingPreview {
+  position: relative;
+  flex: none;
+  width: 96px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--overlay);
+}
+.sharingText {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+  min-width: 0;
+}
+.sharingTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.sharingName {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sharingMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+/* ---- the LIVE badge (Discord's red pill) ---- */
+.liveBadge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--danger-strong);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 16px;
+  text-transform: uppercase;
 }
 .panelSignal {
   flex: none;
@@ -328,13 +429,19 @@ button.tileSpeaking:hover {
   position: absolute;
   bottom: 8px;
   left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   max-width: calc(100% - 72px);
   padding: 3px 8px;
-  overflow: hidden;
   border-radius: 6px;
   background: var(--bg-0);
   font-size: 13px;
   font-weight: 600;
+}
+.tileNameText {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -349,6 +456,222 @@ button.tileSpeaking:hover {
   background: var(--bg-0);
   color: var(--text-muted);
 }
+/* ---- screens on the stage (spec 2026-10-01 §5) ---- */
+.stageBodyWatching {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.streamGrid {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-content: center;
+  gap: 12px;
+  min-height: 0;
+}
+/* Everyone else under the large stream: a row of small tiles, like Discord's focused layout. */
+.strip {
+  display: grid;
+  flex: none;
+  grid-auto-columns: 192px;
+  grid-auto-flow: column;
+  gap: 12px;
+  padding-bottom: 4px;
+  overflow-x: auto;
+}
+.stream {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--overlay);
+}
+.streamLarge {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 240px;
+  aspect-ratio: auto;
+}
+.stream:fullscreen {
+  border-radius: 0;
+}
+.streamVideo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.streamWaiting {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+/* A grid or strip stream is one big "focus" button under its controls. */
+.streamFocus {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.streamFocus:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.streamTop {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 16px);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--overlay);
+  pointer-events: none;
+}
+.streamName {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The controls show on hover or keyboard focus (Discord), always in fullscreen. */
+.streamBar {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 24px 12px 10px;
+  background: linear-gradient(transparent, var(--overlay));
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.stream:hover .streamBar,
+.stream:focus-within .streamBar,
+.stream:fullscreen .streamBar {
+  opacity: 1;
+}
+.streamIcon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-strong);
+  cursor: pointer;
+}
+.streamIcon:hover {
+  background: var(--bg-hover);
+}
+.streamVolume {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-strong);
+}
+.streamVolume .range {
+  width: 96px;
+}
+.streamVolumeIcon {
+  display: inline-grid;
+  place-items: center;
+}
+.streamStop {
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--danger-strong);
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.streamStop:hover {
+  filter: brightness(0.9);
+}
+/* Someone live I do not watch: a dark tile with "Assistir" (no picture until I subscribe). */
+.streamTile {
+  position: relative;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--overlay);
+}
+.streamTileIcon {
+  color: var(--text-ghost);
+}
+.streamTileName {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 16px);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--bg-0);
+  font-size: 13px;
+  font-weight: 600;
+}
+.streamTileName > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.watchButton {
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+.watchButton:hover {
+  background: var(--accent-hover);
+}
+.strip .streamTile,
+.strip .tile,
+.strip .stream {
+  aspect-ratio: 16 / 9;
+}
+.strip .streamTileIcon {
+  display: none;
+}
+.strip .avatar {
+  scale: 0.66;
+}
+
 .empty {
   display: grid;
   place-content: center;
@@ -404,6 +727,13 @@ button.tileSpeaking:hover {
 }
 .roundButton[aria-pressed='true'] {
   color: var(--danger);
+}
+.roundButton[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.roundButton[aria-disabled='true']:hover {
+  background: var(--bg-3);
 }
 .roundDanger {
   background: var(--danger-bg);
@@ -541,6 +871,186 @@ button.tileSpeaking:hover {
   bottom: -2px;
   width: 2px;
   background: var(--accent);
+}
+
+/* ---- the screen picker (Discord's "Share your screen" modal) ---- */
+.picker {
+  display: grid;
+  gap: 16px;
+}
+.pickerTabs {
+  display: flex;
+  gap: 8px;
+}
+.pickerTab {
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pickerTab:hover {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+}
+.pickerTab[aria-selected='true'] {
+  background: var(--bg-selected);
+  color: var(--text-strong);
+}
+.pickerPanel {
+  min-height: 200px;
+}
+.sources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  max-height: 340px;
+  padding: 2px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.source {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  text-align: left;
+  cursor: pointer;
+}
+.sourceThumb {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: var(--overlay);
+}
+.source:hover .sourceThumb {
+  border-color: var(--border-strong);
+}
+.source[aria-checked='true'] .sourceThumb {
+  border-color: var(--accent);
+}
+.source:focus-visible {
+  outline: none;
+}
+.source:focus-visible .sourceThumb {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+.source[aria-checked='true'] {
+  color: var(--text-strong);
+}
+/* Windows thumbnails keep their aspect ratio (288×180, 298×180…): letterboxed, never stretched. */
+.sourceImage {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.sourceIconLarge {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+.sourceFallback {
+  color: var(--text-ghost);
+}
+.sourceName {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+.sourceName > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sourceIcon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+.sourceSkeleton {
+  display: grid;
+  gap: 8px;
+}
+.sourceSkeleton .sourceThumb,
+.skeletonLine {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.skeletonLine {
+  width: 60%;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--bg-hover);
+}
+.pickerEmpty {
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  text-align: center;
+}
+.pickerOptions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.checkRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+.checkRow input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--accent);
+}
+.checkText {
+  display: grid;
+  gap: 2px;
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 500;
+}
+.checkHint {
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sourceSkeleton .sourceThumb,
+  .skeletonLine {
+    animation: none;
+  }
+  .streamBar {
+    transition: none;
+  }
 }
 
 .srOnly {
