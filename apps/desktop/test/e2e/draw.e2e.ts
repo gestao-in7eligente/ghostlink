@@ -151,6 +151,35 @@ describe.skipIf(!binary)('the pencil: Bia draws on the screen Ana shares', () =>
     expect(await bia.page.locator(`[data-draw-layer="${anaId}"][data-draw-active]`).count()).toBe(0);
   });
 
+  step('fullscreen: Bia draws on the stream in fullscreen too', 30_000, async () => {
+    // The canvas is inside the stream's box, which is the fullscreen element.
+    const view = `[data-screen-view="${anaId}"]`;
+    const which = () => bia.page.evaluate(`(() => { const f = document.fullscreenElement; return f ? (f.getAttribute('data-screen-view') ?? f.tagName) : 'none'; })()`);
+    await bia.page.locator(`[data-screen-fullscreen="${anaId}"]`).click();
+    await expect.poll(which, { timeout: 5_000 }).toBe(anaId);
+    const pencil = bia.page.locator(`[data-draw-pencil="${anaId}"]`);
+    await pencil.click();
+    expect(await pencil.getAttribute('aria-pressed')).toBe('true');
+    const box = (await bia.page.locator(view).boundingBox())!;
+    await bia.page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.6);
+    await bia.page.mouse.down();
+    await bia.page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.65, { steps: 20 });
+    await expect.poll(() => paintedPixels(bia.page, `${view} [data-draw-layer]`), { timeout: 5_000 }).toBeGreaterThan(50);
+    // Ana gets it as from the normal view.
+    const before = await overlayPoints(ana);
+    await bia.page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.4, { steps: 10 });
+    await expect.poll(() => overlayPoints(ana), { timeout: 10_000 }).toBeGreaterThan(before);
+    await bia.page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-draw-fullscreen-bia.png') });
+    await bia.page.mouse.up();
+    // Esc leaves the pencil (Electron may take the first Esc to leave fullscreen).
+    await bia.page.keyboard.press('Escape');
+    if ((await pencil.getAttribute('aria-pressed')) === 'true') await bia.page.keyboard.press('Escape');
+    expect(await pencil.getAttribute('aria-pressed')).toBe('false');
+    console.log(`[draw e2e] after Esc in fullscreen: ${await which()}`);
+    await bia.page.evaluate('document.fullscreenElement ? document.exitFullscreen() : null');
+    await expect.poll(which, { timeout: 5_000 }).toBe('none');
+  });
+
   step('allow: Ana turns "Permitir desenhos" off and Bia\'s pencil goes away', 30_000, async () => {
     const allow = ana.page.getByRole('switch', { name: 'Permitir desenhos' });
     await allow.click();
