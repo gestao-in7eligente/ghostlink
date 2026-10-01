@@ -5,9 +5,14 @@ import { MemberList } from '../features/members/MemberList.js';
 import { InviteDialog } from '../features/server-settings/InviteDialog.js';
 import { LeaveDialog } from '../features/server-settings/LeaveDialog.js';
 import { ServerSettings } from '../features/server-settings/ServerSettings.js';
+import { DeletionBanner } from '../features/serverDelete/DeletionBanner.js';
+import { useServerDeleteSync } from '../features/serverDelete/deletionStore.js';
+import { deletionMessage } from '../features/serverDelete/serverDeleteModel.js';
+import { DeleteServerDialog } from '../features/serverDelete/ServerExitDialogs.js';
 import { ServerUpdateNotice } from '../features/serverUpdate/ServerUpdateNotice.js';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 import { useConnectionStore } from '../stores/connection.js';
+import { useSettingsStore } from '../stores/settings.js';
 import { useTextStore } from '../stores/text.js';
 import { ChannelSidebar, type SidebarDialog } from './ChannelSidebar.js';
 import l from './layout.module.css';
@@ -28,6 +33,7 @@ type Dialog = SidebarDialog | 'user' | 'voice' | null;
 export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onLeave: () => void }) {
   const t = useT();
   useTextSync(welcome);
+  useServerDeleteSync(welcome);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [leaving, setLeaving] = useState(false);
   const stageId = useTextStore((s) => s.channels.stageId);
@@ -52,9 +58,11 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
 
   return (
     <div ref={shellRef} className={l.shell}>
-      <ServerRail currentId={welcome.serverId} onHome={() => void disconnect()} />
+      <ServerRail currentId={welcome.serverId} onHome={() => void disconnect()} onCurrentExit={setDialog} />
       <ChannelSidebar onOpen={setDialog} />
       <main className={l.center}>
+        {/* Leave/delete spec §3: the owner's red band while the server waits for its erase. */}
+        <DeletionBanner serverId={welcome.serverId} />
         {stageId !== null && VoiceStage ? (
           <VoiceStage channelId={stageId} onOpenSettings={() => setDialog('voice')} />
         ) : (
@@ -73,17 +81,35 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
       {dialog === 'invite' && <InviteDialog onClose={() => setDialog(null)} />}
       {dialog === 'settings' && <ServerSettings onClose={() => setDialog(null)} />}
       {dialog === 'leave' && <LeaveDialog serverId={welcome.serverId} onClose={() => setDialog(null)} onLeaving={setLeaving} onLeft={onLeave} />}
+      {dialog === 'delete' && <DeleteOpenServer serverId={welcome.serverId} onClose={() => setDialog(null)} />}
       {(dialog === 'user' || dialog === 'voice') && <UserSettings section={dialog === 'voice' ? 'voice' : undefined} onClose={() => setDialog(null)} />}
       {!leaving && <ConnectionLost serverId={welcome.serverId} onLeave={onLeave} />}
     </div>
   );
 }
 
-/** Shown when the connection failed for good (kicked, banned, server gone…). */
+/** "Excluir servidor" on the open server (the owner, leave/delete spec §3): it stays open, with the red band. */
+function DeleteOpenServer({ serverId, onClose }: { serverId: string; onClose: () => void }) {
+  const name = useTextStore((s) => s.server.name);
+  return (
+    <DeleteServerDialog
+      name={name}
+      onDelete={async () => {
+        await window.ghostlink.servers.delete(serverId);
+      }}
+      onClose={onClose}
+    />
+  );
+}
+
+/** Shown when the connection failed for good (kicked, banned, server deleted, server gone…). */
 function ConnectionLost({ serverId, onLeave }: { serverId: string; onLeave: () => void }) {
   const t = useT();
   const state = useConnectionStore((s) => s.state);
   const error = useConnectionStore((s) => s.error);
+  const deletingAt = useConnectionStore((s) => s.deletingAt);
+  const name = useConnectionStore((s) => s.welcome?.server.name ?? '');
+  const locale = useSettingsStore((s) => s.settings?.locale ?? 'pt-BR');
   const [busy, setBusy] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   if (state !== 'failed') return null;
@@ -99,17 +125,18 @@ function ConnectionLost({ serverId, onLeave }: { serverId: string; onLeave: () =
       setBusy(false);
     }
   };
-  // After a kick or a ban, reconnecting cannot work: only offer the way out.
-  const final = error === 'KICKED' || error === 'BANNED';
+  // After a kick, a ban or the owner's deletion, reconnecting cannot work: only offer the way out.
+  const deletion = deletionMessage(error, name, deletingAt, locale);
+  const final = error === 'KICKED' || error === 'BANNED' || deletion !== null;
 
   return (
     <div className={l.lostOverlay}>
       <div className={l.lostCard} role="alertdialog" aria-modal="true" aria-labelledby="lost-title" aria-describedby="lost-text">
         <h2 id="lost-title" className={l.lostTitle}>
-          {t('layout.connectionFailed')}
+          {deletion ? t(deletion.title) : t('layout.connectionFailed')}
         </h2>
         <p id="lost-text" className={l.lostText}>
-          {errorMessage(t, error ?? 'CONNECTION_LOST')}
+          {deletion ? t(deletion.text, deletion.vars) : errorMessage(t, error ?? 'CONNECTION_LOST')}
         </p>
         {retryError && (
           <p className={p.error} role="alert">

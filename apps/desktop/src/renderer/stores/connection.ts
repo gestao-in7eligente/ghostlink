@@ -7,6 +7,8 @@ export interface ConnectionView {
   state: ConnState;
   serverId: string | null;
   error: AppErrorCode | null;
+  /** With SERVER_DELETING: when the server is erased (ms, the server's clock), if it said. */
+  deletingAt: number | null;
   /** The snapshot of the server we are (or were just) connected to. */
   welcome: RendererWelcome | null;
 }
@@ -16,7 +18,7 @@ export type ConnectionAction =
   | { type: 'joined'; welcome: RendererWelcome }
   | { type: 'serverEvent'; event: Envelope };
 
-export const initialConnection: ConnectionView = { state: 'idle', serverId: null, error: null, welcome: null };
+export const initialConnection: ConnectionView = { state: 'idle', serverId: null, error: null, deletingAt: null, welcome: null };
 
 function isWelcomeFor(d: unknown, serverId: string): d is RendererWelcome {
   return typeof d === 'object' && d !== null && (d as { serverId?: unknown }).serverId === serverId;
@@ -26,7 +28,7 @@ function isWelcomeFor(d: unknown, serverId: string): d is RendererWelcome {
 export function connectionReducer(s: ConnectionView, a: ConnectionAction): ConnectionView {
   switch (a.type) {
     case 'joined':
-      return { state: 'connected', serverId: a.welcome.serverId, error: null, welcome: a.welcome };
+      return { state: 'connected', serverId: a.welcome.serverId, error: null, deletingAt: null, welcome: a.welcome };
     case 'state': {
       const { state, serverId } = a.event;
       const sameServer = serverId === null || serverId === s.welcome?.serverId;
@@ -34,6 +36,7 @@ export function connectionReducer(s: ConnectionView, a: ConnectionAction): Conne
         state,
         serverId,
         error: state === 'failed' ? (a.event.error ?? 'CONNECTION_LOST') : null,
+        deletingAt: state === 'failed' ? (a.event.deletingAt ?? null) : null,
         // Leaving (idle) or another server's events drop the old snapshot; a failure keeps it on screen.
         welcome: state === 'idle' || !sameServer ? null : s.welcome,
       };

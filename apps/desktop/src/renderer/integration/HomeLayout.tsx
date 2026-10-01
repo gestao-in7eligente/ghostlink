@@ -1,18 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
-import { EllipsisVertical, KeyRound, MessageCircle, Play, Plus, Search, Server } from 'lucide-react';
+import { EllipsisVertical, KeyRound, LogOut, MessageCircle, Play, Plus, Search, Server } from 'lucide-react';
 import type { RendererWelcome, SavedServer } from '../../shared/ipcTypes.js';
 import { GhostMark } from '../components/GhostMark.js';
 import { useHostStore } from '../features/host/hostStore.js';
 import { openHostFlow, openHostPanel } from '../features/host/hostUi.js';
 import { openIdentitySettings } from '../features/identity/identityModel.js';
+import { deletionMessage } from '../features/serverDelete/serverDeleteModel.js';
+import { ExitServerDialog } from '../features/serverDelete/ServerExitDialogs.js';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 import { AddServerDialog } from '../layout/AddServerDialog.js';
 import l from '../layout/layout.module.css';
 import { serverInitials } from '../layout/names.js';
-import { ConfirmDialog, Menu, MenuItem, MenuSeparator } from '../layout/primitives.js';
+import { Menu, MenuItem, MenuSeparator } from '../layout/primitives.js';
 import { ServerRail } from '../layout/ServerRail.js';
 import { UserPanel } from '../layout/UserPanel.js';
 import { UserSettings } from '../layout/UserSettings.js';
+import { useConnectionStore } from '../stores/connection.js';
+import { useSavedListStore } from '../stores/savedList.js';
+import { useSettingsStore } from '../stores/settings.js';
 import { filterHomeRows, homeActivity, homeServerRows, type HomeActivity, type HomeServerRow, type HomeTab } from './homeModel.js';
 import h from './home.module.css';
 
@@ -31,7 +36,9 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
   const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ row: HomeServerRow; anchor: DOMRect } | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState<HomeServerRow | null>(null);
+  const [exiting, setExiting] = useState<SavedServer | null>(null);
+  const listRevision = useSavedListStore((st) => st.revision);
+  const locale = useSettingsStore((st) => st.settings?.locale ?? 'pt-BR');
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -46,7 +53,7 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
     );
   useEffect(() => {
     void reload();
-  }, [hostStatus?.revision]);
+  }, [hostStatus?.revision, listRevision]);
 
   // Same trick as the main layout: the sidebar leaves room for the user panel.
   useEffect(() => {
@@ -74,17 +81,13 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
     try {
       onJoined(await window.ghostlink.servers.connect(row.id));
     } catch (e) {
-      setError(errorMessage(t, errorCodeOf(e)));
+      const code = errorCodeOf(e);
+      // Leave/delete spec §3: the owner deleted it (the date comes with the failed connection's state).
+      const deletion = deletionMessage(code, row.name, useConnectionStore.getState().deletingAt, locale);
+      setError(deletion ? t(deletion.text, deletion.vars) : errorMessage(t, code));
+      if (code === 'SERVER_DELETED') void reload(); // main took it out of the list
     } finally {
       setBusyId(null);
-    }
-  };
-
-  const remove = async (row: HomeServerRow) => {
-    try {
-      await window.ghostlink.servers.remove(row.id);
-    } finally {
-      void reload();
     }
   };
 
@@ -238,26 +241,21 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
             {menu.row.stopped ? t('home.active.start') : t('home.active.open')}
           </MenuItem>
           <MenuSeparator />
+          {/* Leave/delete spec §2: no "Remover da lista"; the dialog connects and offers delete to the owner. */}
           <MenuItem
             danger
+            icon={<LogOut size={16} aria-hidden="true" />}
             onSelect={() => {
+              const server = servers.find((s) => s.id === menu.row.id) ?? null;
               setMenu(null);
-              setConfirmRemove(menu.row);
+              setExiting(server);
             }}
           >
-            {t('home.remove')}
+            {t('layout.leave')}
           </MenuItem>
         </Menu>
       )}
-      {confirmRemove && (
-        <ConfirmDialog
-          title={t('home.removeConfirm', { name: confirmRemove.name })}
-          body={t('home.removeBody')}
-          confirmLabel={t('home.remove')}
-          onConfirm={() => remove(confirmRemove)}
-          onClose={() => setConfirmRemove(null)}
-        />
-      )}
+      {exiting && <ExitServerDialog server={exiting} onClose={() => setExiting(null)} onChanged={() => useSavedListStore.getState().changed()} />}
       {settingsOpen && <UserSettings offline onClose={() => setSettingsOpen(false)} />}
       {adding && <AddServerDialog onClose={() => setAdding(false)} onHome={() => undefined} />}
     </div>
