@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import createTestnet, { type Testnet } from 'hyperdht/testnet.js';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { friendKeyFromSeed } from '../../src/main/p2p/friendKey.js';
 import { FriendSwarm, type FriendLink } from '../../src/main/p2p/swarm.js';
 
@@ -8,7 +8,10 @@ const seed = (label: string) => createHash('sha256').update(label).digest();
 const same = (a: Uint8Array, b: Uint8Array) => Buffer.from(a).equals(Buffer.from(b));
 const text = (data: Uint8Array) => Buffer.from(data).toString();
 
-async function until(check: () => boolean, ms = 10_000): Promise<void> {
+// A real DHT on a slow CI runner (Windows) can need well over 10 s to reconnect after a restart.
+vi.setConfig({ testTimeout: 120_000 });
+
+async function until(check: () => boolean, ms = 30_000): Promise<void> {
   const deadline = Date.now() + ms;
   while (!check()) {
     if (Date.now() > deadline) throw new Error('condition not met in time');

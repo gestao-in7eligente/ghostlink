@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import createTestnet, { type Testnet } from 'hyperdht/testnet.js';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AppError } from '../../src/shared/appErrors.js';
 import type { Friend, FriendsSnapshot } from '../../src/shared/friendsTypes.js';
 import { IdentityStore } from '../../src/main/identity.js';
@@ -17,7 +17,10 @@ import { FakeSafeStorage } from '../helpers/fakeSafeStorage.js';
 
 const realTimers = { setTimeout: (fn: () => void, ms: number) => setTimeout(fn, ms), clearTimeout: (h: unknown) => clearTimeout(h as NodeJS.Timeout) };
 
-async function until(check: () => boolean | Promise<boolean>, ms = 10_000): Promise<void> {
+// A real DHT on a slow CI runner (Windows) can need well over 10 s to reconnect after a restart.
+vi.setConfig({ testTimeout: 120_000 });
+
+async function until(check: () => boolean | Promise<boolean>, ms = 30_000): Promise<void> {
   const deadline = Date.now() + ms;
   while (!(await check())) {
     if (Date.now() > deadline) throw new Error('condition not met in time');
