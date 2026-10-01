@@ -11,8 +11,9 @@ import { useConnectionStore } from '../../stores/connection.js';
 import { directoryFromWelcome, type VoiceDirectory } from './directory.js';
 import { createDomOutlet, onNextUserGesture } from './dom.js';
 import { GateProcessor } from './gateProcessor.js';
+import { cancelScreenPicker, createScreenOutlet, pickScreen } from './screenStore.js';
 import { VoiceSession } from './session.js';
-import { useVoiceSettings, withVolume, type VoiceSettings } from './settings.js';
+import { screenVolumeKey, useVoiceSettings, withVolume, type VoiceSettings } from './settings.js';
 import { useVoiceStore } from './state.js';
 
 let session: VoiceSession | null = null;
@@ -134,6 +135,12 @@ function start(): () => void {
     getState: () => voice.getState(),
     settings: () => useVoiceSettings.getState().settings,
     outlet: createDomOutlet(),
+    video: createScreenOutlet(),
+    screen: {
+      sources: () => api.screen.sources(),
+      choose: (choice) => api.screen.choose(choice),
+      pick: pickScreen,
+    },
     createMicrophone,
     onUserGesture: onNextUserGesture,
     connectedAddress: () => useConnectionStore.getState().welcome?.address ?? null,
@@ -148,6 +155,8 @@ function start(): () => void {
     if (v.selfMuted !== prev.selfMuted || v.selfDeafened !== prev.selfDeafened) {
       useVoiceSettings.getState().update({ muted: v.selfMuted, deafened: v.selfDeafened });
     }
+    // The screen picker belongs to the call: it closes when the call ends.
+    if (v.call.status === 'idle' && prev.call.status !== 'idle') cancelScreenPicker();
   });
   configureGlobalPtt(initial);
   const offSettings = useVoiceSettings.subscribe(({ settings: s }, { settings: prev }) => {
@@ -193,6 +202,7 @@ function start(): () => void {
     offSelf();
     offConnection();
     void api.ptt.configure({ enabled: false, code: null }).catch(() => {});
+    cancelScreenPicker();
     void current.dispose();
     if (session === current) session = null;
   };
@@ -247,6 +257,31 @@ export function toggleDeafen(): Promise<void> {
 export function setUserVolume(userId: string, percent: number): void {
   const serverId = useVoiceStore.getState().serverId;
   if (serverId) useVoiceSettings.getState().update((s) => withVolume(s, serverId, userId, percent));
+}
+
+/** A person's stream volume (0–200 %), saved apart from their voice (spec 2026-10-01 §5). */
+export function setScreenVolume(userId: string, percent: number): void {
+  setUserVolume(screenVolumeKey(userId), percent);
+}
+
+/** "Transmitir tela": opens the picker, then captures and publishes. */
+export function startScreenShare(): Promise<void> {
+  return session?.startScreenShare() ?? Promise.resolve();
+}
+
+/** "Parar transmissão". */
+export function stopScreenShare(): Promise<void> {
+  return session?.stopScreenShare() ?? Promise.resolve();
+}
+
+/** "Assistir" (spec §8.4: a screen is received only on demand). */
+export function watchScreen(userId: string): void {
+  session?.watch(userId);
+}
+
+/** "Parar de assistir". */
+export function unwatchScreen(userId: string): void {
+  session?.unwatch(userId);
 }
 
 /** voice.moderate; a refusal (FORBIDDEN, HIERARCHY…) shows as a voice notice. */

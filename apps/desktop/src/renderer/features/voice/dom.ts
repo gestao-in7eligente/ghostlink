@@ -19,11 +19,17 @@ export function createDomOutlet(): AudioOutlet {
     return box;
   };
   return {
-    attach(track, userId) {
+    attach(track, userId, source = 'voice') {
       tracks.add(track);
       const el = track.attach();
-      el.dataset.voiceTrack = 'remote';
-      el.dataset.voiceUser = userId;
+      if (source === 'screen') {
+        // A stream's sound: kept apart from the voices (data-voice-user marks a voice).
+        el.dataset.voiceTrack = 'screen';
+        el.dataset.screenUser = userId;
+      } else {
+        el.dataset.voiceTrack = 'remote';
+        el.dataset.voiceUser = userId;
+      }
       container().appendChild(el);
     },
     detach(track) {
