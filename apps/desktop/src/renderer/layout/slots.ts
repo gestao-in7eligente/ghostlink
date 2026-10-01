@@ -18,12 +18,12 @@ export interface UserSettingsSection {
 export interface LayoutSlots {
   /** Under each voice channel in the sidebar: who is connected (Voice). */
   VoiceChannelParticipants: ComponentType<{ channelId: string }> | null;
-  /** Top row of the user panel, shown while connected to voice (Voice). */
-  VoicePanel: ComponentType | null;
+  /** Top row of the user panel, shown while connected to voice (Voice). `onOpenSettings` opens the voice settings. */
+  VoicePanel: ComponentType<{ onOpenSettings?: () => void }> | null;
   /** Mic and headphones buttons with their device menus, in the user panel (Voice). */
-  VoiceControls: ComponentType | null;
+  VoiceControls: ComponentType<{ onOpenSettings?: () => void }> | null;
   /** The center of the screen when a voice channel is open (Voice). */
-  VoiceStage: ComponentType<{ channelId: string }> | null;
+  VoiceStage: ComponentType<{ channelId: string; onOpenSettings?: () => void }> | null;
   /** Called when the user opens a voice channel (Voice's joinVoice). */
   onJoinVoice: ((channelId: string) => void) | null;
   /** Extra items in a member's context menu, e.g. per-user volume (Voice). */

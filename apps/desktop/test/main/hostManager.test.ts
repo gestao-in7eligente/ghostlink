@@ -77,6 +77,8 @@ function statusReply(server: FakeServer, extra: Partial<HostedStatus> = {}): Hos
       localAddresses: [],
     },
     busyMediaPorts: [],
+    deletingAt: null,
+    deleted: false,
     ...extra,
   };
 }
@@ -268,6 +270,32 @@ describe('HostManager.start (spec §9)', () => {
     expect(makeManager().status()).toMatchObject({ state: 'stopped', config: CONFIG });
   });
 
+  it("knows the last hosted server's key at load, from its data dir's certificate (spec §6)", async () => {
+    const { status } = await manager.start(CONFIG);
+    await manager.stop();
+    expect(makeManager().status()).toMatchObject({ state: 'stopped', config: CONFIG, serverKeyId: status.serverKeyId, fingerprint: status.fingerprint });
+  });
+
+  it("reports no key at load when the last server's data dir has no certificate", () => {
+    mkdirSync(join(dir.path, HOSTED_DIR), { recursive: true });
+    writeFileSync(join(dir.path, HOSTED_DIR, HOST_FILE), JSON.stringify({ version: 1, last: CONFIG, trayNoticeShown: false }));
+    expect(makeManager().status()).toMatchObject({ state: 'stopped', config: CONFIG, serverKeyId: null });
+    mkdirSync(join(dir.path, HOSTED_DIR, 'casa-do-ze', 'tls'), { recursive: true });
+    writeFileSync(join(dir.path, HOSTED_DIR, 'casa-do-ze', ...SERVER_CERT_FILE), 'not a certificate');
+    expect(makeManager().status().serverKeyId).toBeNull();
+  });
+
+  it("a crash keeps the key; hosting another name switches to that data dir's key", async () => {
+    const first = (await manager.start(CONFIG)).status;
+    forks[0]!.crash();
+    await vi.waitFor(() => expect(manager.status().state).toBe('failed'));
+    expect(manager.status().serverKeyId).toBe(first.serverKeyId);
+    await manager.stop();
+    const other = (await manager.start({ ...CONFIG, name: 'Outro' })).status;
+    expect(other.serverKeyId).not.toBeNull();
+    expect(other.serverKeyId).not.toBe(first.serverKeyId);
+  });
+
   it('survives a corrupt host.json', () => {
     mkdirSync(join(dir.path, HOSTED_DIR), { recursive: true });
     writeFileSync(join(dir.path, HOSTED_DIR, HOST_FILE), '{"version":1,"last":{"name":"x","port":"7700"}}');
@@ -327,7 +355,8 @@ describe('HostManager stop / restart / crash', () => {
     const stopped = await manager.stop();
     expect(leaves).toEqual([status.serverKeyId]);
     expect(forks[0]!.shutdowns).toBe(1);
-    expect(stopped).toMatchObject({ state: 'stopped', port: null, serverKeyId: null, invite: null, addresses: [], config: CONFIG });
+    // The pin stays (leave/delete spec §6): the server list still recognizes the stopped server by key.
+    expect(stopped).toMatchObject({ state: 'stopped', port: null, serverKeyId: status.serverKeyId, invite: null, addresses: [], config: CONFIG });
     expect(emitted.at(-2)!.state).toBe('stopping');
     expect(emitted.at(-1)!.state).toBe('stopped');
     expect(manager.isActive()).toBe(false);
@@ -457,5 +486,64 @@ describe('HostManager commands', () => {
     manager.markTrayNoticeShown();
     expect(makeManager().trayNoticeShown()).toBe(true);
     expect(existsSync(join(dir.path, HOSTED_DIR, HOST_FILE))).toBe(true);
+  });
+});
+
+describe('HostManager: a deleted hosted server (leave/delete spec §3)', () => {
+  const dataDir = () => join(dir.path, HOSTED_DIR, 'casa-do-ze');
+
+  it('stops the server and deletes hosted/<slug> at the deadline, never before', async () => {
+    const { status } = await manager.start(CONFIG);
+    const key = status.serverKeyId!;
+    // The running server reports the same deadline (it is asked before the erase).
+    forks[0]!.replies.status = () => statusReply(forks[0]!, { deletingAt: 5_000 });
+    expect(manager.markDeleting(key, 5_000)).toBe(true);
+    expect(manager.deleting()).toEqual({ serverKeyId: key, at: 5_000 });
+
+    expect(await manager.eraseIfDue(4_999)).toBeNull();
+    expect(existsSync(dataDir())).toBe(true);
+    expect(forks[0]!.shutdowns).toBe(0);
+
+    expect(await manager.eraseIfDue(5_000)).toBe(key);
+    expect(forks[0]!.shutdowns).toBe(1);
+    expect(existsSync(dataDir())).toBe(false);
+    expect(manager.status()).toMatchObject({ state: 'stopped', config: null, serverKeyId: null });
+    expect(manager.deleting()).toBeNull();
+    // No "Iniciar Casa do Zé" for an erased server, after a restart of the app either.
+    expect(makeManager().status()).toMatchObject({ config: null, serverKeyId: null });
+  });
+
+  it('erases a stopped server too, and at once once it answered SERVER_DELETED', async () => {
+    const { status } = await manager.start(CONFIG);
+    manager.markDeleting(status.serverKeyId!, 50_000);
+    await manager.stop();
+    const reloaded = makeManager(); // the record survives a restart of the app
+    expect(reloaded.deleting()).toEqual({ serverKeyId: status.serverKeyId, at: 50_000 });
+    expect(await reloaded.eraseIfDue(1_000, new Set([status.serverKeyId!]))).toBe(status.serverKeyId);
+    expect(existsSync(dataDir())).toBe(false);
+  });
+
+  it('a restore clears the record; another server is never marked; a running server that is not being deleted keeps its folder', async () => {
+    const { status } = await manager.start(CONFIG);
+    expect(manager.markDeleting('x'.repeat(43), 5_000)).toBe(false);
+    manager.markDeleting(status.serverKeyId!, 5_000);
+    expect(manager.markDeleting(status.serverKeyId!, null)).toBe(true);
+    expect(await manager.eraseIfDue(10_000)).toBeNull();
+    manager.markDeleting(status.serverKeyId!, 5_000); // restored elsewhere: the server says it is not being deleted
+    expect(await manager.eraseIfDue(10_000)).toBeNull();
+    expect(manager.deleting()).toBeNull();
+    expect(existsSync(dataDir())).toBe(true);
+    expect(manager.status().state).toBe('running');
+  });
+
+  it('follows the running server\u2019s own word: deleting, then restored', async () => {
+    await manager.start(CONFIG);
+    const server = forks[0]!;
+    server.replies.status = () => statusReply(server, { deletingAt: 9_000 });
+    await manager.refresh();
+    expect(manager.deleting()).toMatchObject({ at: 9_000 });
+    server.replies.status = () => statusReply(server, { deletingAt: null });
+    await manager.refresh();
+    expect(manager.deleting()).toBeNull();
   });
 });

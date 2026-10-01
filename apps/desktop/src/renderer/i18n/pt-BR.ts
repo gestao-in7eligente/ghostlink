@@ -3,12 +3,17 @@ import { identity } from './pt-BR/identity.js';
 import { releasePtBR } from './release.pt-BR.js';
 
 // Source catalog: every key exists here first; en.ts must have exactly the same keys.
+import { camera } from './camera.pt-BR.js';
 import { chat } from './chat.pt-BR.js';
 import { dm } from './dm.pt-BR.js';
+import { draw } from './draw.pt-BR.js';
 import { friends } from './friends.pt-BR.js';
 import { integration } from './integration.pt-BR.js';
 import { owner } from './owner.pt-BR.js';
+import { profile } from './profile.pt-BR.js';
 import { railway } from './railway.pt-BR.js';
+import { serverDelete } from './serverDelete.pt-BR.js';
+import { serverUpdate } from './serverUpdate.pt-BR.js';
 import { voice } from './voice.pt-BR.js';
 
 export const messages = {
@@ -64,6 +69,8 @@ export const messages = {
   'join.invite.nameHint': '(nome informado pelo convite)',
   'join.invite.addresses': 'Endereços',
   'join.invite.accept': 'Aceitar convite',
+  'join.known.title': 'Abrindo {name}…',
+  'join.known.text': 'Você já entrou neste servidor antes. Não precisa aceitar o convite de novo.',
   'join.tofu.title': 'Confira a impressão digital',
   'join.tofu.body':
     'É a primeira vez que você se conecta a {address}. Peça ao dono do servidor a impressão digital e compare os quatro grupos antes de continuar.',
@@ -98,8 +105,6 @@ export const messages = {
   'servers.empty': 'Você ainda não entrou em nenhum servidor.',
   'servers.join': 'Entrar num servidor',
   'servers.connect': 'Conectar',
-  'servers.remove': 'Remover',
-  'servers.removeConfirm': 'Remover {name} da lista? Você continua membro e pode voltar pelo endereço.',
   'servers.as': 'como {nickname}',
 
   'errors.BAD_REQUEST': 'Algo nesse pedido não está certo. Confira os dados e tente de novo.',
@@ -122,6 +127,8 @@ export const messages = {
   'errors.SESSION_REPLACED': 'Você entrou por outro lugar, e esta sessão foi encerrada.',
   'errors.KICKED': 'Você foi expulso do servidor.',
   'errors.SERVER_SHUTDOWN': 'O servidor foi desligado.',
+  'errors.SERVER_DELETING': 'O dono desligou este servidor, e ele será excluído em breve.',
+  'errors.SERVER_DELETED': 'Este servidor foi excluído pelo dono.',
   'errors.CHANNEL_FULL': 'O canal está cheio.',
   'errors.FILE_TOO_LARGE': 'O arquivo é grande demais.',
   'errors.IMAGE_TOO_LARGE': 'A imagem é grande demais.',
@@ -143,7 +150,12 @@ export const messages = {
   ...integration,
   ...owner,
   ...voice,
+  ...camera,
+  ...draw,
   ...railway,
   ...friends,
   ...dm,
+  ...profile,
+  ...serverUpdate,
+  ...serverDelete,
 } as const;

@@ -20,6 +20,7 @@ import { fetchWorkspaces } from './account.js';
 import { RailwayClient, RailwayError, type FetchLike } from './api.js';
 import { normalizeFingerprint, parseServerStart, redactLogLine } from './logs.js';
 import { DATA, OPS } from './operations.js';
+import { deleteRailwayProject } from './projectDelete.js';
 import { RailwayStore, type ManagedServer, type PendingRecord } from './store.js';
 import { RailwayTokenStore, normalizeToken } from './token.js';
 
@@ -58,11 +59,11 @@ const FAILURE_LOG_LIMIT = 100;
 const FAILURE_LOG_LINES = 30;
 const HOSTNAME = /^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
 
-// research §8: DeploymentStatus.
-const IN_PROGRESS: ReadonlySet<string> = new Set(['QUEUED', 'WAITING', 'INITIALIZING', 'BUILDING', 'DEPLOYING']);
-const FAILED: ReadonlySet<string> = new Set(['FAILED', 'CRASHED']);
+// research §8: DeploymentStatus. Also read by serverUpdates.ts, which deploys new versions.
+export const IN_PROGRESS: ReadonlySet<string> = new Set(['QUEUED', 'WAITING', 'INITIALIZING', 'BUILDING', 'DEPLOYING']);
+export const FAILED: ReadonlySet<string> = new Set(['FAILED', 'CRASHED']);
 /** Ended without success or failure, e.g. superseded by a newer deployment. */
-const ENDED: ReadonlySet<string> = new Set(['REMOVED', 'REMOVING', 'SKIPPED', 'SLEEPING']);
+export const ENDED: ReadonlySet<string> = new Set(['REMOVED', 'REMOVING', 'SKIPPED', 'SLEEPING']);
 
 /** The Railway project's name: "ghostlink-" and a slug of the server name ("Casa do Zé" → ghostlink-casa-do-ze). */
 export function projectName(serverName: string): string {
@@ -104,6 +105,8 @@ function need<T>(value: T | undefined, what: string): T {
 export interface RailwayProvisionerDeps {
   userDataDir: string;
   safeStorage: SafeStorageLike;
+  /** railway.json, shared with the server updates (one copy in memory); loaded from userDataDir when absent. */
+  store?: RailwayStore;
   /** Electron's net.fetch in production. */
   fetch: FetchLike;
   /** railwayImage() for this app version. */
@@ -157,7 +160,7 @@ export class RailwayProvisioner {
   constructor(deps: RailwayProvisionerDeps) {
     this.#deps = deps;
     this.#tokens = new RailwayTokenStore(deps.userDataDir, deps.safeStorage);
-    this.#store = RailwayStore.load(deps.userDataDir);
+    this.#store = deps.store ?? RailwayStore.load(deps.userDataDir);
     this.#timing = { ...RAILWAY_TIMING, ...deps.timing };
     this.#log = deps.log ?? mainLog;
     this.#now = deps.now ?? Date.now;
@@ -230,14 +233,14 @@ export class RailwayProvisioner {
     if (!pending) return;
     const token = this.#requireToken();
     await this.#exclusive(async () => {
-      await this.#deleteProject(this.#client(token), pending.projectId);
+      await deleteRailwayProject(this.#client(token), pending.projectId, this.#log);
       this.#store.clearPending();
       this.#error = null;
       this.#log.info(`[railway] discarded project ${pending.projectId}`);
     });
   }
 
-  /** The servers this app created, for the later update and delete features. */
+  /** The servers this app created (serverUpdates.ts keeps them on the app's version). */
   managed(): ManagedServer[] {
     return this.#store.managed;
   }
@@ -487,41 +490,6 @@ export class RailwayProvisioner {
         if (toAppErrorCode(e) !== 'UNREACHABLE' || this.#now() >= deadline) throw e;
       }
       await this.#sleep(this.#timing.probeRetryMs);
-    }
-  }
-
-  /** research §3.3. A project that is gone already counts as deleted. */
-  async #deleteProject(api: RailwayClient, projectId: string): Promise<void> {
-    try {
-      await api.request(OPS.projectDelete, { id: projectId }, DATA.projectDelete);
-    } catch (e) {
-      if (!(e instanceof RailwayError)) throw e;
-      // Only a refusal from Railway can mean "already gone"; offline or rate limited, the record stays.
-      const refused = e.messages.length > 0 || e.code === 'RAILWAY_TOKEN_INVALID';
-      if (!refused || !(e.notFound || (await this.#projectGone(api, projectId)))) throw e;
-      this.#log.info(`[railway] project ${projectId} was already gone`);
-    }
-  }
-
-  /**
-   * After a refused delete: true when the project no longer exists. Railway may answer "Not
-   * Authorized" for an id it cannot find (not verified), so a token that still works but cannot
-   * see the project means it is gone.
-   */
-  async #projectGone(api: RailwayClient, projectId: string): Promise<boolean> {
-    try {
-      const { project } = await api.request(OPS.project, { id: projectId }, DATA.project);
-      return project.deletedAt !== null && project.deletedAt !== undefined;
-    } catch (e) {
-      if (!(e instanceof RailwayError)) return false;
-      if (e.notFound) return true;
-      if (e.code !== 'RAILWAY_TOKEN_INVALID') return false;
-      try {
-        await api.request(OPS.apiToken, {}, DATA.apiToken);
-        return true;
-      } catch {
-        return false;
-      }
     }
   }
 

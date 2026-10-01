@@ -143,7 +143,7 @@ export interface TestClient {
   welcome?: WelcomePayload;
   /** The welcome exactly as sent, including module fields (the client schema strips unknown keys). */
   rawWelcome?: Record<string, unknown>;
-  error?: { code: ErrorCode; min?: number; max?: number };
+  error?: { code: ErrorCode; min?: number; max?: number; at?: number };
   raw: RawClient;
   request(t: string, d?: unknown): Promise<ResOk | ResErr>;
   waitEvent(t: string, timeoutMs?: number): Promise<Envelope>;

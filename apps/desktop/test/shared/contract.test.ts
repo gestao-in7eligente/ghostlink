@@ -19,6 +19,9 @@ describe('IPC channel names (contract §5)', () => {
       'ghostlink:dm.remove',
       'ghostlink:dm.send',
       'ghostlink:dm.typing',
+      'ghostlink:draw.overlayClose',
+      'ghostlink:draw.overlayOpen',
+      'ghostlink:draw.overlayStroke',
       'ghostlink:friends.accept',
       'ghostlink:friends.add',
       'ghostlink:friends.block',
@@ -52,6 +55,9 @@ describe('IPC channel names (contract §5)', () => {
       'ghostlink:join.parse',
       'ghostlink:join.probe',
       'ghostlink:notifications.show',
+      'ghostlink:profile.avatar',
+      'ghostlink:profile.clearAvatar',
+      'ghostlink:profile.setAvatar',
       'ghostlink:ptt.configure',
       'ghostlink:railway.connect',
       'ghostlink:railway.create',
@@ -60,13 +66,22 @@ describe('IPC channel names (contract §5)', () => {
       'ghostlink:railway.pending',
       'ghostlink:railway.resume',
       'ghostlink:railway.status',
+      'ghostlink:screen.choose',
+      'ghostlink:screen.sources',
       'ghostlink:server.request',
+      'ghostlink:serverUpdates.state',
+      'ghostlink:serverUpdates.updateNow',
+      'ghostlink:servers.checkExit',
       'ghostlink:servers.connect',
+      'ghostlink:servers.delete',
       'ghostlink:servers.disconnect',
+      'ghostlink:servers.leave',
       'ghostlink:servers.list',
       'ghostlink:servers.remove',
       'ghostlink:settings.get',
       'ghostlink:settings.set',
+      'ghostlink:updates.checkNow',
+      'ghostlink:updates.notes',
       'ghostlink:updates.restart',
       'ghostlink:updates.setAutoCheck',
       'ghostlink:updates.state',
@@ -74,7 +89,7 @@ describe('IPC channel names (contract §5)', () => {
   });
 
   it('keeps the event channels apart from the invoke channels', () => {
-    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server', 'ghostlink:event.host', 'ghostlink:event.deepLink', 'ghostlink:event.openChannel', 'ghostlink:event.updates', 'ghostlink:event.ptt', 'ghostlink:event.railway', 'ghostlink:event.friends', 'ghostlink:event.dm']);
+    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server', 'ghostlink:event.host', 'ghostlink:event.deepLink', 'ghostlink:event.openChannel', 'ghostlink:event.updates', 'ghostlink:event.ptt', 'ghostlink:event.railway', 'ghostlink:event.friends', 'ghostlink:event.dm', 'ghostlink:event.serverUpdates']);
     for (const event of Object.values(IPC_EVENTS)) expect(Object.values(IPC)).not.toContain(event);
   });
 });

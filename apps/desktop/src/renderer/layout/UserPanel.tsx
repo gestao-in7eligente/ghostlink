@@ -16,6 +16,8 @@ export const UserPanel = forwardRef<
   HTMLElement,
   {
     onSettings: () => void;
+    /** Opens the user settings on the voice section (the voice panel's and device menus' shortcut). */
+    onVoiceSettings?: () => void;
     /** Omitted on the Home screen (nothing to disconnect from): the exit button is hidden. */
     onDisconnect?: () => void;
     /** Home screen: the global nickname, shown instead of the server nickname. */
@@ -23,30 +25,32 @@ export const UserPanel = forwardRef<
     /** Home screen: the presence line and dot (friends network); omitted while it loads. */
     homeStatus?: { online: boolean; text: string };
   }
->(function UserPanel({ onSettings, onDisconnect, homeNickname, homeStatus }, ref) {
+>(function UserPanel({ onSettings, onVoiceSettings, onDisconnect, homeNickname, homeStatus }, ref) {
   const t = useT();
   const nickname = useTextStore((s) => (Object.hasOwn(s.members.byId, s.server.selfId) ? s.members.byId[s.server.selfId]!.nickname : ''));
+  const avatar = useTextStore((s) => (Object.hasOwn(s.members.byId, s.server.selfId) ? s.members.byId[s.server.selfId]!.avatar : null));
   const state = useConnectionStore((s) => s.state);
   const fallbackNick = useConnectionStore((s) => s.welcome?.self.nickname ?? '');
   const VoicePanel = useLayoutSlots((s) => s.VoicePanel);
   const VoiceControls = useLayoutSlots((s) => s.VoiceControls);
   const home = homeNickname !== undefined;
   const online = home ? homeStatus?.online === true : state === 'connected';
+  const name = homeNickname ?? (nickname || fallbackNick);
   const status = home ? (homeStatus?.text ?? t('home.panelStatus')) : online ? t('layout.online') : t(`state.${state}`);
 
   return (
     <section ref={ref} className={l.userPanel} aria-label={t('layout.userPanel')}>
-      {!home && VoicePanel && <VoicePanel />}
+      {!home && VoicePanel && <VoicePanel onOpenSettings={onVoiceSettings} />}
       <div className={l.panelRow}>
-        <Avatar size={32} online={online} />
+        <Avatar size={32} name={name} hash={home ? null : avatar} self online={online} />
         <div className={l.who}>
-          <span className={l.whoName}>{home ? homeNickname : nickname || fallbackNick}</span>
+          <span className={l.whoName}>{name}</span>
           <span className={l.whoStatus} role="status">
             {status}
           </span>
         </div>
         <div className={l.panelActions}>
-          {!home && VoiceControls && <VoiceControls />}
+          {!home && VoiceControls && <VoiceControls onOpenSettings={onVoiceSettings} />}
           <button type="button" className={l.panelButton} onClick={onSettings} aria-label={t('layout.userSettings')} title={t('layout.userSettings')}>
             <Settings size={19} aria-hidden="true" />
           </button>

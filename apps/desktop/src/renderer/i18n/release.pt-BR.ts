@@ -19,6 +19,30 @@ export const releasePtBR = {
   'updates.status.idle': 'Nenhuma atualização pendente.',
   'updates.status.disabled': 'A procura automática está desligada.',
   'updates.status.checking': 'Procurando atualizações…',
-  'updates.status.downloading': 'Baixando a versão {version}… {percent}%',
-  'updates.status.downloaded': 'A versão {version} está pronta. Reinicie para atualizar.',
+  'updates.status.upToDate': 'Você está na versão mais recente.',
+  'updates.status.checkFailed': 'Não foi possível procurar atualizações agora. Confira a conexão e tente de novo.',
+  'updates.status.downloading': 'Baixando a {version}… {percent}%',
+  'updates.status.downloaded': 'A {version} está pronta para instalar.',
+
+  // The Updates page (v0.2.3): check by hand, install from there, and what is new.
+  'updates.page.checkNow': 'Procurar atualizações',
+  'updates.page.checking': 'Procurando…',
+  'updates.page.checkedToday': 'Última verificação: hoje, às {time}.',
+  'updates.page.checkedOn': 'Última verificação: {date}, às {time}.',
+  'updates.page.progress': 'Download da {version}',
+  'updates.page.downloadingHint': 'Depois de baixada, ela é conferida com a assinatura oficial de release antes de poder ser instalada.',
+  'updates.page.downloadedHint': 'Já conferida com a assinatura oficial de release. O app fecha, instala a versão nova e abre de novo sozinho.',
+  'updates.page.restart': 'Atualizar e reiniciar',
+  'updates.page.newNotes': 'O que muda na {version}',
+  'updates.page.installedNotes': 'O que mudou na sua versão ({version})',
+  'updates.page.notesLoading': 'Carregando as novidades…',
+  'updates.page.notesUnavailable': 'Não foi possível carregar as novidades da {version}.',
+  'updates.page.notesMissing': 'Não há notas para a {version}.',
+  'updates.page.notesOnGitHub': 'Ver no GitHub',
+
+  // The splash when the app opens (main/updateSplash.ts reads these, like the tray reads host.tray.*).
+  'updates.splash.checking': 'Procurando atualizações…',
+  'updates.splash.downloading': 'Baixando atualização… {percent}%',
+  'updates.splash.installing': 'Instalando…',
+  'updates.splash.skip': 'Abrir sem atualizar',
 } as const;

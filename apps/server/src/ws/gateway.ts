@@ -160,8 +160,9 @@ export class Gateway {
     const handle: SessionHandle = {
       userId: session.userId,
       sessionId: session.sessionId,
+      fileToken: session.fileToken,
       send: (event) => conn.send(event),
-      terminate: (code) => conn.close(code),
+      terminate: (code, extra) => conn.close(code, extra),
     };
     const info: SessionInfo = { userId: session.userId, sessionId: session.sessionId };
     this.sessions.add(handle); // closes an older session of the same identity with SESSION_REPLACED

@@ -1,4 +1,4 @@
-import type { ErrorCode } from '@ghostlink/shared';
+import type { ErrorCode, ErrorEventExtra } from '@ghostlink/shared';
 import type { ServerEvent, SessionCloseInfo, SessionCloseReason, SessionInfo, SessionsApi } from '../modules.js';
 import { SessionRegistry, type SessionHandle } from './sessions.js';
 
@@ -38,8 +38,9 @@ export class SessionHub implements SessionsApi {
     list: () => this.list(),
     send: (sessionId, event) => this.send(sessionId, event),
     broadcast: (event, filter) => this.broadcast(event, filter),
-    closeUser: (userId, code) => this.closeUser(userId, code),
+    closeUser: (userId, code, extra) => this.closeUser(userId, code, extra),
     isOnlineOrInGrace: (userId) => this.isOnlineOrInGrace(userId),
+    fileToken: (sessionId) => this.fileToken(sessionId),
   });
 
   constructor(opts: { graceMs: number; hooks: SessionHooks }) {
@@ -105,11 +106,11 @@ export class SessionHub implements SessionsApi {
     return sent;
   }
 
-  closeUser(userId: string, code: ErrorCode): boolean {
+  closeUser(userId: string, code: ErrorCode, extra?: ErrorEventExtra): boolean {
     const handle = this.#registry.get(userId);
     if (handle) {
       this.#end(handle, code, true);
-      handle.terminate(code);
+      handle.terminate(code, extra);
       return true;
     }
     const grace = this.#grace.get(userId);
@@ -121,6 +122,10 @@ export class SessionHub implements SessionsApi {
 
   isOnlineOrInGrace(userId: string): boolean {
     return this.#registry.get(userId) !== undefined || this.#grace.has(userId);
+  }
+
+  fileToken(sessionId: string): string | null {
+    return this.#registry.getBySession(sessionId)?.fileToken ?? null;
   }
 
   // ---- internals ----

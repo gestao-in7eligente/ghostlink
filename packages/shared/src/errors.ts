@@ -4,6 +4,8 @@ export const ERROR_CODES = [
   'CHALLENGE_EXPIRED', 'SERVER_FULL', 'BANNED', 'REJOIN_BLOCKED', 'NICK_TAKEN', 'BAD_SETUP_CODE',
   'SESSION_REPLACED', 'KICKED', 'SERVER_SHUTDOWN',
   'CHANNEL_FULL', 'FILE_TOO_LARGE', 'IMAGE_TOO_LARGE', 'QUOTA_EXCEEDED', 'BAD_ATTACHMENT', 'OWNER_MUST_TRANSFER',
+  // Deleting a server (serverDelete.ts): offline until the deadline (the error event carries `at`), then erased.
+  'SERVER_DELETING', 'SERVER_DELETED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

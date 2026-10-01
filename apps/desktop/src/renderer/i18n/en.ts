@@ -1,13 +1,18 @@
 import { host } from './en/host.js';
 import { identity } from './en/identity.js';
+import { camera } from './camera.en.js';
 import { chat } from './chat.en.js';
 import { dm } from './dm.en.js';
+import { draw } from './draw.en.js';
 import { friends } from './friends.en.js';
 import { integration } from './integration.en.js';
 import { owner } from './owner.en.js';
+import { profile } from './profile.en.js';
 import { railway } from './railway.en.js';
 import type { messages as ptBR } from './pt-BR.js';
 import { releaseEn } from './release.en.js';
+import { serverDelete } from './serverDelete.en.js';
+import { serverUpdate } from './serverUpdate.en.js';
 import { voice } from './voice.en.js';
 
 // Typed against pt-BR: a missing or extra key fails the typecheck (contract §5).
@@ -64,6 +69,8 @@ export const messages: Record<keyof typeof ptBR, string> = {
   'join.invite.nameHint': '(name given by the invite)',
   'join.invite.addresses': 'Addresses',
   'join.invite.accept': 'Accept invite',
+  'join.known.title': 'Opening {name}…',
+  'join.known.text': 'You joined this server before. There is no need to accept the invite again.',
   'join.tofu.title': 'Check the fingerprint',
   'join.tofu.body':
     'This is your first connection to {address}. Ask the server owner for the fingerprint and compare all four groups before you continue.',
@@ -98,8 +105,6 @@ export const messages: Record<keyof typeof ptBR, string> = {
   'servers.empty': 'You have not joined any server yet.',
   'servers.join': 'Join a server',
   'servers.connect': 'Connect',
-  'servers.remove': 'Remove',
-  'servers.removeConfirm': 'Remove {name} from the list? You stay a member and can come back through its address.',
   'servers.as': 'as {nickname}',
 
   'errors.BAD_REQUEST': 'Something in this request is not right. Check it and try again.',
@@ -122,6 +127,8 @@ export const messages: Record<keyof typeof ptBR, string> = {
   'errors.SESSION_REPLACED': 'You signed in somewhere else, so this session ended.',
   'errors.KICKED': 'You were kicked from the server.',
   'errors.SERVER_SHUTDOWN': 'The server was shut down.',
+  'errors.SERVER_DELETING': 'The owner shut this server down, and it will be deleted soon.',
+  'errors.SERVER_DELETED': 'This server was deleted by its owner.',
   'errors.CHANNEL_FULL': 'The channel is full.',
   'errors.FILE_TOO_LARGE': 'The file is too large.',
   'errors.IMAGE_TOO_LARGE': 'The image is too large.',
@@ -143,7 +150,12 @@ export const messages: Record<keyof typeof ptBR, string> = {
   ...integration,
   ...owner,
   ...voice,
+  ...camera,
+  ...draw,
   ...railway,
   ...friends,
   ...dm,
+  ...profile,
+  ...serverUpdate,
+  ...serverDelete,
 };

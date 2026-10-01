@@ -77,8 +77,6 @@ export const friends: Record<keyof typeof friendsPt, string> = {
   'friends.panel.online': 'Online for friends',
   'friends.panel.invisible': 'Invisible to friends',
 
-  'rail.server.menu': 'Options for {name}',
-
   'errors.FRIEND_CODE_INVALID': 'That friend code is not valid. Check that you copied the whole code.',
   'errors.FRIEND_SELF': 'That is your own code.',
   'errors.FRIEND_LIMIT': 'You reached the limit of friends or pending requests.',

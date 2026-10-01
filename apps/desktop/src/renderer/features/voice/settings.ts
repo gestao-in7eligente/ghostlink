@@ -1,9 +1,24 @@
 // Local voice settings (spec §8.4, §11.1 item 7): devices, input mode and key, the
-// voice-activity threshold, mute/deafen and per-user volume per server. They live in
-// this app's localStorage (per userData profile); what is read back is never trusted.
+// voice-activity threshold, noise suppression, mute/deafen, per-user volume per server, and the
+// camera with its quality. They live in this app's localStorage (per userData profile); what is
+// read back is never trusted.
 import { create } from 'zustand';
+import { DEFAULT_CAMERA_QUALITY, isCameraQuality, type CameraQuality } from './camera.js';
 
 export type InputMode = 'vad' | 'ptt';
+
+/**
+ * Noise suppression (noise suppression spec 2026-10-01 §1): a WebAssembly suppressor in the
+ * gate's graph (RNNoise, Speex, GTCRN), the browser's own (WebRTC), or none.
+ */
+export type NoiseSuppression = 'rnnoise' | 'speex' | 'gtcrn' | 'webrtc' | 'off';
+
+/** In the order the settings list them. */
+export const NOISE_SUPPRESSIONS: readonly NoiseSuppression[] = ['rnnoise', 'speex', 'gtcrn', 'webrtc', 'off'];
+
+export function isNoiseSuppression(v: unknown): v is NoiseSuppression {
+  return typeof v === 'string' && (NOISE_SUPPRESSIONS as readonly string[]).includes(v);
+}
 
 export interface VoiceSettings {
   /** null = the system default device. */
@@ -15,10 +30,16 @@ export interface VoiceSettings {
   pttCode: string | null;
   /** Voice activity opens the microphone above this level (dBFS, -100..0). */
   thresholdDb: number;
+  /** RNNoise by default, also for settings saved before the choice existed. */
+  noiseSuppression: NoiseSuppression;
   muted: boolean;
   deafened: boolean;
-  /** serverId → userId → volume in percent (0–200); absent means 100. */
+  /** serverId → userId (or screenVolumeKey(userId) for their stream) → volume in percent (0–200); absent means 100. */
   volumes: Readonly<Record<string, Readonly<Record<string, number>>>>;
+  /** null = the system's first camera (spec 2026-10-01-camera §2). */
+  cameraDeviceId: string | null;
+  /** What my camera sends: 720p30 by default. */
+  cameraQuality: CameraQuality;
 }
 
 export const defaultVoiceSettings: VoiceSettings = {
@@ -27,9 +48,12 @@ export const defaultVoiceSettings: VoiceSettings = {
   mode: 'vad',
   pttCode: null,
   thresholdDb: -50,
+  noiseSuppression: 'rnnoise',
   muted: false,
   deafened: false,
   volumes: {},
+  cameraDeviceId: null,
+  cameraQuality: DEFAULT_CAMERA_QUALITY,
 };
 
 export const VOICE_SETTINGS_KEY = 'ghostlink.voice.v1';
@@ -42,7 +66,8 @@ export interface KeyValueStorage {
   setItem(key: string, value: string): void;
 }
 
-const USER_ID = /^[0-9a-f]{32}$/;
+/** A person's voice volume is under their user id; their stream's sound under "screen:<userId>". */
+const VOLUME_KEY = /^(?:screen:)?[0-9a-f]{32}$/;
 const SERVER_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const PTT_CODE = /^[A-Z][A-Za-z0-9]{0,23}$/;
 const MAX_SERVERS = 100;
@@ -71,7 +96,7 @@ function parseVolumes(raw: unknown): VoiceSettings['volumes'] {
     const users = own(raw, serverId);
     if (typeof users !== 'object' || users === null || Array.isArray(users)) continue;
     const entries: Record<string, number> = {};
-    for (const userId of Object.keys(users).filter((k) => USER_ID.test(k)).slice(0, MAX_USERS_PER_SERVER)) {
+    for (const userId of Object.keys(users).filter((k) => VOLUME_KEY.test(k)).slice(0, MAX_USERS_PER_SERVER)) {
       const v = own(users, userId);
       if (typeof v === 'number' && Number.isFinite(v)) entries[userId] = clampVolume(v);
     }
@@ -88,6 +113,8 @@ export function parseVoiceSettings(raw: unknown): VoiceSettings {
   const muted = own(raw, 'muted');
   const deafened = own(raw, 'deafened');
   const pttCode = own(raw, 'pttCode');
+  const cameraQuality = own(raw, 'cameraQuality');
+  const noise = own(raw, 'noiseSuppression');
   return {
     inputDeviceId: deviceId(own(raw, 'inputDeviceId')),
     outputDeviceId: deviceId(own(raw, 'outputDeviceId')),
@@ -97,9 +124,12 @@ export function parseVoiceSettings(raw: unknown): VoiceSettings {
       typeof threshold === 'number' && Number.isFinite(threshold)
         ? Math.min(0, Math.max(MIN_THRESHOLD_DB, Math.round(threshold)))
         : defaultVoiceSettings.thresholdDb,
+    noiseSuppression: isNoiseSuppression(noise) ? noise : defaultVoiceSettings.noiseSuppression,
     muted: typeof muted === 'boolean' ? muted : false,
     deafened: typeof deafened === 'boolean' ? deafened : false,
     volumes: parseVolumes(own(raw, 'volumes')),
+    cameraDeviceId: deviceId(own(raw, 'cameraDeviceId')),
+    cameraQuality: isCameraQuality(cameraQuality) ? cameraQuality : DEFAULT_CAMERA_QUALITY,
   };
 }
 
@@ -120,7 +150,12 @@ export function saveVoiceSettings(storage: KeyValueStorage | null, settings: Voi
   }
 }
 
-/** Volume in percent for a user on a server (100 by default). */
+/** Where a person's stream volume is saved: apart from their voice (spec 2026-10-01 §5). */
+export function screenVolumeKey(userId: string): string {
+  return `screen:${userId}`;
+}
+
+/** Volume in percent for a user (or a screenVolumeKey) on a server (100 by default). */
 export function volumeOf(settings: VoiceSettings, serverId: string | null, userId: string): number {
   if (!serverId || !Object.hasOwn(settings.volumes, serverId)) return 100;
   const users = settings.volumes[serverId]!;

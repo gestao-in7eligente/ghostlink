@@ -3,6 +3,8 @@
 // once the test opens a gate. The app joins while voice is down, then the voice UI comes
 // alive without a reconnect. The full two-app scenario lives in v01.e2e.ts.
 // Run with `npm run test:e2e` (builds the app first). Skipped without the LiveKit binary.
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { LivekitBackend, freeLoopbackPort, type VoiceBackend, type VoiceServerOptions } from '../../../server/src/livekit/backend.js';
 import { resolveLivekitBinary } from '../../../server/src/livekit/binary.js';
@@ -11,7 +13,7 @@ import type { ModuleContext } from '../../../server/src/modules.js';
 import { createTextModule } from '../../../server/src/text/index.js';
 import { createVoiceModule } from '../../../server/src/voice/index.js';
 import { freeMediaPorts } from '../../../server/test/helpers/voice.js';
-import { E2eRun, joinWithInvite, onboard, textChannel, voiceChannel } from './harness.js';
+import { E2eRun, joinWithInvite, onboard, receivedLevelDb, textChannel, tile, voiceChannel } from './harness.js';
 
 const binary = resolveLivekitBinary();
 
@@ -76,4 +78,98 @@ describe.skipIf(!binary)('voice that becomes available after the app connected (
       throw e;
     }
   }, 180_000);
+
+  it('noise suppression (spec 2026-10-01): RNNoise by default, then Speex, GTCRN, WebRTC and Desativada during the call; the voice keeps arriving', async () => {
+    const cia = run.instances.find((i) => i.name === 'cia');
+    if (!cia) throw new Error('the previous step did not start Cia');
+    try {
+      // Dan joins the same server and the same voice channel.
+      const dan = await run.launch('dan');
+      await onboard(dan.page, 'Dan', 'Entrar num servidor');
+      await joinWithInvite(dan.page, server!.createInvite().pasteCode);
+      await textChannel(dan.page, 'geral').waitFor({ timeout: 30_000 });
+      await voiceChannel(dan.page, 'Sala de voz').click();
+      await dan.page.locator('[data-voice-panel="connected"]').waitFor({ timeout: 30_000 });
+      await expect.poll(() => tile(dan.page, 'Cia').getAttribute('data-receiving'), { timeout: 30_000 }).toBe('true');
+      await expect.poll(() => tile(cia.page, 'Dan').getAttribute('data-receiving'), { timeout: 30_000 }).toBe('true');
+      const ciaId = (await tile(dan.page, 'Cia').getAttribute('data-user'))!;
+      const danId = (await tile(cia.page, 'Dan').getAttribute('data-user'))!;
+
+      // Cia's voice settings: RNNoise is chosen and really runs (no fallback note), and her voice arrives.
+      await cia.page.getByRole('button', { name: 'Configurações do usuário' }).click();
+      await cia.page.getByRole('tab', { name: 'Voz' }).click();
+      const settings = cia.page.locator('[data-voice-settings]');
+      await settings.waitFor();
+      // One title: the tab's, "Voz e vídeo" (the section no longer repeats it).
+      expect(await cia.page.getByRole('heading', { name: 'Voz e vídeo', exact: true }).count()).toBe(1);
+      const noise = settings.getByRole('combobox', { name: /supressão de ruído/i });
+      await expect.poll(() => noise.textContent()).toBe('RNNoise — neural');
+      const group = settings.locator('[data-voice-noise]');
+      await expect.poll(() => group.getAttribute('data-voice-noise'), { timeout: 10_000 }).toBe('rnnoise');
+      await expect.poll(() => receivedLevelDb(dan.page, ciaId), { timeout: 20_000 }).toBeGreaterThan(-40);
+      await expect.poll(() => receivedLevelDb(cia.page, danId), { timeout: 20_000 }).toBeGreaterThan(-40);
+
+      // The list in the app's style, open, for the record.
+      await noise.click();
+      const listbox = cia.page.getByRole('listbox', { name: /supressão de ruído/i });
+      await listbox.waitFor();
+      expect(await listbox.getByRole('option').allTextContents()).toEqual([
+        'RNNoise — neural',
+        'Speex — clássico',
+        'GTCRN — neural alternativo',
+        'WebRTC (nativo)',
+        'Desativada',
+      ]);
+      expect(await listbox.getByRole('option', { selected: true }).textContent()).toBe('RNNoise — neural');
+      await cia.page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-noise-select.png'), animations: 'disabled' });
+      // Esc closes the list, not the settings.
+      await cia.page.keyboard.press('Escape');
+      await listbox.waitFor({ state: 'detached' });
+      await settings.waitFor();
+      // A list with room below opens under its field.
+      const input = settings.getByRole('combobox', { name: /dispositivo de entrada/i });
+      await input.click();
+      const devices = cia.page.getByRole('listbox', { name: /dispositivo de entrada/i });
+      await devices.waitFor();
+      const [field, list] = [await input.boundingBox(), await devices.boundingBox()];
+      expect(list!.y).toBeGreaterThan(field!.y + field!.height - 1);
+      expect(Math.round(list!.width)).toBe(Math.round(field!.width));
+      await cia.page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-select-down.png'), animations: 'disabled' });
+      await cia.page.keyboard.press('Escape');
+      await devices.waitFor({ state: 'detached' });
+
+      // Each choice is swapped in during the call: the gate keeps working and the voice keeps arriving.
+      const steps = [
+        ['Speex — clássico', 'speex'],
+        ['GTCRN — neural alternativo', 'gtcrn'],
+        ['WebRTC (nativo)', 'webrtc'],
+        ['Desativada', 'off'],
+      ] as const;
+      for (const [label, mode] of steps) {
+        await noise.click();
+        await cia.page.getByRole('option', { name: label }).click();
+        await expect.poll(() => noise.textContent()).toBe(label);
+        await expect.poll(() => group.getAttribute('data-voice-noise'), { timeout: 15_000 }).toBe(mode);
+        await expect.poll(() => receivedLevelDb(dan.page, ciaId), { timeout: 20_000 }).toBeGreaterThan(-40);
+        expect(await cia.page.locator('[data-voice-panel="connected"]').count()).toBe(1);
+      }
+      // No suppressor failed to load (the note would say so) and no worklet complained.
+      expect(await group.getByRole('status').count()).toBe(0);
+      expect(cia.log.filter((l) => /wasm|worklet|processor/i.test(l) && /error|fail/i.test(l))).toEqual([]);
+
+      // Back to RNNoise by keyboard: the list opens on the current choice, Home jumps to the first.
+      await noise.focus();
+      await cia.page.keyboard.press('ArrowDown');
+      await listbox.waitFor();
+      await cia.page.keyboard.press('Home');
+      await cia.page.keyboard.press('Enter');
+      await expect.poll(() => group.getAttribute('data-voice-noise'), { timeout: 15_000 }).toBe('rnnoise');
+      await expect.poll(() => receivedLevelDb(dan.page, ciaId), { timeout: 20_000 }).toBeGreaterThan(-40);
+      // The focus is back on the field. (A string: the tests have no DOM types.)
+      expect(await cia.page.evaluate("document.activeElement && document.activeElement.getAttribute('role')")).toBe('combobox');
+    } catch (e) {
+      await run.report('noise');
+      throw e;
+    }
+  }, 240_000);
 });

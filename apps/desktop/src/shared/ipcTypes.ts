@@ -3,11 +3,15 @@
 // dependencies, so the sandboxed preload bundle stays tiny.
 import type { Envelope, ParsedJoinInput, WelcomePayload } from '@ghostlink/shared';
 import type { AppErrorCode } from './appErrors.js';
+import type { DrawApi, OverlayStroke } from './drawOverlay.js';
 import type { FirewallFixResult, FirewallStatus, HostApi, HostConfig, HostInvite, HostInviteOptions, HostStartResult, HostStatus } from './hostTypes.js';
 import type { DmApi, DmConversation, DmMessage } from './dmTypes.js';
 import type { FriendsApi, FriendsSnapshot } from './friendsTypes.js';
+import type { AvatarInfo, ProfileApi } from './profileTypes.js';
 import type { RailwayAccount, RailwayCreateRequest, RailwayPending, RailwayProgress } from './railwayTypes.js';
-import type { UpdateState, UpdatesApi } from './updates.js';
+import type { ScreenApi, ScreenChoice, ScreenSource } from './screenTypes.js';
+import type { ManagedServerUpdate, ServerUpdatesApi } from './serverUpdateTypes.js';
+import type { ReleaseNotesResult, UpdateState, UpdatesApi } from './updates.js';
 
 export type IdentityStatus = 'none' | 'ready' | 'locked';
 export type ConnState = 'idle' | 'connecting' | 'authenticating' | 'connected' | 'reconnecting' | 'failed';
@@ -100,7 +104,21 @@ export interface ConnectionStateEvent {
   state: ConnState;
   serverId: string | null;
   error?: AppErrorCode;
+  /** With SERVER_DELETING: when the server is erased (ms epoch, the server's clock), when it said. */
+  deletingAt?: number;
 }
+
+/**
+ * What "Sair do servidor" finds on a saved server that is not open (leave/delete spec §2, §3):
+ * a member (the leave dialog), the owner (the delete dialog, when the server can delete itself),
+ * a server being deleted or already erased, or no answer ("Tirar só da minha lista").
+ */
+export type ServerExitCheck =
+  | { kind: 'member' }
+  | { kind: 'owner'; name: string; canDelete: boolean; deletingAt: number | null }
+  | { kind: 'deleting'; at: number | null }
+  | { kind: 'deleted' }
+  | { kind: 'unreachable'; code: AppErrorCode };
 
 export interface GhostlinkApi {
   app: {
@@ -133,7 +151,14 @@ export interface GhostlinkApi {
     list(): Promise<SavedServer[]>;
     connect(id: string): Promise<RendererWelcome>;
     disconnect(): Promise<void>;
+    /** Takes a saved server out of the list only (the fallback when it cannot be reached). */
     remove(id: string): Promise<void>;
+    /** Connects (a short connection of its own unless it is the open server) to see what leaving it means. */
+    checkExit(id: string): Promise<ServerExitCheck>;
+    /** `server.leave`, then out of the list. */
+    leave(id: string, deleteMyMessages: boolean): Promise<void>;
+    /** The owner's `server.delete`: offline now, erased at `at` (ms epoch, the server's clock). */
+    delete(id: string): Promise<{ at: number }>;
   };
   host: HostApi;
   onConnectionState(cb: (s: ConnectionStateEvent) => void): () => void;
@@ -155,6 +180,12 @@ export interface GhostlinkApi {
   railway: RailwayApi;
   friends: FriendsApi;
   dm: DmApi;
+  profile: ProfileApi;
+  screen: ScreenApi;
+  /** The pencil's overlay over my shared monitor (pencil spec §4). */
+  draw: DrawApi;
+  /** Servers follow the app's version (spec 2026-10-01 §3, §5): the Railway servers this app created. */
+  serverUpdates: ServerUpdatesApi;
 }
 
 /**
@@ -200,6 +231,9 @@ export const IPC = {
   serversConnect: 'ghostlink:servers.connect',
   serversDisconnect: 'ghostlink:servers.disconnect',
   serversRemove: 'ghostlink:servers.remove',
+  serversCheckExit: 'ghostlink:servers.checkExit',
+  serversLeave: 'ghostlink:servers.leave',
+  serversDelete: 'ghostlink:servers.delete',
   hostStatus: 'ghostlink:host.status',
   hostStart: 'ghostlink:host.start',
   hostStop: 'ghostlink:host.stop',
@@ -213,6 +247,8 @@ export const IPC = {
   hostFixFirewall: 'ghostlink:host.fixFirewall',
   updatesState: 'ghostlink:updates.state',
   updatesSetAutoCheck: 'ghostlink:updates.setAutoCheck',
+  updatesCheckNow: 'ghostlink:updates.checkNow',
+  updatesNotes: 'ghostlink:updates.notes',
   updatesRestart: 'ghostlink:updates.restart',
   pttConfigure: 'ghostlink:ptt.configure',
   railwayStatus: 'ghostlink:railway.status',
@@ -241,6 +277,16 @@ export const IPC = {
   dmRemove: 'ghostlink:dm.remove',
   dmRead: 'ghostlink:dm.read',
   dmTyping: 'ghostlink:dm.typing',
+  profileAvatar: 'ghostlink:profile.avatar',
+  profileSetAvatar: 'ghostlink:profile.setAvatar',
+  profileClearAvatar: 'ghostlink:profile.clearAvatar',
+  screenSources: 'ghostlink:screen.sources',
+  screenChoose: 'ghostlink:screen.choose',
+  drawOverlayOpen: 'ghostlink:draw.overlayOpen',
+  drawOverlayStroke: 'ghostlink:draw.overlayStroke',
+  drawOverlayClose: 'ghostlink:draw.overlayClose',
+  serverUpdatesState: 'ghostlink:serverUpdates.state',
+  serverUpdatesUpdateNow: 'ghostlink:serverUpdates.updateNow',
 } as const;
 
 /** Events pushed from main to the renderer. */
@@ -255,6 +301,7 @@ export const IPC_EVENTS = {
   railway: 'ghostlink:event.railway',
   friends: 'ghostlink:event.friends',
   dm: 'ghostlink:event.dm',
+  serverUpdates: 'ghostlink:event.serverUpdates',
 } as const;
 
 /** Arguments and result of every invoke channel; main's handlers and the preload are both typed from it. */
@@ -282,6 +329,9 @@ export interface IpcContract {
   [IPC.serversConnect]: { args: [id: string]; result: RendererWelcome };
   [IPC.serversDisconnect]: { args: []; result: void };
   [IPC.serversRemove]: { args: [id: string]; result: void };
+  [IPC.serversCheckExit]: { args: [id: string]; result: ServerExitCheck };
+  [IPC.serversLeave]: { args: [id: string, deleteMyMessages: boolean]; result: void };
+  [IPC.serversDelete]: { args: [id: string]; result: { at: number } };
   [IPC.hostStatus]: { args: []; result: HostStatus };
   [IPC.hostStart]: { args: [config: HostConfig]; result: HostStartResult };
   [IPC.hostStop]: { args: []; result: HostStatus };
@@ -295,6 +345,8 @@ export interface IpcContract {
   [IPC.hostFixFirewall]: { args: []; result: { result: FirewallFixResult; status: FirewallStatus } };
   [IPC.updatesState]: { args: []; result: UpdateState };
   [IPC.updatesSetAutoCheck]: { args: [enabled: boolean]; result: UpdateState };
+  [IPC.updatesCheckNow]: { args: []; result: UpdateState };
+  [IPC.updatesNotes]: { args: [version: string]; result: ReleaseNotesResult };
   [IPC.updatesRestart]: { args: []; result: void };
   [IPC.pttConfigure]: { args: [config: PttConfig]; result: PttStatus };
   [IPC.railwayStatus]: { args: []; result: RailwayAccount };
@@ -323,7 +375,23 @@ export interface IpcContract {
   [IPC.dmRemove]: { args: [conv: string, id: string]; result: DmMessage };
   [IPC.dmRead]: { args: [conv: string, ts: number]; result: void };
   [IPC.dmTyping]: { args: [conv: string]; result: void };
+  [IPC.profileAvatar]: { args: []; result: AvatarInfo | null };
+  [IPC.profileSetAvatar]: { args: [bytes: Uint8Array]; result: AvatarInfo };
+  [IPC.profileClearAvatar]: { args: []; result: null };
+  [IPC.screenSources]: { args: []; result: ScreenSource[] };
+  [IPC.screenChoose]: { args: [choice: ScreenChoice]; result: void };
+  [IPC.drawOverlayOpen]: { args: []; result: boolean };
+  [IPC.drawOverlayStroke]: { args: [stroke: OverlayStroke]; result: void };
+  [IPC.drawOverlayClose]: { args: []; result: void };
+  [IPC.serverUpdatesState]: { args: [serverKeyId: string]; result: ManagedServerUpdate | null };
+  [IPC.serverUpdatesUpdateNow]: { args: [serverKeyId: string]; result: ManagedServerUpdate };
 }
+
+/** The profile photo channels (v0.2.2), handled by main/profileIpc.ts. */
+export type ProfileIpcChannel = Extract<IpcChannel, `ghostlink:profile.${string}`>;
+
+/** The update of the Railway servers this app created (v0.2.2), handled by main/serverUpdatesIpc.ts. */
+export type ServerUpdatesIpcChannel = Extract<IpcChannel, `ghostlink:serverUpdates.${string}`>;
 
 /** The direct-message channels (v0.3 phase 2), handled by main/dmIpc.ts. */
 export type DmIpcChannel = Extract<IpcChannel, `ghostlink:dm.${string}`>;

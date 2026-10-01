@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
-import type { ErrorCode } from '@ghostlink/shared';
+import type { ErrorCode, ErrorEventExtra } from '@ghostlink/shared';
 import type { Db } from './db/database.js';
 import type { VoiceServerOptions } from './livekit/backend.js';
 import type { ServerLimits } from './limits.js';
@@ -50,12 +50,19 @@ export interface SessionsApi {
    */
   broadcast(event: ServerEvent, filter?: (session: SessionInfo) => boolean): number;
   /**
-   * Ends the user's session with `error { code }` (e.g. KICKED, BANNED) and skips
-   * the presence grace. Also ends a pending grace. False when the user was offline.
+   * Ends the user's session with `error { code, ...extra }` (e.g. KICKED, BANNED, or
+   * SERVER_DELETING with `at`) and skips the presence grace. Also ends a pending grace.
+   * False when the user was offline.
    */
-  closeUser(userId: string, code: ErrorCode): boolean;
+  closeUser(userId: string, code: ErrorCode, extra?: ErrorEventExtra): boolean;
   /** True while the user has a session or is within LIMITS.presenceGraceMs of losing it. */
   isOnlineOrInGrace(userId: string): boolean;
+  /**
+   * The welcome's `fileToken` of a current session: the HMAC key of its signed file URLs
+   * (spec §7). null once that session ended or was replaced, so its URLs stop working.
+   * A secret: never log it nor send it anywhere.
+   */
+  fileToken(sessionId: string): string | null;
 }
 
 /** The external endpoint of a TCP proxy in front of the server (spec §8.5 "Atrás de um proxy TCP"). */

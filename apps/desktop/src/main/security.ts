@@ -16,9 +16,12 @@ export function originOf(url: string): string | null {
   return `${parsed.protocol}//${parsed.host}`;
 }
 
-/** Permission requests (spec §12): only `media` (mic, camera, getDisplayMedia), only for the app's own page. */
+/**
+ * Permission requests (spec §12), only for the app's own page: `media` (mic, camera, getDisplayMedia)
+ * and `fullscreen` (a watched stream's "Tela cheia": HTML requestFullscreen() arrives here).
+ */
 export function allowPermissionRequest(permission: string, requestingUrl: string, appOrigin: string): boolean {
-  return permission === 'media' && originOf(requestingUrl) === appOrigin;
+  return (permission === 'media' || permission === 'fullscreen') && originOf(requestingUrl) === appOrigin;
 }
 
 /** Permission checks (spec §12): `media` and `speaker-selection`, only for the app's own origin. */

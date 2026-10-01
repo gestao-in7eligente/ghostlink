@@ -10,6 +10,10 @@ export interface ServerMeta {
   publicAddresses: string[];
   maxMembers: number;
   createdAt: number;
+  /** The deletion deadline while the server is being deleted (spec "sair e excluir servidor" §3), else null. */
+  deletingAt: number | null;
+  /** When the data was erased; never cleared. */
+  deletedAt: number | null;
 }
 
 interface MetaRow {
@@ -21,6 +25,8 @@ interface MetaRow {
   public_addresses: string;
   max_members: number;
   created_at: number;
+  deleting_at: number | null;
+  deleted_at: number | null;
 }
 
 function parseAddresses(json: string): string[] {
@@ -44,6 +50,8 @@ export function getMeta(db: Db): ServerMeta {
     publicAddresses: parseAddresses(row.public_addresses),
     maxMembers: Number(row.max_members),
     createdAt: Number(row.created_at),
+    deletingAt: row.deleting_at === null ? null : Number(row.deleting_at),
+    deletedAt: row.deleted_at === null ? null : Number(row.deleted_at),
   };
 }
 

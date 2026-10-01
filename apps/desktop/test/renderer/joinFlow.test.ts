@@ -8,6 +8,7 @@ import {
   formatSetupCode,
   initialJoin,
   joinReducer,
+  savedServerFor,
   suggestNickname,
   type JoinAction,
   type JoinState,
@@ -238,5 +239,58 @@ describe('helpers', () => {
     expect(findKeyConflict(saved, '10.0.0.1:7700', KEY)?.id).toBe('x');
     expect(findKeyConflict(saved, '10.0.0.2:7700', KEY)).toBeNull();
     expect(findKeyConflict(saved, '10.0.0.1:7700', OTHER_KEY)).toBeNull();
+  });
+});
+
+describe('an invite for a server already joined (owner request 2026-10-01)', () => {
+  const saved = (over: Partial<SavedServer> = {}): SavedServer => ({
+    id: 's1',
+    name: 'Casa',
+    addresses: ['10.0.0.9:7700'],
+    serverKeyId: KEY,
+    nickname: 'Aninha',
+    addedAt: 1,
+    ...over,
+  });
+
+  it('finds the saved server by its key', () => {
+    expect(savedServerFor([saved({ serverKeyId: OTHER_KEY, id: 'x' }), saved()], KEY)?.id).toBe('s1');
+    expect(savedServerFor([saved()], OTHER_KEY)).toBeNull();
+  });
+
+  it('goes straight in: the saved nickname, the invite addresses first, the invite code kept for someone who left since', () => {
+    const s = joinReducer(viaInvite(), { type: 'known', saved: saved() });
+    expect(s.step).toBe('connecting');
+    expect(s.knownName).toBe('Casa');
+    expect(buildConnectRequest(s)).toEqual({
+      addresses: ['203.0.113.5:7700', '10.0.0.9:7700'],
+      serverKeyId: KEY,
+      nickname: 'Aninha',
+      inviteCode: 'ABCDEFGH23',
+      name: 'Casa',
+    });
+  });
+
+  it('does the same for an address typed by hand, once its key is known', () => {
+    const s = joinReducer(viaAddress(), { type: 'known', saved: saved() });
+    expect(s.step).toBe('connecting');
+    expect(buildConnectRequest(s).addresses).toContain('10.0.0.9:7700');
+    expect(buildConnectRequest(s).nickname).toBe('Aninha');
+  });
+
+  it('never uses a saved server with another key', () => {
+    const before = viaInvite();
+    expect(joinReducer(before, { type: 'known', saved: saved({ serverKeyId: OTHER_KEY }) })).toBe(before);
+  });
+
+  it('keeps the typed nickname when the saved one is empty', () => {
+    expect(joinReducer(viaInvite(), { type: 'known', saved: saved({ nickname: '' }) }).nickname).toBe('Ana');
+  });
+
+  it('falls back to the normal steps when the server wants an invite again', () => {
+    const s = run([{ type: 'known', saved: saved() }, { type: 'failed', code: 'INVITE_INVALID' }], viaInvite());
+    expect(s.step).toBe('details');
+    expect(s.askInvite).toBe(true);
+    expect(s.knownName).toBeNull();
   });
 });

@@ -14,6 +14,7 @@ const sessions: SessionsApi = {
   broadcast: () => 0,
   closeUser: () => false,
   isOnlineOrInGrace: () => false,
+  fileToken: () => null,
 };
 const base: Omit<ModuleContext, 'getModule'> = {
   db: {} as Db,

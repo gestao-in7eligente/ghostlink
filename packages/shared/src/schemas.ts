@@ -74,5 +74,7 @@ export const errorEventSchemaClient = z.object({
     code: errorCodeClient,
     min: z.number().int().optional(),
     max: z.number().int().optional(),
+    /** SERVER_DELETING: the deadline, ms epoch. */
+    at: z.number().int().nonnegative().optional(),
   }),
 });

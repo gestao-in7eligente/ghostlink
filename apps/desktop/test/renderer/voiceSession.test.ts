@@ -1,200 +1,13 @@
-import { EventEmitter } from 'node:events';
-import { RoomEvent, Track, type LocalAudioTrack, type Room, type RoomOptions } from 'livekit-client';
+import { RoomEvent, Track, type LocalAudioTrack } from 'livekit-client';
 import { TrackSource } from 'livekit-server-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { VoiceParticipant } from '@ghostlink/shared';
-import { VoiceSession, canPublishMicrophone, type AudioOutlet } from '../../src/renderer/features/voice/session.js';
-import { defaultVoiceSettings, withVolume, type VoiceSettings } from '../../src/renderer/features/voice/settings.js';
-import { initialVoiceState, voiceReducer, type VoiceAction, type VoiceState } from '../../src/renderer/features/voice/state.js';
-
-const ME = 'a'.repeat(32);
-const BIA = 'b'.repeat(32);
-const CAIO = 'c'.repeat(32);
-const MIC = TrackSource.MICROPHONE;
-
-class FakePub {
-  subscribed: boolean | null = null;
-  isMuted = false;
-  track: unknown = null;
-  constructor(
-    readonly source: Track.Source,
-    readonly kind: Track.Kind = source === Track.Source.Microphone ? Track.Kind.Audio : Track.Kind.Video,
-  ) {}
-  setSubscribed(v: boolean): void {
-    this.subscribed = v;
-  }
-}
-
-class FakeRemote {
-  readonly trackPublications = new Map<string, FakePub>();
-  volume: number | null = null;
-  constructor(
-    readonly identity: string,
-    readonly name: string,
-  ) {}
-  setVolume(v: number): void {
-    this.volume = v;
-  }
-}
-
-class FakeTrack {
-  stopped = false;
-  constructor(readonly options: Record<string, unknown>) {}
-  stop(): void {
-    this.stopped = true;
-  }
-}
-
-class FakeLocal {
-  identity = `u_${ME}`;
-  permissions: { canPublish: boolean; canPublishSources: number[] } | undefined = { canPublish: true, canPublishSources: [MIC] };
-  mic: FakePub | null = null;
-  readonly published: Array<{ track: FakeTrack; options: unknown }> = [];
-  readonly micCalls: Array<{ enabled: boolean }> = [];
-  async publishTrack(track: FakeTrack, options: unknown): Promise<void> {
-    this.published.push({ track, options });
-    this.mic = new FakePub(Track.Source.Microphone);
-    this.mic.track = track;
-  }
-  /** Mute and unmute of the existing publication (without one, LiveKit would capture an ungated track). */
-  async setMicrophoneEnabled(enabled: boolean): Promise<void> {
-    this.micCalls.push({ enabled });
-    if (!this.mic) throw new Error('the session must publish its own gated track first');
-    this.mic.isMuted = !enabled;
-  }
-  /** What LiveKit does when the server takes the microphone away. */
-  serverUnpublish(): void {
-    this.mic = null;
-  }
-  getTrackPublication(source: Track.Source): FakePub | undefined {
-    return source === Track.Source.Microphone ? (this.mic ?? undefined) : undefined;
-  }
-}
-
-class FakeRoom extends EventEmitter {
-  readonly localParticipant = new FakeLocal();
-  readonly remoteParticipants = new Map<string, FakeRemote>();
-  readonly engine = { client: { rtt: 0 } };
-  canPlaybackAudio = true;
-  connected: { url: string; token: string; opts: unknown } | null = null;
-  disconnects = 0;
-  startAudioCalls = 0;
-  switched: Array<[string, string]> = [];
-  failConnect = false;
-  constructor(readonly options: RoomOptions) {
-    super();
-  }
-  async connect(url: string, token: string, opts: unknown): Promise<void> {
-    if (this.failConnect) throw new Error('could not establish signal connection');
-    this.connected = { url, token, opts };
-  }
-  async disconnect(): Promise<void> {
-    this.disconnects++;
-  }
-  async startAudio(): Promise<void> {
-    this.startAudioCalls++;
-    this.canPlaybackAudio = true;
-  }
-  async switchActiveDevice(kind: string, deviceId: string): Promise<boolean> {
-    this.switched.push([kind, deviceId]);
-    return true;
-  }
-  addRemote(userId: string, name: string, sources: Track.Source[] = []): FakeRemote {
-    const p = new FakeRemote(`u_${userId}`, name);
-    sources.forEach((s, i) => p.trackPublications.set(`TR_${userId}_${i}`, new FakePub(s)));
-    this.remoteParticipants.set(p.identity, p);
-    return p;
-  }
-}
-
-const participant = (userId: string, extra: Partial<VoiceParticipant> = {}): VoiceParticipant => ({
-  userId,
-  muted: false,
-  deafened: false,
-  camera: false,
-  screen: false,
-  serverMuted: false,
-  ...extra,
-});
-
-interface Harness {
-  session: VoiceSession;
-  rooms: FakeRoom[];
-  requests: Array<[string, unknown]>;
-  state(): VoiceState;
-  dispatch(a: VoiceAction): void;
-  settings: { value: VoiceSettings };
-  attached: unknown[];
-  gestures: Array<() => void>;
-  respond: Map<string, (payload: unknown) => unknown>;
-  microphones: FakeTrack[];
-  failMicrophone: { next: boolean };
-  /** The host:port main is connected to (RendererWelcome.address). */
-  address: { value: string | null };
-}
+import { VoiceSession, canPublishMicrophone } from '../../src/renderer/features/voice/session.js';
+import { defaultVoiceSettings, withVolume } from '../../src/renderer/features/voice/settings.js';
+import { BIA, CAIO, FakePub, FakeRoom, FakeTrack, MIC, ME, flush, harness, participant, type Harness } from './voiceFakes.js';
 
 let h: Harness;
 
-function harness(): Harness {
-  let state: VoiceState = voiceReducer(initialVoiceState, {
-    type: 'welcome',
-    welcome: { serverId: 's1', self: { userId: ME, nickname: 'Ana', isOwner: false }, voice: [] },
-  });
-  const rooms: FakeRoom[] = [];
-  const requests: Array<[string, unknown]> = [];
-  const attached: unknown[] = [];
-  const gestures: Array<() => void> = [];
-  const settings = { value: defaultVoiceSettings };
-  const microphones: FakeTrack[] = [];
-  const failMicrophone = { next: false };
-  const address = { value: '127.0.0.1:7700' as string | null };
-  const respond = new Map<string, (payload: unknown) => unknown>([
-    ['voice.join', (p) => ({ livekitUrl: 'wss://127.0.0.1:7700', token: `token-${(p as { channelId: string }).channelId}`, iceServers: [] })],
-  ]);
-  const outlet: AudioOutlet = {
-    attach: (track, userId) => void attached.push({ track, userId }),
-    detach: (track) => {
-      const i = attached.findIndex((a) => (a as { track: unknown }).track === track);
-      if (i >= 0) attached.splice(i, 1);
-    },
-    detachAll: () => void attached.splice(0),
-  };
-  const dispatch = (a: VoiceAction) => {
-    state = voiceReducer(state, a);
-  };
-  const session = new VoiceSession({
-    request: async <T,>(type: string, payload?: unknown): Promise<T> => {
-      requests.push([type, payload]);
-      const r = respond.get(type);
-      return (r ? await r(payload) : {}) as T;
-    },
-    createRoom: (options) => {
-      const room = new FakeRoom(options);
-      rooms.push(room);
-      return room as unknown as Room;
-    },
-    dispatch,
-    getState: () => state,
-    settings: () => settings.value,
-    outlet,
-    createMicrophone: async (options) => {
-      if (failMicrophone.next) {
-        failMicrophone.next = false;
-        throw new Error('NotAllowedError');
-      }
-      const track = new FakeTrack(options as Record<string, unknown>);
-      microphones.push(track);
-      return track as unknown as LocalAudioTrack;
-    },
-    onUserGesture: (cb) => void gestures.push(cb),
-    connectedAddress: () => address.value,
-    pingIntervalMs: 1_000,
-  });
-  return { session, rooms, requests, state: () => state, dispatch, settings, attached, gestures, respond, microphones, failMicrophone, address };
-}
-
 const room = () => h.rooms.at(-1)!;
-const flush = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
   h = harness();
@@ -212,7 +25,8 @@ describe('joining a voice channel (spec §8.2)', () => {
       adaptiveStream: true,
       dynacast: true,
       webAudioMix: true,
-      audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, voiceIsolation: false },
+      // RNNoise by default: the browser's own noise suppression stays off (noise spec §2).
+      audioCaptureDefaults: { echoCancellation: true, noiseSuppression: false, autoGainControl: true, voiceIsolation: false },
     });
     expect(room().connected).toEqual({ url: 'wss://127.0.0.1:7700', token: 'token-VC1', opts: { autoSubscribe: false, rtcConfig: { iceServers: [] } } });
     expect(h.state().call).toEqual({ status: 'connected', channelId: 'VC1' });
@@ -229,11 +43,18 @@ describe('joining a voice channel (spec §8.2)', () => {
     h.settings.value = { ...defaultVoiceSettings, inputDeviceId: 'mic-2' };
     await h.session.join('VC1');
     expect(h.microphones.map((m) => m.options)).toEqual([
-      { echoCancellation: true, noiseSuppression: true, autoGainControl: true, voiceIsolation: false, deviceId: 'mic-2' },
+      { echoCancellation: true, noiseSuppression: false, autoGainControl: true, voiceIsolation: false, deviceId: 'mic-2' },
     ]);
     expect(room().localParticipant.published).toEqual([{ track: h.microphones[0], options: { source: Track.Source.Microphone } }]);
     expect(room().localParticipant.micCalls).toEqual([]);
     expect(h.requests).toContainEqual(['voice.selfState', { muted: false, deafened: false }]);
+  });
+
+  it('asks the browser for its own noise suppression only in the WebRTC mode (noise spec §2)', async () => {
+    h.settings.value = { ...defaultVoiceSettings, noiseSuppression: 'webrtc' };
+    await h.session.join('VC1');
+    expect(room().options.audioCaptureDefaults).toMatchObject({ echoCancellation: true, noiseSuppression: true, autoGainControl: true });
+    expect(h.microphones[0]!.options).toMatchObject({ echoCancellation: true, noiseSuppression: true, autoGainControl: true });
   });
 
   it('a refused join shows the error and never touches LiveKit', async () => {
@@ -318,7 +139,7 @@ describe('joining a voice channel (spec §8.2)', () => {
 });
 
 describe('media in the call (spec §8.4)', () => {
-  it('subscribes to microphones already there and to new ones, never to camera or screen', async () => {
+  it('subscribes to microphones and cameras already there and to new ones, never to a screen', async () => {
     h.respond.set('voice.join', () => {
       // Someone is already in the room when we connect.
       return { livekitUrl: 'wss://127.0.0.1:7700', token: 't', iceServers: [] };
@@ -337,7 +158,7 @@ describe('media in the call (spec §8.4)', () => {
     const subs = [...bia.trackPublications.values()].map((p) => [p.source, p.subscribed]);
     expect(subs).toEqual([
       [Track.Source.Microphone, true],
-      [Track.Source.Camera, null],
+      [Track.Source.Camera, true],
       [Track.Source.ScreenShare, null],
     ]);
     expect(h.state().names[BIA]).toBe('Bia');
@@ -348,7 +169,7 @@ describe('media in the call (spec §8.4)', () => {
     room().emit(RoomEvent.TrackPublished, mic, caio);
     room().emit(RoomEvent.TrackPublished, cam, caio);
     expect(mic.subscribed).toBe(true);
-    expect(cam.subscribed).toBeNull();
+    expect(cam.subscribed).toBe(true);
   });
 
   it('attaches subscribed audio with the per-user volume, and detaches it again', async () => {
@@ -417,15 +238,7 @@ describe('media in the call (spec §8.4)', () => {
     let open!: () => void;
     const slow = new Promise<void>((r) => (open = r));
     const session = new VoiceSession({
-      request: async <T,>(type: string): Promise<T> => (type === 'voice.join' ? { livekitUrl: 'wss://127.0.0.1:7700', token: 't', iceServers: [] } : {}) as T,
-      createRoom: (options) => {
-        const r = new FakeRoom(options);
-        h.rooms.push(r);
-        return r as unknown as Room;
-      },
-      dispatch: h.dispatch,
-      getState: h.state,
-      settings: () => defaultVoiceSettings,
+      ...h.deps,
       outlet: { attach: () => {}, detach: () => {}, detachAll: () => {} },
       createMicrophone: async (options) => {
         await slow;
@@ -433,8 +246,6 @@ describe('media in the call (spec §8.4)', () => {
         h.microphones.push(track);
         return track as unknown as LocalAudioTrack;
       },
-      onUserGesture: () => {},
-      connectedAddress: () => '127.0.0.1:7700',
     });
     const joining = session.join('VC1');
     for (let i = 0; i < 5; i++) await flush();

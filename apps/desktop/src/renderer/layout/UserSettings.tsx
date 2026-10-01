@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { AppInfo, Locale } from '../../shared/ipcTypes.js';
 import { updateProfile } from '../features/chat/actions.js';
+import { ProfilePhoto } from '../features/profile/ProfilePhoto.js';
+import x from '../features/profile/profile.module.css';
 import { errorCodeOf, useT } from '../i18n/index.js';
 import { useSettingsStore } from '../stores/settings.js';
 import { useTextStore } from '../stores/text.js';
@@ -11,12 +13,22 @@ import { suggestNickname } from './names.js';
 import { useLayoutSlots } from './slots.js';
 
 /** User settings (spec §11.1 item 7): profile, language, the other tracks' sections, about. */
-export function UserSettings({ onClose, offline = false }: { onClose: () => void; /** Home screen: no server, so no per-server profile. */ offline?: boolean }) {
+export function UserSettings({
+  onClose,
+  offline = false,
+  section,
+}: {
+  onClose: () => void;
+  /** Home screen: no server, so the profile is the photo only. */
+  offline?: boolean;
+  /** Open on another track's section (its id, e.g. "voice") instead of the first tab. */
+  section?: string;
+}) {
   const t = useT();
   const extra = useLayoutSlots((st) => st.userSettingsSections);
-  const [active, setActive] = useState(offline ? 'language' : 'profile');
+  const [active, setActive] = useState(() => (section && extra.some((x) => x.id === section) ? `x:${section}` : 'profile'));
   const tabs: SettingsTab[] = [
-    ...(offline ? [] : [{ id: 'profile', label: t('userSettings.profile'), content: () => <ProfileTab /> }]),
+    { id: 'profile', label: t('userSettings.profile'), content: () => (offline ? <HomeProfileTab /> : <ProfileTab />) },
     { id: 'language', label: t('language.label'), content: () => <LanguageTab /> },
     ...extra.map((section) => ({ id: `x:${section.id}`, label: t(section.title), content: () => <section.Component /> })),
     { id: 'about', label: t('userSettings.about'), content: () => <AboutTab /> },
@@ -24,7 +36,29 @@ export function UserSettings({ onClose, offline = false }: { onClose: () => void
   return <SettingsShell title={t('layout.userSettings')} tabs={tabs} active={active} onSelect={setActive} onClose={onClose} />;
 }
 
+/** The Home screen's Perfil tab: only the photo (one for every server); the initials use the global nickname. */
+function HomeProfileTab() {
+  const nickname = useSettingsStore((st) => st.settings?.nickname ?? '');
+  return (
+    <div className={s.form}>
+      <ProfilePhoto name={nickname} />
+    </div>
+  );
+}
+
+/** Inside a server: the photo, then this server's nickname. */
 function ProfileTab() {
+  const nickname = useTextStore((st) => (Object.hasOwn(st.members.byId, st.server.selfId) ? st.members.byId[st.server.selfId]!.nickname : ''));
+  return (
+    <div className={s.form}>
+      <ProfilePhoto name={nickname} />
+      <hr className={x.divider} />
+      <NicknameForm />
+    </div>
+  );
+}
+
+function NicknameForm() {
   const t = useT();
   const current = useTextStore((st) => (Object.hasOwn(st.members.byId, st.server.selfId) ? st.members.byId[st.server.selfId]!.nickname : ''));
   const serverName = useTextStore((st) => st.server.name);

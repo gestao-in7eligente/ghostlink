@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Users, X } from 'lucide-react';
+import type { AppErrorCode } from '../../shared/appErrors.js';
 import type { DmConversation } from '../../shared/dmTypes.js';
 import type { Friend } from '../../shared/friendsTypes.js';
 import type { RendererWelcome, SavedServer } from '../../shared/ipcTypes.js';
@@ -10,14 +11,18 @@ import { FriendsHome } from '../features/friends/FriendsHome.js';
 import { friendName, pendingIncoming } from '../features/friends/friendsModel.js';
 import { useHostStore } from '../features/host/hostStore.js';
 import { openHostFlow, openHostPanel } from '../features/host/hostUi.js';
+import { deletionMessage } from '../features/serverDelete/serverDeleteModel.js';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 import l from '../layout/layout.module.css';
 import { serverInitials } from '../layout/names.js';
 import { ServerRail } from '../layout/ServerRail.js';
 import { UserPanel } from '../layout/UserPanel.js';
 import { UserSettings } from '../layout/UserSettings.js';
+import { useConnectionStore } from '../stores/connection.js';
 import { useDmStore, useDmSync } from '../stores/dm.js';
 import { useFriendsStore, useFriendsSync } from '../stores/friends.js';
+import { useSavedListStore } from '../stores/savedList.js';
+import { useSettingsStore } from '../stores/settings.js';
 import { homeActivity, homeServerRows, type HomeActivity } from './homeModel.js';
 import h from './home.module.css';
 
@@ -35,6 +40,8 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
   const conversations = useDmStore((st) => st.conversations);
   const selectedId = useDmStore((st) => st.selected);
   const [servers, setServers] = useState<SavedServer[]>([]);
+  const listRevision = useSavedListStore((st) => st.revision);
+  const locale = useSettingsStore((st) => st.settings?.locale ?? 'pt-BR');
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -46,7 +53,7 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
       (list) => setServers(list),
       () => undefined,
     );
-  }, [hostStatus?.revision]);
+  }, [hostStatus?.revision, listRevision]);
 
   // Same trick as the main layout: the sidebar leaves room for the user panel.
   useEffect(() => {
@@ -69,19 +76,26 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
   const shown = sidebarConversations(conversations);
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
 
+  /** Why a server did not open; leave/delete spec §3: the owner deleted it (the date comes with the failed connection's state). */
+  const openFailed = (code: AppErrorCode, name: string) => {
+    const deletion = deletionMessage(code, name, useConnectionStore.getState().deletingAt, locale);
+    setError(deletion ? t(deletion.text, deletion.vars) : errorMessage(t, code));
+    if (code === 'SERVER_DELETED') useSavedListStore.getState().changed(); // main took it out of the list
+  };
+
   /** "Abrir" on the hosted server's card. */
-  const openHosted = async (id: string) => {
+  const openHosted = async (row: { id: string; name: string }) => {
     setError(null);
     try {
-      onJoined(await window.ghostlink.servers.connect(id));
+      onJoined(await window.ghostlink.servers.connect(row.id));
     } catch (e) {
-      setError(errorMessage(t, errorCodeOf(e)));
+      openFailed(errorCodeOf(e), row.name);
     }
   };
 
   return (
     <div ref={shellRef} className={`${l.shell} ${h.shell}`}>
-      <ServerRail currentId="" onHome={() => undefined} homeActive onOpenFailed={(code) => setError(code === null ? null : errorMessage(t, code))} />
+      <ServerRail currentId="" onHome={() => undefined} homeActive onOpenFailed={(failure) => (failure === null ? setError(null) : openFailed(failure.code, failure.server.name))} />
 
       <nav className={l.sidebar} aria-label={t('home.nav')}>
         <div className={h.sidebarHeader}>
@@ -146,7 +160,7 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
       <aside className={h.active} aria-label={t('home.active.title')}>
         <h2 className={h.activeTitle}>{t('home.active.title')}</h2>
         {activity ? (
-          <ActivityCard activity={activity} onOpen={hostedRow && activity.state === 'running' ? () => void openHosted(hostedRow.id) : null} />
+          <ActivityCard activity={activity} onOpen={hostedRow && activity.state === 'running' ? () => void openHosted(hostedRow) : null} />
         ) : (
           <div className={h.activeEmpty}>
             <p className={h.activeEmptyTitle}>{t('home.active.emptyTitle')}</p>

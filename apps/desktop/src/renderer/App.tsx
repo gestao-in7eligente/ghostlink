@@ -23,6 +23,7 @@ import { DM_CONV_ID } from './features/dm/dmModel.js';
 import { useVoiceStore } from './features/voice/state.js';
 import { useConnectionStore } from './stores/connection.js';
 import { useDmStore } from './stores/dm.js';
+import { useSavedListStore } from './stores/savedList.js';
 import { useSettingsStore } from './stores/settings.js';
 
 export function App() {
@@ -38,7 +39,11 @@ export function App() {
   useEffect(() => {
     const api = window.ghostlink;
     const { dispatch } = useConnectionStore.getState();
-    const offState = api.onConnectionState((event) => dispatch({ type: 'state', event }));
+    const offState = api.onConnectionState((event) => {
+      dispatch({ type: 'state', event });
+      // Leave/delete spec §3: main took an erased server out of the saved list.
+      if (event.error === 'SERVER_DELETED') useSavedListStore.getState().changed();
+    });
     const offEvents = api.onServerEvent((event) => dispatch({ type: 'serverEvent', event }));
     let alive = true;
     Promise.all([api.identity.status(), api.settings.get()]).then(

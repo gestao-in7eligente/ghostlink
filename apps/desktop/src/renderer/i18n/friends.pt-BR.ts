@@ -76,8 +76,6 @@ export const friends = {
   'friends.panel.online': 'Online para amigos',
   'friends.panel.invisible': 'Invisível para amigos',
 
-  'rail.server.menu': 'Opções de {name}',
-
   'errors.FRIEND_CODE_INVALID': 'Esse código de amigo não é válido. Confira se copiou o código inteiro.',
   'errors.FRIEND_SELF': 'Esse é o seu próprio código.',
   'errors.FRIEND_LIMIT': 'Você chegou ao limite de amigos ou de pedidos pendentes.',

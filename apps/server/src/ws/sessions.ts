@@ -1,10 +1,12 @@
-import type { ErrorCode } from '@ghostlink/shared';
+import type { ErrorCode, ErrorEventExtra } from '@ghostlink/shared';
 
 export interface SessionHandle {
   readonly userId: string;
   readonly sessionId: string;
+  /** The welcome's fileToken (spec §7); see SessionsApi.fileToken. */
+  readonly fileToken?: string;
   send(event: object): void;
-  terminate(code: ErrorCode): void;
+  terminate(code: ErrorCode, extra?: ErrorEventExtra): void;
 }
 
 /** One live session per identity: a new login replaces the old one with SESSION_REPLACED (spec §3.3). */

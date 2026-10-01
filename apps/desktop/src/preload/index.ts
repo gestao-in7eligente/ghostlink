@@ -18,6 +18,7 @@ import type { DmEvent } from '../shared/dmTypes.js';
 import type { FriendsSnapshot } from '../shared/friendsTypes.js';
 import type { HostStatus } from '../shared/hostTypes.js';
 import type { RailwayProgress } from '../shared/railwayTypes.js';
+import type { ManagedServerUpdate } from '../shared/serverUpdateTypes.js';
 import type { UpdateState } from '../shared/updates.js';
 
 /** Invokes a channel and turns `{ ok: false, code }` into `Error(code)` (contract §5: the message is the code). */
@@ -66,6 +67,9 @@ export const api: GhostlinkApi = {
     connect: (id) => invoke(IPC.serversConnect, id),
     disconnect: () => invoke(IPC.serversDisconnect),
     remove: (id) => invoke(IPC.serversRemove, id),
+    checkExit: (id) => invoke(IPC.serversCheckExit, id),
+    leave: (id, deleteMyMessages) => invoke(IPC.serversLeave, id, deleteMyMessages),
+    delete: (id) => invoke(IPC.serversDelete, id),
   },
   host: {
     status: () => invoke(IPC.hostStatus),
@@ -94,6 +98,8 @@ export const api: GhostlinkApi = {
   updates: {
     state: () => invoke(IPC.updatesState),
     setAutoCheck: (enabled) => invoke(IPC.updatesSetAutoCheck, enabled),
+    checkNow: () => invoke(IPC.updatesCheckNow),
+    notes: (version) => invoke(IPC.updatesNotes, version),
     restart: () => invoke(IPC.updatesRestart),
     onState: (cb) => subscribe<UpdateState>(IPC_EVENTS.updates, cb),
   },
@@ -133,6 +139,25 @@ export const api: GhostlinkApi = {
     read: (conv, ts) => invoke(IPC.dmRead, conv, ts),
     typing: (conv) => invoke(IPC.dmTyping, conv),
     onEvent: (cb) => subscribe<DmEvent>(IPC_EVENTS.dm, cb),
+  },
+  profile: {
+    avatar: () => invoke(IPC.profileAvatar),
+    setAvatar: (bytes) => invoke(IPC.profileSetAvatar, bytes),
+    clearAvatar: () => invoke(IPC.profileClearAvatar),
+  },
+  screen: {
+    sources: () => invoke(IPC.screenSources),
+    choose: (choice) => invoke(IPC.screenChoose, choice),
+  },
+  draw: {
+    overlayOpen: () => invoke(IPC.drawOverlayOpen),
+    overlayStroke: (stroke) => invoke(IPC.drawOverlayStroke, stroke),
+    overlayClose: () => invoke(IPC.drawOverlayClose),
+  },
+  serverUpdates: {
+    state: (serverKeyId) => invoke(IPC.serverUpdatesState, serverKeyId),
+    updateNow: (serverKeyId) => invoke(IPC.serverUpdatesUpdateNow, serverKeyId),
+    onState: (cb) => subscribe<ManagedServerUpdate>(IPC_EVENTS.serverUpdates, cb),
   },
 };
 

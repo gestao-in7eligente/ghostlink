@@ -57,11 +57,30 @@ Behind the proxy, every connection reaches the server with the proxy's address, 
 
 The cost goes to your Railway account. A small server uses little memory and CPU and usually fits in the Hobby plan's US$ 5 of usage. Voice uses outbound traffic: a group of 5 people talking 3 hours a day is close to US$ 1 a month.
 
-## Updating, restarting and deleting
+## Updating
 
-For now this is done on Railway's dashboard:
+A server the app created follows the version of the **owner's app** (GhostLink 0.2.2 or newer). While the app is open and Railway is connected, it checks the server's version right after updating itself and every 30 minutes. If the server runs an older version, the app switches the service's image to its own version and deploys again:
 
-- **Update:** in the service, change the version at the end of the image name (for example `:0.2.0` to the new version) and deploy again. The volume keeps the data.
+- **only when nobody is in a voice channel**. If no such moment comes within 24 hours, it updates anyway. People in the chat reconnect by themselves;
+- the service's volume and settings stay.
+
+While the server waits, the owner sees at the top of the chat: "This server runs 0.2.0. It will be updated to 0.2.2 when nobody is in a call." **Update now** does not wait: anyone in a call drops for a few seconds. If the Railway token was disconnected, the app asks you to connect it again.
+
+### Docker and servers created by hand
+
+The app only updates the servers it created. On a server in Docker, or one created by hand on Railway, use the image `ghcr.io/gestao-in7eligente/ghostlink-server:latest`: the `latest` tag always points to the newest version (the same signed image as the numbered tag).
+
+- **By hand:** pull the image again and recreate the container (on Railway, deploy the service again). The volume at `/data` keeps the data.
+- **By itself, with Watchtower:** it pulls the new image and recreates the container. It does not know whether anyone is in a call, so pick a quiet time. For example, every day at 5 AM, for the `ghostlink` container:
+
+```bash
+docker run -d --name watchtower --restart unless-stopped   -v /var/run/docker.sock:/var/run/docker.sock   containrrr/watchtower --schedule "0 0 5 * * *" ghostlink   # checks every day at 5 AM
+```
+
+## Restarting and deleting
+
+On Railway's dashboard:
+
 - **Restart:** use "Restart" on the service.
 - **Delete:** delete the project. The data goes with it (Railway lets you restore it for 48 hours).
 

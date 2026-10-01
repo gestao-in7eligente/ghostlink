@@ -1,19 +1,24 @@
 import { protocol } from 'electron';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isAvatarRequest } from './avatars/avatarRoute.js';
 
 export const APP_SCHEME = 'app';
 export const APP_HOST = 'ghostlink';
 export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`;
 
-/** spec §12. What really confines the page is the session pin and never rendering user content as HTML. */
+/**
+ * spec §12. What really confines the page is the session pin and never rendering user content as HTML.
+ * 'wasm-unsafe-eval' lets the bundled noise suppressors compile WebAssembly (noise suppression
+ * spec 2026-10-01 §3); JavaScript eval and new Function stay blocked.
+ */
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "img-src 'self' https: blob: data:",
   "media-src 'self' https: blob:",
   "connect-src 'self' https: wss:",
   "style-src 'self' 'unsafe-inline'",
-  "script-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
 ].join('; ');
 
 const MIME_TYPES: Readonly<Record<string, string>> = {
@@ -27,6 +32,7 @@ const MIME_TYPES: Readonly<Record<string, string>> = {
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
   '.woff': 'font/woff',
+  '.wasm': 'application/wasm',
 };
 
 /** Step 3 of the bootstrap: must run before app ready. */
@@ -98,7 +104,28 @@ export function createAppProtocolHandler(rendererDir: string): (request: Request
   };
 }
 
+/** Routes served next to the renderer's files. */
+export interface AppRoutes {
+  /** app://ghostlink/_avatar/<hash>: profile photos (avatars/avatarRoute.ts). */
+  avatar?: (request: Request) => Promise<Response>;
+}
+
+/**
+ * The renderer's files plus the app's own routes. Every path under /_avatar belongs to the
+ * photo route (a 404 there, never index.html), and it works from the dev server's page too:
+ * an http://localhost page may load app:// images (measured with Electron 44).
+ */
+export function createAppRequestHandler(rendererDir: string, routes: AppRoutes = {}): (request: Request) => Response | Promise<Response> {
+  const files = createAppProtocolHandler(rendererDir);
+  return (request) => {
+    if (isAvatarRequest(request.url)) {
+      return routes.avatar ? routes.avatar(request) : new Response(null, { status: 404, headers: { 'X-Content-Type-Options': 'nosniff' } });
+    }
+    return files(request);
+  };
+}
+
 /** Step 5 of the bootstrap: serve the built renderer at app://ghostlink/ (never file://). */
-export function registerAppProtocol(rendererDir: string): void {
-  protocol.handle(APP_SCHEME, createAppProtocolHandler(rendererDir));
+export function registerAppProtocol(rendererDir: string, routes: AppRoutes = {}): void {
+  protocol.handle(APP_SCHEME, createAppRequestHandler(rendererDir, routes));
 }

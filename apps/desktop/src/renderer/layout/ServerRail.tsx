@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
-import { House, Plus } from 'lucide-react';
+import { House, LogOut, Plus, Trash2 } from 'lucide-react';
 import type { AppErrorCode } from '../../shared/appErrors.js';
 import type { SavedServer } from '../../shared/ipcTypes.js';
+import { useOpenServerExit } from '../features/serverDelete/DeletionBanner.js';
+import { exitMenuItem, type ServerExitAction } from '../features/serverDelete/serverDeleteModel.js';
+import { ExitServerDialog } from '../features/serverDelete/ServerExitDialogs.js';
 import { errorCodeOf, useT } from '../i18n/index.js';
 import { useConnectionStore } from '../stores/connection.js';
+import { useSavedListStore } from '../stores/savedList.js';
 import { AddServerDialog } from './AddServerDialog.js';
 import l from './layout.module.css';
 import { serverInitials } from './names.js';
-import { ConfirmDialog, Menu, MenuItem } from './primitives.js';
+import { Menu, MenuItem } from './primitives.js';
 import { railEntries, type RailEntry } from './rail.js';
 import { useLayoutSlots } from './slots.js';
 
@@ -15,29 +19,34 @@ import { useLayoutSlots } from './slots.js';
  * The far-left column (owner's UI reference): home (back to the server list), the
  * round "+" right below it (the "Adicionar servidor" chooser), a divider, then the
  * saved servers. One connection at a time (spec §1.3): opening another server
- * replaces this one. A right-click on a server that is not open offers "Remover da lista".
+ * replaces this one. A right-click on a server offers its way out (leave/delete spec
+ * §2): "Sair do servidor", or "Excluir servidor" for the owner of the open server.
  */
 export function ServerRail({
   currentId,
   onHome,
   homeActive = false,
+  onCurrentExit,
   onOpenFailed,
 }: {
   currentId: string;
   onHome: () => void;
   /** The Home screen is open: the home button shows as selected. */
   homeActive?: boolean;
-  /** Home screen: why a server could not be opened (null when a new attempt starts). */
-  onOpenFailed?: (code: AppErrorCode | null) => void;
+  /** The open server's leave or delete dialog (the main layout owns them). */
+  onCurrentExit?: (action: ServerExitAction) => void;
+  /** Home screen: why a server could not be opened, and which one (null when a new attempt starts). */
+  onOpenFailed?: (failure: { code: AppErrorCode; server: SavedServer } | null) => void;
 }) {
   const t = useT();
   const [servers, setServers] = useState<SavedServer[]>([]);
   const [adding, setAdding] = useState(false);
-  const [menu, setMenu] = useState<{ server: SavedServer; x: number; y: number } | null>(null);
-  const [removing, setRemoving] = useState<SavedServer | null>(null);
-  const [listVersion, setListVersion] = useState(0);
+  const [menu, setMenu] = useState<{ server: SavedServer; action: ServerExitAction; at: { x: number; y: number } } | null>(null);
+  const [exiting, setExiting] = useState<SavedServer | null>(null);
   const RailExtras = useLayoutSlots((s) => s.RailExtras);
   const onOpenServer = useLayoutSlots((s) => s.onOpenServer);
+  const listRevision = useSavedListStore((s) => s.revision);
+  const openExit = useOpenServerExit();
 
   useEffect(() => {
     let alive = true;
@@ -48,7 +57,11 @@ export function ServerRail({
     return () => {
       alive = false;
     };
-  }, [currentId, listVersion]);
+  }, [currentId, listRevision]);
+
+  /** The open server's menu knows its owner; any other one says "Sair" and its dialog connects first. */
+  const exitFor = (server: SavedServer): ServerExitAction | null =>
+    server.id === currentId && onCurrentExit ? openExit : exitMenuItem({ connected: false, owner: false, canDelete: false });
 
   const open = async (id: string) => {
     if (id === currentId) return;
@@ -60,13 +73,8 @@ export function ServerRail({
       useConnectionStore.getState().dispatch({ type: 'joined', welcome });
     } catch (e) {
       // In a server, the connection store shows the failure (state "failed"); the Home screen has its own line.
-      onOpenFailed?.(errorCodeOf(e));
+      if (server) onOpenFailed?.({ code: errorCodeOf(e), server });
     }
-  };
-
-  const remove = async (server: SavedServer) => {
-    await window.ghostlink.servers.remove(server.id);
-    setListVersion((n) => n + 1);
   };
 
   const entry = (e: RailEntry) => {
@@ -106,8 +114,10 @@ export function ServerRail({
               className={l.railButton}
               onClick={() => void open(s.id)}
               onContextMenu={(event) => {
+                const action = exitFor(s);
+                if (action === null) return;
                 event.preventDefault();
-                if (!active) setMenu({ server: s, x: event.clientX, y: event.clientY });
+                setMenu({ server: s, action, at: { x: event.clientX, y: event.clientY } });
               }}
               aria-label={s.name}
               aria-current={active ? 'page' : undefined}
@@ -128,27 +138,22 @@ export function ServerRail({
       {railEntries(servers).map(entry)}
       {adding && <AddServerDialog onClose={() => setAdding(false)} onHome={onHome} />}
       {menu && (
-        <Menu anchor={{ x: menu.x, y: menu.y }} label={t('rail.server.menu', { name: menu.server.name })} onClose={() => setMenu(null)}>
+        <Menu anchor={menu.at} label={t('serverExit.menu', { name: menu.server.name })} onClose={() => setMenu(null)}>
           <MenuItem
             danger
+            icon={menu.action === 'delete' ? <Trash2 size={16} aria-hidden="true" /> : <LogOut size={16} aria-hidden="true" />}
             onSelect={() => {
-              setRemoving(menu.server);
+              const { server, action } = menu;
               setMenu(null);
+              if (server.id === currentId && onCurrentExit) onCurrentExit(action);
+              else setExiting(server);
             }}
           >
-            {t('home.remove')}
+            {menu.action === 'delete' ? t('serverExit.delete') : t('layout.leave')}
           </MenuItem>
         </Menu>
       )}
-      {removing && (
-        <ConfirmDialog
-          title={t('home.removeConfirm', { name: removing.name })}
-          body={t('home.removeBody')}
-          confirmLabel={t('home.remove')}
-          onConfirm={() => remove(removing)}
-          onClose={() => setRemoving(null)}
-        />
-      )}
+      {exiting && <ExitServerDialog server={exiting} onClose={() => setExiting(null)} onChanged={() => useSavedListStore.getState().changed()} />}
     </nav>
   );
 }

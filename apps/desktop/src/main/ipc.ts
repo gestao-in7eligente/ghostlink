@@ -1,18 +1,23 @@
 import { ipcMain, type WebFrameMain } from 'electron';
 import { z } from 'zod';
-import { LIMITS } from '@ghostlink/shared';
+import { LIMITS, isReleaseVersion } from '@ghostlink/shared';
 import { toAppErrorCode } from '../shared/appErrors.js';
 import { IPC, type AppInfo, type ChatNotification, type IpcArgs, type IpcChannel, type IpcResult, type IpcReturn } from '../shared/ipcTypes.js';
 import type { ClientController } from './controller.js';
 import { BACKUP_IPC_ARG_SCHEMAS, createBackupIpcHandlers, type IdentityBackup } from './backup.js';
 import type { DeepLinks } from './deeplink.js';
 import { DM_IPC_ARG_SCHEMAS, createDmIpcHandlers, type DmIpcDeps } from './dmIpc.js';
+import { DRAW_IPC_ARG_SCHEMAS, createDrawIpcHandlers, type DrawIpcDeps } from './drawOverlayIpc.js';
 import { FRIENDS_IPC_ARG_SCHEMAS, createFriendsIpcHandlers, type FriendsIpcDeps } from './friendsIpc.js';
 import { HOST_IPC_ARG_SCHEMAS, createHostIpcHandlers, type HostIpcDeps } from './hostIpc.js';
 import type { IdentityStore } from './identity.js';
 import { mainLog } from './log.js';
 import type { PushToTalk } from './ptt.js';
+import { PROFILE_IPC_ARG_SCHEMAS, createProfileIpcHandlers, type ProfileIpcDeps } from './profileIpc.js';
 import { RAILWAY_IPC_ARG_SCHEMAS, createRailwayIpcHandlers, type RailwayIpcDeps } from './railwayIpc.js';
+import type { ReleaseNotes } from './releaseNotes.js';
+import { SCREEN_IPC_ARG_SCHEMAS, createScreenIpcHandlers, type ScreenIpcDeps } from './screenIpc.js';
+import { SERVER_UPDATES_IPC_ARG_SCHEMAS, createServerUpdatesIpcHandlers, type ServerUpdatesIpcDeps } from './serverUpdatesIpc.js';
 import { originOf } from './security.js';
 import { LOCALES, type SettingsStore } from './settings.js';
 import type { Updater } from './updater.js';
@@ -23,7 +28,7 @@ export interface IpcDeps {
   appInfo(): AppInfo;
   identity: Pick<IdentityStore, 'status' | 'create' | 'retry' | 'replaceKeepingBackup'>;
   settings: Pick<SettingsStore, 'get' | 'set'>;
-  controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'request'>;
+  controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'request' | 'checkExit' | 'leaveSaved' | 'deleteSaved'>;
   /** Host mode (spec §9). */
   host?: HostIpcDeps;
   /** Identity backup, import and delete (spec §3.4). */
@@ -33,7 +38,9 @@ export interface IpcDeps {
   /** Confirmed external links and the clipboard (Text track). */
   shell: { openExternal(url: string): Promise<boolean>; copyText(text: string): void };
   notifications: { show(n: ChatNotification): boolean };
-  updates: Pick<Updater, 'state' | 'setAutoCheck' | 'restart'>;
+  updates: Pick<Updater, 'state' | 'setAutoCheck' | 'checkNow' | 'restart'>;
+  /** The notes of the new version the updater found (Updates page, v0.2.3). */
+  releaseNotes?: Pick<ReleaseNotes, 'get' | 'follow' | 'forgetFailures'>;
   /** Global push-to-talk (voice track). */
   ptt: Pick<PushToTalk, 'configure'>;
   /** "Criar um servidor" on Railway (v0.2). */
@@ -42,6 +49,14 @@ export interface IpcDeps {
   friends?: FriendsIpcDeps;
   /** Direct messages between friends (v0.3 phase 2). */
   dm?: DmIpcDeps;
+  /** The profile photo (v0.2.2). */
+  profile?: ProfileIpcDeps;
+  /** Screen sharing: the sources and the choice (screen sharing spec §3). */
+  screen?: ScreenIpcDeps;
+  /** The pencil's overlay over the shared monitor (pencil spec §4). */
+  draw?: DrawIpcDeps;
+  /** The Railway servers this app created follow its version (v0.2.2). */
+  serverUpdates?: ServerUpdatesIpcDeps;
 }
 
 /** The handshake belongs to the main process alone: the renderer may never send it (release plan "Seams"). */
@@ -59,8 +74,12 @@ export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
   'profile.update', 'role.create', 'role.update', 'role.delete', 'role.reorder',
   'member.setRoles', 'member.kick', 'member.ban', 'member.unban', 'bans.list',
   'invite.create', 'invite.list', 'invite.revoke', 'server.update', 'server.transferOwnership', 'server.leave',
+  // Deleting a server (v0.2.4): the owner's banner restores it; `server.delete` goes through servers.delete.
+  'server.restore',
   // Voice track
   'voice.join', 'voice.leave', 'voice.selfState', 'voice.moderate',
+  // The pencil on shared screens (v0.2.3)
+  'screen.draw', 'screen.drawAllow',
   'ping',
 ]);
 
@@ -126,14 +145,23 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.serversConnect]: z.tuple([serverId]),
   [IPC.serversDisconnect]: z.tuple([]),
   [IPC.serversRemove]: z.tuple([serverId]),
+  [IPC.serversCheckExit]: z.tuple([serverId]),
+  [IPC.serversLeave]: z.tuple([serverId, z.boolean()]),
+  [IPC.serversDelete]: z.tuple([serverId]),
   ...HOST_IPC_ARG_SCHEMAS,
   ...BACKUP_IPC_ARG_SCHEMAS,
   ...RAILWAY_IPC_ARG_SCHEMAS,
   ...FRIENDS_IPC_ARG_SCHEMAS,
   ...DM_IPC_ARG_SCHEMAS,
+  ...PROFILE_IPC_ARG_SCHEMAS,
+  ...SCREEN_IPC_ARG_SCHEMAS,
+  ...DRAW_IPC_ARG_SCHEMAS,
+  ...SERVER_UPDATES_IPC_ARG_SCHEMAS,
   [IPC.deepLinkTake]: z.tuple([]),
   [IPC.updatesState]: z.tuple([]),
   [IPC.updatesSetAutoCheck]: z.tuple([z.boolean()]),
+  [IPC.updatesCheckNow]: z.tuple([]),
+  [IPC.updatesNotes]: z.tuple([z.string().max(20).refine(isReleaseVersion)]),
   [IPC.updatesRestart]: z.tuple([]),
   // A DOM KeyboardEvent.code such as "KeyV" or "ControlRight"; main maps it to the hook's keycode.
   [IPC.pttConfigure]: z.tuple([z.strictObject({ enabled: z.boolean(), code: z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,23}$/).nullable() })]),
@@ -162,14 +190,30 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     [IPC.serversConnect]: (id) => controller.connectSaved(id),
     [IPC.serversDisconnect]: () => controller.disconnect(),
     [IPC.serversRemove]: (id) => controller.remove(id),
+    [IPC.serversCheckExit]: (id) => controller.checkExit(id),
+    [IPC.serversLeave]: (id, deleteMyMessages) => controller.leaveSaved(id, deleteMyMessages),
+    [IPC.serversDelete]: (id) => controller.deleteSaved(id),
     ...createHostIpcHandlers(deps.host),
     ...createBackupIpcHandlers(deps.backup),
     ...createRailwayIpcHandlers(deps.railway),
     ...createFriendsIpcHandlers(deps.friends),
     ...createDmIpcHandlers(deps.dm),
+    ...createProfileIpcHandlers(deps.profile),
+    ...createScreenIpcHandlers(deps.screen),
+    ...createDrawIpcHandlers(deps.draw),
+    ...createServerUpdatesIpcHandlers(deps.serverUpdates),
     [IPC.deepLinkTake]: () => deps.deepLinks?.take() ?? null,
     [IPC.updatesState]: () => updates.state(),
     [IPC.updatesSetAutoCheck]: (enabled) => updates.setAutoCheck(enabled),
+    [IPC.updatesCheckNow]: async () => {
+      // A click is the moment notes that failed to load may be asked for again.
+      deps.releaseNotes?.forgetFailures();
+      await updates.checkNow(); // never throws; skipped while a check runs or an update waits
+      const state = updates.state();
+      deps.releaseNotes?.follow(state); // the update already found when the check was skipped
+      return state;
+    },
+    [IPC.updatesNotes]: (version) => deps.releaseNotes?.get(version) ?? { version, status: 'unavailable' },
     [IPC.updatesRestart]: () => updates.restart(),
     [IPC.pttConfigure]: (config) => deps.ptt.configure(config),
   };

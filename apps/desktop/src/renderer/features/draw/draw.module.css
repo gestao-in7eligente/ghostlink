@@ -1,0 +1,112 @@
+/* The pencil on shared screens (spec 2026-10-01-lapis-na-tela-design.md §2): the canvas over a
+   stream, the pencil button and "Permitir desenhos". Colors are app tokens; the strokes' own
+   colors live in colors.ts. */
+
+/* Over the picture, under the stream's bar (it comes later in the box); clicks go through until
+   the pencil is on. */
+.layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.layerActive {
+  pointer-events: auto;
+  touch-action: none;
+}
+
+/* The pencil, where no bar gives it a look (my tile, the panel). */
+.pencil {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border-panel-button);
+  border-radius: 8px;
+  background: var(--bg-panel-button);
+  color: var(--text-strong);
+  cursor: pointer;
+}
+.pencil:hover {
+  background: var(--border-strong);
+}
+.pencil:focus-visible,
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* On: blurple, like Discord's active toggles (also on a stream's bar). */
+.pencilOn,
+.pencilOn:hover {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.pencilOn:hover {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+/* My own tile on the stage: the pencil in its top-right corner. */
+.tileTools {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: flex;
+  gap: 6px;
+}
+
+/* Under my share's preview in the voice panel. */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.allow {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  cursor: pointer;
+}
+.allowText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.switch {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--border-strong);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.switch[aria-checked='true'] {
+  background: var(--accent);
+}
+.knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-bright);
+  transition: transform 120ms ease;
+}
+.switch[aria-checked='true'] .knob {
+  transform: translateX(16px);
+}

@@ -12,6 +12,7 @@ import type { TextState } from '../stores/textState.js';
 export function voiceDirectoryFromText(state: TextState): VoiceDirectory {
   return {
     displayName: (userId) => (Object.hasOwn(state.members.byId, userId) ? state.members.byId[userId]!.nickname : userId.slice(0, 8)),
+    avatar: (userId) => (Object.hasOwn(state.members.byId, userId) ? state.members.byId[userId]!.avatar : null),
     channelName: (channelId) => (Object.hasOwn(state.channels.byId, channelId) ? state.channels.byId[channelId]!.name : null),
     voiceChannels: () => sortedChannels(state.channels.byId, 'voice').map(({ id, name }) => ({ id, name })),
     myPermissions: (channelId) => {

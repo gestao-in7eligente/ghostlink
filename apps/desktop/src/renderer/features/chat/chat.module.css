@@ -145,7 +145,7 @@
 
 .msgMention {
   background: var(--mention-bg);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset 2px 0 0 var(--mention-bar);
 }
 
 .msgMention:hover {
@@ -189,7 +189,7 @@
 
 .author {
   overflow: hidden;
-  color: var(--text-strong);
+  color: var(--text-bright);
   font-size: 15px;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -247,7 +247,7 @@
 }
 
 .link {
-  color: var(--accent-text);
+  color: var(--link);
   text-decoration: none;
 }
 
@@ -464,7 +464,6 @@
   flex-shrink: 0;
   padding: 16px 20px 16px;
   background: var(--bg-chat);
-  border-top: 1px solid var(--line);
 }
 
 .typing {
@@ -530,9 +529,9 @@
   gap: 10px;
   min-height: 46px;
   padding: 7px 7px 7px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-composer);
   border-radius: 10px;
-  background: var(--bg-input);
+  background: var(--bg-composer);
 }
 
 .composer:focus-within {
@@ -588,7 +587,7 @@
 }
 
 .input::placeholder {
-  color: var(--text-faint);
+  color: var(--text-placeholder);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

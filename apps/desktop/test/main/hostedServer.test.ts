@@ -222,6 +222,9 @@ describe('parent-port control commands (spec §9)', () => {
           localAddresses: [{ ip: '127.0.0.1', interface: 'test', kind: 'lan' }],
         },
         busyMediaPorts: [],
+        // Leave/delete spec §3: the Host mode reads the deletion from here too.
+        deletingAt: null,
+        deleted: false,
       },
     });
     parent.send({ cmd: 'shutdown' });

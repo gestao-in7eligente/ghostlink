@@ -109,6 +109,8 @@ export interface Member {
   roleIds: string[];
   online: boolean;
   joinedAt: number;
+  /** The profile photo's SHA-256 (hex), or null: initials (spec 2026-10-01-foto-de-perfil). */
+  avatar: string | null;
 }
 
 export interface ServerSettings {
@@ -347,6 +349,8 @@ export const memberSchemaClient: z.ZodType<Member> = z.object({
   roleIds: z.array(idClient).max(1000).catch([]),
   online: z.boolean().catch(false),
   joinedAt: z.number().catch(0),
+  // Servers before 0.2.2 send no photo: initials.
+  avatar: z.string().regex(/^[0-9a-f]{64}$/).nullable().catch(null),
 });
 
 export const serverSettingsSchemaClient: z.ZodType<ServerSettings> = z.object({

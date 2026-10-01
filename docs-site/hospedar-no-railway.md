@@ -57,11 +57,30 @@ Atrás do proxy, todas as conexões chegam ao servidor com o endereço do proxy,
 
 O custo vai para a sua conta Railway. Um servidor pequeno usa pouca memória e processador e, em geral, cabe nos US$ 5 de uso do plano Hobby. A voz gasta tráfego de saída: um grupo de 5 pessoas conversando 3 horas por dia fica perto de US$ 1 por mês.
 
-## Atualizar, reiniciar e apagar
+## Atualizar
 
-Por enquanto, isso é feito no painel do Railway:
+O servidor que o app criou acompanha a versão do **app do dono** (GhostLink 0.2.2 ou mais novo). Com o app aberto e o Railway conectado, ele confere a versão do servidor logo depois de se atualizar e a cada 30 minutos. Se o servidor está numa versão mais antiga, o app troca a imagem do serviço para a versão dele e publica de novo:
 
-- **Atualizar:** no serviço, troque a versão no fim do nome da imagem (por exemplo `:0.2.0` para a versão nova) e publique de novo. O volume mantém os dados.
+- **só quando ninguém está em canal de voz**. Se em 24 horas não houver um momento assim, atualiza mesmo assim. Quem está no chat reconecta sozinho;
+- o volume e as configurações do serviço ficam.
+
+Enquanto o servidor espera, o dono vê no topo do chat: "Este servidor está na 0.2.0. Ele será atualizado para a 0.2.2 quando ninguém estiver em chamada." **Atualizar agora** não espera: quem estiver em chamada cai por alguns segundos. Se o token do Railway foi desconectado, o app pede para conectar de novo.
+
+### Docker e servidores criados à mão
+
+O app só atualiza os servidores que ele mesmo criou. Num servidor em Docker, ou criado à mão no Railway, use a imagem `ghcr.io/gestao-in7eligente/ghostlink-server:latest`: a tag `latest` sempre aponta para a versão mais recente (a mesma imagem assinada da tag com o número).
+
+- **À mão:** baixe a imagem de novo e recrie o contêiner (no Railway, publique o serviço de novo). O volume em `/data` mantém os dados.
+- **Sozinho, com o Watchtower:** ele baixa a imagem nova e recria o contêiner. Ele não sabe se alguém está em chamada, então escolha um horário tranquilo. Por exemplo, todo dia às 5h, para o contêiner `ghostlink`:
+
+```bash
+docker run -d --name watchtower --restart unless-stopped   -v /var/run/docker.sock:/var/run/docker.sock   containrrr/watchtower --schedule "0 0 5 * * *" ghostlink   # confere todo dia às 5h
+```
+
+## Reiniciar e apagar
+
+No painel do Railway:
+
 - **Reiniciar:** use "Restart" no serviço.
 - **Apagar:** apague o projeto. Os dados somem com ele (o Railway permite restaurar por 48 horas).
 
