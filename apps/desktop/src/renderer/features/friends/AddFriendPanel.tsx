@@ -8,7 +8,8 @@ import f from './friends.module.css';
 
 /**
  * "Adicionar amigo": paste someone's code to send a request, and this person's own code
- * to hand out (copy, make a new one, stop taking requests by code).
+ * to hand out (copy, make a new one, stop taking requests by code), and the switch that takes
+ * this app off the friends network ("Ficar disponível para amigos", friends spec §3.1).
  */
 export function AddFriendPanel({ snapshot }: { snapshot: FriendsSnapshot }) {
   const t = useT();
@@ -115,6 +116,17 @@ export function AddFriendPanel({ snapshot }: { snapshot: FriendsSnapshot }) {
               }}
             />
             {t('friends.code.inbox')}
+          </label>
+          <label className={f.toggle}>
+            <input
+              type="checkbox"
+              checked={snapshot.available}
+              onChange={(e) => {
+                const enabled = e.target.checked;
+                run(() => window.ghostlink.friends.setAvailable(enabled)).catch((err: unknown) => setError(errorMessage(t, errorCodeOf(err))));
+              }}
+            />
+            {t('friends.code.available')}
           </label>
         </section>
       )}

@@ -48,6 +48,7 @@ export const friends = {
   'friends.code.newBody': 'O código atual para de funcionar para pedidos novos. Seus amigos continuam na lista.',
   'friends.code.newConfirm': 'Gerar código',
   'friends.code.inbox': 'Aceitar pedidos por código',
+  'friends.code.available': 'Ficar disponível para amigos',
 
   'friends.empty.all': 'Você ainda não tem amigos. Clique em Adicionar amigo para colar o código de alguém ou copiar o seu.',
   'friends.empty.online': 'Nenhum amigo online agora.',

@@ -49,6 +49,7 @@ export const friends: Record<keyof typeof friendsPt, string> = {
   'friends.code.newBody': 'The current code stops working for new requests. Your friends stay on the list.',
   'friends.code.newConfirm': 'Make code',
   'friends.code.inbox': 'Accept requests by code',
+  'friends.code.available': 'Be available to friends',
 
   'friends.empty.all': "You have no friends yet. Click Add friend to paste someone's code or copy yours.",
   'friends.empty.online': 'No friends online right now.',
