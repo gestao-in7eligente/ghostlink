@@ -3,7 +3,7 @@
 
 /* Doubled class: wins over layout.module.css's .shell whatever the bundle order. */
 .shell.shell {
-  grid-template-columns: var(--rail-w) var(--sidebar-w) minmax(0, 1fr) 360px;
+  grid-template-columns: var(--rail-w) var(--sidebar-w) minmax(0, 1fr) 288px; /* "Ativo agora": 20% narrower than Discord's 360 px (owner, 2026-10-01) */
 }
 
 /* ---- sidebar ---- */
