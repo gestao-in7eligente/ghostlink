@@ -34,7 +34,8 @@ const messageSchema = z.discriminatedUnion('t', [
   z.strictObject({ t: z.literal('hello'), v: z.literal(P2P_VERSION), nickname }),
   /** `sig`: base64url of the 64-byte inbox proof (friendKey.ts). */
   z.strictObject({ t: z.literal('inbox.hello'), sig: z.string().regex(/^[A-Za-z0-9_-]{86}$/) }),
-  z.strictObject({ t: z.literal('friend.request'), nickname }),
+  /** `proof`: base64url of the 32-byte HMAC showing the asker holds the whole code (friendKey.ts). */
+  z.strictObject({ t: z.literal('friend.request'), nickname, proof: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }),
   z.strictObject({ t: z.literal('friend.accept') }),
   z.strictObject({ t: z.literal('friend.remove') }),
   z.strictObject({ t: z.literal('ping') }),

@@ -12,6 +12,8 @@ import {
 } from '../../src/main/p2p/frames.js';
 
 const SIG = 'A'.repeat(86);
+/** A friend.request's code proof: base64url of 32 bytes. */
+const PROOF = `${'B'.repeat(42)}A`;
 
 /** A frame by hand: 1 type byte, uint32 BE length, body. */
 function frame(type: number, body: Uint8Array | string, declared?: number): Buffer {
@@ -28,7 +30,7 @@ describe('frames (friends spec §3.3)', () => {
     [{ t: 'hello', v: 1, nickname: 'Ana' }],
     [{ t: 'hello', v: 1, nickname: '' }],
     [{ t: 'inbox.hello', sig: SIG }],
-    [{ t: 'friend.request', nickname: 'João ✨' }],
+    [{ t: 'friend.request', nickname: 'João ✨', proof: PROOF }],
     [{ t: 'friend.accept' }],
     [{ t: 'friend.remove' }],
     [{ t: 'ping' }],
@@ -55,10 +57,10 @@ describe('frames (friends spec §3.3)', () => {
   });
 
   it('holds an inbox request to 1 KiB', () => {
-    const request = encodeMessage({ t: 'friend.request', nickname: 'Ana' });
-    expect(decodeMessage(request, MAX_INBOX_REQUEST_BYTES)).toEqual({ t: 'friend.request', nickname: 'Ana' });
-    const padded = frame(1, `{"t":"friend.request","nickname":"Ana"}${' '.repeat(1024)}`);
-    expect(decodeMessage(padded)).toEqual({ t: 'friend.request', nickname: 'Ana' });
+    const request = encodeMessage({ t: 'friend.request', nickname: 'Ana', proof: PROOF });
+    expect(decodeMessage(request, MAX_INBOX_REQUEST_BYTES)).toEqual({ t: 'friend.request', nickname: 'Ana', proof: PROOF });
+    const padded = frame(1, `{"t":"friend.request","nickname":"Ana","proof":"${PROOF}"}${' '.repeat(1024)}`);
+    expect(decodeMessage(padded)).toEqual({ t: 'friend.request', nickname: 'Ana', proof: PROOF });
     expect(() => decodeMessage(padded, MAX_INBOX_REQUEST_BYTES)).toThrow(/too large/);
   });
 
@@ -82,13 +84,15 @@ describe('frames (friends spec §3.3)', () => {
     ['a type that is not a string', json({ t: 1 })],
     ['an extra key on ping', json({ t: 'ping', at: 1 })],
     ['an extra key on hello', json({ t: 'hello', v: 1, nickname: 'Ana', admin: true })],
-    ['an extra key on friend.request', json({ t: 'friend.request', nickname: 'Ana', offerId: 'x' })],
+    ['an extra key on friend.request', json({ t: 'friend.request', nickname: 'Ana', proof: PROOF, offerId: 'x' })],
+    ['friend.request without the code proof', json({ t: 'friend.request', nickname: 'Ana' })],
+    ['a short code proof', json({ t: 'friend.request', nickname: 'Ana', proof: PROOF.slice(1) })],
     ['an extra key on friend.accept', json({ t: 'friend.accept', key: 'x' })],
     ['hello without a version', json({ t: 'hello', nickname: 'Ana' })],
     ['hello of another protocol version', json({ t: 'hello', v: 2, nickname: 'Ana' })],
     ['hello without a nickname', json({ t: 'hello', v: 1 })],
     ['a nickname that is not a string', json({ t: 'hello', v: 1, nickname: ['Ana'] })],
-    ['a huge nickname', json({ t: 'friend.request', nickname: 'a'.repeat(257) })],
+    ['a huge nickname', json({ t: 'friend.request', nickname: 'a'.repeat(257), proof: PROOF })],
     ['inbox.hello without a signature', json({ t: 'inbox.hello' })],
     ['a short signature', json({ t: 'inbox.hello', sig: SIG.slice(1) })],
     ['a signature that is not base64url', json({ t: 'inbox.hello', sig: `${SIG.slice(1)}+` })],
@@ -104,7 +108,7 @@ describe('frames (friends spec §3.3)', () => {
     expect(emoji).toHaveLength(255);
     expect(emoji).not.toMatch(/\p{Cs}/u); // no half of a surrogate pair
     // The worst case in UTF-8: 3 bytes for every character.
-    const request = encodeMessage({ t: 'friend.request', nickname: wireNickname('\u0E49'.repeat(400)) });
+    const request = encodeMessage({ t: 'friend.request', nickname: wireNickname('\u0E49'.repeat(400)), proof: PROOF });
     expect(request.length).toBeLessThanOrEqual(MAX_INBOX_REQUEST_BYTES);
     expect(decodeMessage(request, MAX_INBOX_REQUEST_BYTES).t).toBe('friend.request');
   });

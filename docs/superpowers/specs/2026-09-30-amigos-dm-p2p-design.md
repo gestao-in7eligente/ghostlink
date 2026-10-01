@@ -67,6 +67,7 @@ O site e o README ganham estes pontos, em linguagem simples:
 - **Firewall:** conexões de entrada só passam se a chave remota é de um amigo aceito, de um colega de grupo ou de alguém a quem você enviou um pedido (para a confirmação conseguir entrar), e não está bloqueada. O resto é recusado antes de a conexão abrir, então desconhecidos não descobrem o IP por esse caminho.
 - **Caixa de pedidos (inbox):** para receber pedidos por código, o app escuta também numa segunda chave, `inboxKey = Ed25519(SHA-256("ghostlink/inbox/v1" ‖ friendPub ‖ inviteSecret))`. Só quem tem o código completo consegue derivar essa chave e conectar.
   - Quem conecta na inbox só pode enviar um `friend.request` (até 1 KiB) e a conexão fecha.
+  - **Quem pede prova que tem o código inteiro.** Os nós da DHT que guardam o anúncio da inbox veem a chave dela, então só a chave não pode bastar. O `friend.request` leva `proof = HMAC-SHA256(chave = inviteSecret, "ghostlink/inbox/v1\nrequest\n" ‖ hash do handshake)`, que vale só para aquela conexão. Sem a prova certa, o dono fecha a conexão e o pedido não existe.
   - Como quem tem o código também conhece a chave privada da inbox, o dono **prova que é ele**: a primeira mensagem do dono é `inbox.hello` com a assinatura, pela chave de amigo, do hash do handshake dessa conexão. O solicitante confere antes de enviar o pedido.
   - Limites: 8 conexões simultâneas de desconhecidos e 30 por hora; acima disso, recusa.
   - "Desligar pedidos por código" para de escutar na inbox.

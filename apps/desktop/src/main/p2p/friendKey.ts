@@ -1,7 +1,7 @@
 // The friend key (friends spec §2): one Ed25519 key per person, derived from the friend seed.
 // Signing and verifying use node:crypto, never a transitive dependency of the P2P stack; the
 // public half is the same 32 bytes Hyperswarm derives from that seed (a test asserts it).
-import { createPublicKey, verify } from 'node:crypto';
+import { createHmac, createPublicKey, timingSafeEqual, verify } from 'node:crypto';
 import { CRYPTO_LABELS, fromBase64Url, toBase64Url, utf8 } from '@ghostlink/shared';
 import { AppError } from '../../shared/appErrors.js';
 import { serverKeyFromSeed } from '../identity.js';
@@ -16,6 +16,7 @@ export interface FriendKey {
 const SPKI_ED25519_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 const KEY_TEXT = /^[A-Za-z0-9_-]{43}$/;
 const INBOX_PROOF_PREFIX = utf8(`${CRYPTO_LABELS.friendInbox}\n`);
+const REQUEST_PROOF_PREFIX = utf8(`${CRYPTO_LABELS.friendInbox}\nrequest\n`);
 
 export function friendKeyFromSeed(seed: Uint8Array): FriendKey {
   const key = serverKeyFromSeed(seed);
@@ -62,4 +63,18 @@ export function signInboxProof(owner: FriendKey, handshakeHash: Uint8Array): Uin
 
 export function verifyInboxProof(friendPub: Uint8Array, handshakeHash: Uint8Array, signature: Uint8Array): boolean {
   return verifyFriendSignature(friendPub, Buffer.concat([INBOX_PROOF_PREFIX, handshakeHash]), signature);
+}
+
+/**
+ * spec §3.2: the inbox key alone is not enough to ask. The DHT nodes that store the inbox's
+ * announce see that key, so the asker also proves it holds the whole code: an HMAC, keyed
+ * with the invite secret, of the handshake hash of that very connection (never replayable).
+ */
+export function requestProof(inviteSecret: Uint8Array, handshakeHash: Uint8Array): Uint8Array {
+  return createHmac('sha256', inviteSecret).update(REQUEST_PROOF_PREFIX).update(handshakeHash).digest();
+}
+
+export function checkRequestProof(inviteSecret: Uint8Array, handshakeHash: Uint8Array, proof: Uint8Array): boolean {
+  const expected = requestProof(inviteSecret, handshakeHash);
+  return proof.length === expected.length && timingSafeEqual(expected, proof);
 }

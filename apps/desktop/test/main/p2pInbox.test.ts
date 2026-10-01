@@ -2,13 +2,15 @@ import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { fromBase64Url, toBase64Url } from '@ghostlink/shared';
 import { encodeMessage, type P2pMessage } from '../../src/main/p2p/frames.js';
-import { friendKeyFromSeed, signInboxProof, verifyInboxProof } from '../../src/main/p2p/friendKey.js';
+import { friendKeyFromSeed, requestProof, signInboxProof, verifyInboxProof } from '../../src/main/p2p/friendKey.js';
 import { INBOX_MAX_OPEN, INBOX_MAX_PER_HOUR, INBOX_TIMEOUT_MS, InboxLimiter, knock, serveInbox } from '../../src/main/p2p/inbox.js';
 import { FakeLink, ManualTimers, flush, hexOf, linkPair } from '../helpers/p2pFakes.js';
 
 const owner = friendKeyFromSeed(randomBytes(32));
 const asker = friendKeyFromSeed(randomBytes(32));
 const inboxKey = friendKeyFromSeed(randomBytes(32)).publicKey;
+/** The owner's invite secret: part of the code, never of the inbox key alone. */
+const secret = randomBytes(16);
 
 /** An inbox connection: the asker's end and the owner's end. */
 function connection(): { askerEnd: FakeLink; ownerEnd: FakeLink } {
@@ -24,7 +26,7 @@ function served() {
   const timers = new ManualTimers();
   const requests: { from: string; nickname: string }[] = [];
   const { askerEnd, ownerEnd } = connection();
-  serveInbox(ownerEnd, { key: owner, timers, onRequest: (from, nickname) => requests.push({ from: hexOf(from), nickname }) });
+  serveInbox(ownerEnd, { key: owner, inviteSecret: secret, timers, onRequest: (from, nickname) => requests.push({ from: hexOf(from), nickname }) });
   return { timers, requests, askerEnd, ownerEnd };
 }
 
@@ -38,6 +40,12 @@ function rawFrame(body: string): Buffer {
   return Buffer.concat([header, bytes]);
 }
 const proof = (link: FakeLink, key = owner) => toBase64Url(signInboxProof(key, link.handshakeHash));
+/** A friend.request with the proof that the asker holds the whole code (spec §3.2). */
+const request = (link: FakeLink, nickname = 'Ana', inviteSecret: Uint8Array = secret): P2pMessage => ({
+  t: 'friend.request',
+  nickname,
+  proof: toBase64Url(requestProof(inviteSecret, link.handshakeHash)),
+});
 
 describe('serveInbox: the owner\'s side of an inbox connection (spec §3.2)', () => {
   it('speaks first, proving with the friend key that this very connection reached the owner', () => {
@@ -52,7 +60,7 @@ describe('serveInbox: the owner\'s side of an inbox connection (spec §3.2)', ()
   it('takes one friend.request, names who asked by the connection\'s key and finishes', () => {
     const { requests, askerEnd, ownerEnd, timers } = served();
     askerEnd.onEnd(() => askerEnd.end());
-    send(askerEnd, { t: 'friend.request', nickname: 'Ana' });
+    send(askerEnd, request(askerEnd));
     expect(requests).toEqual([{ from: hexOf(asker.publicKey), nickname: 'Ana' }]);
     expect(ownerEnd.ended).toBe(true);
     expect(ownerEnd.closed).toBe(true);
@@ -61,8 +69,8 @@ describe('serveInbox: the owner\'s side of an inbox connection (spec §3.2)', ()
 
   it('drops the connection on a second message', () => {
     const { requests, askerEnd, ownerEnd } = served();
-    send(askerEnd, { t: 'friend.request', nickname: 'Ana' });
-    send(askerEnd, { t: 'friend.request', nickname: 'Ana de novo' });
+    send(askerEnd, request(askerEnd));
+    send(askerEnd, request(askerEnd, 'Ana de novo'));
     expect(requests).toHaveLength(1);
     expect(ownerEnd.closed).toBe(true);
   });
@@ -92,9 +100,28 @@ describe('serveInbox: the owner\'s side of an inbox connection (spec §3.2)', ()
 
   it('closes a connection whose other side never finishes', async () => {
     const { askerEnd, ownerEnd, timers } = served();
-    send(askerEnd, { t: 'friend.request', nickname: 'Ana' });
+    send(askerEnd, request(askerEnd));
     expect(ownerEnd.closed).toBe(false);
     await timers.advance(INBOX_TIMEOUT_MS);
+    expect(ownerEnd.closed).toBe(true);
+  });
+
+  it.each<[string, (askerEnd: FakeLink) => P2pMessage]>([
+    ['a proof made with another invite secret (an old code, or only the inbox key)', (a) => request(a, 'Eva', randomBytes(16))],
+    ['a proof made for another connection (a relayed one)', () => ({ t: 'friend.request', nickname: 'Eva', proof: toBase64Url(requestProof(secret, randomBytes(64))) })],
+    ['a proof that is not 32 bytes', () => ({ t: 'friend.request', nickname: 'Eva', proof: 'A'.repeat(43) })],
+  ])('refuses a request with %s', (_label, make) => {
+    const { requests, askerEnd, ownerEnd } = served();
+    send(askerEnd, make(askerEnd));
+    expect(requests).toEqual([]);
+    expect(ownerEnd.closed).toBe(true);
+    expect(ownerEnd.ended).toBe(false);
+  });
+
+  it('refuses a request without a proof (an asker that only knows the inbox key)', () => {
+    const { requests, askerEnd, ownerEnd } = served();
+    askerEnd.send(rawFrame(JSON.stringify({ t: 'friend.request', nickname: 'Eva' })));
+    expect(requests).toEqual([]);
     expect(ownerEnd.closed).toBe(true);
   });
 
@@ -109,7 +136,7 @@ describe('knock: the asker\'s side of an inbox connection (spec §3.2, §5.1)', 
   function knocking() {
     const timers = new ManualTimers();
     const { askerEnd, ownerEnd } = connection();
-    const result = knock(askerEnd, { friendPub: owner.publicKey, nickname: 'Ana', timers });
+    const result = knock(askerEnd, { friendPub: owner.publicKey, inviteSecret: secret, nickname: 'Ana', timers });
     return { timers, askerEnd, ownerEnd, result };
   }
 
@@ -117,7 +144,7 @@ describe('knock: the asker\'s side of an inbox connection (spec §3.2, §5.1)', 
     const { askerEnd, ownerEnd, result, timers } = knocking();
     expect(askerEnd.sent).toEqual([]);
     send(ownerEnd, { t: 'inbox.hello', sig: proof(ownerEnd) });
-    expect(askerEnd.messages).toEqual([{ t: 'friend.request', nickname: 'Ana' }]);
+    expect(askerEnd.messages).toEqual([request(askerEnd)]);
     ownerEnd.end();
     await expect(result).resolves.toBe(true);
     expect(askerEnd.closed).toBe(true);
@@ -128,7 +155,7 @@ describe('knock: the asker\'s side of an inbox connection (spec §3.2, §5.1)', 
     ['a proof signed by another key (a fake inbox)', (o) => send(o, { t: 'inbox.hello', sig: proof(o, friendKeyFromSeed(randomBytes(32))) })],
     ['a proof made for another connection (a relayed one)', (o) => send(o, { t: 'inbox.hello', sig: toBase64Url(signInboxProof(owner, randomBytes(64))) })],
     ['a signature over the bare handshake hash', (o) => send(o, { t: 'inbox.hello', sig: toBase64Url(owner.sign(o.handshakeHash)) })],
-    ['a request instead of a proof', (o) => send(o, { t: 'friend.request', nickname: 'Eva' })],
+    ['a request instead of a proof', (o) => send(o, request(o, 'Eva'))],
     ['a hello instead of a proof', (o) => send(o, { t: 'hello', v: 1, nickname: 'Eva' })],
     ['bytes that are not a frame', (o) => o.send(Buffer.from('oi'))],
     ['a proof padded over 1 KiB', (o) => o.send(rawFrame(JSON.stringify({ t: 'inbox.hello', sig: proof(o) }).padEnd(2048)))],
@@ -168,12 +195,22 @@ describe('knock: the asker\'s side of an inbox connection (spec §3.2, §5.1)', 
     const timers = new ManualTimers();
     const requests: string[] = [];
     const { askerEnd, ownerEnd } = connection();
-    const result = knock(askerEnd, { friendPub: owner.publicKey, nickname: 'Ana', timers });
-    serveInbox(ownerEnd, { key: owner, timers, onRequest: (from, nickname) => requests.push(`${hexOf(from)} ${nickname}`) });
+    const result = knock(askerEnd, { friendPub: owner.publicKey, inviteSecret: secret, nickname: 'Ana', timers });
+    serveInbox(ownerEnd, { key: owner, inviteSecret: secret, timers, onRequest: (from, nickname) => requests.push(`${hexOf(from)} ${nickname}`) });
     await expect(result).resolves.toBe(true);
     expect(requests).toEqual([`${hexOf(asker.publicKey)} Ana`]);
     expect(askerEnd.closed && ownerEnd.closed).toBe(true);
     expect(timers.pending).toBe(0);
+  });
+
+  it("is refused end to end when the asker does not hold the owner's current code", async () => {
+    const timers = new ManualTimers();
+    const requests: string[] = [];
+    const { askerEnd, ownerEnd } = connection();
+    const result = knock(askerEnd, { friendPub: owner.publicKey, inviteSecret: randomBytes(16), nickname: 'Eva', timers });
+    serveInbox(ownerEnd, { key: owner, inviteSecret: secret, timers, onRequest: (from, nickname) => requests.push(`${hexOf(from)} ${nickname}`) });
+    await expect(result).resolves.toBe(false);
+    expect(requests).toEqual([]);
   });
 });
 

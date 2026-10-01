@@ -381,7 +381,8 @@ export class Friends {
       .then(async (link) => {
         if (!current()) return link.close();
         delivery.link = link;
-        const taken = await knock(link, { friendPub: row.key, nickname: wireNickname(this.#d.nickname()), timers: this.#timers });
+        // The secret is still in the row: it was checked a few lines up and is cleared only on delivery.
+        const taken = await knock(link, { friendPub: row.key, inviteSecret: row.inviteSecret!, nickname: wireNickname(this.#d.nickname()), timers: this.#timers });
         delivery.link = null;
         if (!current()) return;
         if (!taken) return retry();
@@ -435,7 +436,12 @@ export class Friends {
     this.#inboxLinks.add(link);
     link.onClose(() => this.#inboxLinks.delete(link));
     // A request that cannot be stored drops the connection unfinished, so the asker tries again later.
-    serveInbox(link, { key: this.#key, timers: this.#timers, onRequest: (from, nickname) => this.#safely(link, () => this.#onRequest(from, nickname)) });
+    serveInbox(link, {
+      key: this.#key,
+      inviteSecret: this.#store.me.inviteSecret,
+      timers: this.#timers,
+      onRequest: (from, nickname) => this.#safely(link, () => this.#onRequest(from, nickname)),
+    });
   }
 
   #onRequest(from: Uint8Array, rawNickname: string): void {

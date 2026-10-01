@@ -341,7 +341,8 @@ describe('FriendsEngine: strangers (friends spec §3.2, §11)', () => {
       allow: () => true,
       onLink: (link) => {
         knocks++;
-        serveInbox(link, { key: malloryKey, timers: realTimers, onRequest: (_from, nickname) => stolen.push(nickname) });
+        // Mallory has the whole code, so she could check a request's proof; she still cannot prove she is Bia.
+        serveInbox(link, { key: malloryKey, inviteSecret, timers: realTimers, onRequest: (_from, nickname) => stolen.push(nickname) });
       },
     });
 

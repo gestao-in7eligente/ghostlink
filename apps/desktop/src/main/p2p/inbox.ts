@@ -1,10 +1,11 @@
 // One inbox connection (friends spec §3.2, §5.1). The inbox key can be derived by anyone who
 // holds the friend code, so the owner speaks first and proves itself with the friend key
-// (inbox.hello); only then does the asker send its single friend.request, and the owner
+// (inbox.hello); only then does the asker send its single friend.request, with the proof that
+// it holds the whole code and not only the inbox key (the DHT sees that key), and the owner
 // finishes the connection. A clean finish is the asker's sign that the request arrived.
 import { fromBase64Url, toBase64Url } from '@ghostlink/shared';
 import { MAX_INBOX_REQUEST_BYTES, decodeMessage, encodeMessage, type P2pMessage } from './frames.js';
-import { signInboxProof, verifyInboxProof, type FriendKey } from './friendKey.js';
+import { checkRequestProof, requestProof, signInboxProof, verifyInboxProof, type FriendKey } from './friendKey.js';
 import type { FriendLink } from './swarm.js';
 
 /** spec §3.2: connections from unknown keys, at once and per hour. */
@@ -40,6 +41,8 @@ function signatureBytes(sig: string): Uint8Array {
 export interface ServeInboxOptions {
   /** The owner's friend key: it signs the proof. */
   key: FriendKey;
+  /** The owner's current invite secret: a request must prove it knows it. */
+  inviteSecret: Uint8Array;
   timers: Timers;
   /** `from` is the friend key of whoever knocked, authenticated by the connection itself. */
   onRequest(from: Uint8Array, nickname: string): void;
@@ -52,7 +55,7 @@ export function serveInbox(link: FriendLink, opts: ServeInboxOptions): void {
   let taken = false;
   link.onData((data) => {
     const message = taken ? null : read(data);
-    if (message?.t !== 'friend.request') return link.close();
+    if (message?.t !== 'friend.request' || !checkRequestProof(opts.inviteSecret, link.handshakeHash, signatureBytes(message.proof))) return link.close();
     taken = true;
     opts.onRequest(link.remoteKey, message.nickname);
     link.end();
@@ -63,6 +66,8 @@ export function serveInbox(link: FriendLink, opts: ServeInboxOptions): void {
 export interface KnockOptions {
   /** The friend key from the code: the only key whose proof is accepted. */
   friendPub: Uint8Array;
+  /** The invite secret from the code: proves the asker holds the whole code. */
+  inviteSecret: Uint8Array;
   /** The asker's nickname, sent with the request. */
   nickname: string;
   timers: Timers;
@@ -91,7 +96,7 @@ export function knock(link: FriendLink, opts: KnockOptions): Promise<boolean> {
       const message = proven ? null : read(data);
       if (message?.t !== 'inbox.hello' || !verifyInboxProof(opts.friendPub, link.handshakeHash, signatureBytes(message.sig))) return link.close();
       proven = true;
-      link.send(encodeMessage({ t: 'friend.request', nickname: opts.nickname }));
+      link.send(encodeMessage({ t: 'friend.request', nickname: opts.nickname, proof: toBase64Url(requestProof(opts.inviteSecret, link.handshakeHash)) }));
     });
   });
 }

@@ -336,7 +336,7 @@ describe('a request from the code to the friendship (friends spec §5.1)', () =>
     await mallory.node.setInbox({
       seed: inboxSeed(friendPub, inviteSecret),
       allow: () => true,
-      onLink: (link) => serveInbox(link, { key: mallory.signer, timers, onRequest: (_from, nickname) => stolen.push(nickname) }),
+      onLink: (link) => serveInbox(link, { key: mallory.signer, inviteSecret, timers, onRequest: (_from, nickname) => stolen.push(nickname) }),
     });
 
     ana.friends.add(bia.code());
@@ -605,7 +605,7 @@ describe('friend links (friends spec §3.2, §3.3)', () => {
     }],
     ['a friend.request', (link) => {
       say(link, { t: 'hello', v: 1, nickname: 'Bia' });
-      say(link, { t: 'friend.request', nickname: 'Bia' });
+      say(link, { t: 'friend.request', nickname: 'Bia', proof: `${'B'.repeat(42)}A` });
     }],
   ])('drops the link on %s', async (_label, act) => {
     const { ana, bia } = await friendsAlready();
