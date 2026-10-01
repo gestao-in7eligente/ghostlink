@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import type { AppErrorCode } from '../../../shared/appErrors.js';
 import type { HostJoinMode, HostStartResult } from '../../../shared/hostTypes.js';
 import { ErrorLine } from '../../components/Screen.js';
 import ui from '../../components/ui.module.css';
 import { errorCodeOf, errorMessage, useT, type MessageKey } from '../../i18n/index.js';
+import { Select } from '../../layout/primitives.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import { HostDialog } from './HostDialog.js';
 import host from './host.module.css';
@@ -22,6 +23,7 @@ const FIELD_ERROR: Record<HostFormField, MessageKey> = {
  */
 export function HostForm({ onCancel, onStarted }: { onCancel: () => void; onStarted: (result: HostStartResult) => void }) {
   const t = useT();
+  const joinModeId = useId();
   const nickname = useSettingsStore((s) => s.settings?.nickname ?? '');
   const last = useHostStore((s) => s.status?.config ?? null);
   const [form, setForm] = useState(() => initialHostForm(last, t('host.form.defaultName', { nickname })));
@@ -109,18 +111,21 @@ export function HostForm({ onCancel, onStarted }: { onCancel: () => void; onStar
           </label>
         </div>
         <span className={ui.hint}>{t('host.form.portHint')}</span>
-        <label className={ui.field}>
-          <span className={ui.label}>{t('host.form.joinMode')}</span>
-          <select
-            className={ui.input}
+        <div className={ui.field}>
+          <span id={joinModeId} className={ui.label}>
+            {t('host.form.joinMode')}
+          </span>
+          <Select<HostJoinMode>
+            labelledBy={joinModeId}
             value={form.joinMode}
             disabled={busy}
-            onChange={(e) => setForm({ ...form, joinMode: e.target.value as HostJoinMode })}
-          >
-            <option value="invite">{t('host.form.joinMode.invite')}</option>
-            <option value="open">{t('host.form.joinMode.open')}</option>
-          </select>
-        </label>
+            options={[
+              { value: 'invite', label: t('host.form.joinMode.invite') },
+              { value: 'open', label: t('host.form.joinMode.open') },
+            ]}
+            onChange={(joinMode) => setForm({ ...form, joinMode })}
+          />
+        </div>
         <p className={ui.hint}>{t('host.form.firewall')}</p>
         {busy && (
           <p className={ui.status} role="status">

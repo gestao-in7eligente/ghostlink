@@ -2,7 +2,7 @@
 // connection store, voice settings, and push-to-talk (in-app keys + the global hook).
 // Started by the first mounted voice component (useVoiceRuntime), stopped by the last.
 // The store sync (welcome + voice.* events) also runs for useVoiceAvailable() alone.
-import { Room, createLocalAudioTrack } from 'livekit-client';
+import { Room, createLocalAudioTrack, type LocalAudioTrack } from 'livekit-client';
 import { useEffect, useMemo } from 'react';
 import { create } from 'zustand';
 import type { VoiceModerateAction } from '@ghostlink/shared';
@@ -12,10 +12,12 @@ import { createCameraOutlet } from './cameraStore.js';
 import { directoryFromWelcome, type VoiceDirectory } from './directory.js';
 import { createDomOutlet, onNextUserGesture } from './dom.js';
 import { GateProcessor } from './gateProcessor.js';
+import { webNoiseBackend } from './noiseBackend.js';
+import { NoiseSuppressors, VOICE_SAMPLE_RATE, captureFor, type ResolvedSuppression } from './noiseSuppression.js';
 import { cancelScreenPicker, createScreenOutlet, pickScreen } from './screenStore.js';
 import { VoiceSession } from './session.js';
-import { screenVolumeKey, useVoiceSettings, withVolume, type VoiceSettings } from './settings.js';
-import { useVoiceStore } from './state.js';
+import { screenVolumeKey, useVoiceSettings, withVolume, type NoiseSuppression, type VoiceSettings } from './settings.js';
+import { selfVoice, useVoiceStore } from './state.js';
 
 let session: VoiceSession | null = null;
 let users = 0;
@@ -23,44 +25,131 @@ let stopRuntime: (() => void) | null = null;
 let syncUsers = 0;
 let stopSync: (() => void) | null = null;
 let audioContext: AudioContext | null = null;
-const gates = new Set<GateProcessor>();
+/** Each open microphone's gate, its track and the noise suppression it has in use. */
+const gates = new Map<GateProcessor, { track: LocalAudioTrack; mode: NoiseSuppression }>();
 let inAppPtt = false;
 let globalPtt = false;
 let capturingKey = false;
 
-/** The app's AudioContext for the microphone gate and the settings' meter. */
+/**
+ * The app's AudioContext for the microphone gate and the settings' meter, at 48 kHz whatever
+ * the output device runs at: RNNoise needs it and GTCRN is silent at 44.1 kHz (Chromium
+ * converts the microphone).
+ */
 export function voiceAudioContext(): AudioContext {
-  audioContext ??= new AudioContext({ latencyHint: 'interactive' });
+  audioContext ??= new AudioContext({ latencyHint: 'interactive', sampleRate: VOICE_SAMPLE_RATE });
   return audioContext;
+}
+
+/**
+ * Noise suppression as it runs: the suppressors that failed in this session (the settings show
+ * a note under the choice) and the mode the call's microphone has in use, null outside a call.
+ */
+export const useNoiseStatus = create<{ failed: readonly NoiseSuppression[]; inUse: NoiseSuppression | null }>()(() => ({ failed: [], inUse: null }));
+
+function noteInUse(): void {
+  const [mic] = gates.values();
+  useNoiseStatus.setState({ inUse: mic?.mode ?? null });
+}
+
+const suppressors = new NoiseSuppressors(webNoiseBackend, (kind) => {
+  useNoiseStatus.setState((s) => ({ failed: [...s.failed, kind] }));
+  // A processor that broke during a call: move that microphone to the fallback.
+  void applyNoiseSuppression();
+});
+
+/** The suppressor for the settings' microphone test; the caller owns it (the meter destroys it). */
+export function resolveNoiseSuppression(mode: NoiseSuppression): Promise<ResolvedSuppression<AudioNode>> {
+  return suppressors.resolve(mode, voiceAudioContext());
 }
 
 function applyPtt(): void {
   useVoiceStore.getState().dispatch({ type: 'ptt', pressed: inAppPtt || globalPtt });
-  for (const gate of gates) gate.update();
+  for (const gate of gates.keys()) gate.update();
 }
 
 async function createMicrophone(options: Parameters<typeof createLocalAudioTrack>[0]) {
-  const track = await createLocalAudioTrack(options);
   const ctx = voiceAudioContext();
+  // Loaded before the microphone opens, so a failure asks for the browser's suppression instead.
+  const { mode, suppressor } = await suppressors.resolve(useVoiceSettings.getState().settings.noiseSuppression, ctx);
+  let track: LocalAudioTrack;
+  try {
+    track = await createLocalAudioTrack({ ...options, noiseSuppression: captureFor(mode).noiseSuppression });
+  } catch (e) {
+    suppressor?.destroy();
+    throw e;
+  }
   track.setAudioContext(ctx);
   const gate = new GateProcessor(
     {
       mode: () => useVoiceSettings.getState().settings.mode,
       thresholdDb: () => useVoiceSettings.getState().settings.thresholdDb,
       pttPressed: () => useVoiceStore.getState().pttPressed,
+      muted: () => {
+        const v = useVoiceStore.getState();
+        return v.selfMuted || v.selfDeafened || selfVoice(v)?.serverMuted === true;
+      },
       onLevel: (db) => useVoiceStore.getState().dispatch({ type: 'level', db }),
       onOpen: (open) => useVoiceStore.getState().dispatch({ type: 'transmitting', open }),
     },
     ctx,
+    suppressor,
   );
   const destroy = gate.destroy.bind(gate);
   gate.destroy = async () => {
     gates.delete(gate);
+    noteInUse();
     await destroy();
   };
-  gates.add(gate);
+  gates.set(gate, { track, mode });
+  noteInUse();
   await track.setProcessor(gate);
+  // The choice may have changed while the microphone was opening.
+  void applyNoiseSuppression();
   return track;
+}
+
+let noiseQueue: Promise<void> = Promise.resolve();
+
+/** Brings every open microphone to the chosen noise suppression, one change at a time. */
+function applyNoiseSuppression(): Promise<void> {
+  noiseQueue = noiseQueue.then(applyNoiseSuppressionNow).catch(() => {});
+  return noiseQueue;
+}
+
+/**
+ * Live switching (noise spec §2): the gate swaps its suppressor node, and the microphone's
+ * own suppression goes on or off when the WebRTC mode starts or ends. The call goes on, and
+ * the gate stays between the microphone and what is published throughout.
+ */
+async function applyNoiseSuppressionNow(): Promise<void> {
+  const ctx = voiceAudioContext();
+  for (const [gate, mic] of [...gates]) {
+    const chosen = useVoiceSettings.getState().settings.noiseSuppression;
+    if (suppressors.inUse(chosen) === mic.mode) continue;
+    const { mode, suppressor } = await suppressors.resolve(chosen, ctx);
+    if (!gates.has(gate)) {
+      suppressor?.destroy();
+      continue;
+    }
+    gate.setSuppressor(suppressor);
+    if (captureFor(mode).noiseSuppression !== captureFor(mic.mode).noiseSuppression) await setBrowserSuppression(mic.track, mode);
+    mic.mode = mode;
+    noteInUse();
+  }
+}
+
+/**
+ * Turns the microphone's own noise suppression on or off for `mode`. Chromium accepts
+ * applyConstraints() for it but keeps processing as before (measured in Electron 44:
+ * getSettings() does not change), so then the microphone is reopened with the new
+ * constraints. LiveKit hands the new track to the gate, which restarts shut.
+ */
+async function setBrowserSuppression(track: LocalAudioTrack, mode: NoiseSuppression): Promise<void> {
+  const processing = captureFor(mode);
+  await track.applyConstraints(processing).catch(() => {});
+  if (track.mediaStreamTrack.getSettings().noiseSuppression === processing.noiseSuppression) return;
+  await track.restartTrack({ ...processing, deviceId: track.constraints.deviceId }).catch(() => {});
 }
 
 function configureGlobalPtt(s: VoiceSettings): void {
@@ -173,7 +262,8 @@ function start(): () => void {
     if (s.outputDeviceId !== prev.outputDeviceId) void current.switchDevice('audiooutput', s.outputDeviceId ?? 'default');
     if (s.cameraDeviceId !== prev.cameraDeviceId) void current.switchCamera(s.cameraDeviceId);
     if (s.cameraQuality !== prev.cameraQuality) void current.restartCamera();
-    if (s.thresholdDb !== prev.thresholdDb) for (const gate of gates) gate.update();
+    if (s.thresholdDb !== prev.thresholdDb) for (const gate of gates.keys()) gate.update();
+    if (s.noiseSuppression !== prev.noiseSuppression) void applyNoiseSuppression();
   });
 
   // Push-to-talk while the window has focus; the global hook covers the rest (spec §8.4).

@@ -58,7 +58,7 @@
   --mention-bar: #fcb529; /* its left edge */
   --bg-composer: #393a41; /* the message box, embeds, tooltips */
   --border-composer: #44454c;
-  --border-panel: #3a3b42; /* the floating user panel */
+  --border-panel: #3a3b42; /* floating panels: the user panel, dropdown lists */
   --overlay: rgb(0 0 0 / 60%); /* modal backdrop */
 
   /* Voice call (Discord's call screen, measured on the owner's reference, 2026-10-01). */

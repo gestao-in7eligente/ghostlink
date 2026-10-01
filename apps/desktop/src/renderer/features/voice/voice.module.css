@@ -810,10 +810,6 @@ button.tile {
   gap: 20px;
   color: var(--text);
 }
-.settings h2 {
-  margin: 0;
-  font-size: 20px;
-}
 .settingsGroup {
   display: grid;
   gap: 8px;
@@ -829,15 +825,6 @@ button.tile {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
-}
-.select {
-  width: 100%;
-  height: 38px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-2);
-  color: var(--text);
 }
 .radioRow {
   display: flex;
@@ -887,6 +874,11 @@ button.tile {
 .hint {
   margin: 0;
   color: var(--text-muted);
+  font-size: 13px;
+}
+.noiseFailed {
+  margin: 0;
+  color: var(--warning);
   font-size: 13px;
 }
 .meter {

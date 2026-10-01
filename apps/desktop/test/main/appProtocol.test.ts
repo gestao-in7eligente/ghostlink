@@ -21,6 +21,7 @@ beforeEach(() => {
   writeFileSync(join(renderer, 'index.html'), '<!doctype html><title>GhostLink</title>');
   writeFileSync(join(renderer, 'assets', 'app.js'), 'console.log(1)');
   writeFileSync(join(renderer, 'assets', 'inter.woff2'), 'font');
+  writeFileSync(join(renderer, 'assets', 'rnnoise.wasm'), 'wasm');
   writeFileSync(join(tmp.path, 'secret.txt'), SECRET);
   mkdirSync(join(tmp.path, 'outside'));
   writeFileSync(join(tmp.path, 'outside', 'secret.txt'), SECRET);
@@ -58,13 +59,16 @@ describe('createAppProtocolHandler (spec §12)', () => {
     expect(res.body).toContain('<title>GhostLink</title>');
     expect(res.headers.get('content-type')).toBe('text/html; charset=utf-8');
     expect(res.headers.get('content-security-policy')).toBe(CONTENT_SECURITY_POLICY);
-    expect(CONTENT_SECURITY_POLICY).toContain("script-src 'self'");
+    // WebAssembly may compile (the noise suppressors); JavaScript eval stays blocked.
+    expect(CONTENT_SECURITY_POLICY.split('; ')).toContain("script-src 'self' 'wasm-unsafe-eval'");
+    expect(CONTENT_SECURITY_POLICY).not.toContain("'unsafe-eval'");
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
   });
 
   it('serves assets with their content type', async () => {
     expect((await get('app://ghostlink/assets/app.js')).headers.get('content-type')).toBe('text/javascript; charset=utf-8');
     expect((await get('app://ghostlink/assets/inter.woff2')).headers.get('content-type')).toBe('font/woff2');
+    expect((await get('app://ghostlink/assets/rnnoise.wasm')).headers.get('content-type')).toBe('application/wasm');
   });
 
   it('falls back to index.html for client-side routes and missing files', async () => {

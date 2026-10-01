@@ -27,6 +27,7 @@ import {
 import type { ConnState } from '../../../shared/ipcTypes.js';
 import { errorCodeOf } from '../../i18n/index.js';
 import { cameraCaptureOptions, cameraPublishOptions, canPublishCamera } from './camera.js';
+import { captureFor } from './noiseSuppression.js';
 import { startScreenShare, stopScreenShare, wantsSubscription, type LiveScreenShare, type ScreenShareDeps } from './screenShare.js';
 import { screenVolumeKey, volumeOf, type VoiceSettings } from './settings.js';
 import { selfVoice, type VoiceAction, type VoiceState } from './state.js';
@@ -68,6 +69,8 @@ export interface VoiceSessionDeps {
   /**
    * A new microphone track, already behind the voice-activity / push-to-talk gate, so
    * nothing ungated is ever sent (LiveKit's own capture would publish before a gate).
+   * `options` follow the chosen noise suppression; the app turns the browser's own back on
+   * when the chosen suppressor cannot load.
    */
   createMicrophone(options: AudioCaptureOptions): Promise<LocalAudioTrack>;
   /** Runs `cb` once, on the user's next click or key press (autoplay recovery). */
@@ -82,8 +85,6 @@ export function canPublishMicrophone(permissions: { canPublish: boolean; canPubl
   if (!permissions?.canPublish) return false;
   return permissions.canPublishSources.length === 0 || permissions.canPublishSources.includes(PROTO_MICROPHONE);
 }
-
-const CAPTURE: AudioCaptureOptions = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, voiceIsolation: false };
 
 function userIdOf(p: Pick<Participant, 'identity'>): string | null {
   return userIdFromIdentity(p.identity);
@@ -148,7 +149,7 @@ export class VoiceSession {
       adaptiveStream: true,
       dynacast: true,
       webAudioMix: true,
-      audioCaptureDefaults: { ...CAPTURE, ...(settings.inputDeviceId ? { deviceId: settings.inputDeviceId } : {}) },
+      audioCaptureDefaults: { ...captureFor(settings.noiseSuppression), ...(settings.inputDeviceId ? { deviceId: settings.inputDeviceId } : {}) },
       ...(settings.outputDeviceId ? { audioOutput: { deviceId: settings.outputDeviceId } } : {}),
     });
     this.#room = room;
@@ -521,7 +522,7 @@ export class VoiceSession {
     }
     let track: LocalAudioTrack;
     try {
-      track = await this.#deps.createMicrophone({ ...CAPTURE, ...this.#deviceConstraint() });
+      track = await this.#deps.createMicrophone({ ...captureFor(this.#deps.settings().noiseSuppression), ...this.#deviceConstraint() });
     } catch {
       if (this.#room === room) this.#deps.dispatch({ type: 'notice', notice: { kind: 'micUnavailable' } });
       return;

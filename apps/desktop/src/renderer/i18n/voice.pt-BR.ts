@@ -92,8 +92,20 @@ export const voice = {
   'voice.settings.globalOn': 'Funciona mesmo com outro programa em foco, como um jogo.',
   'voice.settings.globalOff': 'Funciona só com o GhostLink em foco.',
   'voice.settings.volumeHint': 'O volume de cada pessoa fica no menu dela, na lista da sala de voz.',
+  'voice.settings.noise': 'Supressão de ruído',
+  'voice.settings.noiseHint': 'Tira o barulho de fundo, como teclado e ventilador, antes de a sua voz sair.',
+  'voice.settings.noiseFailed': 'Não foi possível ativar {mode}. Usando WebRTC (nativo).',
+
+  'voice.noise.rnnoise': 'RNNoise — neural',
+  'voice.noise.speex': 'Speex — clássico',
+  'voice.noise.gtcrn': 'GTCRN — neural alternativo',
+  'voice.noise.webrtc': 'WebRTC (nativo)',
+  'voice.noise.off': 'Desativada',
 
   'voice.key.space': 'Espaço',
   'voice.key.left': '{key} esquerdo',
   'voice.key.right': '{key} direito',
 } as const;
+
+/** Names that read the same in every language (the i18n test allows them). */
+export const VOICE_SAME_IN_BOTH = ['voice.noise.rnnoise'] as const;

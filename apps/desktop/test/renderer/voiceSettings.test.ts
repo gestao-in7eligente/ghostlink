@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  NOISE_SUPPRESSIONS,
   VOICE_SETTINGS_KEY,
   defaultVoiceSettings,
   loadVoiceSettings,
@@ -23,13 +24,14 @@ function memory(initial?: string): KeyValueStorage & { data: Map<string, string>
 }
 
 describe('voice settings', () => {
-  it('defaults: system devices, voice activity, no push-to-talk key, unmuted', () => {
+  it('defaults: system devices, voice activity, no push-to-talk key, RNNoise, unmuted', () => {
     expect(defaultVoiceSettings).toEqual({
       inputDeviceId: null,
       outputDeviceId: null,
       mode: 'vad',
       pttCode: null,
       thresholdDb: -50,
+      noiseSuppression: 'rnnoise',
       muted: false,
       deafened: false,
       volumes: {},
@@ -38,9 +40,25 @@ describe('voice settings', () => {
     });
   });
 
+  it('settings saved before noise suppression existed get RNNoise; a saved choice is kept (noise spec §1)', () => {
+    const v020 = JSON.stringify({ inputDeviceId: 'mic-2', outputDeviceId: null, mode: 'ptt', pttCode: 'KeyV', thresholdDb: -42, muted: true, deafened: false, volumes: {} });
+    expect(loadVoiceSettings(memory(v020))).toEqual({
+      ...defaultVoiceSettings,
+      inputDeviceId: 'mic-2',
+      mode: 'ptt',
+      pttCode: 'KeyV',
+      thresholdDb: -42,
+      muted: true,
+      noiseSuppression: 'rnnoise',
+    });
+    for (const mode of NOISE_SUPPRESSIONS) expect(parseVoiceSettings({ noiseSuppression: mode }).noiseSuppression).toBe(mode);
+    for (const junk of ['RNNoise', 'krisp', '', 1, null, true, ['speex']]) expect(parseVoiceSettings({ noiseSuppression: junk }).noiseSuppression).toBe('rnnoise');
+    expect(NOISE_SUPPRESSIONS).toEqual(['rnnoise', 'speex', 'gtcrn', 'webrtc', 'off']);
+  });
+
   it('round-trips through storage', () => {
     const storage = memory();
-    const s = { ...defaultVoiceSettings, mode: 'ptt' as const, pttCode: 'KeyV', thresholdDb: -40, inputDeviceId: 'mic-2', volumes: { s1: { [ANA]: 150 } } };
+    const s = { ...defaultVoiceSettings, mode: 'ptt' as const, pttCode: 'KeyV', thresholdDb: -40, inputDeviceId: 'mic-2', noiseSuppression: 'gtcrn' as const, volumes: { s1: { [ANA]: 150 } } };
     saveVoiceSettings(storage, s);
     expect(loadVoiceSettings(storage)).toEqual(s);
   });

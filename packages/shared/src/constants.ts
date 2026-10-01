@@ -12,6 +12,12 @@ export const CRYPTO_LABELS = {
   scheme: 'ghostlink',
 } as const; // FROZEN — never change (spec §3.6)
 
+/**
+ * Domain label of the owner's signed GET /owner/status (spec "servidores acompanham o app" §2).
+ * Outside CRYPTO_LABELS, which is frozen, but just as fixed: owners' apps sign it.
+ */
+export const OWNER_STATUS_LABEL = 'ghostlink-owner-status-v1';
+
 export const LIMITS = {
   maxPayloadBytes: 256 * 1024,
   helloTimeoutMs: 5_000,
