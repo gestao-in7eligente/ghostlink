@@ -33,6 +33,8 @@ export interface JoinState {
   /** The owner's setup code as typed. It lives only in this state: never saved, never logged. */
   setupCode: string;
   suggestion: string | null;
+  /** The saved server this invite or address belongs to: the app goes straight in (owner request 2026-10-01). */
+  knownName: string | null;
   error: AppErrorCode | null;
 }
 
@@ -40,6 +42,8 @@ export type JoinAction =
   | { type: 'input'; value: string }
   | { type: 'parsed'; parsed: ParsedJoinInput; fingerprint: string | null }
   | { type: 'probed'; serverKeyId: string; fingerprint: string; saved: SavedServer[] }
+  /** The confirmed target is a server already joined: connect as before, without asking again. */
+  | { type: 'known'; saved: SavedServer }
   | { type: 'confirm' }
   | { type: 'owner'; open: boolean }
   | { type: 'field'; field: 'nickname' | 'password' | 'inviteCode' | 'setupCode'; value: string }
@@ -51,7 +55,7 @@ export type JoinAction =
 export function initialJoin(nickname: string): JoinState {
   return {
     step: 'input', input: '', probeAddress: null, target: null, source: null, fingerprint: null, keyConflict: null,
-    nickname, password: '', inviteCode: '', askPassword: false, askInvite: false, owner: false, setupCode: '', suggestion: null, error: null,
+    nickname, password: '', inviteCode: '', askPassword: false, askInvite: false, owner: false, setupCode: '', suggestion: null, knownName: null, error: null,
   };
 }
 
@@ -62,6 +66,14 @@ export function suggestNickname(nickname: string): string {
   const suffix = `#${match ? Number(match[2]) + 1 : 2}`;
   const graphemes = Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(base), (s) => s.segment);
   return `${graphemes.slice(0, LIMITS.nicknameMaxVisible - suffix.length).join('').trimEnd()}${suffix}`;
+}
+
+/**
+ * The saved server with this key, if any. Someone who accepted an invite before is a member:
+ * opening the same invite again must take them in, not ask again (owner request 2026-10-01).
+ */
+export function savedServerFor(saved: SavedServer[], serverKeyId: string): SavedServer | null {
+  return saved.find((s) => s.serverKeyId === serverKeyId) ?? null;
 }
 
 /** A saved server that lists `address` under a different key: the user must be warned (spec §3.3). */
@@ -130,6 +142,22 @@ export function joinReducer(s: JoinState, a: JoinAction): JoinState {
         fingerprint: a.fingerprint,
         keyConflict: findKeyConflict(a.saved, s.probeAddress, a.serverKeyId),
       };
+    case 'known': {
+      if (s.step !== 'confirm' || s.target === null || a.saved.serverKeyId !== s.target.serverKeyId) return s;
+      // The invite's addresses first (the host may have moved), then the ones that worked before. The invite
+      // code stays: a member enters without it, someone who left since needs it.
+      const addresses = [...new Set([...s.target.addresses, ...a.saved.addresses])];
+      return {
+        ...s,
+        step: 'connecting',
+        target: { ...s.target, addresses, name: s.target.name ?? a.saved.name },
+        nickname: a.saved.nickname.trim() !== '' ? a.saved.nickname : s.nickname,
+        knownName: a.saved.name,
+        owner: false,
+        setupCode: '',
+        error: null,
+      };
+    }
     case 'confirm':
       return s.step === 'confirm' ? advance(s, 'details') : s;
     case 'owner':
@@ -156,7 +184,9 @@ function advance(s: JoinState, step: 'details' | 'connecting'): JoinState {
   return setupCode === null ? { ...s, error: 'BAD_SETUP_CODE' } : { ...s, step, setupCode, error: null };
 }
 
-function failed(s: JoinState, code: AppErrorCode): JoinState {
+function failed(state: JoinState, code: AppErrorCode): JoinState {
+  // Going straight in did not work: from here on it is the normal flow, with the usual questions.
+  const s = state.knownName === null ? state : { ...state, knownName: null };
   if (s.step !== 'connecting') return { ...s, step: 'input', probeAddress: null, error: code }; // parse or probe failed
   switch (code) {
     case 'INVITE_REQUIRED':

@@ -62,6 +62,8 @@ export const messages = {
   'join.invite.nameHint': '(nome informado pelo convite)',
   'join.invite.addresses': 'Endereços',
   'join.invite.accept': 'Aceitar convite',
+  'join.known.title': 'Abrindo {name}…',
+  'join.known.text': 'Você já entrou neste servidor antes. Não precisa aceitar o convite de novo.',
   'join.tofu.title': 'Confira a impressão digital',
   'join.tofu.body':
     'É a primeira vez que você se conecta a {address}. Peça ao dono do servidor a impressão digital e compare os quatro grupos antes de continuar.',

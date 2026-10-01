@@ -1,11 +1,11 @@
 import { useEffect, useReducer, useRef, type FormEvent, type RefObject } from 'react';
 import { formatFingerprint } from '@ghostlink/shared';
-import type { RendererWelcome } from '../../shared/ipcTypes.js';
+import type { RendererWelcome, SavedServer } from '../../shared/ipcTypes.js';
 import { ErrorLine, Screen } from '../components/Screen.js';
 import ui from '../components/ui.module.css';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 import { useSettingsStore } from '../stores/settings.js';
-import { buildConnectRequest, initialJoin, joinReducer, type JoinAction, type JoinState } from './joinFlow.js';
+import { buildConnectRequest, initialJoin, joinReducer, savedServerFor, type JoinAction, type JoinState } from './joinFlow.js';
 
 /** The server CLI command that prints the setup code (spec §10); shown verbatim, never translated. */
 const SETUP_CODE_COMMAND = 'ghostlink-server setup-code';
@@ -101,15 +101,51 @@ export function Join({
     setupCodeInput.current?.select();
   }, [s.error]);
 
+  /**
+   * An invite (or address) of a server already joined goes straight in with the saved nickname,
+   * instead of asking again (owner request 2026-10-01). False when the server is not saved.
+   */
+  const enterIfKnown = async (state: JoinState, saved?: SavedServer[]): Promise<boolean> => {
+    if (state.step !== 'confirm' || !state.target) return false;
+    const known = savedServerFor(saved ?? (await api.servers.list()), state.target.serverKeyId);
+    if (!known) return false;
+    const next = joinReducer(state, { type: 'known', saved: known });
+    if (next.step !== 'connecting') return false;
+    dispatch({ type: 'known', saved: known });
+    try {
+      const welcome = await api.join.connect(buildConnectRequest(next));
+      dispatch({ type: 'joined' });
+      onJoined(welcome);
+    } catch (e) {
+      dispatch({ type: 'failed', code: errorCodeOf(e) });
+    }
+    return true;
+  };
+
+  // A ghostlink:// link starts at the invite: go straight in when that server is already saved.
+  const startChecked = useRef(false);
+  useEffect(() => {
+    if (!start || startChecked.current) return;
+    startChecked.current = true;
+    void enterIfKnown(start).catch(() => undefined);
+    // Once, for the state the screen opened with.
+  }, []);
+
   const submitInput = async (event: FormEvent) => {
     event.preventDefault();
     try {
       const parsed = await api.join.parse(s.input);
       const fingerprint = parsed.kind === 'invite' ? formatFingerprint(parsed.invite.serverKeyId) : null;
-      dispatch({ type: 'parsed', parsed, fingerprint });
+      const parsedAction = { type: 'parsed', parsed, fingerprint } as const;
+      dispatch(parsedAction);
+      const afterParse = joinReducer(s, parsedAction);
       if (parsed.kind === 'address') {
         const [probe, saved] = await Promise.all([api.join.probe(parsed.address), api.servers.list()]);
-        dispatch({ type: 'probed', ...probe, saved });
+        const probedAction = { type: 'probed', ...probe, saved } as const;
+        dispatch(probedAction);
+        await enterIfKnown(joinReducer(afterParse, probedAction), saved);
+      } else {
+        await enterIfKnown(afterParse);
       }
     } catch (e) {
       dispatch({ type: 'failed', code: errorCodeOf(e) });
@@ -132,6 +168,14 @@ export function Join({
   };
 
   const error = s.error && errorMessage(t, s.error);
+
+  if (s.knownName !== null && (s.step === 'connecting' || s.step === 'done')) {
+    return (
+      <Screen title={t('join.known.title', { name: s.knownName })}>
+        <p className={ui.hint}>{t('join.known.text')}</p>
+      </Screen>
+    );
+  }
 
   if (s.step === 'input' || s.step === 'probing') {
     const probing = s.step === 'probing';
