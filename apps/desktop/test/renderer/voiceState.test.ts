@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { VoiceParticipant } from '@ghostlink/shared';
-import { initialVoiceState, isSpeaking, participantsOf, selfVoice, voiceReducer, type VoiceState } from '../../src/renderer/features/voice/state.js';
+import { initialVoiceState, isSpeaking, liveIn, participantsOf, selfVoice, streamLayout, voiceReducer, type VoiceState } from '../../src/renderer/features/voice/state.js';
 
 const ANA = 'a'.repeat(32);
 const BIA = 'b'.repeat(32);
@@ -140,5 +140,72 @@ describe('voice store reducer', () => {
     expect(s.notice).toEqual({ kind: 'error', code: 'CHANNEL_FULL' });
     s = voiceReducer(s, { type: 'notice', notice: null });
     expect(s.notice).toBeNull();
+  });
+});
+
+describe('screen sharing in the voice store (spec 2026-10-01 §5)', () => {
+  const sharing = { quality: '1080p30' as const, content: 'motion' as const, audio: true, name: 'Tela 1' };
+
+  it('keeps my own share while it is live', () => {
+    let s = run({ type: 'call', status: 'connected', channelId: 'VC1' }, { type: 'sharing', sharing });
+    expect(s.sharing).toEqual(sharing);
+    s = voiceReducer(s, { type: 'sharing', sharing: null });
+    expect(s.sharing).toBeNull();
+  });
+
+  it('the watched set: watch adds once, unwatch removes', () => {
+    let s = run({ type: 'call', status: 'connected', channelId: 'VC1' }, { type: 'watch', userId: BIA, watching: true });
+    expect(s.watching).toEqual([BIA]);
+    expect(voiceReducer(s, { type: 'watch', userId: BIA, watching: true })).toBe(s); // no re-render
+    s = voiceReducer(s, { type: 'watch', userId: ANA, watching: true });
+    expect(s.watching).toEqual([BIA, ANA]);
+    s = voiceReducer(s, { type: 'watch', userId: BIA, watching: false });
+    expect(s.watching).toEqual([ANA]);
+    expect(voiceReducer(s, { type: 'watch', userId: BIA, watching: false })).toBe(s);
+  });
+
+  it('survives LiveKit reconnecting (it is re-applied afterwards), and ends with the call', () => {
+    let s = run({ type: 'call', status: 'connected', channelId: 'VC1' }, { type: 'watch', userId: BIA, watching: true }, { type: 'sharing', sharing });
+    s = voiceReducer(s, { type: 'call', status: 'reconnecting', channelId: 'VC1' });
+    s = voiceReducer(s, { type: 'call', status: 'connected', channelId: 'VC1' });
+    expect([s.watching, s.sharing]).toEqual([[BIA], sharing]);
+    s = voiceReducer(s, { type: 'call', status: 'idle', channelId: null });
+    expect([s.watching, s.sharing]).toEqual([[], null]);
+    s = voiceReducer(run({ type: 'watch', userId: BIA, watching: true }, { type: 'sharing', sharing }), { type: 'reset' });
+    expect([s.watching, s.sharing]).toEqual([[], null]);
+  });
+
+  it('who is live in a channel comes from voice.state (screen per person)', () => {
+    const s = run({
+      type: 'welcome',
+      welcome: welcome([
+        { channelId: 'VC1', participants: [p(ANA, { screen: true }), p(BIA)] },
+        { channelId: 'VC2', participants: [p('c'.repeat(32), { screen: true })] },
+      ]),
+    });
+    expect(liveIn(s, 'VC1')).toEqual([ANA]);
+    expect(liveIn(s, 'VC3')).toEqual([]);
+  });
+});
+
+describe('streamLayout (the voice stage while watching)', () => {
+  const CAIO = 'c'.repeat(32);
+
+  it('nothing watched: the usual grid', () => {
+    expect(streamLayout([BIA, CAIO], [], null)).toEqual({ shown: [], focused: null });
+  });
+
+  it('one stream watched: it is shown large', () => {
+    expect(streamLayout([BIA, CAIO], [CAIO], null)).toEqual({ shown: [CAIO], focused: CAIO });
+  });
+
+  it('several: a grid of streams, in the channel order, until one is clicked', () => {
+    expect(streamLayout([BIA, CAIO], [CAIO, BIA], null)).toEqual({ shown: [BIA, CAIO], focused: null });
+    expect(streamLayout([BIA, CAIO], [CAIO, BIA], BIA)).toEqual({ shown: [BIA, CAIO], focused: BIA });
+  });
+
+  it('only live people: a watched stream that ended is not shown, nor focused', () => {
+    expect(streamLayout([CAIO], [BIA, CAIO], BIA)).toEqual({ shown: [CAIO], focused: CAIO });
+    expect(streamLayout([], [BIA], BIA)).toEqual({ shown: [], focused: null });
   });
 });

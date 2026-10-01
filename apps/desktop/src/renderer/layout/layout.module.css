@@ -375,6 +375,11 @@
   padding: 0 8px 4px 36px;
 }
 
+/* The voice channel I am connected to (Voice marks its list data-voice-here): Discord's green speaker. */
+.channelItem:has(> .voiceSlot [data-voice-here]) .channelIcon {
+  color: var(--text-positive);
+}
+
 .emptyHint {
   margin: 4px 16px;
   color: var(--text-faint);

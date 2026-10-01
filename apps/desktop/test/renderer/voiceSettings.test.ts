@@ -5,6 +5,7 @@ import {
   loadVoiceSettings,
   parseVoiceSettings,
   saveVoiceSettings,
+  screenVolumeKey,
   volumeOf,
   withVolume,
   type KeyValueStorage,
@@ -91,6 +92,20 @@ describe('voice settings', () => {
     // Back to 100 % forgets the entry.
     expect(withVolume(s, 's1', ANA, 100).volumes).toEqual({ s2: { [ANA]: 20 } });
     expect(volumeOf(s, 's1', '__proto__')).toBe(100);
+  });
+
+  it('a stream’s volume is kept apart from the same person’s voice, and survives storage (spec 2026-10-01 §5)', () => {
+    let s = withVolume(defaultVoiceSettings, 's1', ANA, 60);
+    s = withVolume(s, 's1', screenVolumeKey(ANA), 170);
+    expect(screenVolumeKey(ANA)).toBe(`screen:${ANA}`);
+    expect(volumeOf(s, 's1', ANA)).toBe(60);
+    expect(volumeOf(s, 's1', screenVolumeKey(ANA))).toBe(170);
+    expect(volumeOf(s, 's1', screenVolumeKey(BIA))).toBe(100);
+    const storage = memory();
+    saveVoiceSettings(storage, s);
+    expect(loadVoiceSettings(storage).volumes).toEqual({ s1: { [ANA]: 60, [`screen:${ANA}`]: 170 } });
+    // Only a user id after the prefix.
+    expect(parseVoiceSettings({ volumes: { s1: { 'screen:x': 50, 'screen:': 50, [`camera:${ANA}`]: 50, [`screen:screen:${ANA}`]: 50 } } }).volumes).toEqual({});
   });
 });
 

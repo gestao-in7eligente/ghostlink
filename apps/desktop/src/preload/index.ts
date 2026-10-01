@@ -112,6 +112,10 @@ export const api: GhostlinkApi = {
     setAvatar: (bytes) => invoke(IPC.profileSetAvatar, bytes),
     clearAvatar: () => invoke(IPC.profileClearAvatar),
   },
+  screen: {
+    sources: () => invoke(IPC.screenSources),
+    choose: (choice) => invoke(IPC.screenChoose, choice),
+  },
 };
 
 contextBridge.exposeInMainWorld('ghostlink', api);

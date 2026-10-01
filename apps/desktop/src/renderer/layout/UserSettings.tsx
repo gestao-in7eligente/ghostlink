@@ -13,10 +13,20 @@ import { suggestNickname } from './names.js';
 import { useLayoutSlots } from './slots.js';
 
 /** User settings (spec §11.1 item 7): profile, language, the other tracks' sections, about. */
-export function UserSettings({ onClose, offline = false }: { onClose: () => void; /** Home screen: no server, so the profile is the photo only. */ offline?: boolean }) {
+export function UserSettings({
+  onClose,
+  offline = false,
+  section,
+}: {
+  onClose: () => void;
+  /** Home screen: no server, so the profile is the photo only. */
+  offline?: boolean;
+  /** Open on another track's section (its id, e.g. "voice") instead of the first tab. */
+  section?: string;
+}) {
   const t = useT();
   const extra = useLayoutSlots((st) => st.userSettingsSections);
-  const [active, setActive] = useState('profile');
+  const [active, setActive] = useState(() => (section && extra.some((x) => x.id === section) ? `x:${section}` : 'profile'));
   const tabs: SettingsTab[] = [
     { id: 'profile', label: t('userSettings.profile'), content: () => (offline ? <HomeProfileTab /> : <ProfileTab />) },
     { id: 'language', label: t('language.label'), content: () => <LanguageTab /> },

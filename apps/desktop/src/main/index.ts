@@ -1,6 +1,6 @@
 // Main-process bootstrap (contract §5). Everything testable lives in the modules it
 // wires together; this file is the thin glue that needs a real Electron.
-import { BrowserWindow, Menu, Notification, app, clipboard, dialog, net, safeStorage, session, shell } from 'electron';
+import { BrowserWindow, Menu, Notification, app, clipboard, desktopCapturer, dialog, net, safeStorage, session, shell } from 'electron';
 import { mkdtempSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +25,7 @@ import { PushToTalk, type PttHookModule } from './ptt.js';
 import { railwayImage } from './railway/image.js';
 import { RailwayProvisioner } from './railway/provisioner.js';
 import { SavedServersStore } from './savedServers.js';
+import { ScreenPicker } from './screenPicker.js';
 import { installSecurity, originOf } from './security.js';
 import { SettingsStore } from './settings.js';
 import { runSmoke } from './smoke.js';
@@ -174,6 +175,17 @@ async function start(): Promise<BrowserWindow | null> {
     join: (req) => controller.join(req),
     emit: (progress) => send(IPC_EVENTS.railway, progress),
   });
+  // Screen sharing (screen sharing spec §3): the renderer's own picker lists the sources, and the
+  // capture request gets exactly the chosen one. Never the system picker (no useSystemPicker).
+  const screenPicker = new ScreenPicker({
+    getSources: (opts) => desktopCapturer.getSources(opts),
+    now: () => Date.now(),
+    appOrigin,
+    ownMediaSourceId: () => (window.isDestroyed() ? null : window.getMediaSourceId()),
+  });
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    screenPicker.handleRequest(request, callback).catch((e: unknown) => mainLog.error('[screen] the capture answer failed:', e));
+  });
   registerIpc({
     appOrigin,
     identity,
@@ -205,6 +217,7 @@ async function start(): Promise<BrowserWindow | null> {
     deepLinks: deepLinks ?? undefined,
     railway,
     profile: avatars.profile,
+    screen: screenPicker,
   });
   updater.start(); // the 6 h checks; the first one already ran behind the splash when it showed
   app.on('before-quit', () => {

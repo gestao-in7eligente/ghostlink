@@ -16,12 +16,14 @@ export const UserPanel = forwardRef<
   HTMLElement,
   {
     onSettings: () => void;
+    /** Opens the user settings on the voice section (the voice panel's and device menus' shortcut). */
+    onVoiceSettings?: () => void;
     /** Omitted on the Home screen (nothing to disconnect from): the exit button is hidden. */
     onDisconnect?: () => void;
     /** Home screen: the global nickname, shown instead of the server nickname. */
     homeNickname?: string;
   }
->(function UserPanel({ onSettings, onDisconnect, homeNickname }, ref) {
+>(function UserPanel({ onSettings, onVoiceSettings, onDisconnect, homeNickname }, ref) {
   const t = useT();
   const nickname = useTextStore((s) => (Object.hasOwn(s.members.byId, s.server.selfId) ? s.members.byId[s.server.selfId]!.nickname : ''));
   const avatar = useTextStore((s) => (Object.hasOwn(s.members.byId, s.server.selfId) ? s.members.byId[s.server.selfId]!.avatar : null));
@@ -36,7 +38,7 @@ export const UserPanel = forwardRef<
 
   return (
     <section ref={ref} className={l.userPanel} aria-label={t('layout.userPanel')}>
-      {!home && VoicePanel && <VoicePanel />}
+      {!home && VoicePanel && <VoicePanel onOpenSettings={onVoiceSettings} />}
       <div className={l.panelRow}>
         <Avatar size={32} name={name} hash={home ? null : avatar} self online={online} />
         <div className={l.who}>
@@ -46,7 +48,7 @@ export const UserPanel = forwardRef<
           </span>
         </div>
         <div className={l.panelActions}>
-          {!home && VoiceControls && <VoiceControls />}
+          {!home && VoiceControls && <VoiceControls onOpenSettings={onVoiceSettings} />}
           <button type="button" className={l.panelButton} onClick={onSettings} aria-label={t('layout.userSettings')} title={t('layout.userSettings')}>
             <Settings size={19} aria-hidden="true" />
           </button>

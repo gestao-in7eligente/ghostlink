@@ -10,6 +10,7 @@ import {
   type VoiceParticipant,
 } from '@ghostlink/shared';
 import type { AppErrorCode } from '../../../shared/appErrors.js';
+import type { ScreenContent, ScreenQuality } from './screenShare.js';
 
 export type CallStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -18,7 +19,21 @@ export type VoiceNotice =
   | { kind: 'error'; code: AppErrorCode }
   | { kind: 'forceDisconnect' }
   | { kind: 'dropped' }
-  | { kind: 'micUnavailable' };
+  | { kind: 'micUnavailable' }
+  /** The chosen screen or window could not be captured (spec 2026-10-01 §8). */
+  | { kind: 'screenFailed' }
+  /** The PC's sound without GhostLink's own is unavailable: picture only (spec 2026-10-01 §4). */
+  | { kind: 'screenAudio' };
+
+/** My own screen share while it is live. */
+export interface ScreenSharing {
+  quality: ScreenQuality;
+  content: ScreenContent;
+  /** The PC's sound goes too. */
+  audio: boolean;
+  /** The screen or window's name. */
+  name: string;
+}
 
 export interface VoiceState {
   /** The saved server the snapshot belongs to (per-user volumes are stored per server). */
@@ -49,6 +64,10 @@ export interface VoiceState {
   /** Live microphone level in dBFS while in a call or testing the microphone. */
   inputLevelDb: number;
   notice: VoiceNotice | null;
+  /** My screen share, or null. Who else is live comes from voice.state (`screen` per person). */
+  sharing: ScreenSharing | null;
+  /** People whose screen I watch (spec §8.4): re-applied on TrackPublished, also after a reconnect. */
+  watching: string[];
 }
 
 export const initialVoiceState: VoiceState = {
@@ -68,6 +87,8 @@ export const initialVoiceState: VoiceState = {
   globalPtt: false,
   inputLevelDb: -100,
   notice: null,
+  sharing: null,
+  watching: [],
 };
 
 export type VoiceAction =
@@ -84,7 +105,9 @@ export type VoiceAction =
   | { type: 'transmitting'; open: boolean }
   | { type: 'globalPtt'; active: boolean }
   | { type: 'level'; db: number }
-  | { type: 'notice'; notice: VoiceNotice | null };
+  | { type: 'notice'; notice: VoiceNotice | null }
+  | { type: 'sharing'; sharing: ScreenSharing | null }
+  | { type: 'watch'; userId: string; watching: boolean };
 
 function channelsFrom(list: VoiceChannelState[]): Record<string, VoiceParticipant[]> {
   const out: Record<string, VoiceParticipant[]> = {};
@@ -128,7 +151,9 @@ export function voiceReducer(s: VoiceState, a: VoiceAction): VoiceState {
       // Mute and deafen are the user's preference, kept across servers (Discord-like).
       return { ...initialVoiceState, selfMuted: s.selfMuted, selfDeafened: s.selfDeafened, globalPtt: s.globalPtt };
     case 'call':
-      if (a.status === 'idle') return { ...s, call: { status: 'idle', channelId: null }, speaking: [], subscribed: [], pingMs: null, transmitting: false };
+      if (a.status === 'idle') {
+        return { ...s, call: { status: 'idle', channelId: null }, speaking: [], subscribed: [], pingMs: null, transmitting: false, sharing: null, watching: [] };
+      }
       return { ...s, call: { status: a.status, channelId: a.channelId } };
     case 'self':
       return { ...s, selfMuted: a.muted ?? s.selfMuted, selfDeafened: a.deafened ?? s.selfDeafened };
@@ -152,6 +177,12 @@ export function voiceReducer(s: VoiceState, a: VoiceAction): VoiceState {
       return { ...s, inputLevelDb: a.db };
     case 'notice':
       return { ...s, notice: a.notice };
+    case 'sharing':
+      return { ...s, sharing: a.sharing };
+    case 'watch': {
+      if (s.watching.includes(a.userId) === a.watching) return s;
+      return { ...s, watching: a.watching ? [...s.watching, a.userId] : s.watching.filter((u) => u !== a.userId) };
+    }
   }
 }
 
@@ -167,6 +198,25 @@ export function selfVoice(s: VoiceState): VoiceParticipant | null {
   const { channelId } = s.call;
   if (!channelId || !s.selfUserId) return null;
   return participantsOf(s, channelId).find((p) => p.userId === s.selfUserId) ?? null;
+}
+
+const NOBODY_LIVE: string[] = [];
+
+/** Who shares a screen in a voice channel, in the channel's order (from voice.state). */
+export function liveIn(s: VoiceState, channelId: string): string[] {
+  const live = participantsOf(s, channelId).filter((p) => p.screen);
+  return live.length === 0 ? NOBODY_LIVE : live.map((p) => p.userId);
+}
+
+/**
+ * The voice stage while watching: the streams shown (live and watched, in the channel's
+ * order) and the one shown large: the one clicked, or the only one. With several and
+ * none clicked they form a grid.
+ */
+export function streamLayout(live: readonly string[], watching: readonly string[], focus: string | null): { shown: string[]; focused: string | null } {
+  const shown = live.filter((u) => watching.includes(u));
+  const focused = focus !== null && shown.includes(focus) ? focus : shown.length === 1 ? shown[0]! : null;
+  return { shown, focused };
 }
 
 /** Whether `userId` shows as speaking: LiveKit's report, or my own open gate for me. */

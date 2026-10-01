@@ -6,6 +6,7 @@ import type { AppErrorCode } from './appErrors.js';
 import type { FirewallFixResult, FirewallStatus, HostApi, HostConfig, HostInvite, HostInviteOptions, HostStartResult, HostStatus } from './hostTypes.js';
 import type { AvatarInfo, ProfileApi } from './profileTypes.js';
 import type { RailwayAccount, RailwayCreateRequest, RailwayPending, RailwayProgress } from './railwayTypes.js';
+import type { ScreenApi, ScreenChoice, ScreenSource } from './screenTypes.js';
 import type { UpdateState, UpdatesApi } from './updates.js';
 
 export type IdentityStatus = 'none' | 'ready' | 'locked';
@@ -153,6 +154,7 @@ export interface GhostlinkApi {
   onPtt(cb: (e: PttEvent) => void): () => void;
   railway: RailwayApi;
   profile: ProfileApi;
+  screen: ScreenApi;
 }
 
 /**
@@ -223,6 +225,8 @@ export const IPC = {
   profileAvatar: 'ghostlink:profile.avatar',
   profileSetAvatar: 'ghostlink:profile.setAvatar',
   profileClearAvatar: 'ghostlink:profile.clearAvatar',
+  screenSources: 'ghostlink:screen.sources',
+  screenChoose: 'ghostlink:screen.choose',
 } as const;
 
 /** Events pushed from main to the renderer. */
@@ -287,6 +291,8 @@ export interface IpcContract {
   [IPC.profileAvatar]: { args: []; result: AvatarInfo | null };
   [IPC.profileSetAvatar]: { args: [bytes: Uint8Array]; result: AvatarInfo };
   [IPC.profileClearAvatar]: { args: []; result: null };
+  [IPC.screenSources]: { args: []; result: ScreenSource[] };
+  [IPC.screenChoose]: { args: [choice: ScreenChoice]; result: void };
 }
 
 /** The profile photo channels (v0.2.2), handled by main/profileIpc.ts. */

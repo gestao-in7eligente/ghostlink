@@ -17,7 +17,7 @@ export interface VoiceSettings {
   thresholdDb: number;
   muted: boolean;
   deafened: boolean;
-  /** serverId → userId → volume in percent (0–200); absent means 100. */
+  /** serverId → userId (or screenVolumeKey(userId) for their stream) → volume in percent (0–200); absent means 100. */
   volumes: Readonly<Record<string, Readonly<Record<string, number>>>>;
 }
 
@@ -42,7 +42,8 @@ export interface KeyValueStorage {
   setItem(key: string, value: string): void;
 }
 
-const USER_ID = /^[0-9a-f]{32}$/;
+/** A person's voice volume is under their user id; their stream's sound under "screen:<userId>". */
+const VOLUME_KEY = /^(?:screen:)?[0-9a-f]{32}$/;
 const SERVER_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const PTT_CODE = /^[A-Z][A-Za-z0-9]{0,23}$/;
 const MAX_SERVERS = 100;
@@ -71,7 +72,7 @@ function parseVolumes(raw: unknown): VoiceSettings['volumes'] {
     const users = own(raw, serverId);
     if (typeof users !== 'object' || users === null || Array.isArray(users)) continue;
     const entries: Record<string, number> = {};
-    for (const userId of Object.keys(users).filter((k) => USER_ID.test(k)).slice(0, MAX_USERS_PER_SERVER)) {
+    for (const userId of Object.keys(users).filter((k) => VOLUME_KEY.test(k)).slice(0, MAX_USERS_PER_SERVER)) {
       const v = own(users, userId);
       if (typeof v === 'number' && Number.isFinite(v)) entries[userId] = clampVolume(v);
     }
@@ -120,7 +121,12 @@ export function saveVoiceSettings(storage: KeyValueStorage | null, settings: Voi
   }
 }
 
-/** Volume in percent for a user on a server (100 by default). */
+/** Where a person's stream volume is saved: apart from their voice (spec 2026-10-01 §5). */
+export function screenVolumeKey(userId: string): string {
+  return `screen:${userId}`;
+}
+
+/** Volume in percent for a user (or a screenVolumeKey) on a server (100 by default). */
 export function volumeOf(settings: VoiceSettings, serverId: string | null, userId: string): number {
   if (!serverId || !Object.hasOwn(settings.volumes, serverId)) return 100;
   const users = settings.volumes[serverId]!;
