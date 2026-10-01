@@ -20,7 +20,7 @@ describe('preload bridge', () => {
     expect(Object.keys(electron.exposed)).toEqual(['ghostlink']);
     expect(electron.exposed.ghostlink).toBe(api);
     expect(Object.keys(api).sort()).toEqual([
-      'app', 'deepLink', 'dm', 'draw', 'friends', 'host', 'identity', 'join', 'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onPtt', 'onServerEvent', 'profile', 'ptt', 'railway', 'screen', 'server', 'serverUpdates', 'servers', 'settings', 'updates',
+      'app', 'attachments', 'deepLink', 'dm', 'draw', 'friends', 'host', 'identity', 'join', 'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onPtt', 'onServerEvent', 'profile', 'ptt', 'railway', 'screen', 'server', 'serverUpdates', 'servers', 'settings', 'updates',
     ]);
     expect(Object.keys(api.host).sort()).toEqual(['copyText', 'firewall', 'fixFirewall', 'invite', 'join', 'logs', 'recoverOwnership', 'restart', 'start', 'status', 'stop']);
     expect(Object.keys(api.app).sort()).toEqual(['copyText', 'info', 'openExternal']);
@@ -38,12 +38,14 @@ describe('preload bridge', () => {
     expect(Object.keys(api.draw).sort()).toEqual(['overlayClose', 'overlayOpen', 'overlayStroke']);
     expect(Object.keys(api.railway).sort()).toEqual(['connect', 'create', 'discard', 'disconnect', 'onProgress', 'pending', 'resume', 'status']);
     expect(Object.keys(api.profile).sort()).toEqual(['avatar', 'clearAvatar', 'setAvatar']);
+    expect(Object.keys(api.attachments).sort()).toEqual(['onProgress', 'save', 'upload']);
     expect(Object.keys(api.serverUpdates).sort()).toEqual(['onState', 'state', 'updateNow']);
   });
 
   const req = { addresses: ['10.0.0.1:7700'], serverKeyId: 'k'.repeat(43), nickname: 'Ana' };
   const overlayStroke = { id: `${'a'.repeat(32)}:s1`, color: '#ff6b6b', label: 'Bia', points: [[0.5, 0.5]] as [number, number][], end: true };
   const hostConfig = { name: 'Casa', port: 7700, joinMode: 'invite' as const, maxMembers: 100 };
+  const bytes = new Uint8Array([1, 2, 3]);
   it.each<[string, () => Promise<unknown>, string, unknown[]]>([
     ['app.info', () => api.app.info(), IPC.appInfo, []],
     ['identity.status', () => api.identity.status(), IPC.identityStatus, []],
@@ -124,6 +126,8 @@ describe('preload bridge', () => {
     ['railway.discard', () => api.railway.discard(), IPC.railwayDiscard, []],
     ['serverUpdates.state', () => api.serverUpdates.state('k'.repeat(43)), IPC.serverUpdatesState, ['k'.repeat(43)]],
     ['serverUpdates.updateNow', () => api.serverUpdates.updateNow('k'.repeat(43)), IPC.serverUpdatesUpdateNow, ['k'.repeat(43)]],
+    ['attachments.upload', () => api.attachments.upload('u1', 's1', 'C'.repeat(26), 'a.pdf', bytes), IPC.attachmentsUpload, ['u1', 's1', 'C'.repeat(26), 'a.pdf', bytes]],
+    ['attachments.save', () => api.attachments.save('app://ghostlink/_file/s1/F', 'a.pdf'), IPC.attachmentsSave, ['app://ghostlink/_file/s1/F', 'a.pdf']],
   ])('%s invokes its channel and unwraps the value', async (_name, call, channel, args) => {
     electron.ipcRenderer.invoke.mockResolvedValueOnce({ ok: true, value: 'VALUE' });
     await expect(call()).resolves.toBe('VALUE');
@@ -172,5 +176,7 @@ describe('preload bridge', () => {
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.railway);
     api.serverUpdates.onState(() => {});
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.serverUpdates);
+    api.attachments.onProgress(() => {});
+    expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.attachmentProgress);
   });
 });

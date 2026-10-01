@@ -3,6 +3,7 @@ import { identity } from './pt-BR/identity.js';
 import { releasePtBR } from './release.pt-BR.js';
 
 // Source catalog: every key exists here first; en.ts must have exactly the same keys.
+import { attachments } from './attachments.pt-BR.js';
 import { camera } from './camera.pt-BR.js';
 import { chat } from './chat.pt-BR.js';
 import { dm } from './dm.pt-BR.js';
@@ -158,4 +159,5 @@ export const messages = {
   ...profile,
   ...serverUpdate,
   ...serverDelete,
+  ...attachments,
 } as const;

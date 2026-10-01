@@ -15,6 +15,7 @@ import {
   type PttEvent,
   type ServerEventMessage,
 } from '../shared/ipcTypes.js';
+import type { UploadProgressEvent } from '../shared/attachmentTypes.js';
 import type { DmEvent } from '../shared/dmTypes.js';
 import type { FriendsSnapshot } from '../shared/friendsTypes.js';
 import type { HostStatus } from '../shared/hostTypes.js';
@@ -146,6 +147,11 @@ export const api: GhostlinkApi = {
     avatar: () => invoke(IPC.profileAvatar),
     setAvatar: (bytes) => invoke(IPC.profileSetAvatar, bytes),
     clearAvatar: () => invoke(IPC.profileClearAvatar),
+  },
+  attachments: {
+    upload: (uploadId, serverId, channelId, name, bytes) => invoke(IPC.attachmentsUpload, uploadId, serverId, channelId, name, bytes),
+    save: (src, name) => invoke(IPC.attachmentsSave, src, name),
+    onProgress: (cb) => subscribe<UploadProgressEvent>(IPC_EVENTS.attachmentProgress, cb),
   },
   screen: {
     sources: () => invoke(IPC.screenSources),
