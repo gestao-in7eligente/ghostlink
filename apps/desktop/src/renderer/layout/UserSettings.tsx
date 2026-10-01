@@ -12,7 +12,7 @@ import { SettingsShell, type SettingsTab } from './SettingsShell.js';
 import { suggestNickname } from './names.js';
 import { useLayoutSlots } from './slots.js';
 
-/** User settings (spec §11.1 item 7): profile, language, the other tracks' sections, about. */
+/** User settings (spec §11.1 item 7): profile, language, window, the other tracks' sections, about. */
 export function UserSettings({
   onClose,
   offline = false,
@@ -30,6 +30,7 @@ export function UserSettings({
   const tabs: SettingsTab[] = [
     { id: 'profile', label: t('userSettings.profile'), content: () => (offline ? <HomeProfileTab /> : <ProfileTab />) },
     { id: 'language', label: t('language.label'), content: () => <LanguageTab /> },
+    { id: 'window', label: t('tray.settings.title'), content: () => <WindowTab /> },
     ...extra.map((section) => ({ id: `x:${section.id}`, label: t(section.title), content: () => <section.Component /> })),
     { id: 'about', label: t('userSettings.about'), content: () => <AboutTab /> },
   ];
@@ -129,6 +130,37 @@ function LanguageTab() {
           </label>
         ))}
       </div>
+      {error && <ErrorText code={error} />}
+    </div>
+  );
+}
+
+/** "Janela" (v0.3.2): "Ao fechar, manter na bandeja", on by default, as Discord. */
+function WindowTab() {
+  const t = useT();
+  const closeToTray = useSettingsStore((st) => st.settings?.closeToTray ?? true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const toggle = async (next: boolean) => {
+    setBusy(true);
+    setError(null);
+    try {
+      useSettingsStore.getState().setSettings(await window.ghostlink.settings.set({ closeToTray: next }));
+    } catch (e) {
+      setError(errorCodeOf(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className={s.form}>
+      <label className={s.perm}>
+        <span className={s.permText}>
+          <span className={s.permName}>{t('tray.settings.closeToTray')}</span>
+          <span className={s.hint}>{t('tray.settings.closeToTrayHint')}</span>
+        </span>
+        <input type="checkbox" role="switch" className={s.switch} checked={closeToTray} disabled={busy} onChange={(e) => void toggle(e.target.checked)} />
+      </label>
       {error && <ErrorText code={error} />}
     </div>
   );
