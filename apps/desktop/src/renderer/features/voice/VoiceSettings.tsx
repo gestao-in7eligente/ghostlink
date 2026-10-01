@@ -66,8 +66,8 @@ const SUPPRESSOR_NAMES: Readonly<Record<NoiseSuppression, string>> = { rnnoise: 
 /**
  * Voice settings (spec §11.1 item 7): input and output devices, the input level and the
  * voice-activity threshold, voice activity or push-to-talk and its key, and noise
- * suppression (noise spec §1). Meant to be embedded in the user settings screen; per-user
- * volume lives in each participant's menu.
+ * suppression (noise spec §1). Embedded in the user settings screen, whose tab gives it its
+ * title; per-user volume lives in each participant's menu.
  */
 export function VoiceSettings() {
   useVoiceRuntime();
@@ -108,9 +108,7 @@ export function VoiceSettings() {
   const noiseOptions = NOISE_SUPPRESSIONS.map((mode) => ({ value: mode, label: t(`voice.noise.${mode}`) }));
 
   return (
-    <section className={s.settings} aria-labelledby={`${ids.mode}-title`} data-voice-settings="">
-      <h2 id={`${ids.mode}-title`}>{t('voice.settings.title')}</h2>
-
+    <section className={s.settings} data-voice-settings="">
       <div className={s.twoColumns}>
         <div className={s.settingsGroup}>
           <span id={ids.input} className={s.settingsLabel}>

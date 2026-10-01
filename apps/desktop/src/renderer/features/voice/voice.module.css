@@ -810,10 +810,6 @@ button.tile {
   gap: 20px;
   color: var(--text);
 }
-.settings h2 {
-  margin: 0;
-  font-size: 20px;
-}
 .settingsGroup {
   display: grid;
   gap: 8px;
