@@ -114,6 +114,13 @@ describe.skipIf(!binary)('camera: Ana turns hers on, Bia sees it without asking'
     expect(await button.getAttribute('aria-pressed')).toBe('false');
     expect(await button.getAttribute('aria-label')).toBe('Ligar câmera');
     expect(await cameraVideo(ana.page, anaId)).toBeNull();
+    // The ⌄ menu lists the cameras by name without opening one (no getUserMedia just for the names).
+    await ana.page.getByRole('button', { name: 'Opções de vídeo' }).click();
+    const names = await ana.page.getByRole('menu', { name: 'Câmera' }).getByRole('menuitemradio').allTextContents();
+    console.log(`[camera e2e] Ana's cameras: ${names.join(' | ')}`);
+    expect(names.length).toBeGreaterThanOrEqual(2);
+    expect(names.slice(1).some((n) => /^Dispositivo \d+$/.test(n))).toBe(false);
+    await ana.page.keyboard.press('Escape');
   });
 
   step('on: Ana turns her camera on in the call bar and sees herself mirrored', 90_000, async () => {
@@ -136,6 +143,9 @@ describe.skipIf(!binary)('camera: Ana turns hers on, Bia sees it without asking'
     await expect.poll(async () => (await cameraVideo(bia.page, anaId))?.readyState ?? 0, { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
     await expect.poll(async () => (await cameraVideo(bia.page, anaId))?.width ?? 0, { timeout: 30_000 }).toBeGreaterThan(0);
     await expect.poll(async () => (await cameraVideo(bia.page, anaId))?.live ?? false, { timeout: 10_000 }).toBe(true);
+    console.log(`[camera e2e] Bia's first frames of Ana's camera: ${(await cameraVideo(bia.page, anaId))?.width}px wide`);
+    // adaptiveStream (spec §1): the SFU starts low, then sends the layer her ~480 px tile needs (360p).
+    await expect.poll(async () => (await cameraVideo(bia.page, anaId))?.width ?? 0, { timeout: 30_000 }).toBeGreaterThanOrEqual(640);
     const seen = (await cameraVideo(bia.page, anaId))!;
     console.log(`[camera e2e] Bia receives Ana's camera at ${seen.width}×${seen.height}`);
     // Only Ana sees herself mirrored.
@@ -158,7 +168,6 @@ describe.skipIf(!binary)('camera: Ana turns hers on, Bia sees it without asking'
     // Chromium's fake camera is listed by name (the media permission is granted to the app).
     const device = menu.getByRole('menuitemradio').nth(1);
     await device.waitFor({ timeout: 10_000 });
-    console.log(`[camera e2e] Ana's cameras: ${(await menu.getByRole('menuitemradio').allTextContents()).join(' | ')}`);
     expect(await menu.getByRole('menuitemradio').first().getAttribute('aria-checked')).toBe('true');
     await device.click();
     await menu.waitFor({ state: 'detached', timeout: 5_000 });
@@ -181,5 +190,52 @@ describe.skipIf(!binary)('camera: Ana turns hers on, Bia sees it without asking'
     await voiceRow(bia.page, sala, 'Ana').locator('[data-camera-icon]').waitFor({ state: 'detached', timeout: 30_000 });
     expect(await tile(bia.page, 'Ana').getAttribute('data-receiving')).toBe('true');
     await bia.page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-camera-off-bia.png') });
+  });
+
+  step('settings: "Voz e vídeo" tests the camera with a live preview, and its quality is what goes out', 90_000, async () => {
+    const page = ana.page;
+    await page.getByRole('button', { name: 'Configurações do usuário' }).click();
+    await page.getByRole('tab', { name: 'Voz e vídeo', exact: true }).click();
+    const section = page.locator('[data-video-settings]');
+    await section.waitFor({ timeout: 10_000 });
+    // The camera, in the app's own Select.
+    await page.getByRole('combobox', { name: 'Câmera', exact: true }).click();
+    expect(await page.getByRole('listbox').getByRole('option').count()).toBeGreaterThanOrEqual(2);
+    await page.keyboard.press('Escape');
+    // No preview until "Testar câmera": opening the section does not turn the camera on.
+    const preview = page.locator('[data-camera-preview] video');
+    expect(await preview.count()).toBe(0);
+    await page.locator('[data-camera-test]').click();
+    await page.locator('[data-camera-preview] video[data-camera-live]').waitFor({ timeout: 20_000 });
+    const size = () =>
+      page.evaluate(`(() => {
+        const v = document.querySelector('[data-camera-preview] video');
+        return v ? [v.videoWidth, v.videoHeight] : null;
+      })()`) as Promise<[number, number] | null>;
+    expect(await size()).toEqual([1280, 720]);
+    // 1080p: the preview reopens at the new size.
+    await page.getByRole('combobox', { name: 'Qualidade da câmera', exact: true }).click();
+    await page.getByRole('option', { name: /^1080p com 30 FPS/ }).click();
+    await expect.poll(size, { timeout: 20_000 }).toEqual([1920, 1080]);
+    await page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-camera-settings.png') });
+    // Leaving the section stops the preview.
+    await page.getByRole('button', { name: 'Fechar', exact: true }).click();
+    await section.waitFor({ state: 'detached', timeout: 10_000 });
+
+    // In the call, the camera now goes out at 1080p; Bia receives it.
+    await page.locator('[data-camera-control="call"]').click();
+    await expect.poll(async () => (await cameraVideo(page, anaId))?.width ?? 0, { timeout: 20_000 }).toBe(1920);
+    await expect.poll(async () => (await cameraVideo(bia.page, anaId))?.live ?? false, { timeout: 30_000 }).toBe(true);
+    console.log(`[camera e2e] at 1080p, Bia's first frames are ${(await cameraVideo(bia.page, anaId))?.width}px wide (a lower layer)`);
+    // While it is on, the settings preview is that camera, with no test of its own.
+    await page.getByRole('button', { name: 'Configurações do usuário' }).click();
+    await page.getByRole('tab', { name: 'Voz e vídeo', exact: true }).click();
+    await page.locator('[data-camera-preview] video[data-camera-live]').waitFor({ timeout: 10_000 });
+    expect(await page.locator('[data-camera-test]').count()).toBe(0);
+    await page.getByRole('button', { name: 'Fechar', exact: true }).click();
+    // Still on in the call after the settings closed.
+    expect((await cameraVideo(page, anaId))?.live).toBe(true);
+    await page.locator('[data-camera-control="call"]').click();
+    await page.locator(`[data-voice-stage] video[data-camera-video="${anaId}"]`).waitFor({ state: 'detached', timeout: 10_000 });
   });
 });
