@@ -1,5 +1,6 @@
 import { createAvatarsModule } from './avatars/index.js';
 import type { ServerModule } from './modules.js';
+import { createStatusModule } from './status/index.js';
 import { createTextModule } from './text/index.js';
 import { createVoiceModule } from './voice/index.js';
 
@@ -11,5 +12,6 @@ import { createVoiceModule } from './voice/index.js';
  */
 export function defaultModules(): ServerModule[] {
   // Text first: voice reads channels and permissions from it (VoiceAccess), avatars announces members through it.
-  return [createTextModule(), createVoiceModule(), createAvatarsModule()];
+  // Status after voice: it reports whether anyone is in a call.
+  return [createTextModule(), createVoiceModule(), createAvatarsModule(), createStatusModule()];
 }
