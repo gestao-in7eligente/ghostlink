@@ -71,10 +71,9 @@ export class E2eRun {
 
   /**
    * Starts the built app (out/) with its own profile. `env` adds variables, e.g. GHOSTLINK_HOST_BIND;
-   * `args` adds Chromium switches, e.g. --force-webrtc-ip-handling-policy.
+   * `args` adds Chromium switches, e.g. --force-webrtc-ip-handling-policy. `userData` reuses a profile (restart()).
    */
-  async launch(name: string, env: Record<string, string> = {}, args: readonly string[] = []): Promise<Instance> {
-    const userData = this.tempDir(name);
+  async launch(name: string, env: Record<string, string> = {}, args: readonly string[] = [], userData = this.tempDir(name)): Promise<Instance> {
     const childEnv: Record<string, string> = {};
     for (const [key, value] of Object.entries(process.env)) {
       // VS Code's terminal exports ELECTRON_RUN_AS_NODE=1, which turns Electron into plain Node;
@@ -99,6 +98,14 @@ export class E2eRun {
     instance.page.on('console', (m) => log.push(`[${name}] ${m.type()}: ${m.text()}`));
     instance.page.on('pageerror', (e) => log.push(`[${name}] pageerror: ${e.message}`));
     return instance;
+  }
+
+  /** Quits an instance like "Sair" and starts its profile again: the same person, offline for a while. */
+  async restart(i: Instance, env: Record<string, string> = {}, args: readonly string[] = []): Promise<Instance> {
+    const at = this.instances.indexOf(i);
+    if (at >= 0) this.instances.splice(at, 1);
+    if (!(await closeInstance(i))) throw new Error(`${i.name} did not quit within 45 s (its process tree was killed)`);
+    return this.launch(i.name, env, args, i.userData);
   }
 
   /** Console lines, the main-process log and a screenshot of every instance, for a failed step. */

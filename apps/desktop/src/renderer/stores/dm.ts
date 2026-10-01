@@ -4,7 +4,7 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import type { AppErrorCode } from '../../shared/appErrors.js';
-import { DM_PAGE, type DmConversation, type DmEvent, type DmMessage } from '../../shared/dmTypes.js';
+import { DM_PAGE, type DmApi, type DmConversation, type DmEvent, type DmMessage } from '../../shared/dmTypes.js';
 import { applyConversation, applyMessage, mergeHistory } from '../features/dm/dmModel.js';
 import { errorCodeOf } from '../i18n/index.js';
 
@@ -38,6 +38,9 @@ interface DmStore {
   loadHistory(conv: string, older?: boolean): Promise<void>;
   setDraft(conv: string, text: string): void;
 }
+
+/** window.ghostlink.dm, reached through globalThis so the store's tests typecheck without the DOM types. */
+const dmApi = (): DmApi => (globalThis as unknown as { window: { ghostlink: { dm: DmApi } } }).window.ghostlink.dm;
 
 const fresh = (): DmLog => ({ messages: [], status: 'loading', hasMore: true, older: 'idle' });
 
@@ -79,7 +82,7 @@ export const useDmStore = create<DmStore>()((set, get) => {
     load: async () => {
       set({ logs: {} });
       try {
-        set({ conversations: await window.ghostlink.dm.conversations(), loadError: null });
+        set({ conversations: await dmApi().conversations(), loadError: null });
       } catch (e) {
         set({ loadError: errorCodeOf(e) });
       }
@@ -91,7 +94,7 @@ export const useDmStore = create<DmStore>()((set, get) => {
     },
 
     open: async (friendKey) => {
-      const conversation = await window.ghostlink.dm.open(friendKey);
+      const conversation = await dmApi().open(friendKey);
       set({ conversations: applyConversation(get().conversations, conversation) });
       get().select(conversation.id);
     },
@@ -104,7 +107,7 @@ export const useDmStore = create<DmStore>()((set, get) => {
     },
 
     hide: async (conv) => {
-      await window.ghostlink.dm.hide(conv);
+      await dmApi().hide(conv);
       set({
         conversations: get().conversations.map((c) => (c.id === conv ? { ...c, hidden: true } : c)),
         selected: get().selected === conv ? null : get().selected,
@@ -117,7 +120,7 @@ export const useDmStore = create<DmStore>()((set, get) => {
         if (!log || log.status !== 'ready' || !log.hasMore || log.older === 'loading') return;
         patchLog(conv, () => ({ older: 'loading' }));
         try {
-          const page = await window.ghostlink.dm.history(conv, log.messages[0]?.ts ?? null, DM_PAGE);
+          const page = await dmApi().history(conv, log.messages[0]?.ts ?? null, DM_PAGE);
           // A page never splits messages with the same time, so it may hold more than DM_PAGE.
           patchLog(conv, (now) => ({ messages: mergeHistory(now.messages, page), hasMore: page.length >= DM_PAGE, older: 'idle' }));
         } catch {
@@ -128,7 +131,7 @@ export const useDmStore = create<DmStore>()((set, get) => {
       if (log?.status === 'loading') return;
       set({ logs: { ...get().logs, [conv]: log ? { ...log, status: 'loading' } : fresh() } });
       try {
-        const page = await window.ghostlink.dm.history(conv, null, DM_PAGE);
+        const page = await dmApi().history(conv, null, DM_PAGE);
         // Messages that arrived while the page was on its way are kept.
         patchLog(conv, (now) => ({ messages: mergeHistory(now.messages, page), status: 'ready', hasMore: page.length >= DM_PAGE, older: 'idle' }));
       } catch {
@@ -150,7 +153,7 @@ export function applyOwn(message: DmMessage): void {
 /** Keeps the store in step with main while the Home screen is mounted. */
 export function useDmSync(): void {
   useEffect(() => {
-    const off = window.ghostlink.dm.onEvent((event) => useDmStore.getState().apply(event));
+    const off = dmApi().onEvent((event) => useDmStore.getState().apply(event));
     void useDmStore.getState().load();
     return off;
   }, []);
