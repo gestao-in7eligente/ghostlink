@@ -2,6 +2,7 @@
 // ~4 px in the author's color, smoothed through the midpoints, and the author's name in a small
 // label at the tip. Shared by the app's canvases and the overlay over the real screen.
 import type { DrawPoint } from '@ghostlink/shared';
+import { labelText } from './colors.js';
 import { fromFrame, strokeWidth, type Rect } from './geometry.js';
 
 export interface PaintStroke {
@@ -21,14 +22,6 @@ export interface PaintOptions {
   ink: string;
   /** The label's font family. */
   font: string;
-}
-
-const LABEL_MAX = 24;
-
-/** A name short enough for the label. */
-export function labelText(name: string): string {
-  const chars = [...name.trim()];
-  return chars.length <= LABEL_MAX ? chars.join('') : `${chars.slice(0, LABEL_MAX - 1).join('')}…`;
 }
 
 export function paintStrokes(ctx: CanvasRenderingContext2D, strokes: readonly PaintStroke[], o: PaintOptions): void {
