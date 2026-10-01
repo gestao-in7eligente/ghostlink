@@ -11,6 +11,7 @@ import type { IdentityStore } from './identity.js';
 import { mainLog } from './log.js';
 import type { PushToTalk } from './ptt.js';
 import { RAILWAY_IPC_ARG_SCHEMAS, createRailwayIpcHandlers, type RailwayIpcDeps } from './railwayIpc.js';
+import { SCREEN_IPC_ARG_SCHEMAS, createScreenIpcHandlers, type ScreenIpcDeps } from './screenIpc.js';
 import { originOf } from './security.js';
 import { LOCALES, type SettingsStore } from './settings.js';
 import type { Updater } from './updater.js';
@@ -36,6 +37,8 @@ export interface IpcDeps {
   ptt: Pick<PushToTalk, 'configure'>;
   /** "Criar um servidor" on Railway (v0.2). */
   railway?: RailwayIpcDeps;
+  /** Screen sharing: the sources and the choice (screen sharing spec §3). */
+  screen?: ScreenIpcDeps;
 }
 
 /** The handshake belongs to the main process alone: the renderer may never send it (release plan "Seams"). */
@@ -123,6 +126,7 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   ...HOST_IPC_ARG_SCHEMAS,
   ...BACKUP_IPC_ARG_SCHEMAS,
   ...RAILWAY_IPC_ARG_SCHEMAS,
+  ...SCREEN_IPC_ARG_SCHEMAS,
   [IPC.deepLinkTake]: z.tuple([]),
   [IPC.updatesState]: z.tuple([]),
   [IPC.updatesSetAutoCheck]: z.tuple([z.boolean()]),
@@ -157,6 +161,7 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     ...createHostIpcHandlers(deps.host),
     ...createBackupIpcHandlers(deps.backup),
     ...createRailwayIpcHandlers(deps.railway),
+    ...createScreenIpcHandlers(deps.screen),
     [IPC.deepLinkTake]: () => deps.deepLinks?.take() ?? null,
     [IPC.updatesState]: () => updates.state(),
     [IPC.updatesSetAutoCheck]: (enabled) => updates.setAutoCheck(enabled),
