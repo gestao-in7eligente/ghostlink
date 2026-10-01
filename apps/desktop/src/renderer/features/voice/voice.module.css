@@ -826,15 +826,6 @@ button.tile {
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
-.select {
-  width: 100%;
-  height: 38px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-2);
-  color: var(--text);
-}
 .radioRow {
   display: flex;
   align-items: center;
