@@ -64,10 +64,18 @@ export function avatarSignature(fileToken: string, hash: string, sessionId: stri
   return createHmac('sha256', Buffer.from(fileToken, 'utf8')).update(fileSignatureInput(avatarTarget(hash), sessionId, expUnix), 'utf8').digest('base64url');
 }
 
+/**
+ * How far behind the server's clock the expiry is computed. `e` lands 10 to 20 min ahead and the
+ * server refuses more than 20 min (FILE_URL_MAX_AHEAD_S): this keeps a clock that drifted or was
+ * stepped since the welcome from crossing that edge. Only main fetches these URLs, so they need
+ * not be stable for a browser cache.
+ */
+export const CLOCK_MARGIN_MS = 30_000;
+
 /** `/avatars/<hash>?sid=&e=&s=`, valid until the end of the next 10-minute window of the server's clock. */
 export function signedAvatarPath(server: AvatarServer, hash: string, nowMs: number = Date.now()): string {
   const { sessionId, fileToken } = server.welcome;
-  const e = fileUrlExpiry(nowMs + server.clockOffsetMs);
+  const e = fileUrlExpiry(nowMs + server.clockOffsetMs - CLOCK_MARGIN_MS);
   const s = avatarSignature(fileToken, hash, sessionId, e);
   return `/avatars/${hash}?sid=${encodeURIComponent(sessionId)}&e=${e}&s=${s}`;
 }

@@ -6,7 +6,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createServer, type Server } from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AVATAR_LIMITS, ProtocolError, avatarTarget, fileSignatureInput, fileUrlExpiry } from '@ghostlink/shared';
+import { AVATAR_LIMITS, FILE_URL_MAX_AHEAD_S, ProtocolError, avatarTarget, fileSignatureInput, fileUrlExpiry } from '@ghostlink/shared';
 import { generateCertificate } from '../../../server/src/tls/certificate.js';
 import { serverKeyIdFromCertificate } from '../../src/main/pinning.js';
 import {
@@ -139,6 +139,16 @@ describe('signed avatar URLs (main spec §7)', () => {
     expect(e).toBe(fileUrlExpiry(now + 3_600_000));
     expect(path.searchParams.get('sid')).toBe(SESSION_ID);
     expect(path.searchParams.get('s')).toBe(avatarSignature(FILE_TOKEN, hash, SESSION_ID, e));
+  });
+
+  it('stays within the server’s 20 minutes even right after a window starts, with the clock a little ahead', () => {
+    const windowStart = Date.UTC(2026, 9, 1, 12, 10, 0);
+    for (const now of [windowStart, windowStart + 1, windowStart + 999, windowStart + 20_000, windowStart + 599_999]) {
+      const e = Number(new URL(signedAvatarPath({ ...session({ port: 1, pin: 'x' } as Fake), clockOffsetMs: 0 }, 'a'.repeat(64), now), 'https://x').searchParams.get('e'));
+      const realServerNow = now - 20_000; // our clock runs 20 s ahead of the server's
+      expect(e * 1000 - realServerNow, String(now)).toBeLessThanOrEqual(FILE_URL_MAX_AHEAD_S * 1000);
+      expect(e * 1000 - now, String(now)).toBeGreaterThan(9 * 60_000); // and still lasts > 9 min
+    }
   });
 });
 
