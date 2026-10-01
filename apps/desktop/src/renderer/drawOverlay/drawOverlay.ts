@@ -1,5 +1,5 @@
-// The pencil's overlay page (main/drawOverlay.ts): paints the strokes main relays over the whole
-// monitor, with the same fade as in the app. No React: it is a single canvas.
+// The pencil's overlay page (main/drawOverlay.ts): paints the strokes main relays over the shared
+// monitor or window, with the same fade as in the app. No React: it is a single canvas.
 import './drawOverlay.css';
 import type { DrawOverlayPageApi } from '../../shared/drawOverlay.js';
 import { createPainter } from '../features/draw/painter.js';
@@ -15,7 +15,7 @@ let received = 0;
 const painter = createPainter({
   canvas,
   board,
-  // The window is the shared monitor: the frame fills it, without bars.
+  // The window covers the shared monitor or window exactly: the frame fills it, without bars.
   rect: () => ({ x: 0, y: 0, width: canvas.clientWidth, height: canvas.clientHeight }),
   style: (stroke) => styles.get(stroke.key) ?? null,
 });

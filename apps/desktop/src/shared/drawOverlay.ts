@@ -17,7 +17,7 @@ export interface OverlayStroke {
   color: string;
   /** The author's name, shown at the stroke's tip. */
   label: string;
-  /** Frame coordinates, 0 to 1 (the whole monitor). */
+  /** Frame coordinates, 0 to 1 (the whole monitor, or the shared window). */
   points: DrawPoint[];
   end: boolean;
 }
@@ -25,8 +25,9 @@ export interface OverlayStroke {
 /** window.ghostlink.draw. */
 export interface DrawApi {
   /**
-   * Opens the overlay over the monitor being shared. false when the share is a window (Windows
-   * does not say where it is), the monitor is unknown, or this system cannot keep it out of the capture.
+   * Opens the overlay over the monitor or the window being shared. false for a window off Windows
+   * (or when the shared window is gone), an unknown monitor, or a system that cannot keep it out of
+   * the capture.
    */
   overlayOpen(): Promise<boolean>;
   /** Draws a batch on the overlay (ignored while it is closed). */

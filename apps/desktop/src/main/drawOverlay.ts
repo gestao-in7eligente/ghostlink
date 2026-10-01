@@ -1,12 +1,14 @@
 // The pencil over the real shared screen (spec 2026-10-01-lapis-na-tela-design.md §4): while I share
-// a whole screen, the strokes on my share also appear on that monitor, in a transparent, frameless,
-// always-on-top window that ignores the mouse and is kept out of the capture (setContentProtection),
-// so they never come back in the video. The page is static (app://ghostlink/drawOverlay.html), sandboxed
-// and isolated; its preload only receives strokes. Electron-free: index.ts injects the window factory,
-// desktopCapturer and the displays.
+// a whole screen, or a window on Windows, the strokes on my share also appear over it, in a
+// transparent, frameless, always-on-top window that ignores the mouse and is kept out of the capture
+// (setContentProtection), so they never come back in the video. Over a shared window the overlay
+// follows that window (windowTracker.ts) and hides while it is minimized. The page is static
+// (app://ghostlink/drawOverlay.html), sandboxed and isolated; its preload only receives strokes.
+// Electron-free: index.ts injects the window factory, desktopCapturer, the displays and the Win32 calls.
 import type { BrowserWindowConstructorOptions, Rectangle } from 'electron';
 import { APP_NAME } from '@ghostlink/shared';
 import { DRAW_OVERLAY_CHANNELS, type OverlayStroke } from '../shared/drawOverlay.js';
+import { WindowTracker, hwndOfSource, nearRect, sameRect, type WindowApi, type WindowPlacement } from './windowTracker.js';
 
 /** The part of BrowserWindow the overlay uses. */
 export interface OverlayWindow {
@@ -14,6 +16,7 @@ export interface OverlayWindow {
   setContentProtection(enable: boolean): void;
   setAlwaysOnTop(flag: boolean, level?: 'screen-saver'): void;
   setBounds(bounds: Partial<Rectangle>): void;
+  getBounds(): Rectangle;
   showInactive(): void;
   hide(): void;
   isVisible(): boolean;
@@ -51,6 +54,13 @@ export interface DrawOverlayDeps {
   createWindow(options: BrowserWindowConstructorOptions): OverlayWindow;
   /** Whether this system keeps a content-protected window out of captures (keepsOutOfCapture). */
   excludedFromCapture: boolean;
+  /**
+   * The Win32 window calls (win32Window.ts, koffi), asked for on the first shared window: null where
+   * there are none (macOS, Linux). Null or a rejection: no overlay over shared windows, logged once.
+   */
+  windowApi(): Promise<WindowApi | null>;
+  /** screen.screenToDipRect(null, rect): a window's physical pixels → DIPs. */
+  screenToDip(rect: Rectangle): Rectangle;
   log?(message: string): void;
 }
 
@@ -58,6 +68,8 @@ export interface DrawOverlayDeps {
 export const OVERLAY_HIDE_AFTER_MS = 10_500;
 /** Batches kept while the page loads. */
 const QUEUE_MAX = 256;
+/** Where the overlay waits, hidden, when the shared window is minimized as the share starts. */
+const PARKED: Rectangle = { x: 0, y: 0, width: 1, height: 1 };
 
 /**
  * Windows 10 2004 (build 19041) and later remove a content-protected window from captures
@@ -118,6 +130,14 @@ export class DrawOverlay {
   /** Bumped by close(): an open() still resolving the monitor gives up. */
   #generation = 0;
   #hideTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Strokes are showing: from a batch until OVERLAY_HIDE_AFTER_MS after the last one. */
+  #active = false;
+  /** Over a shared window: where it is. Null over a whole screen. */
+  #tracker: WindowTracker | null = null;
+  /** The bounds last given to the window. */
+  #placed: Rectangle | null = null;
+  /** The Win32 calls, loaded once. */
+  #windowApi: Promise<WindowApi | null> | null = null;
 
   constructor(deps: DrawOverlayDeps) {
     this.#deps = deps;
@@ -133,7 +153,7 @@ export class DrawOverlay {
     this.#granted = sourceId;
   }
 
-  /** Opens over the monitor of the last granted whole-screen source; true when it is open. */
+  /** Opens over the monitor or the window of the last granted source; true when it is open. */
   open(): Promise<boolean> {
     if (this.isOpen) return Promise.resolve(true);
     this.#opening ??= this.#open().finally(() => {
@@ -146,13 +166,13 @@ export class DrawOverlay {
   stroke(stroke: OverlayStroke): void {
     const window = this.#window;
     if (!window || window.isDestroyed()) return;
-    if (!window.isVisible()) window.showInactive();
     if (this.#hideTimer) clearTimeout(this.#hideTimer);
     this.#hideTimer = setTimeout(() => {
       this.#hideTimer = null;
-      if (this.#window === window && !window.isDestroyed()) window.hide();
+      if (this.#window === window) this.#setActive(false);
     }, OVERLAY_HIDE_AFTER_MS);
     this.#hideTimer.unref?.();
+    this.#setActive(true);
     if (this.#ready) window.webContents.send(DRAW_OVERLAY_CHANNELS.stroke, stroke);
     else if (this.#queue.length < QUEUE_MAX) this.#queue.push(stroke);
   }
@@ -162,6 +182,10 @@ export class DrawOverlay {
     this.#generation++;
     if (this.#hideTimer) clearTimeout(this.#hideTimer);
     this.#hideTimer = null;
+    this.#tracker?.stop();
+    this.#tracker = null;
+    this.#active = false;
+    this.#placed = null;
     this.#queue = [];
     this.#ready = false;
     const window = this.#window;
@@ -172,23 +196,64 @@ export class DrawOverlay {
   async #open(): Promise<boolean> {
     const generation = this.#generation;
     const sourceId = this.#granted;
-    // A shared window: Windows does not say where it is (spec §4), so only the app shows the strokes.
-    if (!sourceId?.startsWith('screen:') || !this.#deps.excludedFromCapture) return false;
+    if (!this.#deps.excludedFromCapture) return false;
+    if (sourceId?.startsWith('screen:')) return this.#openOverScreen(sourceId, generation);
+    const hwnd = hwndOfSource(sourceId);
+    return hwnd === null ? false : this.#openOverWindow(hwnd, generation);
+  }
+
+  async #openOverScreen(sourceId: string, generation: number): Promise<boolean> {
     const bounds = await this.#boundsOf(sourceId).catch(() => null);
     if (generation !== this.#generation) return false;
     if (!bounds) {
       this.#deps.log?.('[draw] the shared monitor was not found; no overlay');
       return false;
     }
+    this.#create(bounds, null);
+    return true;
+  }
+
+  async #openOverWindow(hwnd: number, generation: number): Promise<boolean> {
+    const api = await this.#api();
+    if (generation !== this.#generation || !api) return false;
+    const tracker: WindowTracker = new WindowTracker({
+      api,
+      hwnd,
+      screenToDip: (rect) => this.#deps.screenToDip(rect),
+      onChange: (placement) => this.#moved(tracker, placement),
+      log: this.#deps.log,
+    });
+    // Closed since it was chosen: nothing to follow (the capture ends too).
+    const first = tracker.start();
+    if (first.state === 'gone') return false;
+    this.#create(first.state === 'shown' ? first.bounds : PARKED, tracker);
+    return true;
+  }
+
+  /** koffi loads with the first shared window, once; without it there is no overlay over windows. */
+  #api(): Promise<WindowApi | null> {
+    this.#windowApi ??= Promise.resolve()
+      .then(() => this.#deps.windowApi())
+      .catch(() => null)
+      .then((api) => {
+        // No details: the reason (another system, a binary that did not load) changes nothing for the user.
+        if (!api) this.#deps.log?.('[draw] no overlay over a shared window on this system');
+        return api;
+      });
+    return this.#windowApi;
+  }
+
+  #create(bounds: Rectangle, tracker: WindowTracker | null): void {
     const window = this.#deps.createWindow(overlayWindowOptions({ bounds, preload: this.#deps.preload, packaged: this.#deps.packaged }));
     this.#window = window;
+    this.#tracker = tracker;
     this.#ready = false;
     window.setIgnoreMouseEvents(true);
     // Out of the capture: the strokes must not come back in the video, doubled and late.
     window.setContentProtection(true);
     window.setAlwaysOnTop(true, 'screen-saver');
     // Again once it exists: a monitor with another scale factor would otherwise size it wrong.
-    window.setBounds(bounds);
+    this.#place(window, bounds);
     window.webContents.once('did-finish-load', () => {
       if (this.#window !== window) return;
       this.#ready = true;
@@ -198,7 +263,45 @@ export class DrawOverlay {
       if (this.#window === window) this.close();
     });
     window.loadURL(this.#deps.url).catch(() => this.#deps.log?.('[draw] the overlay page did not load'));
-    return true;
+  }
+
+  /** The shared window moved, was minimized or restored, or closed. */
+  #moved(tracker: WindowTracker, placement: WindowPlacement): void {
+    const window = this.#window;
+    if (tracker !== this.#tracker || !window || window.isDestroyed()) return;
+    if (placement.state === 'shown' && !(this.#placed && sameRect(this.#placed, placement.bounds))) this.#place(window, placement.bounds);
+    this.#sync();
+  }
+
+  /**
+   * setBounds, and once more when the window did not land there: moving onto a monitor with another
+   * scale factor rescales it on the way.
+   */
+  #place(window: OverlayWindow, bounds: Rectangle): void {
+    window.setBounds(bounds);
+    if (!nearRect(window.getBounds(), bounds)) window.setBounds(bounds);
+    this.#placed = { ...bounds };
+  }
+
+  #setActive(active: boolean): void {
+    this.#active = active;
+    // Turning active reads the shared window at once, so the overlay never shows where it was.
+    this.#tracker?.setActive(active);
+    this.#sync();
+  }
+
+  /** Shown while strokes show and what is shared is on screen (always, for a whole screen). */
+  #sync(): void {
+    const window = this.#window;
+    if (!window || window.isDestroyed()) return;
+    const onScreen = this.#tracker === null || this.#tracker.placement?.state === 'shown';
+    if (this.#active && onScreen) {
+      if (window.isVisible()) return;
+      if (this.#placed && !nearRect(window.getBounds(), this.#placed)) window.setBounds(this.#placed);
+      window.showInactive();
+    } else if (window.isVisible()) {
+      window.hide();
+    }
   }
 
   async #boundsOf(sourceId: string): Promise<Rectangle | null> {

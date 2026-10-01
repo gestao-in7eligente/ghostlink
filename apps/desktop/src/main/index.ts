@@ -38,6 +38,7 @@ import { runSmoke } from './smoke.js';
 import { UpdateSplash } from './updateSplash.js';
 import { Updater, createUpdaterBackend, type StartupOutcome } from './updater.js';
 import { createReleaseFileFetcher } from './updaterSignature.js';
+import { loadWin32WindowApi } from './win32Window.js';
 import { applicationMenuTemplate, mainWindowOptions } from './window.js';
 
 const smoke = process.env.GHOSTLINK_SMOKE === '1';
@@ -208,7 +209,8 @@ async function start(): Promise<BrowserWindow | null> {
     appOrigin,
     ownMediaSourceId: () => (window.isDestroyed() ? null : window.getMediaSourceId()),
   });
-  // The pencil over the shared monitor (pencil spec §4): it opens over the screen main handed over.
+  // The pencil over the shared monitor (pencil spec §4): it opens over the screen main handed over,
+  // or follows the shared window (Windows: koffi is imported with the first one).
   const drawOverlay = new DrawOverlay({
     url: `${APP_ORIGIN}/drawOverlay.html`,
     preload: fileURLToPath(new URL('../preload/drawOverlay.cjs', import.meta.url)),
@@ -217,6 +219,8 @@ async function start(): Promise<BrowserWindow | null> {
     displays: () => screen.getAllDisplays(),
     createWindow: (options) => new BrowserWindow(options),
     excludedFromCapture: keepsOutOfCapture(process.platform, release()),
+    windowApi: () => loadWin32WindowApi({ platform: process.platform }),
+    screenToDip: (rect) => screen.screenToDipRect(null, rect),
     log: (message) => mainLog.warn(message),
   });
   // A reload, a crash or the window closing ends the share, and the overlay with it.

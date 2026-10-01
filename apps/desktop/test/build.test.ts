@@ -45,6 +45,13 @@ describe('electron-vite build', () => {
     expect(read('main/index.js')).toMatch(/from "electron-updater"/);
   });
 
+  it('imports koffi only when needed and from node_modules, where its native binary is unpacked from the asar', () => {
+    // Bundled, koffi would look for @koromix/koffi-<os>-<arch> next to the bundle instead of in node_modules.
+    const main = read('main/index.js');
+    expect(main).toMatch(/import\(["']koffi["']\)/);
+    expect(main).not.toMatch(/from ["']koffi["']/);
+  });
+
   it('keeps the server (SQLite, x509) out of the window process bundle', () => {
     const main = read('main/index.js');
     for (const module of ['node:sqlite', '@peculiar/x509', 'reflect-metadata']) expect(main, module).not.toContain(module);
