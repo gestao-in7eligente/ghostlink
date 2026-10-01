@@ -3,8 +3,9 @@
 // the pencil on and drags across the stream: her canvas shows the stroke at once, and Ana receives
 // it on the overlay over her real monitor and on her own preview. Ana turns "Permitir desenhos"
 // off and Bia's pencil goes away (the server refuses a stroke too); when Ana stops sharing, the
-// overlay closes. Whether the overlay shows on the right monitor, and never in the video, is on
-// the manual checklist. Run with `npm run test:e2e` (builds the app first). Skipped without LiveKit.
+// overlay closes. Then Ana shares Bia's window (Windows only): the overlay sits over that window,
+// receives Bia's strokes and follows the window when it moves and resizes. Whether the overlay
+// shows on the right monitor, and never in the video, is on the manual checklist. Run with `npm run test:e2e` (builds the app first). Skipped without LiveKit.
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Page } from 'playwright-core';
@@ -40,6 +41,38 @@ async function overlayPoints(i: Instance): Promise<number> {
   return Number((await page.evaluate('document.documentElement.dataset.points ?? "0"').catch(() => '0')) as string);
 }
 
+type Bounds = { x: number; y: number; width: number; height: number };
+
+/** The overlay window's bounds (DIPs) and whether it shows, from the instance's main process; null without one. */
+function overlayWindow(i: Instance): Promise<{ bounds: Bounds; visible: boolean } | null> {
+  return i.app.evaluate(({ BrowserWindow }) => {
+    const w = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes('drawOverlay.html'));
+    return w ? { bounds: w.getBounds(), visible: w.isVisible() } : null;
+  });
+}
+
+/** The instance's main window: its media source id ("window:<HWND>:<n>") and bounds (DIPs). */
+function mainWindow(i: Instance): Promise<{ source: string; bounds: Bounds }> {
+  return i.app.evaluate(({ BrowserWindow }) => {
+    const w = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes('index.html'))!;
+    return { source: w.getMediaSourceId(), bounds: w.getBounds() };
+  });
+}
+
+function setMainWindowBounds(i: Instance, bounds: Bounds): Promise<void> {
+  return i.app.evaluate(({ BrowserWindow }, b) => {
+    BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes('index.html'))!.setBounds(b);
+  }, bounds);
+}
+
+/**
+ * The overlay covers the window's visible frame (DWMWA_EXTENDED_FRAME_BOUNDS); getBounds() may also
+ * count the invisible resize borders (a few DIPs per side), hence the tolerance.
+ */
+function near(a: Bounds | undefined, b: Bounds, tolerance = 16): boolean {
+  return !!a && Math.abs(a.x - b.x) <= tolerance && Math.abs(a.y - b.y) <= tolerance && Math.abs(a.width - b.width) <= 2 * tolerance && Math.abs(a.height - b.height) <= 2 * tolerance;
+}
+
 describe.skipIf(!binary)('the pencil: Bia draws on the screen Ana shares', () => {
   const run = new E2eRun();
   let ana!: Instance;
@@ -47,6 +80,8 @@ describe.skipIf(!binary)('the pencil: Bia draws on the screen Ana shares', () =>
   let sala = '';
   let anaId = '';
   let broken = false;
+  /** Bia's main window as Ana shares it (window steps). */
+  let biaWindow!: { source: string; bounds: Bounds };
 
   const step = (name: string, timeout: number, fn: () => Promise<void>) =>
     it(name, async (ctx: TestContext) => {
@@ -198,5 +233,64 @@ describe.skipIf(!binary)('the pencil: Bia draws on the screen Ana shares', () =>
     await ana.page.locator('[data-screen-sharing]').waitFor({ state: 'detached', timeout: 10_000 });
     await expect.poll(() => overlayPage(ana) === null, { timeout: 10_000 }).toBe(true);
     await bia.page.locator(`[data-draw-pencil="${anaId}"]`).waitFor({ state: 'detached', timeout: 30_000 });
+  });
+
+  // Over a shared window (spec §4): Windows only, where koffi reads the window's place.
+  const windowStep = (name: string, timeout: number, fn: () => Promise<void>) =>
+    process.platform === 'win32' ? step(name, timeout, fn) : it.skip(name, () => {});
+
+  windowStep("window: Ana shares Bia's window; the overlay sits over it and receives Bia's strokes", 90_000, async () => {
+    biaWindow = await mainWindow(bia);
+    await ana.page.locator('[data-screen-share="start"]').click();
+    const picker = ana.page.getByRole('dialog', { name: 'Transmitir tela' });
+    await picker.getByRole('tab', { name: 'Janelas' }).click();
+    // desktopCapturer lists it as "window:<HWND>:0"; getMediaSourceId() ends with another number.
+    const hwnd = biaWindow.source.split(':')[1]!;
+    const source = picker.locator(`[data-screen-source-id^="window:${hwnd}:"]`);
+    await source.waitFor({ timeout: 30_000 });
+    await source.click();
+    await picker.getByRole('button', { name: 'Transmitir', exact: true }).click();
+    await ana.page.locator('[data-screen-sharing]').waitFor({ timeout: 20_000 });
+    await expect.poll(() => overlayPage(ana) !== null, { timeout: 15_000 }).toBe(true);
+    await expect.poll(async () => near((await overlayWindow(ana))?.bounds, biaWindow.bounds), { timeout: 5_000 }).toBe(true);
+    console.log(`[draw e2e] Bia's window ${JSON.stringify(biaWindow.bounds)}, overlay ${JSON.stringify((await overlayWindow(ana))?.bounds)}`);
+
+    await voiceRow(bia.page, sala, 'Ana').locator('[data-screen-live-badge]').waitFor({ timeout: 30_000 });
+    await bia.page.locator(`[data-screen-watch="${anaId}"]`).click();
+    await expect
+      .poll(async () => bia.page.evaluate(`document.querySelector('video[data-screen-video="${anaId}"]')?.videoWidth ?? 0`), { timeout: 30_000 })
+      .toBeGreaterThan(0);
+    const pencil = bia.page.locator(`[data-draw-pencil="${anaId}"]`);
+    await pencil.click();
+    expect(await pencil.getAttribute('aria-pressed')).toBe('true');
+    const box = (await bia.page.locator(`[data-screen-view="${anaId}"]`).boundingBox())!;
+    await bia.page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.4);
+    await bia.page.mouse.down();
+    try {
+      await bia.page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5, { steps: 20 });
+      await expect.poll(() => overlayPoints(ana), { timeout: 10_000 }).toBeGreaterThan(5);
+      // Shown over the window while the stroke lasts (the window is on screen, not minimized).
+      expect((await overlayWindow(ana))?.visible).toBe(true);
+    } finally {
+      await bia.page.mouse.up();
+    }
+  });
+
+  windowStep("window: the overlay follows Bia's window when it moves and resizes", 30_000, async () => {
+    const b = biaWindow.bounds;
+    await setMainWindowBounds(bia, { x: b.x + 80, y: b.y + 40, width: b.width - 160, height: b.height - 80 });
+    const moved = (await mainWindow(bia)).bounds;
+    expect(moved).not.toEqual(b);
+    await expect.poll(async () => near((await overlayWindow(ana))?.bounds, moved), { timeout: 5_000 }).toBe(true);
+    console.log(`[draw e2e] Bia's window moved to ${JSON.stringify(moved)}, overlay ${JSON.stringify((await overlayWindow(ana))?.bounds)}`);
+    await setMainWindowBounds(bia, b);
+    await expect.poll(async () => near((await overlayWindow(ana))?.bounds, b), { timeout: 5_000 }).toBe(true);
+  });
+
+  windowStep("window: when Ana stops sharing Bia's window, the overlay closes", 30_000, async () => {
+    await bia.page.keyboard.press('Escape');
+    await ana.page.locator('[data-screen-share="stop"]').click();
+    await ana.page.locator('[data-screen-sharing]').waitFor({ state: 'detached', timeout: 10_000 });
+    await expect.poll(() => overlayPage(ana) === null, { timeout: 10_000 }).toBe(true);
   });
 });
