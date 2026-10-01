@@ -43,7 +43,7 @@ O GhostLink é um produto público no molde do Monky: releases no GitHub, site d
 ### 1.3 Fora do escopo do MVP
 
 - Bots e SDK de bots.
-- Conexão simultânea a vários servidores. A barra mostra os servidores salvos, mas só um fica conectado por vez.
+- Conexão simultânea a vários servidores. A barra mostra os servidores salvos, mas só um fica conectado por vez. Exceção desde a v0.3.1: durante uma chamada de voz, a conexão com o servidor da chamada continua enquanto se vê a casinha ou outro servidor, então são até duas (`2026-10-01-chamada-continua-design.md`).
 - Áudio do sistema na tela compartilhada.
 - Criptografia ponta a ponta de texto.
 - Cliente para Linux e para celular.
@@ -306,12 +306,12 @@ O `appId` (`app.ghostlink.desktop`) e o nome da pasta de `userData` também fica
   - hostname com pin e SPKI igual → `callback(0)`;
   - hostname com pin e SPKI diferente → `callback(-2)`;
   - hostname sem pin → `callback(-3)`, que é a verificação padrão do Chromium.
-- A API não informa a porta. Por isso **o renderer só tem o pin do servidor conectado no momento** (o hostname usado e a SPKI dele).
+- A API não informa a porta. Por isso **o renderer só tem o pin do servidor conectado no momento** (o hostname usado e a SPKI dele) e, durante uma chamada em outro servidor, também o do servidor da chamada: nunca mais que esses dois (chamada-continua §2). Dois servidores no mesmo hostname aceitam a SPKI um do outro ali, porque a API não vê a porta; os dois são servidores com que o app está conectado.
   - O pin entra depois que o handshake no main termina com `welcome`.
-  - Sai quando a pessoa troca de servidor ou desconecta.
+  - Sai quando a pessoa troca de servidor ou desconecta, exceto o do servidor da chamada, que sai quando a chamada termina.
 - Convites e servidores salvos **nunca** acrescentam pins ao renderer.
 - **Obrigatório:** `app.commandLine.appendSwitch('disable-features', 'CacheCertVerification')` antes do `ready`, numa lista única de features. Sem isso, o Chromium guarda o resultado da verificação, inclusive recusas, por até 30 min.
-- Chamar `session.defaultSession.closeAllConnections()` a cada mudança de pin.
+- Chamar `session.defaultSession.closeAllConnections()` sempre que um pin sai ou muda (confiança retirada). Um pin que só entra não fecha nada: o que está aberto foi verificado por regras que continuam valendo, e a sinalização do LiveKit da chamada segue sem cair.
 
 **Mídia**
 - A sinalização do LiveKit passa pelo proxy, dentro do TLS fixado.
