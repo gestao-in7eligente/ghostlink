@@ -160,6 +160,12 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
             <GhostMark size={96} />
             <h1 className={h.welcomeTitle}>{t('home.welcome', { name: nickname })}</h1>
             <p className={h.welcomeText}>{t('home.emptyLead')}</p>
+            {/* E.g. the last server was erased by its owner: it left the list, the reason stays. */}
+            {error && (
+              <p className={h.error} role="alert">
+                {error}
+              </p>
+            )}
           </div>
         ) : (
           <div className={h.listArea}>

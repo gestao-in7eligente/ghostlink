@@ -25,6 +25,7 @@ export const serverDelete = {
   'serverDelete.deleting': '{name} foi desligado pelo dono e será excluído em {date}.',
   'serverDelete.deletingSoon': '{name} foi desligado pelo dono e será excluído em breve.',
   'serverDelete.deleted': '{name} foi excluído pelo dono.',
+  'serverDelete.deletedOwn': '{name} foi excluído. Os dados dele foram apagados.',
 
   // Settings → Visão geral.
   'serverDelete.dangerZone': 'Zona de perigo',

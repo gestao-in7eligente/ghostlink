@@ -5,8 +5,7 @@ import { MemberList } from '../features/members/MemberList.js';
 import { InviteDialog } from '../features/server-settings/InviteDialog.js';
 import { LeaveDialog } from '../features/server-settings/LeaveDialog.js';
 import { ServerSettings } from '../features/server-settings/ServerSettings.js';
-import { DeletionBanner } from '../features/serverDelete/DeletionBanner.js';
-import { useServerDeleteSync } from '../features/serverDelete/deletionStore.js';
+import { DeletionBanner, useServerDeleteSync } from '../features/serverDelete/DeletionBanner.js';
 import { deletionMessage } from '../features/serverDelete/serverDeleteModel.js';
 import { DeleteServerDialog } from '../features/serverDelete/ServerExitDialogs.js';
 import { ServerUpdateNotice } from '../features/serverUpdate/ServerUpdateNotice.js';
@@ -110,6 +109,7 @@ function ConnectionLost({ serverId, onLeave }: { serverId: string; onLeave: () =
   const deletingAt = useConnectionStore((s) => s.deletingAt);
   const name = useConnectionStore((s) => s.welcome?.server.name ?? '');
   const locale = useSettingsStore((s) => s.settings?.locale ?? 'pt-BR');
+  const owner = useConnectionStore((s) => s.welcome?.self.isOwner === true);
   const [busy, setBusy] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   if (state !== 'failed') return null;
@@ -126,7 +126,7 @@ function ConnectionLost({ serverId, onLeave }: { serverId: string; onLeave: () =
     }
   };
   // After a kick, a ban or the owner's deletion, reconnecting cannot work: only offer the way out.
-  const deletion = deletionMessage(error, name, deletingAt, locale);
+  const deletion = deletionMessage(error, name, deletingAt, locale, owner);
   const final = error === 'KICKED' || error === 'BANNED' || deletion !== null;
 
   return (

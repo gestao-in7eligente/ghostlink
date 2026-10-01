@@ -31,7 +31,9 @@ let railway: FakeRailway;
 let token: string | null;
 let store: RailwayStore;
 let forgotten: string[];
-let host: { markDeleting: ReturnType<typeof vi.fn>; eraseIfDue: ReturnType<typeof vi.fn> };
+type MarkDeleting = (serverKeyId: string, at: number | null) => boolean;
+type EraseIfDue = (now: number, confirmedDeleted?: ReadonlySet<string>) => Promise<string | null>;
+let host: { markDeleting: ReturnType<typeof vi.fn<MarkDeleting>>; eraseIfDue: ReturnType<typeof vi.fn<EraseIfDue>> };
 let deletions: ServerDeletions;
 
 function managedOnDisk(): Record<string, unknown>[] {
@@ -45,7 +47,7 @@ beforeEach(() => {
   writeFileSync(join(dir.path, RAILWAY_FILE), JSON.stringify({ version: 1, pending: null, managed: [record()] }));
   store = RailwayStore.load(dir.path);
   forgotten = [];
-  host = { markDeleting: vi.fn(() => false), eraseIfDue: vi.fn(async () => null) };
+  host = { markDeleting: vi.fn<MarkDeleting>(() => false), eraseIfDue: vi.fn<EraseIfDue>(async () => null) };
   deletions = new ServerDeletions({
     railway: store,
     token: () => token,

@@ -22,6 +22,7 @@ export const serverDelete: Record<keyof typeof serverDeletePt, string> = {
   'serverDelete.deleting': '{name} was shut down by its owner and will be deleted on {date}.',
   'serverDelete.deletingSoon': '{name} was shut down by its owner and will be deleted soon.',
   'serverDelete.deleted': '{name} was deleted by its owner.',
+  'serverDelete.deletedOwn': '{name} was deleted. Its data is erased.',
 
   'serverDelete.dangerZone': 'Danger zone',
   'serverDelete.dangerHint': 'Takes the server offline for everyone now and erases it for good in 48 h. Until then, it can be restored.',

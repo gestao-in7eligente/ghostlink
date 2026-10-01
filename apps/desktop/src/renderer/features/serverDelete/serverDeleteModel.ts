@@ -79,11 +79,11 @@ export interface DeletionMessage {
 
 /**
  * What a member reads when the owner deleted the server (spec §3 "App dos membros"): disconnected
- * or refused with SERVER_DELETING ("… será excluído em {data}"), or SERVER_DELETED. Null for any
- * other failure.
+ * or refused with SERVER_DELETING ("… será excluído em {data}"), or SERVER_DELETED. The owner's
+ * own session ends at the deadline too: "{servidor} foi excluído". Null for any other failure.
  */
-export function deletionMessage(code: AppErrorCode | null, name: string, deletingAt: number | null, locale: Locale): DeletionMessage | null {
-  if (code === 'SERVER_DELETED') return { title: 'serverDelete.deletedTitle', text: 'serverDelete.deleted', vars: { name } };
+export function deletionMessage(code: AppErrorCode | null, name: string, deletingAt: number | null, locale: Locale, owner = false): DeletionMessage | null {
+  if (code === 'SERVER_DELETED') return { title: 'serverDelete.deletedTitle', text: owner ? 'serverDelete.deletedOwn' : 'serverDelete.deleted', vars: { name } };
   if (code !== 'SERVER_DELETING') return null;
   if (deletingAt === null) return { title: 'serverDelete.lostTitle', text: 'serverDelete.deletingSoon', vars: { name } };
   return { title: 'serverDelete.lostTitle', text: 'serverDelete.deleting', vars: { name, date: formatDeadline(deletingAt, locale) } };

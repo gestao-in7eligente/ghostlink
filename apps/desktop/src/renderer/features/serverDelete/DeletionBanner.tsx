@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
 import { FEATURE_SERVER_DELETE } from '@ghostlink/shared';
 import type { AppErrorCode } from '../../../shared/appErrors.js';
+import type { RendererWelcome } from '../../../shared/ipcTypes.js';
 import { errorCodeOf, errorMessage, useT } from '../../i18n/index.js';
 import { useConnectionStore } from '../../stores/connection.js';
 import { isOwner } from '../../stores/server.js';
@@ -67,4 +68,18 @@ export function useOpenServerExit(): ServerExitAction | null {
   const owner = useTextStore((st) => isOwner(st.server));
   const canDelete = useConnectionStore((st) => st.welcome?.features.includes(FEATURE_SERVER_DELETE) === true);
   return exitMenuItem({ connected: true, owner, canDelete });
+}
+
+/** Keeps the store on the open server: every welcome (join or reconnect) and its events. */
+export function useServerDeleteSync(welcome: RendererWelcome): void {
+  useLayoutEffect(() => {
+    useDeletionStore.getState().dispatch({ type: 'welcome', welcome });
+  }, [welcome]);
+  useLayoutEffect(
+    () =>
+      window.ghostlink.onServerEvent((event) => {
+        useDeletionStore.getState().dispatch({ type: 'event', serverId: welcome.serverId, event });
+      }),
+    [welcome.serverId],
+  );
 }

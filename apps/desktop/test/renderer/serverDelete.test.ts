@@ -127,6 +127,11 @@ describe("the members' messages (spec §3)", () => {
     expect(translate('pt-BR', message.text, message.vars)).toBe('Tropa do ADS foi excluído pelo dono.');
   });
 
+  it("the owner's own session ends at the deadline too, without \"by its owner\"", () => {
+    const message = deletionMessage('SERVER_DELETED', 'Tropa do ADS', null, 'pt-BR', true)!;
+    expect(translate('pt-BR', message.text, message.vars)).toBe('Tropa do ADS foi excluído. Os dados dele foram apagados.');
+  });
+
   it('any other failure keeps its usual text', () => {
     expect(deletionMessage('KICKED', 'x', null, 'pt-BR')).toBeNull();
     expect(deletionMessage(null, 'x', null, 'pt-BR')).toBeNull();

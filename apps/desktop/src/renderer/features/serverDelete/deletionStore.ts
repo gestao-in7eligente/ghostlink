@@ -1,6 +1,6 @@
 // The open server's deletion (spec §3): the welcome's `serverDelete.deletingAt`, then the
-// `server.deleting` / `server.restored` events. Only the owner stays connected to see it.
-import { useLayoutEffect } from 'react';
+// `server.deleting` / `server.restored` events (DeletionBanner.tsx's useServerDeleteSync feeds it).
+// Only the owner stays connected to see it.
 import { create } from 'zustand';
 import { serverDeletingEventSchemaClient, type Envelope } from '@ghostlink/shared';
 import type { RendererWelcome } from '../../../shared/ipcTypes.js';
@@ -42,17 +42,3 @@ export const useDeletionStore = create<DeletionStore>()((set) => ({
   ...initialDeletion,
   dispatch: (action) => set((s) => deletionReducer(s, action)),
 }));
-
-/** Keeps the store on the open server: every welcome (join or reconnect) and its events. */
-export function useServerDeleteSync(welcome: RendererWelcome): void {
-  useLayoutEffect(() => {
-    useDeletionStore.getState().dispatch({ type: 'welcome', welcome });
-  }, [welcome]);
-  useLayoutEffect(
-    () =>
-      window.ghostlink.onServerEvent((event) => {
-        useDeletionStore.getState().dispatch({ type: 'event', serverId: welcome.serverId, event });
-      }),
-    [welcome.serverId],
-  );
-}
