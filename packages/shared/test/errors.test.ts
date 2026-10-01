@@ -14,6 +14,11 @@ describe('error codes', () => {
     }
   });
 
+  it('contains the server deletion codes (spec 2026-10-01-sair-e-excluir-servidor §3)', () => {
+    expect(isErrorCode('SERVER_DELETING')).toBe(true);
+    expect(isErrorCode('SERVER_DELETED')).toBe(true);
+  });
+
   it('isErrorCode rejects anything outside the enum', () => {
     for (const x of ['bad_request', 'BAD_REQUEST ', '', 'toString', '__proto__', 42, null, undefined, {}, ['BAD_REQUEST']]) {
       expect(isErrorCode(x), String(x)).toBe(false);
