@@ -188,6 +188,12 @@ describe.skipIf(!binary)('GhostLink v0.1: host in one app, join from another by 
     await bia.page.locator(`[data-voice-stage="${sala2}"]`).waitFor({ timeout: 10_000 });
     await bia.page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-voice-bia.png') });
 
+    // The voice panel's settings button opens the user settings on the voice section.
+    await bia.page.locator('[data-voice-panel]').getByRole('button', { name: 'Configurações de voz', exact: true }).click();
+    await bia.page.locator('[data-voice-settings]').waitFor({ timeout: 10_000 });
+    await bia.page.getByRole('button', { name: 'Fechar', exact: true }).click();
+    await bia.page.locator('[data-voice-settings]').waitFor({ state: 'detached', timeout: 10_000 });
+
     // Push-to-talk: Bia comes back; Ana binds V in her user settings. Ana is silent until she holds it.
     await voiceChannel(bia.page, 'Sala de voz').click();
     await expect.poll(() => tile(bia.page, 'Ana').getAttribute('data-receiving'), { timeout: 30_000 }).toBe('true');

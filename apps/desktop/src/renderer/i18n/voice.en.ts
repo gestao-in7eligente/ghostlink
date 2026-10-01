@@ -2,7 +2,7 @@ import type { voice as voicePt } from './voice.pt-BR.js';
 
 // Typed against the pt-BR namespace: a missing or extra key fails the typecheck.
 export const voice: Record<keyof typeof voicePt, string> = {
-  'voice.connected': 'Voice connected',
+  'voice.connected': 'Voice Connected',
   'voice.connecting': 'Connecting…',
   'voice.reconnecting': 'Reconnecting…',
   'voice.latency': 'Latency',

@@ -1,7 +1,7 @@
 // Voice track namespace: voice panel, controls, participants, stage and settings.
 // Spread into pt-BR.ts; voice.en.ts must have exactly the same keys.
 export const voice = {
-  'voice.connected': 'Conectado à voz',
+  'voice.connected': 'Voz conectada',
   'voice.connecting': 'Conectando…',
   'voice.reconnecting': 'Reconectando…',
   'voice.latency': 'Latência',
