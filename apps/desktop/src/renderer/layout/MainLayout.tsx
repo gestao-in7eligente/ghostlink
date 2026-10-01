@@ -5,6 +5,7 @@ import { MemberList } from '../features/members/MemberList.js';
 import { InviteDialog } from '../features/server-settings/InviteDialog.js';
 import { LeaveDialog } from '../features/server-settings/LeaveDialog.js';
 import { ServerSettings } from '../features/server-settings/ServerSettings.js';
+import { ServerUpdateNotice } from '../features/serverUpdate/ServerUpdateNotice.js';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 import { useConnectionStore } from '../stores/connection.js';
 import { useTextStore } from '../stores/text.js';
@@ -54,7 +55,15 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
       <ServerRail currentId={welcome.serverId} onHome={() => void disconnect()} />
       <ChannelSidebar onOpen={setDialog} />
       <main className={l.center}>
-        {stageId !== null && VoiceStage ? <VoiceStage channelId={stageId} onOpenSettings={() => setDialog('voice')} /> : <ChatView />}
+        {stageId !== null && VoiceStage ? (
+          <VoiceStage channelId={stageId} onOpenSettings={() => setDialog('voice')} />
+        ) : (
+          <>
+            {/* Spec 2026-10-01 §5: only the owner sees it, when the server is behind the app. */}
+            <ServerUpdateNotice serverKeyId={welcome.server.serverKeyId} />
+            <ChatView />
+          </>
+        )}
       </main>
       <aside className={l.members} aria-label={t('members.title')}>
         <MemberList />
