@@ -4,12 +4,27 @@ import {
   applyConversation,
   applyMessage,
   buildDmRows,
+  DM_CONV_ID,
   isTyping,
   mergeHistory,
+  plainDm,
   repliedMessage,
   sidebarConversations,
   totalUnread,
 } from '../../src/renderer/features/dm/dmModel.js';
+
+describe('plainDm and DM_CONV_ID', () => {
+  it('turns a message into one line of text for reply previews', () => {
+    expect(plainDm('**oi**  _tudo_\nbem? `x`')).toBe('oi tudo bem? x');
+    expect(plainDm('```\ncode\n```')).toBe('code');
+  });
+
+  it('tells a conversation id from a server channel id', () => {
+    expect(DM_CONV_ID.test('0123456789abcdef0123456789abcdef')).toBe(true);
+    expect(DM_CONV_ID.test('ABCDEFGHIJKLMNOPQRSTUVWXYZ')).toBe(false);
+    expect(DM_CONV_ID.test('0123456789ABCDEF0123456789ABCDEF')).toBe(false);
+  });
+});
 
 const MIN = 60_000;
 const NOON = new Date(2026, 8, 30, 12, 0, 0).getTime();

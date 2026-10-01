@@ -1,10 +1,11 @@
 import { useState, type RefObject } from 'react';
-import { Check, EllipsisVertical, Search, Users, X } from 'lucide-react';
+import { Check, EllipsisVertical, MessageCircle, Search, Users, X } from 'lucide-react';
 import type { Friend, FriendsSnapshot } from '../../../shared/friendsTypes.js';
 import { GhostMark } from '../../components/GhostMark.js';
 import { errorCodeOf, errorMessage, useT } from '../../i18n/index.js';
 import { serverInitials } from '../../layout/names.js';
 import { ConfirmDialog, Menu, MenuItem, MenuSeparator, primitives as p } from '../../layout/primitives.js';
+import { useDmStore } from '../../stores/dm.js';
 import { useFriendsStore } from '../../stores/friends.js';
 import { AddFriendPanel } from './AddFriendPanel.js';
 import { RenameFriendDialog } from './RenameFriendDialog.js';
@@ -82,6 +83,7 @@ export function FriendsHome({ nickname, searchRef }: { nickname: string; searchR
                 name={name(friend)}
                 onAccept={() => run(() => window.ghostlink.friends.accept(friend.key))}
                 onDismiss={() => run(() => window.ghostlink.friends.dismiss(friend.key))}
+                onMessage={() => act(() => useDmStore.getState().open(friend.key))}
                 onMore={(anchor) => setMenu({ friend, anchor })}
               />
             ))}
@@ -184,7 +186,21 @@ export function FriendsHome({ nickname, searchRef }: { nickname: string; searchR
   );
 }
 
-function FriendRow({ friend, name, onAccept, onDismiss, onMore }: { friend: Friend; name: string; onAccept: () => void; onDismiss: () => void; onMore: (anchor: DOMRect) => void }) {
+function FriendRow({
+  friend,
+  name,
+  onAccept,
+  onDismiss,
+  onMessage,
+  onMore,
+}: {
+  friend: Friend;
+  name: string;
+  onAccept: () => void;
+  onDismiss: () => void;
+  onMessage: () => void;
+  onMore: (anchor: DOMRect) => void;
+}) {
   const t = useT();
   const code = formatShortCode(friend.shortCode);
   const status =
@@ -206,6 +222,11 @@ function FriendRow({ friend, name, onAccept, onDismiss, onMore }: { friend: Frie
         <span className={f.rowSub}>{status}</span>
       </span>
       <div className={f.rowActions}>
+        {friend.state === 'friend' && (
+          <button type="button" className={f.roundButton} onClick={onMessage} aria-label={t('dm.openWith', { name })} title={t('dm.open')}>
+            <MessageCircle size={18} aria-hidden="true" />
+          </button>
+        )}
         {friend.state === 'pending_in' && (
           <button type="button" className={`${f.roundButton} ${f.accept}`} onClick={onAccept} aria-label={`${t('friends.action.accept')}: ${name}`} title={t('friends.action.accept')}>
             <Check size={18} aria-hidden="true" />

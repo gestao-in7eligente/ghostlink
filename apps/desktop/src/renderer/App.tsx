@@ -19,7 +19,10 @@ import { Connected } from './screens/Connected.js';
 import { IdentityLocked } from './screens/IdentityLocked.js';
 import { Join } from './screens/Join.js';
 import { Onboarding } from './screens/Onboarding.js';
+import { DM_CONV_ID } from './features/dm/dmModel.js';
+import { useVoiceStore } from './features/voice/state.js';
 import { useConnectionStore } from './stores/connection.js';
+import { useDmStore } from './stores/dm.js';
 import { useSettingsStore } from './stores/settings.js';
 
 export function App() {
@@ -56,6 +59,22 @@ export function App() {
     };
   }, [attempt]);
 
+  // A direct-message notification was clicked: its conversation opens on the Home screen. From a server
+  // the app goes Home, unless a voice call is on (the conversation then waits there).
+  useEffect(
+    () =>
+      window.ghostlink.onOpenChannel(({ channelId }) => {
+        if (!DM_CONV_ID.test(channelId)) return;
+        useDmStore.getState().select(channelId);
+        const { welcome, state } = useConnectionStore.getState();
+        if (welcome === null || state === 'idle' || useVoiceStore.getState().call.status !== 'idle') return;
+        void window.ghostlink.servers
+          .disconnect()
+          .catch(() => undefined)
+          .then(() => useConnectionStore.getState().dispatch({ type: 'state', event: { state: 'idle', serverId: null } }));
+      }),
+    [],
+  );
   useHostStatusSync(attempt);
   useDeepLinkSync(attempt);
   useLayoutWiring();

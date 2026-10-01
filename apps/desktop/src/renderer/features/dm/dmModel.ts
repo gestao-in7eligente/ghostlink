@@ -3,6 +3,10 @@
 import { CHAT_LIMITS } from '@ghostlink/shared';
 import type { DmConversation, DmMessage } from '../../../shared/dmTypes.js';
 import { dayKey } from '../chat/grouping.js';
+import { markdownToPlainText, parseMarkdown } from '../chat/markdown.js';
+
+/** A conversation id (spec §4.1). A server channel id is 26 base32 characters, so the two never mix. */
+export const DM_CONV_ID = /^[0-9a-f]{32}$/;
 
 export type DmRow =
   | { kind: 'date'; key: string; at: number }
@@ -63,6 +67,13 @@ export function totalUnread(list: readonly DmConversation[]): number {
 /** The message a reply points to, among the loaded ones; null when it is older than what is loaded. */
 export function repliedMessage(messages: readonly DmMessage[], replyTo: string | null): DmMessage | null {
   return replyTo === null ? null : (messages.find((m) => m.id === replyTo) ?? null);
+}
+
+const NO_MENTIONS = { user: () => '', role: () => '', everyone: '@everyone' };
+
+/** A message as one line of plain text (reply previews): markup removed, whitespace folded. */
+export function plainDm(text: string): string {
+  return markdownToPlainText(parseMarkdown(text), NO_MENTIONS).replace(/\s+/g, ' ').trim();
 }
 
 /** "Digitando…" lasts this long after the last signal. */
