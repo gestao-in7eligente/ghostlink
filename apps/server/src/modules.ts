@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
-import type { ErrorCode } from '@ghostlink/shared';
+import type { ErrorCode, ErrorEventExtra } from '@ghostlink/shared';
 import type { Db } from './db/database.js';
 import type { VoiceServerOptions } from './livekit/backend.js';
 import type { ServerLimits } from './limits.js';
@@ -50,10 +50,11 @@ export interface SessionsApi {
    */
   broadcast(event: ServerEvent, filter?: (session: SessionInfo) => boolean): number;
   /**
-   * Ends the user's session with `error { code }` (e.g. KICKED, BANNED) and skips
-   * the presence grace. Also ends a pending grace. False when the user was offline.
+   * Ends the user's session with `error { code, ...extra }` (e.g. KICKED, BANNED, or
+   * SERVER_DELETING with `at`) and skips the presence grace. Also ends a pending grace.
+   * False when the user was offline.
    */
-  closeUser(userId: string, code: ErrorCode): boolean;
+  closeUser(userId: string, code: ErrorCode, extra?: ErrorEventExtra): boolean;
   /** True while the user has a session or is within LIMITS.presenceGraceMs of losing it. */
   isOnlineOrInGrace(userId: string): boolean;
   /**

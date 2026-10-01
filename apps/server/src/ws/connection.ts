@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import type { RawData, WebSocket } from 'ws';
-import { ProtocolError, envelopeSchema, type Envelope, type ErrorCode } from '@ghostlink/shared';
+import { ProtocolError, envelopeSchema, type Envelope, type ErrorCode, type ErrorEventExtra } from '@ghostlink/shared';
 
 /** Application close code; the reason string is the ErrorCode. */
 export const APP_CLOSE_CODE = 4000;
@@ -96,7 +96,7 @@ export class Connection {
   }
 
   /** Sends `error { code, ...extra }`, then closes with APP_CLOSE_CODE and the code as reason. Idempotent. */
-  close(code: ErrorCode, extra?: { min?: number; max?: number }): void {
+  close(code: ErrorCode, extra?: ErrorEventExtra): void {
     if (this.state === 'closed') return;
     this.state = 'closed';
     this.#closeCode = code;

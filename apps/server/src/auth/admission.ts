@@ -1,6 +1,7 @@
-import { normalizeInviteCode, type ErrorCode } from '@ghostlink/shared';
+import { normalizeInviteCode, type ErrorCode, type ErrorEventExtra } from '@ghostlink/shared';
 import type { Db } from '../db/database.js';
 import { getMeta } from '../db/serverMeta.js';
+import { deletionRefusal } from '../deletion/state.js';
 import { consumeInviteTx } from '../invites/invites.js';
 import type { SlidingWindowLimiter } from '../ratelimit/limiter.js';
 import { verifyPassword } from './password.js';
@@ -28,7 +29,7 @@ export interface AdmissionDeps {
 
 export type AdmissionResult =
   | { ok: true; user: { id: string; nickname: string; isOwner: boolean }; created: boolean }
-  | { ok: false; code: ErrorCode; countsAsFailure: boolean };
+  | { ok: false; code: ErrorCode; countsAsFailure: boolean; extra?: ErrorEventExtra };
 
 /** Codes caused by a bad credential; they count toward the per-IP auth-failure limit (spec §13). */
 const CREDENTIAL_FAILURES: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
@@ -36,13 +37,18 @@ const CREDENTIAL_FAILURES: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
 ]);
 
 class Rejected extends Error {
-  constructor(readonly code: ErrorCode) {
+  constructor(
+    readonly code: ErrorCode,
+    readonly extra?: ErrorEventExtra,
+  ) {
     super(code);
   }
 }
 
-function reject(code: ErrorCode): AdmissionResult {
-  return { ok: false, code, countsAsFailure: CREDENTIAL_FAILURES.has(code) };
+function reject(code: ErrorCode, extra?: ErrorEventExtra): AdmissionResult {
+  return extra === undefined
+    ? { ok: false, code, countsAsFailure: CREDENTIAL_FAILURES.has(code) }
+    : { ok: false, code, countsAsFailure: CREDENTIAL_FAILURES.has(code), extra };
 }
 
 interface UserRow {
@@ -96,6 +102,10 @@ export async function admit(req: AdmissionRequest, deps: AdmissionDeps): Promise
   try {
     return db.tx((): AdmissionResult => {
       const current = getMeta(db);
+      // The handshake checked before the slow part; a server.delete may have run since. Inside
+      // the transaction, so a refusal gives the invite use back.
+      const deletion = deletionRefusal(current, now, req.userId);
+      if (deletion) throw new Rejected(deletion.code, deletion.code === 'SERVER_DELETING' ? { at: deletion.at } : undefined);
       if (isMember) {
         db.run('UPDATE users SET last_seen_at = ?, last_ip = ?, locale = ? WHERE id = ?', now, req.ip, req.locale, existing.id);
         if (wantsOwner && !consumeSetupCode(db, deps.dataDir, req.setupCode!, existing.id)) throw new Rejected('BAD_SETUP_CODE');
@@ -132,7 +142,7 @@ export async function admit(req: AdmissionRequest, deps: AdmissionDeps): Promise
       return { ok: true, user: { id: req.userId, nickname: req.nickname.display, isOwner }, created: !existing };
     });
   } catch (e) {
-    if (e instanceof Rejected) return reject(e.code);
+    if (e instanceof Rejected) return reject(e.code, e.extra);
     throw e;
   }
 }

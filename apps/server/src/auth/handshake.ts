@@ -10,9 +10,12 @@ import {
   normalizeNickname,
   type Envelope,
   type ErrorCode,
+  type ErrorEventExtra,
   type HelloPayload,
 } from '@ghostlink/shared';
 import type { Db } from '../db/database.js';
+import { getMeta } from '../db/serverMeta.js';
+import { deletionRefusal } from '../deletion/state.js';
 import type { ServerLimits } from '../limits.js';
 import type { Logger } from '../logger.js';
 import type { SlidingWindowLimiter } from '../ratelimit/limiter.js';
@@ -65,7 +68,7 @@ export class HandshakeFailed extends Error {
  * ban, deadline) count toward the per-IP auth-failure limit; successes never do.
  */
 export async function runHandshake(conn: Connection, deps: HandshakeDeps): Promise<AuthedSession> {
-  const fail = (code: ErrorCode, opts: { counts: boolean; extra?: { min: number; max: number } }): HandshakeFailed => {
+  const fail = (code: ErrorCode, opts: { counts: boolean; extra?: ErrorEventExtra }): HandshakeFailed => {
     if (opts.counts) {
       deps.authFailures.hit(conn.ipKey);
       deps.logger.warn('authentication failed', { ip: conn.ip, code }); // spec §7: IPs are logged only for auth failures
@@ -104,6 +107,11 @@ export async function runHandshake(conn: Connection, deps: HandshakeDeps): Promi
     throw fail('BAD_REQUEST', { counts: true });
   }
   if (publicKey.length !== 32 || isWeakPublicKey(publicKey)) throw fail('BAD_REQUEST', { counts: true });
+  // A server being deleted lets only its owner in, and nobody once the deadline passed (spec
+  // "sair e excluir servidor" §3). Before the challenge: the key is not proven yet, but only the
+  // owner's key goes on, and the owner still has to sign. Not a credential failure.
+  const deletion = deletionRefusal(getMeta(deps.db), deps.now(), userIdFromPublicKey(publicKey));
+  if (deletion) throw fail(deletion.code, { counts: false, extra: deletion.code === 'SERVER_DELETING' ? { at: deletion.at } : undefined });
   // The failure limit is there against guessing invites, passwords and setup codes. A member
   // who signs in with the key alone has nothing to guess, so a flood of failures from their
   // address (behind a TCP proxy: from anywhere, spec §13) never locks them out.
@@ -148,7 +156,7 @@ export async function runHandshake(conn: Connection, deps: HandshakeDeps): Promi
   );
   // Re-check after the await (spec §5.1): the socket may have closed while scrypt ran.
   if (conn.closed) throw new HandshakeFailed('BAD_REQUEST');
-  if (!result.ok) throw fail(result.code, { counts: result.countsAsFailure });
+  if (!result.ok) throw fail(result.code, { counts: result.countsAsFailure, extra: result.extra });
 
   conn.state = 'authenticated';
   return {
