@@ -3,6 +3,9 @@
 // app, carry a valid Ed25519 signature by the release key and match its line in the release's signed
 // checksums-sha256.txt (updaterSignature.ts). The check runs at startup and every 6 h, can be turned
 // off, and is the app's only contact with a third party (GitHub).
+// "Atualizar ao abrir" (docs/superpowers/specs/2026-10-01-atualizar-ao-abrir-design.md): when the
+// app opens, checkAtStartup runs the first check behind the splash and installs a verified update
+// before the main window exists; once the app is open, an update still waits for "Restart to update".
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { NsisUpdater } from 'electron-updater';
@@ -17,8 +20,30 @@ export type { UpdateState, UpdateStatus } from '../shared/updates.js';
 
 export const UPDATES_FILE = 'updates.json';
 export const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
-/** Lets the window and the connection settle before the first network request. */
+/** Lets the window and the connection settle before the first network request (no startup check ran). */
 export const FIRST_CHECK_DELAY_MS = 10_000;
+/** At startup, a check that has not found an update by then lets the app open. */
+export const STARTUP_CHECK_TIMEOUT_MS = 10_000;
+/** At startup, how long a download runs before "Open without updating" appears. */
+export const STARTUP_SKIP_AFTER_MS = 20_000;
+
+/** What the splash shows while checkAtStartup runs. */
+export type StartupStep =
+  | { step: 'checking' }
+  | { step: 'downloading'; percent: number; canSkip: boolean }
+  | { step: 'installing' };
+
+/** `continue`: open the app. `installing`: the installer runs and the app is quitting. */
+export type StartupOutcome = 'continue' | 'installing';
+
+export interface StartupCheckOptions {
+  checkTimeoutMs?: number;
+  skipAfterMs?: number;
+  /** Progress for the splash. Never called when no check runs (turned off, unsupported). */
+  onStep?: (step: StartupStep) => void;
+  /** "Open without updating": resolves `continue` while the download goes on in the background. */
+  signal?: AbortSignal;
+}
 
 /** The part of electron-updater's NsisUpdater this module drives (a fake in tests). */
 export interface UpdaterBackend {
@@ -74,6 +99,11 @@ export class Updater {
   #started = false;
   #firstCheck: ReturnType<typeof setTimeout> | null = null;
   #interval: ReturnType<typeof setInterval> | null = null;
+  /** checkAtStartup's reaction to each state change while it waits. */
+  #startupWatch: (() => void) | null = null;
+  /** True while quitAndInstall runs: electron-updater reports a failed install as an error event and does not quit. */
+  #installing = false;
+  #installFailed = false;
 
   private constructor(opts: UpdaterOptions, path: string, autoCheck: boolean) {
     this.#opts = opts;
@@ -93,8 +123,99 @@ export class Updater {
     return { status: this.#status, autoCheck: this.#autoCheck, currentVersion: this.#opts.currentVersion, version: this.#version, percent: this.#percent };
   }
 
-  /** Configures electron-updater and schedules the checks. A no-op when unsupported. */
+  /**
+   * Configures electron-updater and schedules the checks: the first one 10 s from now, then every
+   * 6 h. A no-op when unsupported, or when checkAtStartup already started the updater.
+   */
   start(): void {
+    this.#begin(FIRST_CHECK_DELAY_MS);
+  }
+
+  /**
+   * "Atualizar ao abrir": the first check, before the main window exists. Resolves `continue` when
+   * there is no update, the check fails or takes longer than `checkTimeoutMs`, the download fails
+   * the signature check, or the person chooses "Open without updating" (offered after `skipAfterMs`
+   * of downloading; the download then goes on and installs only through "Restart to update" or on
+   * quit, as before). Resolves `installing` once a verified update is downloaded (or already was) and
+   * quitAndInstall has been called. Turned off or unsupported: `continue` at once, `onStep` never
+   * called. The 10 s delayed first check of start() does not run after this; the 6 h one does.
+   * Never rejects.
+   */
+  async checkAtStartup(opts: StartupCheckOptions = {}): Promise<StartupOutcome> {
+    const { checkTimeoutMs = STARTUP_CHECK_TIMEOUT_MS, skipAfterMs = STARTUP_SKIP_AFTER_MS, signal } = opts;
+    // The splash may be gone (closed by the person): a failing listener never breaks the update.
+    const onStep = (step: StartupStep) => {
+      try {
+        opts.onStep?.(step);
+      } catch {
+        this.#log('the splash could not show the update progress');
+      }
+    };
+    if (this.#opts.backend === null || !this.#autoCheck || this.#startupWatch !== null) return 'continue';
+    if (this.#started) this.#cancelFirstCheck();
+    else this.#begin(null);
+    if (this.#status === 'downloaded') return this.#installAtStartup(onStep);
+
+    return new Promise<StartupOutcome>((resolve) => {
+      let settled = false;
+      let checkTimer: ReturnType<typeof setTimeout> | null = null;
+      let skipTimer: ReturnType<typeof setTimeout> | null = null;
+      let canSkip = false;
+      const finish = (outcome: () => StartupOutcome) => {
+        if (settled) return;
+        settled = true;
+        this.#startupWatch = null;
+        if (checkTimer) clearTimeout(checkTimer);
+        if (skipTimer) clearTimeout(skipTimer);
+        signal?.removeEventListener('abort', skip);
+        resolve(outcome());
+      };
+      const skip = () => {
+        this.#log('opening without updating; the download goes on in the background');
+        finish(() => 'continue');
+      };
+      const watch = () => {
+        switch (this.#status) {
+          case 'checking':
+            onStep({ step: 'checking' });
+            return;
+          case 'downloading':
+            // The time limit covers the check only: a download runs until it ends or the person skips it.
+            if (checkTimer) clearTimeout(checkTimer);
+            checkTimer = null;
+            skipTimer ??= setTimeout(() => {
+              canSkip = true;
+              watch();
+            }, skipAfterMs);
+            onStep({ step: 'downloading', percent: this.#percent ?? 0, canSkip });
+            return;
+          case 'downloaded':
+            finish(() => this.#installAtStartup(onStep));
+            return;
+          default: // idle (no update, or the check failed), rejected (signature), disabled
+            finish(() => 'continue');
+        }
+      };
+      if (signal?.aborted) return finish(() => 'continue');
+      this.#startupWatch = watch;
+      signal?.addEventListener('abort', skip, { once: true });
+      checkTimer = setTimeout(() => {
+        this.#log('the startup check took too long; opening the app');
+        finish(() => 'continue');
+      }, checkTimeoutMs);
+      if (this.#status === 'checking' || this.#status === 'downloading') {
+        watch(); // a check is already running: follow it
+        return;
+      }
+      onStep({ step: 'checking' });
+      void this.checkNow().then(() => {
+        // electron-updater announces an update before checkForUpdates resolves: no download by now means none.
+        if (this.#status !== 'downloading' && this.#status !== 'downloaded') finish(() => 'continue');
+      });
+    });
+  }
+
+  #begin(firstCheckDelay: number | null): void {
     const backend = this.#opts.backend;
     if (backend === null || this.#started) return;
     this.#started = true;
@@ -129,11 +250,33 @@ export class Updater {
     });
     backend.on('error', (error: { code?: unknown; message?: unknown }) => {
       this.#log(`update error: ${typeof error?.message === 'string' ? error.message : 'unknown'}`);
+      if (this.#installing) this.#installFailed = true;
       if (error?.code === 'ERR_UPDATER_INVALID_SIGNATURE') this.#set('rejected', this.#pendingVersion);
       else if (this.#status === 'checking' || this.#status === 'downloading') this.#set(this.#restingStatus());
     });
 
-    this.#schedule();
+    this.#schedule(firstCheckDelay);
+  }
+
+  /**
+   * quitAndInstall(silent, run after): the installer replaces the app and reopens it. electron-updater
+   * reports an install it could not start as an error event, synchronously, and then does not quit:
+   * the app opens normally instead of waiting forever on "Installing…".
+   */
+  #installAtStartup(onStep: (step: StartupStep) => void): StartupOutcome {
+    onStep({ step: 'installing' });
+    this.#installing = true;
+    this.#installFailed = false;
+    try {
+      this.#opts.backend!.quitAndInstall(true, true);
+    } catch {
+      this.#installFailed = true;
+    } finally {
+      this.#installing = false;
+    }
+    if (!this.#installFailed) return 'installing';
+    this.#log('the downloaded update could not be installed; opening the app');
+    return 'continue';
   }
 
   /** Persists the setting; turning it on checks right away. */
@@ -174,16 +317,21 @@ export class Updater {
     this.#unschedule();
   }
 
-  #schedule(firstDelay = FIRST_CHECK_DELAY_MS): void {
+  /** `firstDelay` null: the startup check already ran, only the 6 h checks remain. */
+  #schedule(firstDelay: number | null): void {
     if (!this.#autoCheck) return;
-    this.#firstCheck = setTimeout(() => void this.checkNow(), firstDelay);
+    if (firstDelay !== null) this.#firstCheck = setTimeout(() => void this.checkNow(), firstDelay);
     this.#interval = setInterval(() => void this.checkNow(), CHECK_INTERVAL_MS);
   }
 
-  #unschedule(): void {
+  #cancelFirstCheck(): void {
     if (this.#firstCheck) clearTimeout(this.#firstCheck);
-    if (this.#interval) clearInterval(this.#interval);
     this.#firstCheck = null;
+  }
+
+  #unschedule(): void {
+    this.#cancelFirstCheck();
+    if (this.#interval) clearInterval(this.#interval);
     this.#interval = null;
   }
 
@@ -201,6 +349,7 @@ export class Updater {
 
   #emit(): void {
     this.#opts.emit(this.state());
+    this.#startupWatch?.();
   }
 
   #log(message: string): void {
