@@ -101,7 +101,7 @@ const remove: Handler = (core, ctx, payload) => {
   core.access.requireServer(actor, PERMISSIONS.MANAGE_CHANNELS);
   const { channel } = core.access.visibleChannel(actor, p.id);
   const { db } = core;
-  // Messages, reactions, mentions, read states and allowed roles go with it (ON DELETE CASCADE).
+  // Messages, reactions, mentions, read states, allowed roles and files go with it (ON DELETE CASCADE).
   core.withVisibility(() => db.tx(() => db.run('DELETE FROM channels WHERE id = ?', channel.id)));
   core.events.emit('channel.deleted', { channelId: channel.id, type: channel.type });
   return {};

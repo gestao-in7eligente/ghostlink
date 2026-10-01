@@ -23,7 +23,7 @@ describe('seed and welcome (spec §5.3, §6)', () => {
     expect(roles.find((r) => r.name === 'Admin')).toMatchObject({ permissions: PERMISSIONS.ADMINISTRATOR, isDefault: false, color: 0xed4245, hoist: false });
     expect(members).toEqual([expect.objectContaining({ userId: owner.userId, nickname: 'Dono', online: true, roleIds: [] })]);
     expect(readStates).toEqual([{ channelId: channelId(owner, 'geral'), lastReadMessageId: 0, mentionCount: 0 }]);
-    expect(serverSettings).toEqual({ ownerId: owner.userId, maxMembers: 100, hasPassword: false });
+    expect(serverSettings).toEqual({ ownerId: owner.userId, maxMembers: 100, hasPassword: false, uploadLimitMb: 25, storageQuotaMb: 10_240 });
     expect(owner.welcome.features).toContain('text');
   });
 
@@ -200,11 +200,12 @@ describe('live chat between clients (spec §5.2)', () => {
     expect(await f.owner.fail('msg.send', { channelId: geral, content: 'x', clientMsgId: nextClientMsgId(), replyTo: 424242 })).toBe('NOT_FOUND');
   });
 
-  it('refuses attachments (v0.1) with BAD_ATTACHMENT and chat in voice channels with BAD_REQUEST', async () => {
+  it('refuses an attachment that was never uploaded with BAD_ATTACHMENT and chat in voice channels with BAD_REQUEST', async () => {
     const f = await textFixture();
     const geral = channelId(f.owner, 'geral');
     const voice = channelId(f.owner, 'Sala de voz');
-    expect(await f.owner.fail('msg.send', { channelId: geral, content: 'x', clientMsgId: nextClientMsgId(), attachmentIds: ['AAAA'] })).toBe('BAD_ATTACHMENT');
+    expect(await f.owner.fail('msg.send', { channelId: geral, content: 'x', clientMsgId: nextClientMsgId(), attachmentIds: ['A'.repeat(26)] })).toBe('BAD_ATTACHMENT');
+    expect(await f.owner.fail('msg.send', { channelId: geral, content: 'x', clientMsgId: nextClientMsgId(), attachmentIds: ['AAAA'] })).toBe('BAD_REQUEST');
     await f.owner.ok('msg.send', { channelId: geral, content: 'x', clientMsgId: nextClientMsgId(), attachmentIds: [] });
     expect(await f.owner.fail('msg.send', { channelId: voice, content: 'x', clientMsgId: nextClientMsgId() })).toBe('BAD_REQUEST');
     expect(await f.owner.fail('msg.history', { channelId: voice })).toBe('BAD_REQUEST');

@@ -192,7 +192,7 @@ describe('server.update (spec §5.2)', () => {
     const bia = await f.join();
     expect(await f.owner.fail('server.update', { joinMode: 'password' })).toBe('BAD_REQUEST'); // no password yet
     const d = await f.owner.ok('server.update', { name: '  Casa‮  ', joinMode: 'password', password: 'segredo', maxMembers: 50 });
-    expect(d).toEqual({ name: 'Casa', joinMode: 'password', ownerId: f.owner.userId, maxMembers: 50, hasPassword: true });
+    expect(d).toEqual({ name: 'Casa', joinMode: 'password', ownerId: f.owner.userId, maxMembers: 50, hasPassword: true, uploadLimitMb: 25, storageQuotaMb: 10_240 });
     expect(await bia.event('server.updated')).toEqual(d);
     expect(JSON.stringify(bia.events)).not.toContain('scrypt');
     expect(await f.refused({ password: 'errada' })).toBe('BAD_PASSWORD');

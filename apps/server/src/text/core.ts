@@ -17,8 +17,10 @@ export interface TextEventMap {
    * `userIds: null` means anyone may be affected.
    */
   'access.changed': { userIds: string[] | null };
-  /** A channel was deleted (its voice room, if any, must be closed). */
+  /** A channel was deleted (its voice room, if any, must be closed; its files' rows went with it). */
   'channel.deleted': { channelId: string; type: 'text' | 'voice' };
+  /** Messages were deleted, and their files' rows with them: the bytes can go too. */
+  'messages.deleted': { ids: number[] };
   /**
    * Per-user visibility changed: `gained` channels were just announced with
    * `channel.created`, `lost` ones with `channel.deleted` (spec §5.3). Voice
@@ -99,7 +101,13 @@ export class TextCore {
 
   serverSettings(): ServerSettings {
     const meta = getMeta(this.db);
-    return { ownerId: meta.ownerUserId, maxMembers: meta.maxMembers, hasPassword: meta.passwordHash !== null };
+    return {
+      ownerId: meta.ownerUserId,
+      maxMembers: meta.maxMembers,
+      hasPassword: meta.passwordHash !== null,
+      uploadLimitMb: meta.uploadLimitMb,
+      storageQuotaMb: meta.storageQuotaMb,
+    };
   }
 
   /**

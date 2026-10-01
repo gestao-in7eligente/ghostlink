@@ -7,9 +7,11 @@ import {
   inviteListSchema,
   inviteRevokeSchema,
   sanitizeLabel,
+  serverStorageSchema,
   serverTransferSchema,
   serverUpdateSchema,
   type InviteEntry,
+  type ServerStorage,
 } from '@ghostlink/shared';
 import { hashPassword } from '../../auth/password.js';
 import { getMeta } from '../../db/serverMeta.js';
@@ -99,15 +101,32 @@ const serverUpdate: Handler = async (core, ctx, payload) => {
   const hasPassword = passwordHash === undefined ? meta.passwordHash !== null : passwordHash !== null;
   if (joinMode === 'password' && !hasPassword) throw new ProtocolError('BAD_REQUEST', 'password mode needs a password');
   core.db.run(
-    'UPDATE server_meta SET name = ?, join_mode = ?, password_hash = ?, max_members = ? WHERE id = 1',
+    'UPDATE server_meta SET name = ?, join_mode = ?, password_hash = ?, max_members = ?, upload_limit_mb = ?, storage_quota_mb = ? WHERE id = 1',
     name ?? meta.name,
     joinMode,
     passwordHash === undefined ? meta.passwordHash : passwordHash,
     p.maxMembers ?? meta.maxMembers,
+    // New limits apply to the next uploads; files already stored stay (spec 2026-10-01-anexos §2).
+    p.uploadLimitMb ?? meta.uploadLimitMb,
+    p.storageQuotaMb ?? meta.storageQuotaMb,
   );
   const d = serverUpdatedPayload(core);
   core.broadcastAll({ t: 'server.updated', d });
   return d;
+};
+
+/** Bytes of every stored attachment, used or still waiting for its message. */
+export function storageUsedBytes(core: Pick<TextCore, 'db'>): number {
+  return Number(core.db.get<{ n: number | null }>('SELECT SUM(size) AS n FROM files')?.n ?? 0);
+}
+
+/** `server.storage {}` (spec 2026-10-01-anexos §2: Server settings → Overview shows the space used). */
+const serverStorage: Handler = (core, ctx, payload) => {
+  serverStorageSchema.parse(payload ?? {});
+  core.access.requireServer(core.member(ctx.userId), PERMISSIONS.MANAGE_SERVER);
+  const meta = getMeta(core.db);
+  const result: ServerStorage = { usedBytes: storageUsedBytes(core), uploadLimitMb: meta.uploadLimitMb, storageQuotaMb: meta.storageQuotaMb };
+  return result;
 };
 
 /** Owner only, to a current member; the old owner keeps power through the Admin role (spec §3.3). */
@@ -146,5 +165,6 @@ export const serverHandlers: Record<string, Handler> = {
   'invite.list': inviteList,
   'invite.revoke': inviteRevoke,
   'server.update': serverUpdate,
+  'server.storage': serverStorage,
   'server.transferOwnership': transferOwnership,
 };

@@ -30,7 +30,7 @@ export interface VoiceAccess {
 
 export interface TextModule extends ServerModule {
   readonly name: typeof TEXT_MODULE_NAME;
-  /** In-process signals: `membership.removed`, `access.changed`, `channel.deleted`, `visibility.changed`. */
+  /** In-process signals: `membership.removed`, `access.changed`, `channel.deleted`, `messages.deleted`, `visibility.changed`. */
   readonly events: TextEvents;
   /** Usable once the server started (after init). */
   readonly voiceAccess: VoiceAccess;
