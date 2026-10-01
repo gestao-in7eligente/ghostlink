@@ -1,51 +1,11 @@
 /* Direct messages: what the server chat (chat.module.css) does not already style. */
 
-/* ---- avatars (initials until avatars exist) ---- */
-
-.avatar {
-  position: relative;
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  user-select: none;
-}
-
-.avatarSmall {
-  width: 32px;
-  height: 32px;
-  font-size: 13px;
-}
-
-.avatarLarge {
-  width: 80px;
-  height: 80px;
-  font-size: 30px;
-}
-
-.dot {
-  position: absolute;
-  right: -3px;
-  bottom: -3px;
-  width: 14px;
-  height: 14px;
-  border: 3px solid var(--bg-chat);
-  border-radius: 50%;
-  background: var(--text-ghost);
-}
-
-.dotOn {
-  background: var(--success);
-}
-
 /* ---- header ---- */
+
+/* The presence dot is ringed in the surface behind it (primitives' Avatar reads --dot-ring). */
+.header {
+  --dot-ring: var(--bg-chat);
+}
 
 .headerStatus {
   color: var(--text-faint);
@@ -115,6 +75,8 @@
 }
 
 .row {
+  /* The avatar's presence dot is ringed in the surface behind it (primitives' --dot-ring). */
+  --dot-ring: var(--bg-sidebar);
   position: relative;
   display: flex;
   align-items: center;
@@ -123,11 +85,13 @@
 }
 
 .row:hover {
+  --dot-ring: var(--bg-input);
   background: var(--bg-input);
 }
 
 .rowSelected,
 .rowSelected:hover {
+  --dot-ring: var(--bg-selected);
   background: var(--bg-selected);
 }
 
@@ -147,19 +111,6 @@
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-}
-
-.row .dot {
-  border-color: var(--bg-sidebar);
-}
-
-.row:hover .dot,
-.rowSelected .dot {
-  border-color: var(--bg-input);
-}
-
-.rowSelected .dot {
-  border-color: var(--bg-selected);
 }
 
 .row:hover .rowButton,

@@ -6,7 +6,7 @@ import type { Friend } from '../../shared/friendsTypes.js';
 import type { RendererWelcome, SavedServer } from '../../shared/ipcTypes.js';
 import d from '../features/dm/dm.module.css';
 import { sidebarConversations } from '../features/dm/dmModel.js';
-import { DmView, Initials } from '../features/dm/DmView.js';
+import { DmView } from '../features/dm/DmView.js';
 import { FriendsHome } from '../features/friends/FriendsHome.js';
 import { friendName, pendingIncoming } from '../features/friends/friendsModel.js';
 import { useHostStore } from '../features/host/hostStore.js';
@@ -15,6 +15,7 @@ import { deletionMessage } from '../features/serverDelete/serverDeleteModel.js';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 import l from '../layout/layout.module.css';
 import { serverInitials } from '../layout/names.js';
+import { Avatar } from '../layout/primitives.js';
 import { ServerRail } from '../layout/ServerRail.js';
 import { UserPanel } from '../layout/UserPanel.js';
 import { UserSettings } from '../layout/UserSettings.js';
@@ -200,7 +201,7 @@ function DmRow({
   return (
     <li className={classes.filter(Boolean).join(' ')}>
       <button type="button" className={d.rowButton} aria-current={selected ? 'page' : undefined} onClick={() => useDmStore.getState().select(conversation.id)}>
-        <Initials name={name} size="small" online={friend?.state === 'friend' ? friend.online : null} />
+        <Avatar size={32} name={name} online={friend?.state === 'friend' ? friend.online : null} />
         <span className={d.rowName}>{name}</span>
         {unread > 0 && (
           <span className={d.badge} aria-label={t('dm.unread', { count: unread })}>

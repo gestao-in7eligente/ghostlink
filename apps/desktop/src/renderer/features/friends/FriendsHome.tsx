@@ -3,8 +3,7 @@ import { Check, EllipsisVertical, MessageCircle, Search, Users, X } from 'lucide
 import type { Friend, FriendsSnapshot } from '../../../shared/friendsTypes.js';
 import { GhostMark } from '../../components/GhostMark.js';
 import { errorCodeOf, errorMessage, useT } from '../../i18n/index.js';
-import { serverInitials } from '../../layout/names.js';
-import { ConfirmDialog, Menu, MenuItem, MenuSeparator, primitives as p } from '../../layout/primitives.js';
+import { Avatar, ConfirmDialog, Menu, MenuItem, MenuSeparator, primitives as p } from '../../layout/primitives.js';
 import { useDmStore } from '../../stores/dm.js';
 import { useFriendsStore } from '../../stores/friends.js';
 import { AddFriendPanel } from './AddFriendPanel.js';
@@ -213,10 +212,7 @@ function FriendRow({
           : t('friends.status.blocked', { code });
   return (
     <li className={f.row}>
-      <span className={f.avatar} aria-hidden="true">
-        {serverInitials(name)}
-        {friend.state === 'friend' && <span className={friend.online ? `${f.dot} ${f.dotOn}` : f.dot} />}
-      </span>
+      <Avatar size={32} name={name} online={friend.state === 'friend' ? friend.online : null} />
       <span className={f.rowText}>
         <span className={f.rowName}>{name}</span>
         <span className={f.rowSub}>{status}</span>

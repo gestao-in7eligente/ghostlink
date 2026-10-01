@@ -204,6 +204,8 @@
 }
 
 .row {
+  /* The avatar's presence dot is ringed in the surface behind it (primitives' --dot-ring). */
+  --dot-ring: var(--bg-chat);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -224,43 +226,8 @@
 
 .row:hover,
 .row:focus-within {
+  --dot-ring: var(--bg-hover);
   background: var(--bg-hover);
-}
-
-.avatar {
-  position: relative;
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-/* Presence, bottom-right of the avatar, ringed in the surface behind it. */
-.dot {
-  position: absolute;
-  right: -3px;
-  bottom: -3px;
-  width: 14px;
-  height: 14px;
-  border: 3px solid var(--bg-chat);
-  border-radius: 50%;
-  background: var(--text-ghost);
-}
-
-.row:hover .dot,
-.row:focus-within .dot {
-  border-color: var(--bg-hover);
-}
-
-.dotOn {
-  background: var(--success);
 }
 
 .rowText {

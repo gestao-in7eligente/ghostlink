@@ -3,8 +3,7 @@ import { ArrowDown, Check, CheckCheck, CornerUpLeft, Pencil, Reply, Trash2 } fro
 import type { DmConversation, DmMessage } from '../../../shared/dmTypes.js';
 import type { Friend } from '../../../shared/friendsTypes.js';
 import { useT, type Translate } from '../../i18n/index.js';
-import { serverInitials } from '../../layout/names.js';
-import { ConfirmDialog } from '../../layout/primitives.js';
+import { Avatar, ConfirmDialog } from '../../layout/primitives.js';
 import { applyOwn, useDmStore, type DmLog } from '../../stores/dm.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import c from '../chat/chat.module.css';
@@ -20,17 +19,6 @@ const EMPTY: DmMessage[] = [];
 const STICK_PX = 32;
 /** Older messages load when the top is this close. */
 const PREFETCH_PX = 400;
-
-/** An initials circle with an optional presence dot (avatars come later). */
-export function Initials({ name, size = 'normal', online = null }: { name: string; size?: 'small' | 'normal' | 'large'; online?: boolean | null }) {
-  const sized = size === 'small' ? d.avatarSmall : size === 'large' ? d.avatarLarge : '';
-  return (
-    <span className={`${d.avatar} ${sized}`} aria-hidden="true">
-      {serverInitials(name)}
-      {online !== null && <span className={online ? `${d.dot} ${d.dotOn}` : d.dot} />}
-    </span>
-  );
-}
 
 interface DmEnv {
   t: Translate;
@@ -120,8 +108,8 @@ export function DmView({ conversation, friend, name, myName }: { conversation: D
 
   return (
     <>
-      <header className={c.header}>
-        <Initials name={name} size="small" online={online} />
+      <header className={`${c.header} ${d.header}`}>
+        <Avatar size={32} name={name} online={online} />
         <h1 className={c.headerName}>{name}</h1>
         {online !== null && <span className={d.headerStatus}>{t(online ? 'friends.status.online' : 'friends.status.offline')}</span>}
       </header>
@@ -246,7 +234,7 @@ function DmMessages({
     if (log.hasMore) return <p className={c.listNote}>{t('dm.loadingOlder')}</p>;
     return (
       <div className={d.start}>
-        <Initials name={startName} size="large" />
+        <Avatar size={80} name={startName} />
         <h2 className={d.startName}>{startName}</h2>
         <p className={d.startText}>{t('dm.start', { name: startName })}</p>
         <p className={d.startHint}>{t('dm.startHint')}</p>
@@ -309,7 +297,7 @@ const DmRowView = memo(function DmRowView({ row, env }: { row: DmRow; env: DmEnv
     <div id={`dm-msg-${m.id}`} className={classes.filter(Boolean).join(' ')} role="article" aria-label={`${name}, ${formatStamp(m.ts, env.locale)}`}>
       {m.replyTo !== null && <ReplyPreview message={m} env={env} />}
       {row.head ? (
-        <Initials name={name} />
+        <Avatar size={40} name={name} self={m.mine} />
       ) : (
         <time className={c.gutter} dateTime={new Date(m.ts).toISOString()} title={formatFull(m.ts, env.locale)}>
           {formatTime(m.ts, env.locale)}
