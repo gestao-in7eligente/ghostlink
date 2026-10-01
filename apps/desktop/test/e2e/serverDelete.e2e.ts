@@ -47,7 +47,10 @@ async function deleteFromMenu(page: Page, screenshot?: string): Promise<void> {
   expect(await confirm.isDisabled()).toBe(true);
   await modal.getByLabel('Digite o nome do servidor para confirmar').fill(SERVER);
   expect(await confirm.isEnabled()).toBe(true);
-  if (screenshot) await page.screenshot({ path: shot(screenshot) });
+  if (screenshot) {
+    await page.waitForTimeout(400); // past the dialog's fade-in
+    await page.screenshot({ path: shot(screenshot) });
+  }
   await confirm.click();
   await modal.waitFor({ state: 'detached', timeout: 15_000 });
 }
@@ -155,6 +158,7 @@ describe('leave and delete a server: Ana deletes, Bia is out, Ana restores, Bia 
     await bia.page.getByRole('menuitem', { name: 'Sair do servidor' }).click();
     const leave = bia.page.getByRole('dialog', { name: `Sair de ${SERVER}?` });
     await leave.getByText('Apagar também todas as minhas mensagens').waitFor({ timeout: 20_000 });
+    await bia.page.waitForTimeout(400); // past the dialog's fade-in
     await bia.page.screenshot({ path: shot('member-leave-dialog') });
     await leave.getByRole('button', { name: 'Cancelar' }).click();
     await leave.waitFor({ state: 'detached' });
