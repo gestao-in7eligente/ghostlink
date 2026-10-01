@@ -109,6 +109,8 @@ describe('server request schemas (strict)', () => {
     expect(msgSendSchema.safeParse({ ...ok, replyTo: -1 }).success).toBe(false);
     expect(msgSendSchema.safeParse({ ...ok, replyTo: 1.5 }).success).toBe(false);
     expect(msgSendSchema.safeParse({ ...ok, attachmentIds: Array(11).fill(ROLE) }).success).toBe(false);
+    expect(msgSendSchema.safeParse({ ...ok, content: '', attachmentIds: Array(10).fill(ROLE) }).success).toBe(true);
+    expect(msgSendSchema.safeParse({ ...ok, attachmentIds: ['../x'] }).success).toBe(false);
     expect(msgSendSchema.safeParse({ ...ok, extra: 1 }).success).toBe(false);
     expect(msgSendSchema.safeParse({ ...ok, channelId: '../x' }).success).toBe(false);
   });
@@ -140,12 +142,16 @@ describe('server request schemas (strict)', () => {
     expect(profileUpdateSchema.safeParse({ avatarFileId: null }).success).toBe(false);
   });
 
-  it('server.update: no icon or upload limits in v0.1', () => {
+  it('server.update: the upload limit and the quota within bounds; the icon goes through upload.begin', () => {
     expect(serverUpdateSchema.safeParse({ name: 'Casa', joinMode: 'password', password: 'x', maxMembers: 10 }).success).toBe(true);
     expect(serverUpdateSchema.safeParse({ password: null }).success).toBe(true);
     expect(serverUpdateSchema.safeParse({ iconFileId: ROLE }).success).toBe(false);
     expect(serverUpdateSchema.safeParse({ maxMembers: 0 }).success).toBe(false);
     expect(serverUpdateSchema.safeParse({ joinMode: 'secret' }).success).toBe(false);
+    expect(serverUpdateSchema.safeParse({ uploadLimitMb: 100, storageQuotaMb: 50_000 }).success).toBe(true);
+    for (const bad of [{ uploadLimitMb: 0 }, { uploadLimitMb: 2049 }, { uploadLimitMb: 1.5 }, { storageQuotaMb: 0 }, { storageQuotaMb: 1_048_577 }]) {
+      expect(serverUpdateSchema.safeParse(bad).success).toBe(false);
+    }
   });
 });
 
@@ -161,11 +167,22 @@ describe('client schemas (lenient)', () => {
     reactions: [{ emoji: '👍', userIds: [USER2] }],
     mentions: { users: [], roles: [], everyone: false },
     clientMsgId: 'c1',
+    attachments: [
+      { id: ROLE, name: 'foto.png', size: 1234, kind: 'image', mime: 'image/png', width: 640, height: 480 },
+      { id: 'B'.repeat(26), name: 'nota.pdf', size: 99, kind: 'file', mime: 'application/pdf' },
+    ],
   };
 
   it('keeps known fields and drops unknown ones', () => {
     const parsed = messageSchemaClient.parse({ ...message, surprise: 1 });
     expect(parsed).toEqual(message);
+  });
+
+  it('reads a message from a server without attachments, or with odd ones, safely', () => {
+    const { attachments: _, ...old } = message;
+    expect(messageSchemaClient.parse(old).attachments).toEqual([]);
+    const odd = messageSchemaClient.parse({ ...message, attachments: [{ id: ROLE, name: 'x', size: 1, kind: 'virus', mime: 7, width: -1 }] });
+    expect(odd.attachments).toEqual([{ id: ROLE, name: 'x', size: 1, kind: 'file', mime: 'application/octet-stream', width: undefined, height: undefined }]);
   });
 
   it('parses a channel and a member', () => {
@@ -185,7 +202,13 @@ describe('client schemas (lenient)', () => {
 
   it('parses the text part of a welcome, defaulting missing lists', () => {
     const parsed = textWelcomeSchemaClient.parse({});
-    expect(parsed).toEqual({ channels: [], roles: [], members: [], readStates: [], serverSettings: { ownerId: null, maxMembers: 0, hasPassword: false } });
+    expect(parsed).toEqual({
+      channels: [],
+      roles: [],
+      members: [],
+      readStates: [],
+      serverSettings: { ownerId: null, maxMembers: 0, hasPassword: false, uploadLimitMb: 25, storageQuotaMb: 10_240 },
+    });
   });
 
   it('parses reactions, dropping unknown keys', () => {
@@ -194,8 +217,11 @@ describe('client schemas (lenient)', () => {
   });
 
   it('parses the server.updated payload (and the server.update answer)', () => {
-    const info = { name: 'Casa', joinMode: 'invite', ownerId: USER, maxMembers: 100, hasPassword: false };
+    const info = { name: 'Casa', joinMode: 'invite', ownerId: USER, maxMembers: 100, hasPassword: false, uploadLimitMb: 50, storageQuotaMb: 2048 };
     expect(serverInfoSchemaClient.parse({ ...info, secret: 'x' })).toEqual(info);
+    // A server before attachments sends no limits: its database defaults.
+    const { uploadLimitMb: _u, storageQuotaMb: _q, ...old } = info;
+    expect(serverInfoSchemaClient.parse(old)).toEqual({ ...old, uploadLimitMb: 25, storageQuotaMb: 10_240 });
     expect(serverInfoSchemaClient.safeParse({ ...info, joinMode: 'secret' }).success).toBe(false);
   });
 

@@ -7,6 +7,7 @@
  * ignore payloads that fail to parse (spec §5.1).
  */
 import { z } from 'zod';
+import { ATTACHMENT_LIMITS, attachmentSchemaClient, type Attachment } from './attachments.js';
 import { roleSchemaClient, type Role } from './roles.js';
 
 export const CHAT_LIMITS = {
@@ -95,6 +96,8 @@ export interface Message {
   reactions: Reaction[];
   mentions: MessageMentions;
   clientMsgId: string | null;
+  /** In the order they were sent; empty without files (spec 2026-10-01-anexos §2). */
+  attachments: Attachment[];
 }
 
 export interface ReadState {
@@ -117,6 +120,10 @@ export interface ServerSettings {
   ownerId: string | null;
   maxMembers: number;
   hasPassword: boolean;
+  /** Per attachment, in MB (FILE_TOO_LARGE above it). */
+  uploadLimitMb: number;
+  /** Every attachment together, in MB (QUOTA_EXCEEDED above it); `server.storage` tells the use. */
+  storageQuotaMb: number;
 }
 
 /** The `server.updated` payload, also the answer to `server.update`. */
@@ -266,7 +273,8 @@ export const msgSendSchema = z.strictObject({
   content,
   clientMsgId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
   replyTo: messageIdSchema.optional(),
-  attachmentIds: z.array(z.string().max(64)).max(CHAT_LIMITS.maxAttachments).optional(),
+  /** Files of this sender, uploaded to this channel and not used yet (spec §5.3); the content may then be empty. */
+  attachmentIds: z.array(entityIdSchema).max(CHAT_LIMITS.maxAttachments).optional(),
 });
 
 export const msgEditSchema = z.strictObject({ id: messageIdSchema, content });
@@ -284,12 +292,16 @@ export const inviteCreateSchema = z.strictObject({
 export const inviteListSchema = z.strictObject({});
 export const inviteRevokeSchema = z.strictObject({ code: z.string().regex(/^[A-Z2-7]{10}$/) });
 
-/** v0.1: no icon, upload limit or quota (files arrive in v0.2). */
+const { uploadLimitMb, storageQuotaMb } = ATTACHMENT_LIMITS;
+
+/** The icon has its own upload purpose; the limits are those of attachments (spec 2026-10-01-anexos §2). */
 export const serverUpdateSchema = z.strictObject({
   name: z.string().min(1).max(256).optional(),
   joinMode: z.enum(['open', 'password', 'invite']).optional(),
   password: z.string().min(1).max(CHAT_LIMITS.passwordMax).nullable().optional(),
   maxMembers: z.number().int().min(1).max(CHAT_LIMITS.maxMembersLimit).optional(),
+  uploadLimitMb: z.number().int().min(uploadLimitMb.min).max(uploadLimitMb.max).optional(),
+  storageQuotaMb: z.number().int().min(storageQuotaMb.min).max(storageQuotaMb.max).optional(),
 });
 export const serverTransferSchema = z.strictObject({ userId: userIdSchema });
 export const serverLeaveSchema = z.strictObject({ deleteMyMessages: z.boolean().optional() });
@@ -335,6 +347,8 @@ export const messageSchemaClient: z.ZodType<Message> = z.object({
   reactions: z.array(reactionSchemaClient).max(100).catch([]),
   mentions: mentionsSchemaClient.catch({ users: [], roles: [], everyone: false }),
   clientMsgId: z.string().max(64).nullable().catch(null),
+  // Servers before attachments send none.
+  attachments: z.array(attachmentSchemaClient).max(CHAT_LIMITS.maxAttachments).catch([]),
 });
 
 export const readStateSchemaClient: z.ZodType<ReadState> = z.object({
@@ -353,10 +367,16 @@ export const memberSchemaClient: z.ZodType<Member> = z.object({
   avatar: z.string().regex(/^[0-9a-f]{64}$/).nullable().catch(null),
 });
 
+// Servers before attachments send no limits: the defaults they had in the database.
+const uploadLimitClient = z.number().int().min(0).catch(uploadLimitMb.default);
+const storageQuotaClient = z.number().int().min(0).catch(storageQuotaMb.default);
+
 export const serverSettingsSchemaClient: z.ZodType<ServerSettings> = z.object({
   ownerId: idClient.nullable(),
   maxMembers: z.number().int().min(0),
   hasPassword: z.boolean(),
+  uploadLimitMb: uploadLimitClient,
+  storageQuotaMb: storageQuotaClient,
 });
 
 export const serverInfoSchemaClient: z.ZodType<ServerInfo> = z.object({
@@ -365,6 +385,8 @@ export const serverInfoSchemaClient: z.ZodType<ServerInfo> = z.object({
   ownerId: idClient.nullable(),
   maxMembers: z.number().int().min(0),
   hasPassword: z.boolean(),
+  uploadLimitMb: uploadLimitClient,
+  storageQuotaMb: storageQuotaClient,
 });
 
 export const inviteLinksSchemaClient: z.ZodType<InviteLinks> = z.object({
@@ -374,7 +396,13 @@ export const inviteLinksSchemaClient: z.ZodType<InviteLinks> = z.object({
   webLink: z.string().max(4096),
 });
 
-const DEFAULT_SETTINGS: ServerSettings = { ownerId: null, maxMembers: 0, hasPassword: false };
+const DEFAULT_SETTINGS: ServerSettings = {
+  ownerId: null,
+  maxMembers: 0,
+  hasPassword: false,
+  uploadLimitMb: uploadLimitMb.default,
+  storageQuotaMb: storageQuotaMb.default,
+};
 
 export const textWelcomeSchemaClient: z.ZodType<TextWelcome> = z.object({
   channels: z.array(channelSchemaClient).max(5000).catch([]),

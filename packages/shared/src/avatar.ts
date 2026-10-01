@@ -26,17 +26,12 @@ export const FEATURE_AVATARS = 'avatars';
 export const AVATAR_HASH = /^[0-9a-f]{64}$/;
 export const avatarHashSchema = z.string().regex(AVATAR_HASH);
 
-/** `upload.begin` (spec §4). Only avatars for now; attachments add purposes later. */
-export const uploadBeginSchema = z.strictObject({
+/** `upload.begin` for a profile photo (spec §4); upload.ts joins every purpose in `uploadBeginSchema`. */
+export const avatarUploadBeginSchema = z.strictObject({
   purpose: z.literal('avatar'),
   size: z.number().int().min(1).max(AVATAR_LIMITS.maxBytes),
   sha256: avatarHashSchema,
 });
-export type UploadBegin = z.infer<typeof uploadBeginSchema>;
-export interface UploadBeginResult {
-  /** Single use, valid for 60 s: `POST /upload?u=<uploadToken>`. */
-  uploadToken: string;
-}
 /** The body of a successful avatar `POST /upload`. */
 export interface AvatarUploadResult {
   avatar: string;

@@ -17,3 +17,5 @@ export * from './avatar.js';
 export * from './screenDraw.js';
 export * from './ownerStatus.js';
 export * from './serverDelete.js';
+export * from './attachments.js';
+export * from './upload.js';

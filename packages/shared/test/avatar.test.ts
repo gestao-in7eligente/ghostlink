@@ -79,7 +79,7 @@ describe('signed photo URLs', () => {
   });
 });
 
-describe('uploadBeginSchema', () => {
+describe('uploadBeginSchema (avatar)', () => {
   it('takes an avatar up to 2 MB with its hash, nothing else', () => {
     const ok = { purpose: 'avatar', size: AVATAR_LIMITS.maxBytes, sha256: 'f'.repeat(64) };
     expect(uploadBeginSchema.parse(ok)).toEqual(ok);
