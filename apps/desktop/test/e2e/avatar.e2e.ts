@@ -69,6 +69,8 @@ async function setPhoto(page: Page, shot: string): Promise<void> {
   // Zoom in a little and move: the crop is whatever stays under the circle.
   await crop.getByRole('slider', { name: 'Aproximar' }).press('PageUp');
   await crop.getByRole('group', { name: /^Arraste a imagem/ }).press('ArrowRight');
+  // Past the modal's 140 ms fade-in, so the picture shows the crop and not a blend with the page behind.
+  await page.waitForTimeout(300);
   await page.screenshot({ path: join(tmpdir(), shot) });
   await crop.getByRole('button', { name: 'Aplicar' }).click();
   await crop.waitFor({ state: 'detached', timeout: 20_000 });
