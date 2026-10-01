@@ -107,6 +107,10 @@ export const api: GhostlinkApi = {
     discard: () => invoke(IPC.railwayDiscard),
     onProgress: (cb) => subscribe<RailwayProgress>(IPC_EVENTS.railway, cb),
   },
+  screen: {
+    sources: () => invoke(IPC.screenSources),
+    choose: (choice) => invoke(IPC.screenChoose, choice),
+  },
 };
 
 contextBridge.exposeInMainWorld('ghostlink', api);

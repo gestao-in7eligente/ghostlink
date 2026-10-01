@@ -20,7 +20,7 @@ describe('preload bridge', () => {
     expect(Object.keys(electron.exposed)).toEqual(['ghostlink']);
     expect(electron.exposed.ghostlink).toBe(api);
     expect(Object.keys(api).sort()).toEqual([
-      'app', 'deepLink', 'host', 'identity', 'join', 'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onPtt', 'onServerEvent', 'ptt', 'railway', 'server', 'servers', 'settings', 'updates',
+      'app', 'deepLink', 'host', 'identity', 'join', 'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onPtt', 'onServerEvent', 'ptt', 'railway', 'screen', 'server', 'servers', 'settings', 'updates',
     ]);
     expect(Object.keys(api.host).sort()).toEqual(['copyText', 'firewall', 'fixFirewall', 'invite', 'join', 'logs', 'recoverOwnership', 'restart', 'start', 'status', 'stop']);
     expect(Object.keys(api.app).sort()).toEqual(['copyText', 'info', 'openExternal']);
@@ -32,6 +32,7 @@ describe('preload bridge', () => {
     expect(Object.keys(api.servers).sort()).toEqual(['connect', 'disconnect', 'list', 'remove']);
     expect(Object.keys(api.settings).sort()).toEqual(['get', 'set']);
     expect(Object.keys(api.updates).sort()).toEqual(['onState', 'restart', 'setAutoCheck', 'state']);
+    expect(Object.keys(api.screen).sort()).toEqual(['choose', 'sources']);
     expect(Object.keys(api.railway).sort()).toEqual(['connect', 'create', 'discard', 'disconnect', 'onProgress', 'pending', 'resume', 'status']);
   });
 
@@ -77,6 +78,8 @@ describe('preload bridge', () => {
     ['updates.setAutoCheck', () => api.updates.setAutoCheck(false), IPC.updatesSetAutoCheck, [false]],
     ['updates.restart', () => api.updates.restart(), IPC.updatesRestart, []],
     ['ptt.configure', () => api.ptt.configure({ enabled: true, code: 'KeyV' }), IPC.pttConfigure, [{ enabled: true, code: 'KeyV' }]],
+    ['screen.sources', () => api.screen.sources(), IPC.screenSources, []],
+    ['screen.choose', () => api.screen.choose({ sourceId: 'screen:0:0', audio: true }), IPC.screenChoose, [{ sourceId: 'screen:0:0', audio: true }]],
     ['railway.status', () => api.railway.status(), IPC.railwayStatus, []],
     ['railway.connect', () => api.railway.connect('tok'), IPC.railwayConnect, ['tok']],
     ['railway.disconnect', () => api.railway.disconnect(), IPC.railwayDisconnect, []],

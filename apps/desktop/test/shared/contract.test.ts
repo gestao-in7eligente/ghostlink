@@ -41,6 +41,8 @@ describe('IPC channel names (contract §5)', () => {
       'ghostlink:railway.pending',
       'ghostlink:railway.resume',
       'ghostlink:railway.status',
+      'ghostlink:screen.choose',
+      'ghostlink:screen.sources',
       'ghostlink:server.request',
       'ghostlink:servers.connect',
       'ghostlink:servers.disconnect',
