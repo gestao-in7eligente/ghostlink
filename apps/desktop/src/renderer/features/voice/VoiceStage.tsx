@@ -17,7 +17,7 @@ function Tile({ p, channelId, isSelf, speaking, receiving }: { p: VoiceParticipa
   const className = speaking ? `${s.tile} ${s.tileSpeaking}` : s.tile;
   const body = (
     <>
-      <VoiceAvatar size={72} speaking={speaking} />
+      <VoiceAvatar size={72} speaking={speaking} userId={p.userId} />
       <span className={s.tileName}>
         {name}
         {isSelf && ` (${t('voice.you')})`}

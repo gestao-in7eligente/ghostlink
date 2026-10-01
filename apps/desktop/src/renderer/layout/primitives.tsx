@@ -11,19 +11,43 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, X } from 'lucide-react';
+import { avatarFace, initialsFontSize } from '../features/profile/avatarModel.js';
 import { errorMessage, useT } from '../i18n/index.js';
+import { avatarHashFor, useMyAvatar } from '../stores/profile.js';
 import p from './primitives.module.css';
 
 // ---- avatar ----
 
-/** The default avatar (avatars are v0.2): a generic silhouette on a gray circle, with an optional presence dot. */
-export function Avatar({ size = 40, online = null }: { size?: 32 | 40; online?: boolean | null }) {
+/**
+ * A person's avatar (spec 2026-10-01-foto-de-perfil §6): their photo, or their initials on a
+ * blurple circle when there is none or it fails to load, with an optional presence dot.
+ * `self`: my own, shown from the profile store so a change appears at once.
+ */
+export function Avatar({
+  name,
+  hash = null,
+  size = 40,
+  online = null,
+  self = false,
+}: {
+  name: string;
+  /** The member's photo hash (from the server), or null. */
+  hash?: string | null;
+  size?: number;
+  online?: boolean | null;
+  self?: boolean;
+}) {
+  const shown = avatarHashFor(self, hash, useMyAvatar(self));
+  const [failed, setFailed] = useState<string | null>(null);
+  const face = avatarFace(shown, failed, name);
   return (
-    <span className={p.avatar} style={{ width: size, height: size }} aria-hidden="true">
-      <svg viewBox="0 0 40 40" width={size} height={size} focusable="false">
-        <circle cx="20" cy="15.5" r="6.8" />
-        <path d="M8.6 33.5c0-6.6 5-10.4 11.4-10.4s11.4 3.8 11.4 10.4v1.5H8.6z" />
-      </svg>
+    <span
+      className={face.kind === 'image' ? `${p.avatar} ${p.avatarPhoto}` : p.avatar}
+      style={{ width: size, height: size, fontSize: initialsFontSize(size) }}
+      aria-hidden="true"
+      data-avatar={face.kind}
+    >
+      {face.kind === 'image' ? <img className={p.avatarImage} src={face.src} alt="" draggable={false} onError={() => setFailed(shown)} /> : face.text}
       {online !== null && <span className={online ? `${p.dot} ${p.dotOn}` : p.dot} />}
     </span>
   );

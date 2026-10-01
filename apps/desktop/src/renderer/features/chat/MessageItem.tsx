@@ -19,6 +19,8 @@ export interface MessageEnv {
   md: MarkdownContext;
   /** A member's nickname, or "ex-membro". */
   name(userId: string | null): string;
+  /** A member's photo hash, or null (initials). */
+  avatar(userId: string | null): string | null;
   /** Message text without markup, mentions shown as names (reply previews). */
   plain(content: string): string;
   /** True when the message pings the current user (a mention, their role or @everyone). */
@@ -153,7 +155,7 @@ export const MessageRow = memo(function MessageRow({ row, env }: { row: Row; env
     const p = row.pending;
     return (
       <div className={[c.msg, row.head ? c.msgHead : '', c.msgPending].filter(Boolean).join(' ')} role="article">
-        {row.head ? <Avatar size={40} /> : <span className={c.gutter} />}
+        {row.head ? <Avatar size={40} name={env.name(env.selfId)} hash={env.avatar(env.selfId)} self /> : <span className={c.gutter} />}
         <div className={c.msgBody}>
           {row.head && <Header name={env.name(env.selfId)} at={p.createdAt} env={env} />}
           <div className={c.content}>
@@ -181,7 +183,7 @@ export const MessageRow = memo(function MessageRow({ row, env }: { row: Row; env
     <div className={classes.filter(Boolean).join(' ')} role="article" aria-label={`${env.name(m.authorId)}, ${formatStamp(m.createdAt, env.locale)}`}>
       {m.replyTo && <ReplyPreview message={m} env={env} />}
       {row.head ? (
-        <Avatar size={40} />
+        <Avatar size={40} name={env.name(m.authorId)} hash={env.avatar(m.authorId)} self={m.authorId === env.selfId} />
       ) : (
         <time className={c.gutter} dateTime={new Date(m.createdAt).toISOString()} title={formatFull(m.createdAt, env.locale)}>
           {formatTime(m.createdAt, env.locale)}

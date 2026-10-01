@@ -31,7 +31,7 @@ export function VoiceChannelParticipants({ channelId }: { channelId: string }) {
         const rowClass = speaking ? `${s.participantRow} ${s.participantSpeaking}` : s.participantRow;
         const content = (
           <>
-            <VoiceAvatar size={24} speaking={speaking} />
+            <VoiceAvatar size={24} speaking={speaking} userId={p.userId} />
             <span className={s.participantName}>
               {name}
               {speaking && <span className={s.srOnly}>, {t('voice.speaking')}</span>}
