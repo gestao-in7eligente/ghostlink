@@ -50,13 +50,18 @@ Put a feature's payload and event types, its server-side strict schemas and its 
 
 Migrations are numbered SQL files in `src/db/migrations/NNN_name.sql`, one transaction each. `loadMigrations()` refuses gaps.
 
-- The Text track owns `002_*.sql`; `003_server_delete.sql` adds `server_meta.deleting_at` and `deleted_at` (the `serverDelete` module, `src/deletion/`).
+- The Text track owns `002_*.sql`; `003_server_delete.sql` adds `server_meta.deleting_at` and `deleted_at` (the `serverDelete` module, `src/deletion/`); `004_files.sql` adds the `files` table (attachments).
 - Any other track that needs tables takes the next free number when it merges, and renumbers its file if another track merged first, so the numbering stays contiguous.
 - Never edit a migration that has already been merged. Use `STRICT` tables, as `001_init.sql` does.
 
 ## Tests
 
 Put tests next to the existing ones in `apps/server/test` (and `test/integration`). In a test client, `client.rawWelcome` shows module welcome keys, which the client schema strips. To make grace timers fast, use `limits: { presenceGraceMs: 50 }`.
+
+## Uploads and attachments
+
+- `upload.begin` and `POST /upload` belong to the avatars module, which runs them for every purpose through an `UploadHub` (`src/uploads/`): the strict union schema, the single-use 60 s token bound to its session (at most 3 open), the cut at the declared size, the SHA-256 check, and the body streamed into a temp file. A purpose registers itself once, in its module's `init`, with `ctx.getModule<AvatarsModule>('avatars').uploads.register(purpose, handler)`: the handler checks permissions and limits in `begin`, re-checks them in `canApply`, and in `finish` moves the temp file into place (or deletes it) and answers. Add the purpose's schema to `uploadBeginSchema` in `packages/shared/src/upload.ts`.
+- The `files` module (`src/files/`, spec 2026-10-01-anexos-design.md §2) registers `attachment`, serves the signed `GET /files/<fileId>` and keeps the bytes in `data/files/`. The text module links files to messages in `msg.send`, puts them in `Message.attachments` and deletes their rows with the message (then emits `messages.deleted`) or the channel (cascade); the files module then deletes the bytes no row references, and every minute the uploads no message used within 1 h.
 
 ## Deleting the server
 

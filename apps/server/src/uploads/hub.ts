@@ -25,8 +25,6 @@ export interface UploadPurposeHandler {
   begin(ctx: RequestContext, payload: UploadBegin): { attachment?: AttachmentGrant; answer?: Omit<UploadBeginResult, 'uploadToken'> };
   /** True while the grant may still be used (checked before the body and again before finish). Synchronous. */
   canApply(grant: UploadGrant): boolean;
-  /** Before reading the body: a refusal code (QUOTA_EXCEEDED…) or null. Synchronous. */
-  precheck?(grant: UploadGrant): ErrorCode | null;
   /**
    * The body arrived whole, with the declared size and hash. The handler owns `body.staged`
    * from here: it moves it into place or deletes it. A throw deletes it and answers INTERNAL.
@@ -99,8 +97,9 @@ export class UploadHub {
     const { grant, handler } = usable;
     const declared = req.headers['content-length'];
     if (grant.size > handler.maxBytes() || (declared !== undefined && Number(declared) > grant.size)) return refuseUpload(req, res, 'BAD_REQUEST');
-    const early = handler.precheck?.(grant) ?? null;
-    if (early) return refuseUpload(req, res, early);
+    // Limits that changed since upload.begin are the purpose's to check in finish: the body
+    // (no bigger than what upload.begin accepted) is read first, so the client gets the answer
+    // instead of a reset connection.
     receiveBody(req, { dir: handler.stagingDir, limit: grant.size, idleMs: this.opts.idleMs, headBytes: HEAD_BYTES }, (body) => {
       if (!body.ok) {
         if (body.reason === 'too-large') return refuseUpload(req, res, 'BAD_REQUEST');
