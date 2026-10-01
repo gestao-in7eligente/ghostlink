@@ -5,6 +5,7 @@ import { ensureDataDirs } from './config/paths.js';
 import { coreModule } from './coreModule.js';
 import { Db } from './db/database.js';
 import { ensureMeta, getMeta, setPublicAddresses } from './db/serverMeta.js';
+import { deletionState } from './deletion/state.js';
 import { createHttpServer } from './http/server.js';
 import { buildInviteInfo, createInvite, type InviteInfo } from './invites/invites.js';
 import { resolveLimits, type ServerLimits } from './limits.js';
@@ -87,6 +88,10 @@ export interface ServerInfo {
   members: number;
   hasOwner: boolean;
   publicAddresses: string[];
+  /** The deletion deadline (ms epoch) while the owner's server.delete runs, else null. */
+  deletingAt: number | null;
+  /** The deadline passed: the data is erased (or about to be) and everyone is refused. */
+  deleted: boolean;
 }
 
 const MAX_MEMBERS_LIMIT = 100_000;
@@ -127,6 +132,7 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
   const certificate = await loadOrCreateCertificate(opts.dataDir);
 
   const db = new Db(paths.db);
+  const isDeleted = (): boolean => deletionState(getMeta(db), now()).phase === 'deleted';
   try {
     db.migrate();
     ensureMeta(db, {
@@ -136,7 +142,8 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
       now: now(),
     });
     if (opts.publicAddresses !== undefined) setPublicAddresses(db, normalizeAddresses(opts.publicAddresses));
-    ensureSetupCode(db, opts.dataDir);
+    // A deleted server has no owner left, but nobody may claim it: no setup code.
+    if (!isDeleted()) ensureSetupCode(db, opts.dataDir);
   } catch (e) {
     db.close();
     throw e;
@@ -242,7 +249,7 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     serverKeyId: certificate.serverKeyId,
     version: SERVER_VERSION,
     dataDir: opts.dataDir,
-    setupCode: () => ensureSetupCode(db, opts.dataDir),
+    setupCode: () => (isDeleted() ? null : ensureSetupCode(db, opts.dataDir)),
     createInvite: (o = {}) => {
       const { code } = createInvite(db, { ...o, now: now() });
       return buildInviteInfo(code, { addresses: effectiveAddresses(), serverKeyId: certificate.serverKeyId, name: getMeta(db).name });
@@ -250,6 +257,7 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
     info: () => {
       const meta = getMeta(db);
       const members = Number(db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users WHERE removed_at IS NULL')?.n ?? 0);
+      const deletion = deletionState(meta, now());
       return {
         name: meta.name,
         joinMode: meta.joinMode,
@@ -257,6 +265,8 @@ export async function startServer(opts: StartServerOptions): Promise<GhostServer
         members,
         hasOwner: meta.ownerUserId !== null,
         publicAddresses: meta.publicAddresses,
+        deletingAt: deletion.phase === 'deleting' ? deletion.at : null,
+        deleted: deletion.phase === 'deleted',
       };
     },
     setPublicAddresses: (addresses) => setPublicAddresses(db, normalizeAddresses(addresses)),

@@ -10,6 +10,7 @@ import { integration } from './integration.pt-BR.js';
 import { owner } from './owner.pt-BR.js';
 import { profile } from './profile.pt-BR.js';
 import { railway } from './railway.pt-BR.js';
+import { serverDelete } from './serverDelete.pt-BR.js';
 import { serverUpdate } from './serverUpdate.pt-BR.js';
 import { voice } from './voice.pt-BR.js';
 
@@ -102,8 +103,6 @@ export const messages = {
   'servers.empty': 'Você ainda não entrou em nenhum servidor.',
   'servers.join': 'Entrar num servidor',
   'servers.connect': 'Conectar',
-  'servers.remove': 'Remover',
-  'servers.removeConfirm': 'Remover {name} da lista? Você continua membro e pode voltar pelo endereço.',
   'servers.as': 'como {nickname}',
 
   'errors.BAD_REQUEST': 'Algo nesse pedido não está certo. Confira os dados e tente de novo.',
@@ -126,6 +125,8 @@ export const messages = {
   'errors.SESSION_REPLACED': 'Você entrou por outro lugar, e esta sessão foi encerrada.',
   'errors.KICKED': 'Você foi expulso do servidor.',
   'errors.SERVER_SHUTDOWN': 'O servidor foi desligado.',
+  'errors.SERVER_DELETING': 'O dono desligou este servidor, e ele será excluído em breve.',
+  'errors.SERVER_DELETED': 'Este servidor foi excluído pelo dono.',
   'errors.CHANNEL_FULL': 'O canal está cheio.',
   'errors.FILE_TOO_LARGE': 'O arquivo é grande demais.',
   'errors.IMAGE_TOO_LARGE': 'A imagem é grande demais.',
@@ -152,4 +153,5 @@ export const messages = {
   ...railway,
   ...profile,
   ...serverUpdate,
+  ...serverDelete,
 } as const;

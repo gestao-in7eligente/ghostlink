@@ -19,7 +19,7 @@ const connected = (serverId = 's1'): ConnectionView => connectionReducer(initial
 
 describe('connectionReducer', () => {
   it('stores the welcome when a join succeeds', () => {
-    expect(connected()).toEqual({ state: 'connected', serverId: 's1', error: null, welcome: welcome('s1') });
+    expect(connected()).toEqual({ state: 'connected', serverId: 's1', error: null, deletingAt: null, welcome: welcome('s1') });
   });
 
   it('keeps the snapshot while reconnecting and after a failure, with the error', () => {

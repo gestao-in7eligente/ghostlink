@@ -51,9 +51,19 @@ describe('Home screen server list', () => {
     expect(rows[0]).toMatchObject({ hosted: true, stopped: true });
   });
 
-  it('falls back to the last hosted name when the key is not known yet (fresh start)', () => {
+  it('never matches by name: without a known key nothing is hosted here', () => {
     const rows = homeServerRows(servers, host({ state: 'stopped', serverKeyId: null, config }));
-    expect(rows.map((r) => r.hosted)).toEqual([true, false]);
+    expect(rows.map((r) => r.hosted)).toEqual([false, false]);
+  });
+
+  it('a Railway server named like an old local one is not "Seu servidor · parado" (the owner case, "Tropa do ADS")', () => {
+    const railway = { ...saved('r', 'Tropa do ADS', 'KEY-RAILWAY'), addresses: ['tropa.up.railway.app:443'] };
+    const oldLocal = { name: 'Tropa do ADS', port: 7700, joinMode: 'invite' as const, maxMembers: 100 };
+    for (const serverKeyId of ['KEY-OLD-LOCAL', null]) {
+      const status = host({ state: 'stopped', serverKeyId, config: oldLocal });
+      expect(homeServerRows([railway], status)).toEqual([{ id: 'r', name: 'Tropa do ADS', address: 'tropa.up.railway.app:443', hosted: false, stopped: false }]);
+      expect(shouldStartInsteadOfConnect(railway, status)).toBe(false); // the click connects, it never starts the local one
+    }
   });
 
   it('never marks a server with a different key even if the name matches', () => {
@@ -81,13 +91,14 @@ describe('rail click on a saved server', () => {
 
   it('starts the server hosted here when it is stopped', () => {
     expect(shouldStartInsteadOfConnect(casa, host({ state: 'stopped', serverKeyId: 'KEY-A', config }))).toBe(true);
-    expect(shouldStartInsteadOfConnect(casa, host({ state: 'failed', serverKeyId: null, config }))).toBe(true);
+    expect(shouldStartInsteadOfConnect(casa, host({ state: 'failed', serverKeyId: 'KEY-A', config }))).toBe(true);
   });
 
   it('connects normally when it is running or not hosted here', () => {
     expect(shouldStartInsteadOfConnect(casa, host({ state: 'running', serverKeyId: 'KEY-A', config }))).toBe(false);
     expect(shouldStartInsteadOfConnect(saved('b', 'Amigos', 'KEY-B'), host({ state: 'stopped', serverKeyId: 'KEY-A', config }))).toBe(false);
     expect(shouldStartInsteadOfConnect(casa, null)).toBe(false);
+    expect(shouldStartInsteadOfConnect(casa, host({ state: 'stopped', serverKeyId: null, config }))).toBe(false); // same name, unknown key
   });
 });
 

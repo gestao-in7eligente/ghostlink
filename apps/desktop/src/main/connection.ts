@@ -83,6 +83,8 @@ export interface ServerConnectionOptions {
 const FATAL_CODES: ReadonlySet<AppErrorCode> = new Set<AppErrorCode>([
   'PIN_MISMATCH', 'PROTOCOL_UNSUPPORTED', 'SERVER_OUTDATED', 'BAD_PASSWORD', 'INVITE_REQUIRED', 'INVITE_INVALID',
   'BAD_SIGNATURE', 'BAD_SETUP_CODE', 'SERVER_FULL', 'BANNED', 'REJOIN_BLOCKED', 'NICK_TAKEN', 'SESSION_REPLACED', 'KICKED',
+  // The owner deleted the server (leave/delete spec §3): only a restore brings it back, never a retry.
+  'SERVER_DELETING', 'SERVER_DELETED',
 ]);
 
 export function isFatal(code: AppErrorCode): boolean {
@@ -102,8 +104,17 @@ export function errorCodeFromEvent(d: { code: AppErrorCode; min?: number; max?: 
   return d.code;
 }
 
-function toError(code: AppErrorCode, message?: string): Error {
-  return isErrorCode(code) ? new ProtocolError(code, message) : new AppError(code, message);
+/** `at` is the deletion deadline an `error` event carries with SERVER_DELETING (leave/delete spec §3). */
+function toError(code: AppErrorCode, message?: string, at?: number): Error {
+  if (!isErrorCode(code)) return new AppError(code, message);
+  return at === undefined ? new ProtocolError(code, message) : new ProtocolError(code, message, { at });
+}
+
+/** The deletion deadline (ms epoch, the server's clock) a SERVER_DELETING refusal carried, or null. */
+export function deletionDeadlineOf(e: unknown): number | null {
+  if (!(e instanceof ProtocolError) || e.code !== 'SERVER_DELETING') return null;
+  const at = e.extra?.at;
+  return typeof at === 'number' && Number.isFinite(at) ? at : null;
 }
 
 /**
@@ -241,6 +252,8 @@ export class ServerConnection extends EventEmitter {
   #handshaking: WebSocket | null = null;
   #closedByUser = false;
   #closeReason: AppErrorCode | null = null;
+  /** The deadline the closing `error` event carried (SERVER_DELETING). */
+  #closeAt: number | null = null;
   #nextId = 1;
   readonly #pending = new Map<number, Pending>();
   #reconnectTimer: NodeJS.Timeout | null = null;
@@ -441,7 +454,7 @@ export class ServerConnection extends EventEmitter {
         const { raw, envelope } = frame;
         if (envelope.t === 'error') {
           const event = errorEventSchemaClient.safeParse(raw);
-          return fail(toError(event.success ? errorCodeFromEvent(event.data.d) : 'INTERNAL'));
+          return fail(event.success ? toError(errorCodeFromEvent(event.data.d), undefined, event.data.d.at) : toError('INTERNAL'));
         }
         if (step === 'challenge' && envelope.t === 'challenge') {
           const challenge = challengeSchemaClient.safeParse(envelope.d);
@@ -477,6 +490,7 @@ export class ServerConnection extends EventEmitter {
     this.#ws = ws;
     this.#address = address;
     this.#closeReason = null;
+    this.#closeAt = null;
     ws.on('message', (data, isBinary) => this.#onMessage(data, isBinary));
     ws.on('ping', () => this.#touch());
     ws.on('close', (code, reason) => this.#onClosed(ws, code, reason));
@@ -521,6 +535,7 @@ export class ServerConnection extends EventEmitter {
       // Sent right before the server closes (KICKED, BANNED, SESSION_REPLACED, SERVER_SHUTDOWN…).
       const event = errorEventSchemaClient.safeParse(raw);
       this.#closeReason = event.success ? errorCodeFromEvent(event.data.d) : 'INTERNAL';
+      this.#closeAt = event.success ? (event.data.d.at ?? null) : null;
       return;
     }
     this.emit('event', envelope);
@@ -532,7 +547,7 @@ export class ServerConnection extends EventEmitter {
     this.#detach();
     if (this.#closedByUser) return;
     if (!this.#reconnect || isFatal(cause)) {
-      this.#stop(cause);
+      this.#stop(cause, this.#closeAt);
       return;
     }
     this.#scheduleReconnect();
@@ -546,15 +561,16 @@ export class ServerConnection extends EventEmitter {
       this.#establish(true).catch((e: unknown) => {
         if (this.#closedByUser) return;
         const code = toAppErrorCode(e);
-        if (isFatal(code)) this.#stop(code);
+        if (isFatal(code)) this.#stop(code, deletionDeadlineOf(e));
         else this.#scheduleReconnect();
       });
     }, delay);
   }
 
-  #stop(code: AppErrorCode): void {
+  /** `at`: the deletion deadline that came with SERVER_DELETING, when the server sent one. */
+  #stop(code: AppErrorCode, at: number | null = null): void {
     this.#setState('failed');
-    this.emit('fatal', { code });
+    this.emit('fatal', at === null ? { code } : { code, at });
   }
 
   #setState(state: ConnState): void {

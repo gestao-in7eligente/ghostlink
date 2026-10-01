@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
-import { ChevronDown, Hash, Lock, LogOut, Plus, Settings, UserPlus, Volume2 } from 'lucide-react';
+import { ChevronDown, Hash, Lock, LogOut, Plus, Settings, Trash2, UserPlus, Volume2 } from 'lucide-react';
 import { PERMISSIONS, has, type Channel, type ChannelType } from '@ghostlink/shared';
 import { GhostMark } from '../components/GhostMark.js';
 import { canOpenServerSettings } from '../features/server-settings/access.js';
 import { CreateChannelDialog } from '../features/server-settings/CreateChannelDialog.js';
+import { useOpenServerExit } from '../features/serverDelete/DeletionBanner.js';
 import { useT } from '../i18n/index.js';
 import { isUnread, readMark, sortedChannels } from '../stores/channels.js';
 import { myPermissions } from '../stores/server.js';
@@ -12,7 +13,7 @@ import l from './layout.module.css';
 import { Menu, MenuItem, MenuSeparator } from './primitives.js';
 import { useLayoutSlots } from './slots.js';
 
-export type SidebarDialog = 'invite' | 'settings' | 'leave';
+export type SidebarDialog = 'invite' | 'settings' | 'leave' | 'delete';
 
 /** Server header with its menu, then the text and voice channels (spec §11.1 item 4). */
 export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog) => void }) {
@@ -29,6 +30,8 @@ export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog) => 
   const canInvite = has(bits, PERMISSIONS.CREATE_INVITES);
   const canSettings = canOpenServerSettings(bits, server.ownerId === server.selfId);
   const canManageChannels = has(bits, PERMISSIONS.MANAGE_CHANNELS);
+  // Members leave, the owner deletes (leave/delete spec §2, §3).
+  const exit = useOpenServerExit();
   const text = useMemo(() => sortedChannels(byId, 'text'), [byId]);
   const voice = useMemo(() => sortedChannels(byId, 'voice'), [byId]);
 
@@ -64,10 +67,17 @@ export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog) => 
               {t('layout.serverSettings')}
             </MenuItem>
           )}
-          {(canInvite || canSettings) && <MenuSeparator />}
-          <MenuItem danger onSelect={() => pick('leave')} icon={<LogOut size={16} aria-hidden="true" />}>
-            {t('layout.leave')}
-          </MenuItem>
+          {(canInvite || canSettings) && exit !== null && <MenuSeparator />}
+          {exit === 'leave' && (
+            <MenuItem danger onSelect={() => pick('leave')} icon={<LogOut size={16} aria-hidden="true" />}>
+              {t('layout.leave')}
+            </MenuItem>
+          )}
+          {exit === 'delete' && (
+            <MenuItem danger onSelect={() => pick('delete')} icon={<Trash2 size={16} aria-hidden="true" />}>
+              {t('serverExit.delete')}
+            </MenuItem>
+          )}
         </Menu>
       )}
 

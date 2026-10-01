@@ -26,7 +26,7 @@ export interface IpcDeps {
   appInfo(): AppInfo;
   identity: Pick<IdentityStore, 'status' | 'create' | 'retry' | 'replaceKeepingBackup'>;
   settings: Pick<SettingsStore, 'get' | 'set'>;
-  controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'request'>;
+  controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'request' | 'checkExit' | 'leaveSaved' | 'deleteSaved'>;
   /** Host mode (spec §9). */
   host?: HostIpcDeps;
   /** Identity backup, import and delete (spec §3.4). */
@@ -68,6 +68,8 @@ export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
   'profile.update', 'role.create', 'role.update', 'role.delete', 'role.reorder',
   'member.setRoles', 'member.kick', 'member.ban', 'member.unban', 'bans.list',
   'invite.create', 'invite.list', 'invite.revoke', 'server.update', 'server.transferOwnership', 'server.leave',
+  // Deleting a server (v0.2.4): the owner's banner restores it; `server.delete` goes through servers.delete.
+  'server.restore',
   // Voice track
   'voice.join', 'voice.leave', 'voice.selfState', 'voice.moderate',
   // The pencil on shared screens (v0.2.3)
@@ -137,6 +139,9 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.serversConnect]: z.tuple([serverId]),
   [IPC.serversDisconnect]: z.tuple([]),
   [IPC.serversRemove]: z.tuple([serverId]),
+  [IPC.serversCheckExit]: z.tuple([serverId]),
+  [IPC.serversLeave]: z.tuple([serverId, z.boolean()]),
+  [IPC.serversDelete]: z.tuple([serverId]),
   ...HOST_IPC_ARG_SCHEMAS,
   ...BACKUP_IPC_ARG_SCHEMAS,
   ...RAILWAY_IPC_ARG_SCHEMAS,
@@ -177,6 +182,9 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     [IPC.serversConnect]: (id) => controller.connectSaved(id),
     [IPC.serversDisconnect]: () => controller.disconnect(),
     [IPC.serversRemove]: (id) => controller.remove(id),
+    [IPC.serversCheckExit]: (id) => controller.checkExit(id),
+    [IPC.serversLeave]: (id, deleteMyMessages) => controller.leaveSaved(id, deleteMyMessages),
+    [IPC.serversDelete]: (id) => controller.deleteSaved(id),
     ...createHostIpcHandlers(deps.host),
     ...createBackupIpcHandlers(deps.backup),
     ...createRailwayIpcHandlers(deps.railway),

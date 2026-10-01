@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { APP_ERROR_CODES } from '../../src/shared/appErrors.js';
 import { CHAT_SAME_IN_BOTH } from '../../src/renderer/i18n/chat.pt-BR.js';
+import { SERVER_DELETE_SAME_IN_BOTH } from '../../src/renderer/i18n/serverDelete.pt-BR.js';
 import { VOICE_SAME_IN_BOTH } from '../../src/renderer/i18n/voice.pt-BR.js';
 import { CATALOGS, errorCodeOf, errorMessage, translate, type MessageKey, type Translate } from '../../src/renderer/i18n/index.js';
 
@@ -34,7 +35,7 @@ describe('i18n catalogs (spec §11)', () => {
   });
 
   it('has no empty or untranslated texts', () => {
-    const sameOnPurpose = new Set<string>(['app.beta', 'language.pt-BR', 'language.en', ...CHAT_SAME_IN_BOTH, ...VOICE_SAME_IN_BOTH]);
+    const sameOnPurpose = new Set<string>(['app.beta', 'language.pt-BR', 'language.en', ...CHAT_SAME_IN_BOTH, ...VOICE_SAME_IN_BOTH, ...SERVER_DELETE_SAME_IN_BOTH]);
     for (const key of Object.keys(pt) as MessageKey[]) {
       expect(pt[key].trim(), key).not.toBe('');
       expect(en[key].trim(), key).not.toBe('');

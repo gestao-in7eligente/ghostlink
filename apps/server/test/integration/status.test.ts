@@ -188,7 +188,8 @@ describe('GET /owner/status (servers follow the app, §2)', () => {
       `/owner/status?ts=${ts + 1}&sig=${sig}`, // the signature is for another ts
       `/owner/status?ts=0${ts}&sig=${sig}`,
       `/owner/status?${query}=`,
-      `/owner/status?ts=${ts}&sig=${sig.slice(0, -2)}AA`,
+      // Tampered: one character always changed (a fixed "AA" suffix matched the real one about 1 run in 4096).
+      `/owner/status?ts=${ts}&sig=${sig.slice(0, -3)}${sig.at(-3) === 'A' ? 'B' : 'A'}${sig.slice(-2)}`,
     ]) {
       const res = await https(port, path);
       expect(res.status, path).toBe(403);

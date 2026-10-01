@@ -144,6 +144,13 @@ beforeEach(() => {
 });
 
 describe('the decision (spec §3 steps 1–3)', () => {
+  it('a server its owner deleted is not updated any more (leave/delete spec §3): it waits for its erase', async () => {
+    writeManaged({ ...record(), deletingAt: START + 48 * 3_600_000 } as ReturnType<typeof record>);
+    await started();
+    expect(health).not.toHaveBeenCalled();
+    expect(railway.calls).toEqual([]);
+  });
+
   it('same version: nothing to do, no Railway call, the next check in 30 min', async () => {
     running.set(record().address, APP);
     const u = await started();

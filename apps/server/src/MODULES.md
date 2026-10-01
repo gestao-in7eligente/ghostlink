@@ -44,16 +44,20 @@ Put a feature's payload and event types, its server-side strict schemas and its 
   - On `onSessionOpened`, if the user isn't in the set, add them and broadcast `presence { online: true }`.
   - On `graceExpired: true`, remove them and broadcast `presence { online: false }`.
   - Voice uses the same `graceExpired: true` signal to call `removeParticipant`, and `isOnlineOrInGrace()` for the `/rtc` proxy check.
-- To kick or ban, call `sessions.closeUser(userId, 'KICKED' | 'BANNED')`. The session disappears at once, with no grace, and the hooks run before the call returns.
+- To kick or ban, call `sessions.closeUser(userId, 'KICKED' | 'BANNED')`. The session disappears at once, with no grace, and the hooks run before the call returns. An optional third argument adds fields to the `error` event (`{ at }` with `SERVER_DELETING`).
 
 ## Migrations
 
 Migrations are numbered SQL files in `src/db/migrations/NNN_name.sql`, one transaction each. `loadMigrations()` refuses gaps.
 
-- The Text track owns `002_*.sql`.
+- The Text track owns `002_*.sql`; `003_server_delete.sql` adds `server_meta.deleting_at` and `deleted_at` (the `serverDelete` module, `src/deletion/`).
 - Any other track that needs tables takes the next free number when it merges, and renumbers its file if another track merged first, so the numbering stays contiguous.
 - Never edit a migration that has already been merged. Use `STRICT` tables, as `001_init.sql` does.
 
 ## Tests
 
 Put tests next to the existing ones in `apps/server/test` (and `test/integration`). In a test client, `client.rawWelcome` shows module welcome keys, which the client schema strips. To make grace timers fast, use `limits: { presenceGraceMs: 50 }`.
+
+## Deleting the server
+
+`src/deletion/` (spec 2026-10-01-sair-e-excluir-servidor-design.md): while `server_meta.deleting_at` is set, the handshake and admission refuse everyone but the owner with `SERVER_DELETING`; once the deadline passed, everyone with `SERVER_DELETED`. The `serverDelete` module (registered last) answers `server.delete` / `server.restore` and, at the deadline, closes every session and erases the data in place (`erase.ts`). A table added by a later migration is emptied too, without changes; a module that keeps member data in its own files must add them to `eraseFiles()`.
