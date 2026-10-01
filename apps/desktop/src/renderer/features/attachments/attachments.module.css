@@ -303,7 +303,6 @@
   border-radius: 6px;
   background: var(--bg-raised);
   color: var(--danger-strong);
-  box-shadow: var(--shadow);
   cursor: pointer;
 }
 
@@ -384,9 +383,13 @@
 .stage {
   position: relative;
   display: grid;
+  /* Definite tracks, so the picture's max-width/max-height resolve against the space left. */
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
   min-height: 0;
-  padding: 48px 72px 12px;
+  padding: 56px 76px 8px;
+  overflow: hidden;
 }
 
 .stage img {
