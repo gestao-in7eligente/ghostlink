@@ -62,6 +62,8 @@ export const messages: Record<keyof typeof ptBR, string> = {
   'join.invite.nameHint': '(name given by the invite)',
   'join.invite.addresses': 'Addresses',
   'join.invite.accept': 'Accept invite',
+  'join.known.title': 'Opening {name}…',
+  'join.known.text': 'You joined this server before. There is no need to accept the invite again.',
   'join.tofu.title': 'Check the fingerprint',
   'join.tofu.body':
     'This is your first connection to {address}. Ask the server owner for the fingerprint and compare all four groups before you continue.',

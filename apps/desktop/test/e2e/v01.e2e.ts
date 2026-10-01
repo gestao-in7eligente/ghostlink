@@ -44,6 +44,8 @@ describe.skipIf(!binary)('GhostLink v0.1: host in one app, join from another by 
   /** Channel ids, read from the sidebar once they exist. */
   let sala = '';
   let sala2 = '';
+  /** The invite Bia accepted, reused in the rejoin step. */
+  let inviteLink = '';
   let broken = false;
 
   /** One scenario step: later steps are skipped once one failed, and a failure dumps logs and screenshots. */
@@ -95,6 +97,7 @@ describe.skipIf(!binary)('GhostLink v0.1: host in one app, join from another by 
     const link = ((await invite.locator('code').first().textContent()) ?? '').trim();
     expect(link).toMatch(/\/j\/#GL1-/);
     await invite.getByRole('button', { name: 'Fechar', exact: true }).click();
+    inviteLink = link;
 
     // Bia: onboarding, then back to Home and the rail's "+" → "Entrar em um servidor".
     await onboard(bia.page, 'Bia', 'Entrar num servidor');
@@ -110,6 +113,19 @@ describe.skipIf(!binary)('GhostLink v0.1: host in one app, join from another by 
     await members(bia.page).getByRole('button', { name: /^Ana, Online, Dono/ }).waitFor({ timeout: 15_000 });
     sala = (await voiceChannel(ana.page, 'Sala de voz').getAttribute('data-voice-channel'))!;
     expect(sala).toMatch(/^\w+$/);
+  });
+
+  step('rejoin: the same invite takes Bia straight back in, without accepting it again', 60_000, async () => {
+    // Owner request 2026-10-01: people reopened the invite to come back and were asked again.
+    await bia.page.getByRole('button', { name: 'Início: seus servidores' }).click();
+    await bia.page.getByRole('navigation', { name: 'Início' }).waitFor();
+    await bia.page.getByRole('navigation', { name: 'Servidores' }).getByRole('button', { name: 'Adicionar servidor' }).click();
+    await bia.page.getByRole('dialog', { name: 'Adicionar servidor' }).getByRole('button', { name: /^Entrar em um servidor/ }).click();
+    await bia.page.getByRole('textbox').fill(inviteLink);
+    await bia.page.getByRole('button', { name: 'Continuar' }).click();
+    await textChannel(bia.page, 'geral').waitFor({ timeout: 30_000 });
+    expect(await bia.page.getByRole('button', { name: 'Aceitar convite' }).count()).toBe(0);
+    await members(ana.page).getByRole('button', { name: /^Bia, Online/ }).waitFor({ timeout: 15_000 });
   });
 
   step('chat: messages in #geral reach the other side, both ways', 60_000, async () => {
