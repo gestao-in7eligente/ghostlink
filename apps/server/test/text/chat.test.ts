@@ -23,7 +23,7 @@ describe('seed and welcome (spec §5.3, §6)', () => {
     expect(roles.find((r) => r.name === 'Admin')).toMatchObject({ permissions: PERMISSIONS.ADMINISTRATOR, isDefault: false, color: 0xed4245, hoist: false });
     expect(members).toEqual([expect.objectContaining({ userId: owner.userId, nickname: 'Dono', online: true, roleIds: [] })]);
     expect(readStates).toEqual([{ channelId: channelId(owner, 'geral'), lastReadMessageId: 0, mentionCount: 0 }]);
-    expect(serverSettings).toEqual({ ownerId: owner.userId, maxMembers: 100, hasPassword: false });
+    expect(serverSettings).toEqual({ ownerId: owner.userId, maxMembers: 100, hasPassword: false, icon: null });
     expect(owner.welcome.features).toContain('text');
   });
 

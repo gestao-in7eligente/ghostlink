@@ -3,6 +3,8 @@ import type { Db } from './database.js';
 
 export interface ServerMeta {
   name: string;
+  /** The icon's SHA-256 (hex), or null (spec 2026-10-01-icone-do-servidor); the file lives with the photos. */
+  icon: string | null;
   joinMode: JoinMode;
   passwordHash: string | null;
   ownerUserId: string | null;
@@ -18,6 +20,7 @@ export interface ServerMeta {
 
 interface MetaRow {
   name: string;
+  icon_file_id: string | null;
   join_mode: JoinMode;
   password_hash: string | null;
   owner_user_id: string | null;
@@ -43,6 +46,7 @@ export function getMeta(db: Db): ServerMeta {
   if (!row) throw new Error('server_meta is missing; call ensureMeta first');
   return {
     name: row.name,
+    icon: row.icon_file_id,
     joinMode: row.join_mode,
     passwordHash: row.password_hash,
     ownerUserId: row.owner_user_id,

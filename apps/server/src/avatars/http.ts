@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { AVATAR_HASH, AVATAR_LIMITS, avatarTarget, imageInfo, type AvatarUploadResult, type ErrorCode } from '@ghostlink/shared';
+import { AVATAR_HASH, AVATAR_LIMITS, avatarTarget, imageInfo, type AvatarUploadResult, type ErrorCode, type IconUploadResult } from '@ghostlink/shared';
 import type { Logger } from '../logger.js';
 import { verifySignedQuery } from './signedUrl.js';
 import type { AvatarStore } from './store.js';
@@ -17,11 +17,17 @@ export interface AvatarHttpDeps {
   idleMs: number;
   /** See SessionsApi.fileToken: non-null only for a current session. */
   fileToken(sessionId: string): string | null;
-  /** True while the grant may still change the photo: its session is current and its user a member. */
+  /**
+   * True while the grant may still change what it is for: its session is current and its user
+   * a member (with MANAGE_SERVER for the server icon).
+   */
   canApply(grant: UploadGrant): boolean;
-  /** Points the member at the stored photo, cleans up and tells everyone. Synchronous. */
-  apply(userId: string, hash: string): void;
-  /** True when a current member uses this photo. */
+  /**
+   * Points the member (or the server, for its icon) at the stored image, cleans up and tells
+   * everyone. Synchronous. Returns the body of the answer.
+   */
+  apply(grant: UploadGrant): AvatarUploadResult | IconUploadResult;
+  /** True when a current member's photo, or the server icon, is this image. */
   inUse(hash: string): boolean;
 }
 
@@ -160,15 +166,14 @@ async function storeUpload(deps: AvatarHttpDeps, res: ServerResponse, grant: Upl
     deps.logger.error('avatar upload could not be stored', { error: errnoOf(e) });
     return fail(res, 500, 'INTERNAL');
   }
-  deps.apply(grant.userId, grant.sha256);
-  const result: AvatarUploadResult = { avatar: grant.sha256 };
-  reply(res, 200, result);
+  reply(res, 200, deps.apply(grant));
 }
 
 /**
  * `POST /upload?u=<uploadToken>` (spec 2026-10-01 §4): the token is consumed before
  * anything else; the body is cut as soon as it passes the size of upload.begin.
- * 200 `{ avatar }`, 400 `{ code: 'BAD_REQUEST' }`, 403 `{ code: 'FORBIDDEN' }`.
+ * 200 `{ avatar }` (or `{ icon }` for the server icon), 400 `{ code: 'BAD_REQUEST' }`,
+ * 403 `{ code: 'FORBIDDEN' }`.
  */
 export function serveUpload(deps: AvatarHttpDeps, req: IncomingMessage, res: ServerResponse): void {
   if (req.method === 'OPTIONS') return preflight(res, 'POST, OPTIONS');
@@ -189,8 +194,8 @@ export function serveUpload(deps: AvatarHttpDeps, req: IncomingMessage, res: Ser
 
 /**
  * `GET /avatars/<hash>?sid=…&e=…&s=…` (main spec §7, target `avatar:<hash>`): any current
- * session of this server may read any photo a member uses. 404 for a malformed hash or a
- * photo no one has, 403 for a bad, expired or foreign signature.
+ * session of this server may read any photo a member uses, and the server icon. 404 for a
+ * malformed hash or an image no one uses, 403 for a bad, expired or foreign signature.
  */
 export function serveAvatar(deps: AvatarHttpDeps, req: IncomingMessage, res: ServerResponse, hash: string): void {
   if (req.method === 'OPTIONS') return preflight(res, 'GET, HEAD, OPTIONS');

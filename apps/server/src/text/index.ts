@@ -40,6 +40,10 @@ export interface TextModule extends ServerModule {
    * users column the member carries (the avatars module's `avatar_file_id`).
    */
   announceMember(userId: string): void;
+  /** Server-wide permission bits of a member; 0 for anyone else (the avatars module's server icon). */
+  serverPermissions(userId: string): number;
+  /** Sends `server.updated` as stored now to every member, as server.update does (the server icon). */
+  announceServer(): void;
 }
 
 export interface TextModuleOptions {
@@ -118,6 +122,16 @@ export function createTextModule(opts: TextModuleOptions = {}): TextModule {
       const c = need();
       const member = c.repo.member(userId, c.isOnline(userId));
       if (member) c.broadcastAll({ t: 'member.updated', d: { member } });
+    },
+
+    serverPermissions(userId) {
+      const c = need();
+      return c.access.serverPerms(c.access.subject(userId));
+    },
+
+    announceServer() {
+      const c = need();
+      c.broadcastAll({ t: 'server.updated', d: c.serverInfo() });
     },
 
     init(ctx) {
