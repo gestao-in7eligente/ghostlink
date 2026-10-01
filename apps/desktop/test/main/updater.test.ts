@@ -104,7 +104,7 @@ describe('Updater configuration (spec §15)', () => {
   it('does nothing at all when unsupported (dev, smoke, not Windows)', async () => {
     const updater = load({ supported: false });
     updater.start();
-    expect(updater.state()).toEqual({ status: 'unsupported', autoCheck: true, currentVersion: '0.1.0', version: null, percent: null });
+    expect(updater.state()).toEqual({ status: 'unsupported', autoCheck: true, currentVersion: '0.1.0', version: null, percent: null, lastCheckedAt: null });
     await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS * 2);
     await updater.checkNow();
     expect(backend.checkForUpdates).not.toHaveBeenCalled();
@@ -196,8 +196,60 @@ describe('Updater schedule', () => {
   });
 });
 
+describe('Updater: the time of the last check ("Você está na versão mais recente")', () => {
+  /** checkForUpdates the way electron-updater runs it: the events come before the promise resolves. */
+  function nextCheck(...events: Array<[string, unknown?]>) {
+    backend.checkForUpdates.mockImplementationOnce(async () => {
+      backend.emit('checking-for-update');
+      for (const [event, payload] of events) backend.emit(event, payload);
+      return null;
+    });
+  }
+
+  it('records when a check got an answer, with or without an update, and keeps it when a check fails', async () => {
+    vi.setSystemTime(new Date(2026, 9, 1, 14, 2));
+    const first = Date.now();
+    const updater = load();
+    updater.start();
+    expect(updater.state().lastCheckedAt).toBeNull();
+
+    nextCheck(['update-not-available', { version: '0.1.0' }]);
+    await updater.checkNow();
+    expect(last()).toMatchObject({ status: 'idle', lastCheckedAt: first });
+
+    vi.setSystemTime(first + 60_000); // offline: the error event, then the rejected promise
+    backend.checkForUpdates.mockImplementationOnce(async () => {
+      backend.emit('checking-for-update');
+      backend.emit('error', Object.assign(new Error('net::ERR_INTERNET_DISCONNECTED'), { code: 'ERR_NETWORK' }));
+      throw new Error('net::ERR_INTERNET_DISCONNECTED');
+    });
+    await updater.checkNow();
+    expect(last()).toMatchObject({ status: 'idle', lastCheckedAt: first });
+
+    vi.setSystemTime(first + 120_000);
+    nextCheck(['update-available', { version: '0.1.1' }]);
+    await updater.checkNow();
+    expect(last()).toMatchObject({ status: 'downloading', version: '0.1.1', lastCheckedAt: first + 120_000 });
+    updater.dispose();
+  });
+
+  it('lets the person check by hand with automatic checks off, and stays "disabled" afterwards', async () => {
+    const updater = load();
+    updater.setAutoCheck(false);
+    updater.start();
+    nextCheck(['update-not-available', { version: '0.1.0' }]);
+    await updater.checkNow();
+    expect(backend.checkForUpdates).toHaveBeenCalledOnce();
+    expect(updater.state()).toMatchObject({ status: 'disabled', lastCheckedAt: Date.now() });
+    expect(last()).toEqual(updater.state());
+    updater.dispose();
+  });
+});
+
 describe('Updater state for the banner', () => {
   it('reports download progress and the downloaded version', () => {
+    vi.setSystemTime(new Date(2026, 9, 1, 14, 2));
+    const foundAt = Date.now();
     const updater = load();
     updater.start();
     backend.emit('checking-for-update');
@@ -208,7 +260,7 @@ describe('Updater state for the banner', () => {
     backend.emit('download-progress', { percent: 41.9 }); // same whole percent: no new event
     expect(states.filter((s) => s.percent === 42)).toHaveLength(1);
     backend.emit('update-downloaded', { version: '0.1.1' });
-    expect(last()).toEqual({ status: 'downloaded', autoCheck: true, currentVersion: '0.1.0', version: '0.1.1', percent: null });
+    expect(last()).toEqual({ status: 'downloaded', autoCheck: true, currentVersion: '0.1.0', version: '0.1.1', percent: null, lastCheckedAt: foundAt });
     expect(updater.state()).toEqual(last());
     updater.dispose();
   });

@@ -14,4 +14,5 @@ export * from './roles.js';
 export * from './release.js';
 export * from './voice.js';
 export * from './avatar.js';
+export * from './screenDraw.js';
 export * from './ownerStatus.js';

@@ -117,9 +117,10 @@ export function keepScreenAudio(track: { getSettings(): { deviceId?: string } })
   return track.getSettings().deviceId === LOOPBACK_WITHOUT_SELF;
 }
 
-/** Microphones always; a screen and its sound only while I watch that person (spec §8.4). */
+/** Microphones and cameras always; a screen and its sound only while I watch that person (spec §8.4). */
 export function wantsSubscription(source: Track.Source, kind: Track.Kind, userId: string | null, watching: readonly string[]): boolean {
   if (source === Track.Source.Microphone) return kind === Track.Kind.Audio;
+  if (source === Track.Source.Camera) return kind === Track.Kind.Video;
   const screen = (source === Track.Source.ScreenShare && kind === Track.Kind.Video) || (source === Track.Source.ScreenShareAudio && kind === Track.Kind.Audio);
   return screen && userId !== null && watching.includes(userId);
 }

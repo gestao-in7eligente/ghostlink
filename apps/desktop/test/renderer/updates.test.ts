@@ -3,7 +3,7 @@ import type { UpdateState, UpdatesApi } from '../../src/shared/updates.js';
 import { bannerFor, syncUpdates, useUpdateStore } from '../../src/renderer/features/updates/store.js';
 import { translate } from '../../src/renderer/i18n/index.js';
 
-const base: UpdateState = { status: 'idle', autoCheck: true, currentVersion: '0.1.0', version: null, percent: null };
+const base: UpdateState = { status: 'idle', autoCheck: true, currentVersion: '0.1.0', version: null, percent: null, lastCheckedAt: null };
 
 beforeEach(() => {
   useUpdateStore.setState({ state: null, dismissed: null });
@@ -43,6 +43,8 @@ describe('syncUpdates', () => {
     const api: UpdatesApi = {
       state: vi.fn(async () => base),
       setAutoCheck: vi.fn(),
+      checkNow: vi.fn(),
+      notes: vi.fn(),
       restart: vi.fn(),
       onState: vi.fn((cb: (state: UpdateState) => void) => {
         push = cb;
@@ -62,6 +64,8 @@ describe('syncUpdates', () => {
     const api: UpdatesApi = {
       state: vi.fn(async () => Promise.reject(new Error('INTERNAL'))),
       setAutoCheck: vi.fn(),
+      checkNow: vi.fn(),
+      notes: vi.fn(),
       restart: vi.fn(),
       onState: vi.fn(() => () => {}),
     };

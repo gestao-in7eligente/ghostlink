@@ -1,7 +1,8 @@
 // Main-process bootstrap (contract §5). Everything testable lives in the modules it
 // wires together; this file is the thin glue that needs a real Electron.
-import { BrowserWindow, Menu, Notification, app, clipboard, desktopCapturer, dialog, net, safeStorage, session, shell } from 'electron';
+import { BrowserWindow, Menu, Notification, app, clipboard, desktopCapturer, dialog, net, safeStorage, screen, session, shell } from 'electron';
 import { mkdtempSync } from 'node:fs';
+import { release } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { APP_ID, APP_NAME, DEFAULT_PORT } from '@ghostlink/shared';
@@ -11,6 +12,7 @@ import { createAvatars } from './avatars/index.js';
 import { ClientController } from './controller.js';
 import { GHOSTKEY_EXTENSION, IdentityBackup } from './backup.js';
 import { DeepLinks, extractDeepLink, registerProtocolClient } from './deeplink.js';
+import { DrawOverlay, keepsOutOfCapture } from './drawOverlay.js';
 import { openExternalWithConfirm } from './externalLinks.js';
 import { HostFirewall, firewallPrograms } from './hostFirewall.js';
 import { HostManager } from './hostManager.js';
@@ -26,6 +28,7 @@ import { railwayImage } from './railway/image.js';
 import { RailwayProvisioner } from './railway/provisioner.js';
 import { ServerUpdates } from './railway/serverUpdates.js';
 import { RailwayStore } from './railway/store.js';
+import { ReleaseNotes } from './releaseNotes.js';
 import { RailwayTokenStore } from './railway/token.js';
 import { SavedServersStore } from './savedServers.js';
 import { ScreenPicker } from './screenPicker.js';
@@ -35,6 +38,7 @@ import { runSmoke } from './smoke.js';
 import { UpdateSplash } from './updateSplash.js';
 import { Updater, createUpdaterBackend, type StartupOutcome } from './updater.js';
 import { createReleaseFileFetcher } from './updaterSignature.js';
+import { loadWin32WindowApi } from './win32Window.js';
 import { applicationMenuTemplate, mainWindowOptions } from './window.js';
 
 const smoke = process.env.GHOSTLINK_SMOKE === '1';
@@ -125,13 +129,18 @@ async function start(): Promise<BrowserWindow | null> {
   const send = (channel: string, payload: unknown) => {
     if (target && !target.isDestroyed()) target.webContents.send(channel, payload);
   };
+  // The Updates page's "O que muda": a found version's notes come from its GitHub release.
+  const releaseNotes = new ReleaseNotes({ fetch: (url, init) => net.fetch(url, init), log: (message) => mainLog.warn(message) });
   // Spec §15: Windows installs only, never in development or smoke mode; the setting can turn it off.
   const updater = Updater.load({
     backend: createUpdaterBackend({ packaged: app.isPackaged, smoke, platform: process.platform, resourcesPath: process.resourcesPath }),
     userDataDir: userData,
     currentVersion: app.getVersion(),
     fetchReleaseFile: createReleaseFileFetcher((url, init) => net.fetch(url, init)),
-    emit: (state) => send(IPC_EVENTS.updates, state),
+    emit: (state) => {
+      releaseNotes.follow(state); // before the page hears of the version, so its notes are already on the way
+      send(IPC_EVENTS.updates, state);
+    },
   });
   // "Atualizar ao abrir": the first check runs behind the splash, before anything else exists.
   const opening = await checkForUpdatesOnOpen(updater, settings.get().locale);
@@ -200,8 +209,30 @@ async function start(): Promise<BrowserWindow | null> {
     appOrigin,
     ownMediaSourceId: () => (window.isDestroyed() ? null : window.getMediaSourceId()),
   });
+  // The pencil over the shared monitor (pencil spec §4): it opens over the screen main handed over,
+  // or follows the shared window (Windows: koffi is imported with the first one).
+  const drawOverlay = new DrawOverlay({
+    url: `${APP_ORIGIN}/drawOverlay.html`,
+    preload: fileURLToPath(new URL('../preload/drawOverlay.cjs', import.meta.url)),
+    packaged: app.isPackaged,
+    screenSources: () => desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } }),
+    displays: () => screen.getAllDisplays(),
+    createWindow: (options) => new BrowserWindow(options),
+    excludedFromCapture: keepsOutOfCapture(process.platform, release()),
+    windowApi: () => loadWin32WindowApi({ platform: process.platform }),
+    screenToDip: (rect) => screen.screenToDipRect(null, rect),
+    log: (message) => mainLog.warn(message),
+  });
+  // A reload, a crash or the window closing ends the share, and the overlay with it.
+  window.on('closed', () => drawOverlay.close());
+  window.webContents.on('render-process-gone', () => drawOverlay.close());
+  window.webContents.on('did-start-loading', () => drawOverlay.close());
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    screenPicker.handleRequest(request, callback).catch((e: unknown) => mainLog.error('[screen] the capture answer failed:', e));
+    const answer = (streams: Parameters<typeof callback>[0]) => {
+      drawOverlay.granted(streams.video && 'id' in streams.video ? streams.video.id : null);
+      callback(streams);
+    };
+    screenPicker.handleRequest(request, answer).catch((e: unknown) => mainLog.error('[screen] the capture answer failed:', e));
   });
   registerIpc({
     appOrigin,
@@ -227,6 +258,7 @@ async function start(): Promise<BrowserWindow | null> {
       copyText: (text) => clipboard.writeText(text),
     },
     updates: updater,
+    releaseNotes,
     ptt,
     appInfo: () => ({ version: app.getVersion(), platform: process.platform as Platform, locale: app.getLocale() }),
     host: { manager: host, copyText: (text) => clipboard.writeText(text), firewall: hostFirewall(host) },
@@ -235,6 +267,7 @@ async function start(): Promise<BrowserWindow | null> {
     railway,
     profile: avatars.profile,
     screen: screenPicker,
+    draw: drawOverlay,
     serverUpdates,
   });
   updater.start(); // the 6 h checks; the first one already ran behind the splash when it showed

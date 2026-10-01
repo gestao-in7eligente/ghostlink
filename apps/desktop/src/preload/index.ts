@@ -93,6 +93,8 @@ export const api: GhostlinkApi = {
   updates: {
     state: () => invoke(IPC.updatesState),
     setAutoCheck: (enabled) => invoke(IPC.updatesSetAutoCheck, enabled),
+    checkNow: () => invoke(IPC.updatesCheckNow),
+    notes: (version) => invoke(IPC.updatesNotes, version),
     restart: () => invoke(IPC.updatesRestart),
     onState: (cb) => subscribe<UpdateState>(IPC_EVENTS.updates, cb),
   },
@@ -116,6 +118,11 @@ export const api: GhostlinkApi = {
   screen: {
     sources: () => invoke(IPC.screenSources),
     choose: (choice) => invoke(IPC.screenChoose, choice),
+  },
+  draw: {
+    overlayOpen: () => invoke(IPC.drawOverlayOpen),
+    overlayStroke: (stroke) => invoke(IPC.drawOverlayStroke, stroke),
+    overlayClose: () => invoke(IPC.drawOverlayClose),
   },
   serverUpdates: {
     state: (serverKeyId) => invoke(IPC.serverUpdatesState, serverKeyId),

@@ -2,6 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  max-width: 720px;
 }
 
 .title {
@@ -12,6 +13,117 @@
   text-transform: uppercase;
   color: var(--text-muted);
 }
+
+/* ---- the state of the app: installed version, "Procurar atualizações", progress, restart ---- */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sidebar);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.version {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.status {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.statusIcon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--text-faint);
+}
+
+.statusOk {
+  color: var(--success);
+}
+
+.statusWarn {
+  color: var(--warning);
+}
+
+.statusBad {
+  color: var(--danger);
+}
+
+.statusNew {
+  color: var(--accent-text);
+}
+
+.statusText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.statusLine {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.statusHint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-faint);
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-hover);
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 200ms ease;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.checkIcon {
+  flex: none;
+}
+
+/* ---- automatic checks ---- */
 
 .row {
   display: flex;
@@ -24,15 +136,10 @@
   font-weight: 500;
 }
 
-.hint,
-.status {
+.hint {
   margin: 0;
   font-size: 13px;
   color: var(--text-muted);
-}
-
-.status {
-  color: var(--text);
 }
 
 /* Discord-style toggle: a pill with a sliding knob; the accent means "on". */
@@ -78,26 +185,88 @@
   transform: translateX(16px);
 }
 
-.actions {
+/* ---- what is new: Discord's changelog look, a colored header running into a hairline ---- */
+
+.notes {
   display: flex;
-  justify-content: flex-start;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
 }
 
-.primary {
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  background: var(--accent);
-  color: var(--accent-ink);
-  padding: var(--space-1) var(--space-3);
-  font-weight: 500;
-  cursor: pointer;
+.notesTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
-.primary:hover {
-  background: var(--accent-hover);
+.notesTitle::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
 }
 
-.primary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.notesTitleNew {
+  color: var(--accent-text);
+}
+
+.noteList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0 0 0 20px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.noteList li::marker {
+  color: var(--text-ghost);
+}
+
+.noteBold {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.noteCode {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+}
+
+.noteLink {
+  color: var(--link);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.noteLink:hover {
+  text-decoration: underline;
+}
+
+.notesNote {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-faint);
+}
+
+.notesNote .noteLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }

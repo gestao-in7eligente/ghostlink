@@ -3,12 +3,13 @@
 // dependencies, so the sandboxed preload bundle stays tiny.
 import type { Envelope, ParsedJoinInput, WelcomePayload } from '@ghostlink/shared';
 import type { AppErrorCode } from './appErrors.js';
+import type { DrawApi, OverlayStroke } from './drawOverlay.js';
 import type { FirewallFixResult, FirewallStatus, HostApi, HostConfig, HostInvite, HostInviteOptions, HostStartResult, HostStatus } from './hostTypes.js';
 import type { AvatarInfo, ProfileApi } from './profileTypes.js';
 import type { RailwayAccount, RailwayCreateRequest, RailwayPending, RailwayProgress } from './railwayTypes.js';
 import type { ScreenApi, ScreenChoice, ScreenSource } from './screenTypes.js';
 import type { ManagedServerUpdate, ServerUpdatesApi } from './serverUpdateTypes.js';
-import type { UpdateState, UpdatesApi } from './updates.js';
+import type { ReleaseNotesResult, UpdateState, UpdatesApi } from './updates.js';
 
 export type IdentityStatus = 'none' | 'ready' | 'locked';
 export type ConnState = 'idle' | 'connecting' | 'authenticating' | 'connected' | 'reconnecting' | 'failed';
@@ -156,6 +157,8 @@ export interface GhostlinkApi {
   railway: RailwayApi;
   profile: ProfileApi;
   screen: ScreenApi;
+  /** The pencil's overlay over my shared monitor (pencil spec §4). */
+  draw: DrawApi;
   /** Servers follow the app's version (spec 2026-10-01 §3, §5): the Railway servers this app created. */
   serverUpdates: ServerUpdatesApi;
 }
@@ -216,6 +219,8 @@ export const IPC = {
   hostFixFirewall: 'ghostlink:host.fixFirewall',
   updatesState: 'ghostlink:updates.state',
   updatesSetAutoCheck: 'ghostlink:updates.setAutoCheck',
+  updatesCheckNow: 'ghostlink:updates.checkNow',
+  updatesNotes: 'ghostlink:updates.notes',
   updatesRestart: 'ghostlink:updates.restart',
   pttConfigure: 'ghostlink:ptt.configure',
   railwayStatus: 'ghostlink:railway.status',
@@ -230,6 +235,9 @@ export const IPC = {
   profileClearAvatar: 'ghostlink:profile.clearAvatar',
   screenSources: 'ghostlink:screen.sources',
   screenChoose: 'ghostlink:screen.choose',
+  drawOverlayOpen: 'ghostlink:draw.overlayOpen',
+  drawOverlayStroke: 'ghostlink:draw.overlayStroke',
+  drawOverlayClose: 'ghostlink:draw.overlayClose',
   serverUpdatesState: 'ghostlink:serverUpdates.state',
   serverUpdatesUpdateNow: 'ghostlink:serverUpdates.updateNow',
 } as const;
@@ -285,6 +293,8 @@ export interface IpcContract {
   [IPC.hostFixFirewall]: { args: []; result: { result: FirewallFixResult; status: FirewallStatus } };
   [IPC.updatesState]: { args: []; result: UpdateState };
   [IPC.updatesSetAutoCheck]: { args: [enabled: boolean]; result: UpdateState };
+  [IPC.updatesCheckNow]: { args: []; result: UpdateState };
+  [IPC.updatesNotes]: { args: [version: string]; result: ReleaseNotesResult };
   [IPC.updatesRestart]: { args: []; result: void };
   [IPC.pttConfigure]: { args: [config: PttConfig]; result: PttStatus };
   [IPC.railwayStatus]: { args: []; result: RailwayAccount };
@@ -299,6 +309,9 @@ export interface IpcContract {
   [IPC.profileClearAvatar]: { args: []; result: null };
   [IPC.screenSources]: { args: []; result: ScreenSource[] };
   [IPC.screenChoose]: { args: [choice: ScreenChoice]; result: void };
+  [IPC.drawOverlayOpen]: { args: []; result: boolean };
+  [IPC.drawOverlayStroke]: { args: [stroke: OverlayStroke]; result: void };
+  [IPC.drawOverlayClose]: { args: []; result: void };
   [IPC.serverUpdatesState]: { args: [serverKeyId: string]; result: ManagedServerUpdate | null };
   [IPC.serverUpdatesUpdateNow]: { args: [serverKeyId: string]; result: ManagedServerUpdate };
 }

@@ -75,7 +75,7 @@ export const voice: Record<keyof typeof voicePt, string> = {
   'voice.screen.showAll': 'Show all streams',
   'voice.screen.yours': 'Your stream',
 
-  'voice.settings.title': 'Voice',
+  'voice.settings.title': 'Voice & Video',
   'voice.settings.micTest': 'Mic test',
   'voice.settings.micTestStart': 'Test microphone',
   'voice.settings.micTestStop': 'Stop testing',

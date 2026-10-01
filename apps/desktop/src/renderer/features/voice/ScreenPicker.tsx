@@ -133,6 +133,7 @@ function PickerDialog({ request }: { request: PickerRequest }) {
                   onClick={() => setSelected(source.id)}
                   onDoubleClick={() => share(source)}
                   data-screen-source={source.kind}
+                  data-screen-source-id={source.id}
                 >
                   <span className={s.sourceThumb}>
                     <SourceThumb source={source} />

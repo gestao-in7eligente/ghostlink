@@ -1,23 +1,32 @@
 import { Room } from 'livekit-client';
 import { Check, ChevronDown, HeadphoneOff, Headphones, Mic, MicOff, Settings } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useT } from '../../i18n/index.js';
+import { CameraIcon, useCameraButton } from './CameraParts.js';
 import { Menu, MenuItem } from './parts.js';
 import { toggleDeafen, toggleMute, useVoiceRuntime } from './runtime.js';
 import { useVoiceSettings } from './settings.js';
 import { selfVoice, useVoiceStore } from './state.js';
 import s from './voice.module.css';
 
-type DeviceKind = 'audioinput' | 'audiooutput';
+type DeviceKind = 'audioinput' | 'audiooutput' | 'videoinput';
 
-/** Real devices only: Chromium's "default"/"communications" aliases are the system default entry. */
+/** Where each kind's choice is saved, and the menu's title. */
+const DEVICE_SETTING = { audioinput: 'inputDeviceId', audiooutput: 'outputDeviceId', videoinput: 'cameraDeviceId' } as const;
+const DEVICE_LABEL = { audioinput: 'voice.inputDevice', audiooutput: 'voice.outputDevice', videoinput: 'voice.camera.device' } as const;
+
+/**
+ * Real devices only: Chromium's "default"/"communications" aliases are the system default entry.
+ * Cameras are listed without opening one (LiveKit would, to unlock the names, and the light
+ * would flash): the app's media permission already gives the names.
+ */
 export function useDevices(kind: DeviceKind, active: boolean): MediaDeviceInfo[] {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   useEffect(() => {
     if (!active) return;
     let alive = true;
     const load = () =>
-      Room.getLocalDevices(kind, true).then(
+      Room.getLocalDevices(kind, kind !== 'videoinput').then(
         (list) => alive && setDevices(list.filter((d) => d.deviceId !== 'default' && d.deviceId !== 'communications' && d.deviceId !== '')),
         () => alive && setDevices([]),
       );
@@ -34,13 +43,13 @@ export function useDevices(kind: DeviceKind, active: boolean): MediaDeviceInfo[]
 function DeviceMenu({ kind, onClose, onOpenSettings }: { kind: DeviceKind; onClose(): void; onOpenSettings?: () => void }) {
   const t = useT();
   const devices = useDevices(kind, true);
-  const selected = useVoiceSettings((st) => (kind === 'audioinput' ? st.settings.inputDeviceId : st.settings.outputDeviceId));
+  const selected = useVoiceSettings((st) => st.settings[DEVICE_SETTING[kind]]);
   const update = useVoiceSettings((st) => st.update);
   const choose = (deviceId: string | null) => {
-    update(kind === 'audioinput' ? { inputDeviceId: deviceId } : { outputDeviceId: deviceId });
+    update({ [DEVICE_SETTING[kind]]: deviceId });
     onClose();
   };
-  const label = t(kind === 'audioinput' ? 'voice.inputDevice' : 'voice.outputDevice');
+  const label = t(DEVICE_LABEL[kind]);
   return (
     <Menu label={label} placement="up" onClose={onClose}>
       <p className={s.menuTitle} aria-hidden="true">
@@ -81,11 +90,48 @@ const CLASSES = {
   call: { button: s.callButton, danger: s.callButton, chevron: `${s.callButton} ${s.callChevron}`, icon: 20, chevronIcon: 16 },
 } as const;
 
+/** The call bar's camera, with its ⌄ camera menu (spec 2026-10-01-camera §2): highlighted while on. */
+function CallCameraButton({ channelId, onOpenSettings }: { channelId: string; onOpenSettings?: () => void }) {
+  const t = useT();
+  const button = useCameraButton(channelId);
+  const [open, setOpen] = useState(false);
+  const c = CLASSES.call;
+  return (
+    <div className={s.anchor}>
+      <button
+        type="button"
+        className={button.on ? `${c.button} ${s.callButtonOn}` : c.button}
+        aria-pressed={button.on}
+        aria-disabled={!button.enabled || undefined}
+        aria-label={button.label}
+        title={button.title}
+        onClick={button.onClick}
+        data-camera-control="call"
+      >
+        <CameraIcon on={button.on} size={c.icon} />
+      </button>
+      <button
+        type="button"
+        className={c.chevron}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={t('voice.camera.options')}
+        title={t('voice.camera.options')}
+        onClick={() => setOpen(!open)}
+      >
+        <ChevronDown size={c.chevronIcon} aria-hidden="true" />
+      </button>
+      {open && <DeviceMenu kind="videoinput" onClose={() => setOpen(false)} onOpenSettings={onOpenSettings} />}
+    </div>
+  );
+}
+
 /**
  * Mute and deafen, each with its ⌄ device menu: in the user panel's bottom row, or in the
  * call bar's first group (no test hooks there: the panel's buttons own data-voice-control).
+ * `camera` goes right after the microphone (the call bar's, like Discord's).
  */
-function AudioButtons({ variant, onOpenSettings }: { variant: Variant; onOpenSettings?: () => void }) {
+function AudioButtons({ variant, onOpenSettings, camera }: { variant: Variant; onOpenSettings?: () => void; camera?: ReactNode }) {
   const t = useT();
   const muted = useVoiceStore((v) => v.selfMuted || v.selfDeafened);
   const deafened = useVoiceStore((v) => v.selfDeafened);
@@ -124,6 +170,7 @@ function AudioButtons({ variant, onOpenSettings }: { variant: Variant; onOpenSet
         </button>
         {open === 'audioinput' && <DeviceMenu kind="audioinput" onClose={() => setOpen(null)} onOpenSettings={onOpenSettings} />}
       </div>
+      {camera}
       <div className={s.anchor}>
         <button
           type="button"
@@ -166,7 +213,7 @@ export function VoiceControls({ onOpenSettings }: { onOpenSettings?: () => void 
   );
 }
 
-/** The call bar's first group (Discord: mic ⌄ and camera; here mic ⌄ and headphones ⌄). */
-export function CallAudioControls({ onOpenSettings }: { onOpenSettings?: () => void }) {
-  return <AudioButtons variant="call" onOpenSettings={onOpenSettings} />;
+/** The call bar's first group (Discord: mic ⌄ and camera ⌄; here mic ⌄, camera ⌄ and headphones ⌄). */
+export function CallAudioControls({ channelId, onOpenSettings }: { channelId: string; onOpenSettings?: () => void }) {
+  return <AudioButtons variant="call" onOpenSettings={onOpenSettings} camera={<CallCameraButton channelId={channelId} onOpenSettings={onOpenSettings} />} />;
 }

@@ -1,5 +1,6 @@
 import { createAvatarsModule } from './avatars/index.js';
 import type { ServerModule } from './modules.js';
+import { createScreenDrawModule } from './screenDraw/index.js';
 import { createStatusModule } from './status/index.js';
 import { createTextModule } from './text/index.js';
 import { createVoiceModule } from './voice/index.js';
@@ -12,6 +13,6 @@ import { createVoiceModule } from './voice/index.js';
  */
 export function defaultModules(): ServerModule[] {
   // Text first: voice reads channels and permissions from it (VoiceAccess), avatars announces members through it.
-  // Status after voice: it reports whether anyone is in a call.
-  return [createTextModule(), createVoiceModule(), createAvatarsModule(), createStatusModule()];
+  // After voice: the pencil (screenDraw) reads voice's rooms, and status reports whether anyone is in a call.
+  return [createTextModule(), createVoiceModule(), createAvatarsModule(), createScreenDrawModule(), createStatusModule()];
 }

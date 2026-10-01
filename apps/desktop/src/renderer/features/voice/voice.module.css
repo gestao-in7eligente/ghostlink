@@ -1093,3 +1093,47 @@ button.tile {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* ---- the camera (spec 2026-10-01-camera §2) ---- */
+/* A camera fills its tile over the photo; transparent until its frames move, and again when they stop. */
+.cameraVideo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  opacity: 0;
+  pointer-events: none;
+}
+.cameraVideoLive {
+  opacity: 1;
+}
+/* My own camera, as in a mirror (on my screen only). */
+.cameraVideoMirrored {
+  transform: scaleX(-1);
+}
+/* The speaking ring drawn over the video. */
+.tileCamera.tileSpeaking::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 2px var(--success);
+  content: '';
+  pointer-events: none;
+}
+/* The camera button while on: highlighted (the call bar's and the panel's). */
+.callButtonOn,
+.callButtonOn[aria-pressed='true'] {
+  background: var(--bg-3);
+  color: var(--text-bright);
+}
+.callButtonOn:hover {
+  background: var(--border-strong);
+}
+.panelActionOn,
+.panelActionOn:hover {
+  border-color: var(--border-strong);
+  background: var(--border-strong);
+  color: var(--text-bright);
+}

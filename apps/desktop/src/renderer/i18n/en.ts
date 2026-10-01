@@ -1,6 +1,8 @@
 import { host } from './en/host.js';
 import { identity } from './en/identity.js';
+import { camera } from './camera.en.js';
 import { chat } from './chat.en.js';
+import { draw } from './draw.en.js';
 import { integration } from './integration.en.js';
 import { owner } from './owner.en.js';
 import { profile } from './profile.en.js';
@@ -145,6 +147,8 @@ export const messages: Record<keyof typeof ptBR, string> = {
   ...integration,
   ...owner,
   ...voice,
+  ...camera,
+  ...draw,
   ...railway,
   ...profile,
   ...serverUpdate,

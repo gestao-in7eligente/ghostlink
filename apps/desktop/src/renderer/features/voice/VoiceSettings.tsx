@@ -9,6 +9,7 @@ import { resolveNoiseSuppression, setKeyCapture, useNoiseStatus, useVoiceRuntime
 import { MIN_THRESHOLD_DB, NOISE_SUPPRESSIONS, isPttCode, useVoiceSettings, type NoiseSuppression } from './settings.js';
 import { useVoiceStore } from './state.js';
 import { useDevices } from './VoiceControls.js';
+import { VideoSettings } from './VideoSettings.js';
 import s from './voice.module.css';
 
 /**
@@ -196,6 +197,7 @@ export function VoiceSettings() {
       </div>
 
       <p className={s.hint}>{t('voice.settings.volumeHint')}</p>
+      <VideoSettings />
     </section>
   );
 }

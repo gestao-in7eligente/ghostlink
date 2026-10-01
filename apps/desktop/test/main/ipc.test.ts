@@ -14,14 +14,15 @@ const APP = 'app://ghostlink';
 const TOP = { url: 'app://ghostlink/index.html#/join', parent: null };
 const KEY_ID = toBase64Url(new Uint8Array(32).fill(4));
 const WELCOME = { serverId: 's1', sessionId: 'x' };
-const UPDATE_STATE = { status: 'downloaded', autoCheck: true, currentVersion: '0.1.0', version: '0.1.1', percent: null };
+const UPDATE_STATE = { status: 'downloaded', autoCheck: true, currentVersion: '0.1.0', version: '0.1.1', percent: null, lastCheckedAt: 1_000 };
 
 let deps: {
   appInfo: ReturnType<typeof vi.fn>;
   identity: { status: string; create: ReturnType<typeof vi.fn>; retry: ReturnType<typeof vi.fn>; replaceKeepingBackup: ReturnType<typeof vi.fn> };
   settings: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
   controller: Record<'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove', ReturnType<typeof vi.fn>>;
-  updates: Record<'state' | 'setAutoCheck' | 'restart', ReturnType<typeof vi.fn>>;
+  updates: Record<'state' | 'setAutoCheck' | 'checkNow' | 'restart', ReturnType<typeof vi.fn>>;
+  releaseNotes: Record<'get' | 'follow' | 'forgetFailures', ReturnType<typeof vi.fn>>;
 };
 
 beforeEach(() => {
@@ -42,7 +43,13 @@ beforeEach(() => {
     updates: {
       state: vi.fn(() => UPDATE_STATE),
       setAutoCheck: vi.fn((autoCheck: boolean) => ({ ...UPDATE_STATE, autoCheck })),
+      checkNow: vi.fn(async () => {}),
       restart: vi.fn(),
+    },
+    releaseNotes: {
+      get: vi.fn(async (version: string) => ({ version, status: 'ready', markdown: '- x' })),
+      follow: vi.fn(),
+      forgetFailures: vi.fn(),
     },
   };
   registerIpc({ appOrigin: APP, ...deps } as unknown as Deps);
@@ -108,9 +115,19 @@ describe('argument validation', () => {
     ['a non-boolean auto-check', IPC.updatesSetAutoCheck, ['false']],
     ['a missing auto-check', IPC.updatesSetAutoCheck, []],
     ['an argument to restart', IPC.updatesRestart, [true]],
+    ['an argument to checkNow', IPC.updatesCheckNow, [true]],
+    ['an options object to checkNow', IPC.updatesCheckNow, [{ force: true }]],
+    ['notes without a version', IPC.updatesNotes, []],
+    ['notes of a pre-release', IPC.updatesNotes, ['0.2.3-rc.1']],
+    ['notes of a path', IPC.updatesNotes, ['../../users']],
+    ['notes of a number', IPC.updatesNotes, [23]],
+    ['notes of a huge version', IPC.updatesNotes, ['1'.repeat(64)]],
+    ['notes with an extra argument', IPC.updatesNotes, ['0.2.3', 'en']],
   ])('refuses %s with BAD_REQUEST', async (_label, channel, args) => {
     expect(await invoke(channel, TOP, ...args)).toEqual({ ok: false, code: 'BAD_REQUEST' });
-    for (const fn of [...Object.values(deps.controller), ...Object.values(deps.updates), deps.settings.set]) expect(fn).not.toHaveBeenCalled();
+    for (const fn of [...Object.values(deps.controller), ...Object.values(deps.updates), ...Object.values(deps.releaseNotes), deps.settings.set]) {
+      expect(fn).not.toHaveBeenCalled();
+    }
   });
 });
 
@@ -154,6 +171,43 @@ describe('updates channels (spec §15)', () => {
     expect(await invoke(IPC.updatesRestart, frame)).toEqual({ ok: false, code: 'FORBIDDEN' });
     expect(deps.updates.setAutoCheck).not.toHaveBeenCalled();
     expect(deps.updates.restart).not.toHaveBeenCalled();
+  });
+
+  it('"Procurar atualizações" runs one check and answers with the state once it ended', async () => {
+    let checked = false;
+    deps.updates.checkNow.mockImplementationOnce(async () => {
+      await Promise.resolve();
+      checked = true;
+    });
+    deps.updates.state.mockImplementation(() => (checked ? { ...UPDATE_STATE, status: 'idle', version: null, lastCheckedAt: 2_000 } : UPDATE_STATE));
+    expect(await invoke(IPC.updatesCheckNow, TOP)).toEqual({ ok: true, value: { ...UPDATE_STATE, status: 'idle', version: null, lastCheckedAt: 2_000 } });
+    expect(deps.updates.checkNow).toHaveBeenCalledOnce();
+    expect(deps.updates.checkNow).toHaveBeenCalledWith();
+  });
+
+  it('a click lets notes that failed load again: forgotten before the check, the found version followed after it', async () => {
+    const order: string[] = [];
+    deps.releaseNotes.forgetFailures.mockImplementation(() => order.push('forget'));
+    deps.updates.checkNow.mockImplementation(async () => void order.push('check'));
+    deps.releaseNotes.follow.mockImplementation(() => order.push('follow'));
+    await invoke(IPC.updatesCheckNow, TOP);
+    expect(order).toEqual(['forget', 'check', 'follow']);
+    expect(deps.releaseNotes.follow).toHaveBeenCalledWith(UPDATE_STATE);
+  });
+
+  it('gives the page the notes main holds for a version', async () => {
+    expect(await invoke(IPC.updatesNotes, TOP, '0.2.3')).toEqual({ ok: true, value: { version: '0.2.3', status: 'ready', markdown: '- x' } });
+    expect(deps.releaseNotes.get).toHaveBeenCalledWith('0.2.3');
+    expect(await invoke(IPC.updatesNotes, { url: 'https://evil.example/', parent: null }, '0.2.3')).toEqual({ ok: false, code: 'FORBIDDEN' });
+    expect(deps.releaseNotes.get).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['an iframe of the app', { url: 'app://ghostlink/index.html', parent: TOP }],
+    ['another origin', { url: 'https://evil.example/', parent: null }],
+  ])('refuses a check from %s', async (_label, frame) => {
+    expect(await invoke(IPC.updatesCheckNow, frame)).toEqual({ ok: false, code: 'FORBIDDEN' });
+    expect(deps.updates.checkNow).not.toHaveBeenCalled();
   });
 
   it('reports a restart without a downloaded update as BAD_REQUEST', async () => {

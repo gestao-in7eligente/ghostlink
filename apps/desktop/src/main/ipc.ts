@@ -1,17 +1,19 @@
 import { ipcMain, type WebFrameMain } from 'electron';
 import { z } from 'zod';
-import { LIMITS } from '@ghostlink/shared';
+import { LIMITS, isReleaseVersion } from '@ghostlink/shared';
 import { toAppErrorCode } from '../shared/appErrors.js';
 import { IPC, type AppInfo, type ChatNotification, type IpcArgs, type IpcChannel, type IpcResult, type IpcReturn } from '../shared/ipcTypes.js';
 import type { ClientController } from './controller.js';
 import { BACKUP_IPC_ARG_SCHEMAS, createBackupIpcHandlers, type IdentityBackup } from './backup.js';
 import type { DeepLinks } from './deeplink.js';
+import { DRAW_IPC_ARG_SCHEMAS, createDrawIpcHandlers, type DrawIpcDeps } from './drawOverlayIpc.js';
 import { HOST_IPC_ARG_SCHEMAS, createHostIpcHandlers, type HostIpcDeps } from './hostIpc.js';
 import type { IdentityStore } from './identity.js';
 import { mainLog } from './log.js';
 import type { PushToTalk } from './ptt.js';
 import { PROFILE_IPC_ARG_SCHEMAS, createProfileIpcHandlers, type ProfileIpcDeps } from './profileIpc.js';
 import { RAILWAY_IPC_ARG_SCHEMAS, createRailwayIpcHandlers, type RailwayIpcDeps } from './railwayIpc.js';
+import type { ReleaseNotes } from './releaseNotes.js';
 import { SCREEN_IPC_ARG_SCHEMAS, createScreenIpcHandlers, type ScreenIpcDeps } from './screenIpc.js';
 import { SERVER_UPDATES_IPC_ARG_SCHEMAS, createServerUpdatesIpcHandlers, type ServerUpdatesIpcDeps } from './serverUpdatesIpc.js';
 import { originOf } from './security.js';
@@ -34,7 +36,9 @@ export interface IpcDeps {
   /** Confirmed external links and the clipboard (Text track). */
   shell: { openExternal(url: string): Promise<boolean>; copyText(text: string): void };
   notifications: { show(n: ChatNotification): boolean };
-  updates: Pick<Updater, 'state' | 'setAutoCheck' | 'restart'>;
+  updates: Pick<Updater, 'state' | 'setAutoCheck' | 'checkNow' | 'restart'>;
+  /** The notes of the new version the updater found (Updates page, v0.2.3). */
+  releaseNotes?: Pick<ReleaseNotes, 'get' | 'follow' | 'forgetFailures'>;
   /** Global push-to-talk (voice track). */
   ptt: Pick<PushToTalk, 'configure'>;
   /** "Criar um servidor" on Railway (v0.2). */
@@ -43,6 +47,8 @@ export interface IpcDeps {
   profile?: ProfileIpcDeps;
   /** Screen sharing: the sources and the choice (screen sharing spec §3). */
   screen?: ScreenIpcDeps;
+  /** The pencil's overlay over the shared monitor (pencil spec §4). */
+  draw?: DrawIpcDeps;
   /** The Railway servers this app created follow its version (v0.2.2). */
   serverUpdates?: ServerUpdatesIpcDeps;
 }
@@ -64,6 +70,8 @@ export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
   'invite.create', 'invite.list', 'invite.revoke', 'server.update', 'server.transferOwnership', 'server.leave',
   // Voice track
   'voice.join', 'voice.leave', 'voice.selfState', 'voice.moderate',
+  // The pencil on shared screens (v0.2.3)
+  'screen.draw', 'screen.drawAllow',
   'ping',
 ]);
 
@@ -134,10 +142,13 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   ...RAILWAY_IPC_ARG_SCHEMAS,
   ...PROFILE_IPC_ARG_SCHEMAS,
   ...SCREEN_IPC_ARG_SCHEMAS,
+  ...DRAW_IPC_ARG_SCHEMAS,
   ...SERVER_UPDATES_IPC_ARG_SCHEMAS,
   [IPC.deepLinkTake]: z.tuple([]),
   [IPC.updatesState]: z.tuple([]),
   [IPC.updatesSetAutoCheck]: z.tuple([z.boolean()]),
+  [IPC.updatesCheckNow]: z.tuple([]),
+  [IPC.updatesNotes]: z.tuple([z.string().max(20).refine(isReleaseVersion)]),
   [IPC.updatesRestart]: z.tuple([]),
   // A DOM KeyboardEvent.code such as "KeyV" or "ControlRight"; main maps it to the hook's keycode.
   [IPC.pttConfigure]: z.tuple([z.strictObject({ enabled: z.boolean(), code: z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,23}$/).nullable() })]),
@@ -171,10 +182,20 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     ...createRailwayIpcHandlers(deps.railway),
     ...createProfileIpcHandlers(deps.profile),
     ...createScreenIpcHandlers(deps.screen),
+    ...createDrawIpcHandlers(deps.draw),
     ...createServerUpdatesIpcHandlers(deps.serverUpdates),
     [IPC.deepLinkTake]: () => deps.deepLinks?.take() ?? null,
     [IPC.updatesState]: () => updates.state(),
     [IPC.updatesSetAutoCheck]: (enabled) => updates.setAutoCheck(enabled),
+    [IPC.updatesCheckNow]: async () => {
+      // A click is the moment notes that failed to load may be asked for again.
+      deps.releaseNotes?.forgetFailures();
+      await updates.checkNow(); // never throws; skipped while a check runs or an update waits
+      const state = updates.state();
+      deps.releaseNotes?.follow(state); // the update already found when the check was skipped
+      return state;
+    },
+    [IPC.updatesNotes]: (version) => deps.releaseNotes?.get(version) ?? { version, status: 'unavailable' },
     [IPC.updatesRestart]: () => updates.restart(),
     [IPC.pttConfigure]: (config) => deps.ptt.configure(config),
   };

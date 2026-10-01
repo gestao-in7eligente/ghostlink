@@ -108,7 +108,7 @@ describe('keepScreenAudio (spec §4: the mandatory check)', () => {
   });
 });
 
-describe('wantsSubscription (spec §8.4: microphones always, a screen only while watched)', () => {
+describe('wantsSubscription (spec §8.4: microphones and cameras always, a screen only while watched)', () => {
   const S = Track.Source;
   const K = Track.Kind;
 
@@ -126,8 +126,14 @@ describe('wantsSubscription (spec §8.4: microphones always, a screen only while
     expect(wantsSubscription(S.ScreenShare, K.Video, null, [BIA])).toBe(false);
   });
 
-  it('never cameras (v0.2 video phase) or odd source/kind pairs', () => {
-    expect(wantsSubscription(S.Camera, K.Video, BIA, [BIA])).toBe(false);
+  it('always the cameras, watched or not (spec 2026-10-01-camera §1: everyone sees them, like Discord)', () => {
+    expect(wantsSubscription(S.Camera, K.Video, BIA, [])).toBe(true);
+    expect(wantsSubscription(S.Camera, K.Video, BIA, [BIA])).toBe(true);
+    expect(wantsSubscription(S.Camera, K.Video, null, [])).toBe(true);
+  });
+
+  it('never odd source/kind pairs', () => {
+    expect(wantsSubscription(S.Camera, K.Audio, BIA, [BIA])).toBe(false);
     expect(wantsSubscription(S.Microphone, K.Video, BIA, [BIA])).toBe(false);
     expect(wantsSubscription(S.ScreenShare, K.Audio, BIA, [BIA])).toBe(false);
     expect(wantsSubscription(S.Unknown, K.Audio, BIA, [BIA])).toBe(false);
