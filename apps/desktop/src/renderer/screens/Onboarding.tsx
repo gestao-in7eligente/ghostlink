@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import type { AppErrorCode } from '../../shared/appErrors.js';
 import type { IdentityStatus, Locale } from '../../shared/ipcTypes.js';
 import { ErrorLine, Screen } from '../components/Screen.js';
 import ui from '../components/ui.module.css';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
+import { Select } from '../layout/primitives.js';
 import { openBackupExport, openBackupImport } from '../features/identity/identityModel.js';
 import { useSettingsStore } from '../stores/settings.js';
 
@@ -16,6 +17,7 @@ const LOCALES: Locale[] = ['pt-BR', 'en'];
  */
 export function Onboarding({ identity, onDone }: { identity: IdentityStatus; onDone: (next: 'join' | 'host') => void }) {
   const t = useT();
+  const languageId = useId();
   const settings = useSettingsStore((s) => s.settings);
   const setSettings = useSettingsStore((s) => s.setSettings);
   const [step, setStep] = useState<Step>('welcome');
@@ -69,16 +71,17 @@ export function Onboarding({ identity, onDone }: { identity: IdentityStatus; onD
     return (
       <Screen title={t('onboarding.profile.title')}>
         <form className={ui.form} onSubmit={(e) => void saveProfile(e)}>
-          <label className={ui.field}>
-            <span className={ui.label}>{t('language.label')}</span>
-            <select className={ui.input} value={settings?.locale} onChange={(e) => void changeLocale(e.target.value as Locale)}>
-              {LOCALES.map((l) => (
-                <option key={l} value={l}>
-                  {t(`language.${l}`)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className={ui.field}>
+            <span id={languageId} className={ui.label}>
+              {t('language.label')}
+            </span>
+            <Select<Locale>
+              labelledBy={languageId}
+              value={settings?.locale ?? 'pt-BR'}
+              options={LOCALES.map((l) => ({ value: l, label: t(`language.${l}`) }))}
+              onChange={(l) => void changeLocale(l)}
+            />
+          </div>
           <label className={ui.field}>
             <span className={ui.label}>{t('onboarding.profile.nickname')}</span>
             <input className={ui.input} value={nickname} maxLength={64} autoFocus onChange={(e) => setNickname(e.target.value)} />

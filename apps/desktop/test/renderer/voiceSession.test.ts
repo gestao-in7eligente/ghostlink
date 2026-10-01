@@ -25,7 +25,8 @@ describe('joining a voice channel (spec §8.2)', () => {
       adaptiveStream: true,
       dynacast: true,
       webAudioMix: true,
-      audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, voiceIsolation: false },
+      // RNNoise by default: the browser's own noise suppression stays off (noise spec §2).
+      audioCaptureDefaults: { echoCancellation: true, noiseSuppression: false, autoGainControl: true, voiceIsolation: false },
     });
     expect(room().connected).toEqual({ url: 'wss://127.0.0.1:7700', token: 'token-VC1', opts: { autoSubscribe: false, rtcConfig: { iceServers: [] } } });
     expect(h.state().call).toEqual({ status: 'connected', channelId: 'VC1' });
@@ -42,11 +43,18 @@ describe('joining a voice channel (spec §8.2)', () => {
     h.settings.value = { ...defaultVoiceSettings, inputDeviceId: 'mic-2' };
     await h.session.join('VC1');
     expect(h.microphones.map((m) => m.options)).toEqual([
-      { echoCancellation: true, noiseSuppression: true, autoGainControl: true, voiceIsolation: false, deviceId: 'mic-2' },
+      { echoCancellation: true, noiseSuppression: false, autoGainControl: true, voiceIsolation: false, deviceId: 'mic-2' },
     ]);
     expect(room().localParticipant.published).toEqual([{ track: h.microphones[0], options: { source: Track.Source.Microphone } }]);
     expect(room().localParticipant.micCalls).toEqual([]);
     expect(h.requests).toContainEqual(['voice.selfState', { muted: false, deafened: false }]);
+  });
+
+  it('asks the browser for its own noise suppression only in the WebRTC mode (noise spec §2)', async () => {
+    h.settings.value = { ...defaultVoiceSettings, noiseSuppression: 'webrtc' };
+    await h.session.join('VC1');
+    expect(room().options.audioCaptureDefaults).toMatchObject({ echoCancellation: true, noiseSuppression: true, autoGainControl: true });
+    expect(h.microphones[0]!.options).toMatchObject({ echoCancellation: true, noiseSuppression: true, autoGainControl: true });
   });
 
   it('a refused join shows the error and never touches LiveKit', async () => {

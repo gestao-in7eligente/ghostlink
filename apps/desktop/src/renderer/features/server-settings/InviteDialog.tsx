@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import type { InviteLinks } from '@ghostlink/shared';
 import { errorCodeOf, useT, type Translate } from '../../i18n/index.js';
-import { ErrorText, Modal, primitives as p } from '../../layout/primitives.js';
+import { ErrorText, Modal, Select, primitives as p } from '../../layout/primitives.js';
 import s from '../../layout/settings.module.css';
 import { useTextStore } from '../../stores/text.js';
 import { createInvite } from '../chat/actions.js';
@@ -18,28 +18,26 @@ export function expiryLabel(t: Translate, hours: number): string {
 /** Max uses and validity pickers, shared by the quick invite and the Invites tab. */
 export function InviteOptions({ maxUses, setMaxUses, hours, setHours }: { maxUses: number; setMaxUses: (n: number) => void; hours: number; setHours: (n: number) => void }) {
   const t = useT();
+  const ids = { expires: useId(), maxUses: useId() };
   return (
     <div className={s.row}>
-      <label className={s.field} style={{ flex: 1 }}>
-        <span className={s.label}>{t('serverSettings.invites.expires')}</span>
-        <select className={s.select} value={hours} onChange={(e) => setHours(Number(e.target.value))}>
-          {EXPIRY_CHOICES.map((h) => (
-            <option key={h} value={h}>
-              {expiryLabel(t, h)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className={s.field} style={{ flex: 1 }}>
-        <span className={s.label}>{t('serverSettings.invites.maxUses')}</span>
-        <select className={s.select} value={maxUses} onChange={(e) => setMaxUses(Number(e.target.value))}>
-          {MAX_USES_CHOICES.map((n) => (
-            <option key={n} value={n}>
-              {n === 0 ? t('serverSettings.invites.unlimited') : String(n)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className={s.field} style={{ flex: 1 }}>
+        <span id={ids.expires} className={s.label}>
+          {t('serverSettings.invites.expires')}
+        </span>
+        <Select<number> labelledBy={ids.expires} value={hours} options={EXPIRY_CHOICES.map((h) => ({ value: h, label: expiryLabel(t, h) }))} onChange={setHours} />
+      </div>
+      <div className={s.field} style={{ flex: 1 }}>
+        <span id={ids.maxUses} className={s.label}>
+          {t('serverSettings.invites.maxUses')}
+        </span>
+        <Select<number>
+          labelledBy={ids.maxUses}
+          value={maxUses}
+          options={MAX_USES_CHOICES.map((n) => ({ value: n, label: n === 0 ? t('serverSettings.invites.unlimited') : String(n) }))}
+          onChange={setMaxUses}
+        />
+      </div>
     </div>
   );
 }

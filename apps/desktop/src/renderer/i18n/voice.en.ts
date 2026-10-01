@@ -93,6 +93,15 @@ export const voice: Record<keyof typeof voicePt, string> = {
   'voice.settings.globalOn': 'Works even while another app, like a game, has focus.',
   'voice.settings.globalOff': 'Works only while GhostLink has focus.',
   'voice.settings.volumeHint': "Each person's volume is in their menu, in the voice channel's list.",
+  'voice.settings.noise': 'Noise suppression',
+  'voice.settings.noiseHint': 'Removes background noise, like typing and fans, before your voice goes out.',
+  'voice.settings.noiseFailed': 'Could not turn on {mode}. Using WebRTC (native).',
+
+  'voice.noise.rnnoise': 'RNNoise — neural',
+  'voice.noise.speex': 'Speex — classic',
+  'voice.noise.gtcrn': 'GTCRN — alternative neural',
+  'voice.noise.webrtc': 'WebRTC (native)',
+  'voice.noise.off': 'Off',
 
   'voice.key.space': 'Space',
   'voice.key.left': 'Left {key}',

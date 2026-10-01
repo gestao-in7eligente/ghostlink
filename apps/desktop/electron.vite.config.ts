@@ -54,6 +54,9 @@ export default defineConfig({
     plugins: [react()],
     build: {
       target: 'chrome152',
+      // `?url` scripts (the noise suppressors' AudioWorklets) and WebAssembly stay files under
+      // app://ghostlink: the CSP's script-src never allows data: URLs, however small the file.
+      assetsInlineLimit: (file) => (/\.(?:js|mjs|wasm)$/.test(file) ? false : undefined),
       // splash.html: the update splash shown while the app checks for updates (app://ghostlink/splash.html).
       rollupOptions: { input: { index: here('src/renderer/index.html'), splash: here('src/renderer/splash.html') } },
     },

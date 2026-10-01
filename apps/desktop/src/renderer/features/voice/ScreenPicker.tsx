@@ -5,7 +5,7 @@ import { AppWindow, Monitor } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import type { ScreenSource, ScreenSourceKind } from '../../../shared/screenTypes.js';
 import { useT } from '../../i18n/index.js';
-import { Modal, primitives as p } from '../../layout/primitives.js';
+import { Modal, Select, primitives as p } from '../../layout/primitives.js';
 import {
   DEFAULT_SCREEN_CONTENT,
   DEFAULT_SCREEN_QUALITY,
@@ -149,25 +149,29 @@ function PickerDialog({ request }: { request: PickerRequest }) {
 
         <div className={s.pickerOptions}>
           <div className={s.settingsGroup}>
-            <label className={s.settingsLabel} htmlFor={qualityId}>
+            <span id={qualityId} className={s.settingsLabel}>
               {t('voice.screen.quality')}
-            </label>
-            <select id={qualityId} className={s.select} value={quality} onChange={(e) => setQuality(e.target.value as ScreenQuality)}>
-              {SCREEN_QUALITIES.map((q) => (
-                <option key={q} value={q}>
-                  {t('voice.screen.qualityOption', screenQualityParts(q))}
-                </option>
-              ))}
-            </select>
+            </span>
+            <Select<ScreenQuality>
+              labelledBy={qualityId}
+              value={quality}
+              options={SCREEN_QUALITIES.map((q) => ({ value: q, label: t('voice.screen.qualityOption', screenQualityParts(q)) }))}
+              onChange={setQuality}
+            />
           </div>
           <div className={s.settingsGroup}>
-            <label className={s.settingsLabel} htmlFor={contentId}>
+            <span id={contentId} className={s.settingsLabel}>
               {t('voice.screen.content')}
-            </label>
-            <select id={contentId} className={s.select} value={content} onChange={(e) => setContent(e.target.value as ScreenContent)}>
-              <option value="detail">{t('voice.screen.contentDetail')}</option>
-              <option value="motion">{t('voice.screen.contentMotion')}</option>
-            </select>
+            </span>
+            <Select<ScreenContent>
+              labelledBy={contentId}
+              value={content}
+              options={[
+                { value: 'detail', label: t('voice.screen.contentDetail') },
+                { value: 'motion', label: t('voice.screen.contentMotion') },
+              ]}
+              onChange={setContent}
+            />
           </div>
         </div>
         <label className={s.checkRow}>
