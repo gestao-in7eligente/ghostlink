@@ -6,6 +6,7 @@ import {
   fileUrlExpiry,
   FILE_URL_MAX_AHEAD_S,
   imageInfo,
+  serverIconClearSchema,
   uploadBeginSchema,
 } from '../src/index.js';
 
@@ -87,5 +88,18 @@ describe('uploadBeginSchema', () => {
     expect(() => uploadBeginSchema.parse({ ...ok, purpose: 'attachment' })).toThrow();
     expect(() => uploadBeginSchema.parse({ ...ok, sha256: 'F'.repeat(64) })).toThrow();
     expect(() => uploadBeginSchema.parse({ ...ok, extra: 1 })).toThrow();
+  });
+
+  it('takes a server icon with the same limits (spec 2026-10-01-icone-do-servidor)', () => {
+    const icon = { purpose: 'icon', size: AVATAR_LIMITS.maxBytes, sha256: 'a'.repeat(64) };
+    expect(uploadBeginSchema.parse(icon)).toEqual(icon);
+    expect(() => uploadBeginSchema.parse({ ...icon, size: AVATAR_LIMITS.maxBytes + 1 })).toThrow();
+  });
+});
+
+describe('serverIconClearSchema', () => {
+  it('takes an empty object only', () => {
+    expect(serverIconClearSchema.parse({})).toEqual({});
+    expect(() => serverIconClearSchema.parse({ icon: null })).toThrow();
   });
 });

@@ -480,13 +480,6 @@ describe('HostManager commands', () => {
     expect(logs.at(-1)).toBe('line 599');
     expect(manager.logs()).not.toContain('half a li');
   });
-
-  it('remembers that the tray notice was shown', () => {
-    expect(manager.trayNoticeShown()).toBe(false);
-    manager.markTrayNoticeShown();
-    expect(makeManager().trayNoticeShown()).toBe(true);
-    expect(existsSync(join(dir.path, HOSTED_DIR, HOST_FILE))).toBe(true);
-  });
 });
 
 describe('HostManager: a deleted hosted server (leave/delete spec §3)', () => {

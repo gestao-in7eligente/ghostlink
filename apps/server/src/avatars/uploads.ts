@@ -1,7 +1,10 @@
 import { randomBytes } from 'node:crypto';
+import type { UploadPurpose } from '@ghostlink/shared';
 
 /** An upload.begin answer waiting for its POST /upload (spec 2026-10-01 §4). */
 export interface UploadGrant {
+  /** My photo, or the server's icon. */
+  readonly purpose: UploadPurpose;
   readonly sessionId: string;
   readonly userId: string;
   readonly size: number;
@@ -15,8 +18,8 @@ export const UPLOAD_TOKEN_TTL_MS = 60_000;
 export const MAX_OPEN_UPLOADS_PER_SESSION = 3;
 
 /**
- * Single-use upload tokens, 256 random bits each, bound to the session, user, size and
- * hash of their upload.begin. They live only in memory: a restart voids them all.
+ * Single-use upload tokens, 256 random bits each, bound to the purpose, session, user, size
+ * and hash of their upload.begin. They live only in memory: a restart voids them all.
  * Tokens are secrets: never log them.
  */
 export class UploadTokens {

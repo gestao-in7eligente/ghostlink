@@ -1,15 +1,11 @@
-import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react';
-import { AVATAR_LIMITS } from '@ghostlink/shared';
+import { useEffect, useId, useRef, useState } from 'react';
 import { errorCodeOf, useT } from '../../i18n/index.js';
 import { Avatar, ErrorText, primitives as p } from '../../layout/primitives.js';
 import s from '../../layout/settings.module.css';
 import { useProfileStore } from '../../stores/profile.js';
-import { AvatarCropModal, type PickedFile } from './AvatarCropModal.js';
-import { browserCodecs } from './browserCodecs.js';
-import { openAvatarFile } from './encodeAvatar.js';
+import { AvatarCropModal } from './AvatarCropModal.js';
 import x from './profile.module.css';
-
-const ACCEPT = 'image/png,image/jpeg,image/webp,image/gif';
+import { IMAGE_ACCEPT, usePickedImage } from './usePickedImage.js';
 
 /**
  * The top of the Perfil tab (spec 2026-10-01-foto-de-perfil §2): my photo at 80 px,
@@ -21,40 +17,13 @@ export function ProfilePhoto({ name }: { name: string }) {
   const titleId = useId();
   const avatar = useProfileStore((st) => st.avatar);
   const input = useRef<HTMLInputElement>(null);
-  const [picked, setPicked] = useState<PickedFile | null>(null);
-  const [opening, setOpening] = useState(false);
+  const { picked, close, opening, error, setError, onFile } = usePickedImage(t('profile.photo.unreadable'));
   const [removing, setRemoving] = useState(false);
-  const [error, setError] = useState<{ text: string } | { code: string } | null>(null);
 
   // A load that failed earlier (main busy at start-up) is tried again here.
   useEffect(() => {
     if (useProfileStore.getState().status !== 'ready') void useProfileStore.getState().load();
   }, []);
-
-  // The blob: URL lives as long as the modal.
-  useEffect(() => (picked ? () => URL.revokeObjectURL(picked.url) : undefined), [picked]);
-
-  const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // picking the same file again still fires
-    setError(null);
-    if (!file) return;
-    const unreadable = { text: t('profile.photo.unreadable') };
-    if (file.size === 0 || file.size > AVATAR_LIMITS.inputMaxBytes) {
-      setError(unreadable);
-      return;
-    }
-    setOpening(true);
-    try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const image = await openAvatarFile(bytes, browserCodecs);
-      setPicked({ ...image, bytes, url: URL.createObjectURL(new Blob([bytes], { type: image.mime })) });
-    } catch {
-      setError(unreadable);
-    } finally {
-      setOpening(false);
-    }
-  };
 
   const remove = async () => {
     setError(null);
@@ -89,9 +58,9 @@ export function ProfilePhoto({ name }: { name: string }) {
           <p className={s.hint}>{t('profile.photo.hint')}</p>
         </div>
       </div>
-      <input ref={input} type="file" accept={ACCEPT} hidden onChange={(e) => void onFile(e)} />
+      <input ref={input} type="file" accept={IMAGE_ACCEPT} hidden onChange={(e) => void onFile(e)} />
       {error && ('code' in error ? <ErrorText code={error.code} /> : <p className={p.error} role="alert">{error.text}</p>)}
-      {picked && <AvatarCropModal picked={picked} onClose={() => setPicked(null)} />}
+      {picked && <AvatarCropModal picked={picked} onApply={(bytes) => useProfileStore.getState().set(bytes)} onClose={close} />}
     </section>
   );
 }

@@ -79,11 +79,6 @@ const inviteRevoke: Handler = (core, ctx, payload) => {
   return {};
 };
 
-function serverUpdatedPayload(core: TextCore) {
-  const meta = getMeta(core.db);
-  return { name: meta.name, joinMode: meta.joinMode, ...core.serverSettings() };
-}
-
 const serverUpdate: Handler = async (core, ctx, payload) => {
   const p = serverUpdateSchema.parse(payload);
   core.access.requireServer(core.member(ctx.userId), PERMISSIONS.MANAGE_SERVER);
@@ -105,7 +100,7 @@ const serverUpdate: Handler = async (core, ctx, payload) => {
     passwordHash === undefined ? meta.passwordHash : passwordHash,
     p.maxMembers ?? meta.maxMembers,
   );
-  const d = serverUpdatedPayload(core);
+  const d = core.serverInfo();
   core.broadcastAll({ t: 'server.updated', d });
   return d;
 };
@@ -136,7 +131,7 @@ const transferOwnership: Handler = (core, ctx, payload) => {
   const role = core.repo.role(adminId!);
   if (created && role) core.broadcastAll({ t: 'role.created', d: { role: toRole(role) } });
   core.broadcastAll({ t: 'member.updated', d: { member: core.repo.member(ctx.userId, core.isOnline(ctx.userId)) } });
-  core.broadcastAll({ t: 'server.updated', d: serverUpdatedPayload(core) });
+  core.broadcastAll({ t: 'server.updated', d: core.serverInfo() });
   core.events.emit('access.changed', { userIds: [ctx.userId, p.userId] });
   return {};
 };

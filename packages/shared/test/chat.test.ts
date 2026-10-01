@@ -185,7 +185,7 @@ describe('client schemas (lenient)', () => {
 
   it('parses the text part of a welcome, defaulting missing lists', () => {
     const parsed = textWelcomeSchemaClient.parse({});
-    expect(parsed).toEqual({ channels: [], roles: [], members: [], readStates: [], serverSettings: { ownerId: null, maxMembers: 0, hasPassword: false } });
+    expect(parsed).toEqual({ channels: [], roles: [], members: [], readStates: [], serverSettings: { ownerId: null, maxMembers: 0, hasPassword: false, icon: null } });
   });
 
   it('parses reactions, dropping unknown keys', () => {
@@ -194,9 +194,13 @@ describe('client schemas (lenient)', () => {
   });
 
   it('parses the server.updated payload (and the server.update answer)', () => {
-    const info = { name: 'Casa', joinMode: 'invite', ownerId: USER, maxMembers: 100, hasPassword: false };
+    const info = { name: 'Casa', joinMode: 'invite', ownerId: USER, maxMembers: 100, hasPassword: false, icon: 'c'.repeat(64) };
     expect(serverInfoSchemaClient.parse({ ...info, secret: 'x' })).toEqual(info);
     expect(serverInfoSchemaClient.safeParse({ ...info, joinMode: 'secret' }).success).toBe(false);
+    // A server before 0.3.2 sends no icon, and a malformed one is no icon: initials.
+    const { icon: _icon, ...old } = info;
+    expect(serverInfoSchemaClient.parse(old)).toEqual({ ...old, icon: null });
+    expect(serverInfoSchemaClient.parse({ ...info, icon: '../x' })).toEqual({ ...old, icon: null });
   });
 
   it('parses the invite.create answer', () => {

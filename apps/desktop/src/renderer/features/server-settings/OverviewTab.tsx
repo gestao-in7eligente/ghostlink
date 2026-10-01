@@ -8,10 +8,11 @@ import { updateServer, type ServerPatch } from '../chat/actions.js';
 import { useOpenServerExit } from '../serverDelete/DeletionBanner.js';
 import d from '../serverDelete/serverDelete.module.css';
 import { DeleteServerDialog } from '../serverDelete/ServerExitDialogs.js';
+import { ServerIconSection } from './ServerIconSection.js';
 
 const MODES: JoinMode[] = ['invite', 'password', 'open'];
 
-/** Name, who can join (with the password) and the member limit (MANAGE_SERVER). */
+/** The icon, name, who can join (with the password) and the member limit (MANAGE_SERVER). */
 export function OverviewTab() {
   const t = useT();
   const server = useTextStore((st) => st.server);
@@ -49,6 +50,7 @@ export function OverviewTab() {
 
   return (
     <>
+      <ServerIconSection />
       <form className={s.form} onSubmit={(e) => void submit(e)}>
         <label className={s.field}>
           <span className={s.label}>{t('serverSettings.overview.name')}</span>

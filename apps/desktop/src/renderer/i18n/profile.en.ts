@@ -15,4 +15,9 @@ export const profile: Record<keyof typeof profilePt, string> = {
   'profile.crop.apply': 'Apply',
   'profile.crop.applying': 'Applying…',
   'profile.crop.tooLarge': 'GIF too large. Try a shorter one or one with fewer colors.',
+
+  'serverIcon.title': 'Server icon',
+  'serverIcon.change': 'Change icon',
+  'serverIcon.remove': 'Remove icon',
+  'serverIcon.hint': 'Everyone sees it in the server rail and the header. PNG, JPEG, WebP or GIF, up to 10 MB; animated GIFs stay animated. Without one, the name’s initials.',
 };

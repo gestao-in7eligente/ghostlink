@@ -9,6 +9,8 @@ export interface ServerState {
   serverId: string | null;
   selfId: string;
   name: string;
+  /** The server icon's hash, or null: initials (spec 2026-10-01-icone-do-servidor). */
+  icon: string | null;
   joinMode: JoinMode;
   version: string;
   ownerId: string | null;

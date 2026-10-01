@@ -54,6 +54,7 @@ const deletingSchema = z.object({
 const fileSchema = z.object({
   version: z.literal(1),
   last: configSchema.nullable(),
+  /** Frozen since v0.3.2 (the notice lives in settings.json); kept because older apps require it. */
   trayNoticeShown: z.boolean(),
   /** Optional: files written before v0.2.4 have none (and an older app drops it). */
   deleting: deletingSchema.nullable().optional(),
@@ -219,14 +220,6 @@ export class HostManager {
 
   logs(): string[] {
     return this.#logs.lines();
-  }
-
-  trayNoticeShown(): boolean {
-    return this.#file.trayNoticeShown;
-  }
-
-  markTrayNoticeShown(): void {
-    this.#save({ ...this.#file, trayNoticeShown: true });
   }
 
   start(input: HostConfig): Promise<HostStartResult> {

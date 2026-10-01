@@ -117,6 +117,8 @@ export interface ServerSettings {
   ownerId: string | null;
   maxMembers: number;
   hasPassword: boolean;
+  /** The server icon's SHA-256 (hex), or null: initials (spec 2026-10-01-icone-do-servidor). */
+  icon: string | null;
 }
 
 /** The `server.updated` payload, also the answer to `server.update`. */
@@ -353,10 +355,14 @@ export const memberSchemaClient: z.ZodType<Member> = z.object({
   avatar: z.string().regex(/^[0-9a-f]{64}$/).nullable().catch(null),
 });
 
+// Servers before 0.3.2 send no icon: initials.
+const iconClient = z.string().regex(/^[0-9a-f]{64}$/).nullable().catch(null);
+
 export const serverSettingsSchemaClient: z.ZodType<ServerSettings> = z.object({
   ownerId: idClient.nullable(),
   maxMembers: z.number().int().min(0),
   hasPassword: z.boolean(),
+  icon: iconClient,
 });
 
 export const serverInfoSchemaClient: z.ZodType<ServerInfo> = z.object({
@@ -365,6 +371,7 @@ export const serverInfoSchemaClient: z.ZodType<ServerInfo> = z.object({
   ownerId: idClient.nullable(),
   maxMembers: z.number().int().min(0),
   hasPassword: z.boolean(),
+  icon: iconClient,
 });
 
 export const inviteLinksSchemaClient: z.ZodType<InviteLinks> = z.object({
@@ -374,7 +381,7 @@ export const inviteLinksSchemaClient: z.ZodType<InviteLinks> = z.object({
   webLink: z.string().max(4096),
 });
 
-const DEFAULT_SETTINGS: ServerSettings = { ownerId: null, maxMembers: 0, hasPassword: false };
+const DEFAULT_SETTINGS: ServerSettings = { ownerId: null, maxMembers: 0, hasPassword: false, icon: null };
 
 export const textWelcomeSchemaClient: z.ZodType<TextWelcome> = z.object({
   channels: z.array(channelSchemaClient).max(5000).catch([]),

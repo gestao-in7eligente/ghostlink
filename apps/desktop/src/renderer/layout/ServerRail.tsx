@@ -11,8 +11,7 @@ import { useConnectionStore } from '../stores/connection.js';
 import { useSavedListStore } from '../stores/savedList.js';
 import { AddServerDialog } from './AddServerDialog.js';
 import l from './layout.module.css';
-import { serverInitials } from './names.js';
-import { Menu, MenuItem } from './primitives.js';
+import { Menu, MenuItem, ServerIcon } from './primitives.js';
 import { railEntries, type RailEntry } from './rail.js';
 import { useLayoutSlots } from './slots.js';
 
@@ -128,7 +127,7 @@ export function ServerRail({
               aria-current={active ? 'page' : undefined}
               title={call ? `${s.name} · ${t('voice.callHere')}` : s.name}
             >
-              {serverInitials(s.name)}
+              <ServerIcon name={s.name} hash={s.iconHash} className={l.railIcon} />
             </button>
             {call && (
               <span className={l.railCall} aria-hidden="true">

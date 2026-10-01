@@ -68,7 +68,7 @@ function app(name: string, opts: { identity?: boolean; deps?: Partial<FriendsEng
   const boot = () => {
     const engine = new FriendsEngine({
       identity,
-      settings: { get: () => ({ locale: 'en' as const, nickname: settings.nickname }) },
+      settings: { get: () => ({ locale: 'en' as const, nickname: settings.nickname, closeToTray: true }) },
       userDataDir: dir,
       emit: (snapshot) => snapshots.push(snapshot),
       bootstrap: testnet.bootstrap,
@@ -406,7 +406,7 @@ describe('FriendsEngine: following the identity and the switches (friends spec Â
     const safeStorage = new FakeSafeStorage();
     const store = IdentityStore.load(dir, safeStorage);
     store.create();
-    const engine = new FriendsEngine({ identity: store, settings: { get: () => ({ locale: 'en', nickname: 'Ana' }) }, userDataDir: dir, emit: () => {}, bootstrap: testnet.bootstrap, bindHost: '127.0.0.1' });
+    const engine = new FriendsEngine({ identity: store, settings: { get: () => ({ locale: 'en', nickname: 'Ana', closeToTray: true }) }, userDataDir: dir, emit: () => {}, bootstrap: testnet.bootstrap, bindHost: '127.0.0.1' });
     engines.push(engine);
     const identity = watchIdentity(store, () => void engine.sync());
     await engine.sync();

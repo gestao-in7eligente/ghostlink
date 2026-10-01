@@ -22,13 +22,23 @@ export const AVATAR_LIMITS = {
 /** The `features` flag of a server that takes profile photos. */
 export const FEATURE_AVATARS = 'avatars';
 
+/** The `features` flag of a server that takes an icon (spec 2026-10-01-icone-do-servidor). */
+export const FEATURE_SERVER_ICON = 'serverIcon';
+
 /** A photo's address: SHA-256 of its bytes, lower-case hex. */
 export const AVATAR_HASH = /^[0-9a-f]{64}$/;
 export const avatarHashSchema = z.string().regex(AVATAR_HASH);
 
-/** `upload.begin` (spec §4). Only avatars for now; attachments add purposes later. */
+/**
+ * What an upload is for: my profile photo, or the server's icon (MANAGE_SERVER). Both are
+ * images with the same limits. Attachments add purposes later.
+ */
+export const UPLOAD_PURPOSES = ['avatar', 'icon'] as const;
+export type UploadPurpose = (typeof UPLOAD_PURPOSES)[number];
+
+/** `upload.begin` (spec §4). */
 export const uploadBeginSchema = z.strictObject({
-  purpose: z.literal('avatar'),
+  purpose: z.enum(UPLOAD_PURPOSES),
   size: z.number().int().min(1).max(AVATAR_LIMITS.maxBytes),
   sha256: avatarHashSchema,
 });
@@ -42,8 +52,16 @@ export interface AvatarUploadResult {
   avatar: string;
 }
 
+/** The body of a successful icon `POST /upload`: the server's icon is now this hash. */
+export interface IconUploadResult {
+  icon: string;
+}
+
 /** `avatar.clear`: back to initials. */
 export const avatarClearSchema = z.strictObject({});
+
+/** `server.iconClear` (MANAGE_SERVER): the server goes back to its initials. */
+export const serverIconClearSchema = z.strictObject({});
 
 export type ImageMime = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
 
