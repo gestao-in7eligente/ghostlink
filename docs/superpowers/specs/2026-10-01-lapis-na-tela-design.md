@@ -41,15 +41,22 @@ Desenho aprovado pelo dono em 2026-10-01 ("O usuário compartilha a tela. Aí va
 
 ## 4. Por cima da tela real (quem transmite)
 
-- Só quando a fonte é uma **tela inteira** (`screen:…`): o main abre uma janela **transparente, sem moldura, sempre no topo, que ignora o mouse** (`setIgnoreMouseEvents(true)`), do tamanho daquele monitor (o `display_id` da fonte do `desktopCapturer` → `screen.getAllDisplays()`).
+- **Tela inteira** (`screen:…`): o main abre uma janela **transparente, sem moldura, sempre no topo, que ignora o mouse** (`setIgnoreMouseEvents(true)`), sem foco nem entrada na barra de tarefas, do tamanho daquele monitor (o `display_id` da fonte do `desktopCapturer` → `screen.getAllDisplays()`).
 - A janela é **excluída da captura** (`setContentProtection(true)`), para os traços não voltarem no vídeo duplicados e atrasados. Quem assiste desenha a partir das mensagens, com atraso menor que o do vídeo.
 - Página própria, estática, sem Node, servida por `app://ghostlink` (como a janela de atualização); recebe os traços por um preload mínimo.
 - Fecha quando a transmissão acaba.
-- **Janela compartilhada** (`window:…`): o Windows não informa onde a janela está; os traços aparecem só para quem assiste e na prévia de quem transmite.
+- **Janela compartilhada** (`window:<HWND>:…`), **no Windows**: a mesma janela de sobreposição **segue a janela compartilhada**.
+  - O main lê o lugar dela pela API do Win32, com o **koffi** (MIT, binários N-API prontos, nada é compilado; carregado só no primeiro compartilhamento de janela): `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)`, que é o que a captura mostra, sem as bordas invisíveis de redimensionar; `GetWindowRect` se falhar.
+  - O retângulo vem em pixels físicos e vira DIP com `screen.screenToDipRect(null, rect)` (o fator do monitor onde a janela está, também com monitores de escalas diferentes) antes do `setBounds`; se a troca de monitor redimensionar a sobreposição no caminho, ela é posicionada de novo.
+  - Lê ~30 vezes por segundo enquanto há traços na tela e ~2 vezes por segundo no resto do tempo, para já estar no lugar quando um traço chegar; o primeiro traço lê na hora.
+  - Minimizada (`IsIconic`), escondida (`IsWindowVisible`) ou em outra área de trabalho virtual (`DWMWA_CLOAKED`): a sobreposição se esconde e volta quando a janela volta. Fechada (`IsWindow` falso) ou fim da transmissão: para de ler.
+  - Como fica sempre no topo, a sobreposição também desenha por cima das janelas que estiverem na frente da janela compartilhada (o Slack faz o mesmo).
+  - **macOS e Linux**, ou se o koffi não carregar: como antes, os traços de uma janela compartilhada aparecem só para quem assiste e na prévia de quem transmite (o main registra isso uma vez no log, sem detalhes). O app nunca cai por causa do koffi.
 
 ## 5. Testes
 
 - **Servidor:** schema (fora de 0–1, pontos demais, chaves extras); quem não está no canal, transmissão inexistente, desenhos desligados, limite por segundo; o repasse só para o canal e não para quem desenhou; "Permitir desenhos" só de quem transmite e reiniciado na próxima transmissão.
 - **Cliente:** coordenadas com faixas pretas (`contain`) em proporções diferentes; lotes e simplificação; desvanecimento (relógio injetado); a cor por pessoa.
-- **e2e** (sobre o `screen.e2e.ts`): Ana transmite, Bia assiste, liga o lápis e arrasta; Ana recebe o traço (a sobreposição da tela real recebeu pontos, ou o canvas da prévia tem pixels pintados); Ana desliga "Permitir desenhos" e o lápis da Bia some.
-- **Manual:** os traços sobre a tela real no monitor certo com dois monitores; nada aparece no vídeo de quem assiste além dos traços desenhados localmente.
+- **e2e** (sobre o `screen.e2e.ts`): Ana transmite, Bia assiste, liga o lápis e arrasta; Ana recebe o traço (a sobreposição da tela real recebeu pontos, ou o canvas da prévia tem pixels pintados); Ana desliga "Permitir desenhos" e o lápis da Bia some. No Windows, Ana transmite a **janela da Bia**: a sobreposição fica sobre ela, recebe os pontos e acompanha um `setBounds` da janela.
+- **Janela compartilhada (main):** o HWND tirado do id da fonte; físico → DIP com monitores de escalas diferentes; quando esconder e mostrar; o ritmo da leitura (relógio falso); o rastreador e a sobreposição sobre uma imitação das chamadas do Win32; sem koffi, nenhuma sobreposição e um aviso só.
+- **Manual:** os traços sobre a tela real no monitor certo com dois monitores; nada aparece no vídeo de quem assiste além dos traços desenhados localmente. Janela compartilhada (uma janela do navegador): os traços caem no mesmo ponto da página que quem assiste marcou; arrastar, redimensionar, maximizar a janela e levá-la a um monitor de outra escala, e a sobreposição acompanha; minimizar e trocar de área de trabalho virtual escondem os traços; nada disso aparece no vídeo.
