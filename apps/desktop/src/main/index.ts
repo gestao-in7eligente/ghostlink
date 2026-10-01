@@ -31,6 +31,7 @@ import { RailwayStore } from './railway/store.js';
 import { ReleaseNotes } from './releaseNotes.js';
 import { RailwayTokenStore } from './railway/token.js';
 import { SavedServersStore } from './savedServers.js';
+import { ServerDeletions } from './serverDeletions.js';
 import { ScreenPicker } from './screenPicker.js';
 import { installSecurity, originOf } from './security.js';
 import { SettingsStore } from './settings.js';
@@ -149,6 +150,8 @@ async function start(): Promise<BrowserWindow | null> {
   const window = createMainWindow();
   target = window;
   if (opening.splash) closeSplashWhenShown(opening.splash, window);
+  // Deleting a server (v0.2.4): what the connection learns reaches the sweep created further down.
+  let deletions: ServerDeletions | null = null;
   const controller = new ClientController({
     identity,
     settings,
@@ -158,6 +161,7 @@ async function start(): Promise<BrowserWindow | null> {
     emitServerEvent: (event) => send(IPC_EVENTS.server, event),
     clientName: `ghostlink/${app.getVersion()} (${process.platform})`,
     onSession: (active) => avatars.onSession(active),
+    onDeletion: (update) => deletions?.observe(update),
   });
   const host = startHostMode(window, controller, servers, settings, send);
   const notifier = new ChatNotifier({
@@ -200,6 +204,17 @@ async function start(): Promise<BrowserWindow | null> {
     image: serverImage,
     serverKey: (serverKeyId) => identity.serverKey(serverKeyId),
     emit: (update) => send(IPC_EVENTS.serverUpdates, update),
+  });
+  // A deleted server's leftovers (leave/delete spec §3): its Railway project, or hosted/<slug>, after the deadline.
+  deletions = new ServerDeletions({
+    railway: railwayStore,
+    token: () => railwayTokens.read(),
+    fetch: (url, init) => net.fetch(url, init),
+    host,
+    forget: async (serverKeyId) => {
+      const saved = servers.findByServerKeyId(serverKeyId);
+      if (saved) await controller.remove(saved.id);
+    },
   });
   // Screen sharing (screen sharing spec §3): the renderer's own picker lists the sources, and the
   // capture request gets exactly the chosen one. Never the system picker (no useSystemPicker).
@@ -274,10 +289,15 @@ async function start(): Promise<BrowserWindow | null> {
   // After the update check at startup (the app runs its newest version by now), then every 30 min.
   // Installed apps only: a development build must not redeploy real servers on its own (opt in with
   // GHOSTLINK_SERVER_UPDATES=1); "Atualizar agora" works in both.
-  if (!smoke && (app.isPackaged || process.env.GHOSTLINK_SERVER_UPDATES === '1')) serverUpdates.start();
+  // The same rule for erasing deleted servers: never on its own from a development build.
+  if (!smoke && (app.isPackaged || process.env.GHOSTLINK_SERVER_UPDATES === '1')) {
+    serverUpdates.start();
+    deletions.start();
+  }
   app.on('before-quit', () => {
     updater.dispose();
     serverUpdates.dispose();
+    deletions?.dispose();
     void controller.disconnect();
   });
 

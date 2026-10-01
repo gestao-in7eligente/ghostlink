@@ -1,6 +1,6 @@
 // Host mode in the main process (spec §9): one hosted server at a time, run in a
 // utility process, with the automatic owner join and the Host panel's commands.
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { LIMITS, ProtocolError, formatFingerprint, formatHostPort, parseHostPort, sanitizeLabel } from '@ghostlink/shared';
@@ -44,10 +44,19 @@ const configSchema = z.strictObject({
   maxMembers: z.number().int().min(1).max(HOST_MAX_MEMBERS),
 });
 
+/** The owner deleted the server hosted here (leave/delete spec §3): its data dir goes at `at` (local ms). */
+const deletingSchema = z.object({
+  slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(48),
+  serverKeyId: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  at: z.number().int().nonnegative(),
+});
+
 const fileSchema = z.object({
   version: z.literal(1),
   last: configSchema.nullable(),
   trayNoticeShown: z.boolean(),
+  /** Optional: files written before v0.2.4 have none (and an older app drops it). */
+  deleting: deletingSchema.nullable().optional(),
 });
 type HostFile = z.infer<typeof fileSchema>;
 
@@ -175,7 +184,7 @@ export class HostManager {
   constructor(deps: HostManagerDeps) {
     this.#deps = deps;
     this.#filePath = join(deps.userDataDir, HOSTED_DIR, HOST_FILE);
-    this.#file = readJsonFile(this.#filePath, fileSchema, () => ({ version: 1 as const, last: null, trayNoticeShown: false }));
+    this.#file = readJsonFile(this.#filePath, fileSchema, () => ({ version: 1 as const, last: null, trayNoticeShown: false, deleting: null }));
     this.#config = this.#file.last;
     if (this.#config) this.#serverKeyId = knownServerKeyId(this.#dataDirOf(this.#config));
   }
@@ -307,6 +316,65 @@ export class HostManager {
     return { ...this.#invite };
   }
 
+  /**
+   * Leave/delete spec §3: the owner deleted the server hosted here, which is erased at `at` (local
+   * ms); null after a restore. Only the server in the last config's data dir, recognized by its key.
+   * Returns false when `serverKeyId` is not that server.
+   */
+  markDeleting(serverKeyId: string, at: number | null): boolean {
+    const deleting = this.#file.deleting ?? null;
+    if (at === null) {
+      if (deleting?.serverKeyId !== serverKeyId) return false;
+      this.#save({ ...this.#file, deleting: null });
+      return true;
+    }
+    if (this.#config === null || this.#serverKeyId !== serverKeyId) return false;
+    if (deleting?.serverKeyId === serverKeyId && deleting.at === at) return true;
+    this.#save({ ...this.#file, deleting: { slug: hostSlug(this.#config.name), serverKeyId, at } });
+    return true;
+  }
+
+  /** The deletion of the server hosted here, if the owner deleted it. */
+  deleting(): { serverKeyId: string; at: number } | null {
+    const deleting = this.#file.deleting ?? null;
+    return deleting && { serverKeyId: deleting.serverKeyId, at: deleting.at };
+  }
+
+  /**
+   * Leave/delete spec §3: once the deadline passed (or the server answered SERVER_DELETED), the
+   * hosted server stops and `hosted/<slug>` is deleted; "Iniciar" is no longer offered for it.
+   * Returns the erased server's key, or null when nothing was due (or the folder is still busy:
+   * the next sweep tries again).
+   */
+  async eraseIfDue(now: number, confirmedDeleted: ReadonlySet<string> = new Set()): Promise<string | null> {
+    // A running server tells its own state (same computer, same clock): deleting, restored or erased.
+    if (this.#state === 'running') await this.#refreshInfo();
+    const deleting = this.#file.deleting ?? null;
+    const erasedByServer = this.#info?.deleted === true && deleting?.serverKeyId === this.#serverKeyId;
+    if (!deleting || (now < deleting.at && !confirmedDeleted.has(deleting.serverKeyId) && !erasedByServer)) return null;
+    const current = this.#config !== null && hostSlug(this.#config.name) === deleting.slug;
+    if (current && this.isActive()) await this.stopForQuit();
+    try {
+      rmSync(join(this.#deps.userDataDir, HOSTED_DIR, deleting.slug), { recursive: true, force: true, maxRetries: 3 });
+    } catch (e) {
+      this.#logs.push(`[GhostLink] could not delete the deleted server's folder yet: ${e instanceof Error ? e.message : String(e)}`);
+      return null;
+    }
+    const last = this.#file.last && hostSlug(this.#file.last.name) === deleting.slug ? null : this.#file.last;
+    this.#save({ ...this.#file, last, deleting: null });
+    if (current) {
+      this.#config = last;
+      this.#serverKeyId = null;
+      this.#state = 'stopped';
+      this.#error = null;
+      this.#errorPort = null;
+      this.#suggestedPort = null;
+    }
+    this.#logs.push(`[GhostLink] the deleted server's data (hosted/${deleting.slug}) was erased`);
+    this.#emit();
+    return deleting.serverKeyId;
+  }
+
   /** Asks the running server for members and addresses (the Host panel polls this). */
   async refresh(): Promise<HostStatus> {
     if (this.#state === 'running' && (await this.#refreshInfo())) this.#emit();
@@ -410,10 +478,20 @@ export class HostManager {
       const info = await server.request<HostedStatus>({ cmd: 'status' });
       if (this.#server !== server) return false;
       this.#info = info;
+      this.#syncDeletion(info);
       return true;
     } catch {
       return false;
     }
+  }
+
+  /** The hosted server's own word on its deletion (leave/delete spec §3) keeps host.json's record right. */
+  #syncDeletion(info: HostedStatus): void {
+    const key = this.#serverKeyId;
+    if (key === null) return;
+    if (typeof info.deletingAt === 'number') this.markDeleting(key, info.deletingAt);
+    else if (info.deleted === true && this.#file.deleting?.serverKeyId !== key) this.markDeleting(key, this.#now());
+    else if (info.deleted !== true && this.#file.deleting?.serverKeyId === key) this.markDeleting(key, null);
   }
 
   #addresses(): HostAddress[] {

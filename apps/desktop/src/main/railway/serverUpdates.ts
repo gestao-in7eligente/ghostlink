@@ -167,8 +167,10 @@ export class ServerUpdates {
 
   async #cycle(): Promise<void> {
     let waiting = false;
-    for (const { serverKeyId } of this.#deps.store.managed) {
+    for (const { serverKeyId, deletingAt } of this.#deps.store.managed) {
       if (this.#disposed) return;
+      // The owner deleted it (serverDeletions.ts): it is not updated any more, only erased at the deadline.
+      if (deletingAt !== undefined) continue;
       if ((await this.#check(serverKeyId, false)) === 'waiting') waiting = true;
     }
     // spec §3: a server waiting for its call to empty is asked again in 10 min.

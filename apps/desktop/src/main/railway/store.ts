@@ -43,6 +43,12 @@ const managedSchema = z.object({
    * files written before v0.2.2 still load; an older app ignores it (z.object drops unknown keys).
    */
   outdatedSince: z.number().int().nonnegative().optional(),
+  /**
+   * The owner deleted it (leave/delete spec §3): when it is erased, from `server.deleting` in the
+   * local clock (ms). The app deletes the Railway project only once this has passed or the server
+   * answers SERVER_DELETED; a restore clears it. Optional, like outdatedSince.
+   */
+  deletingAt: z.number().int().nonnegative().optional(),
 });
 
 const fileSchema = z.object({ version: z.literal(1), pending: pendingSchema.nullable(), managed: z.array(managedSchema).max(1_000) });
@@ -96,6 +102,27 @@ export class RailwayStore {
       return since === null ? rest : managedSchema.parse({ ...rest, outdatedSince: since });
     });
     this.#write({ ...this.#file, managed });
+    return true;
+  }
+
+  /** Records (a deadline) or clears (null) the owner's deletion; false when it is not managed. */
+  setDeletingAt(serverKeyId: string, at: number | null): boolean {
+    const current = this.#file.managed.find((m) => m.serverKeyId === serverKeyId);
+    if (!current) return false;
+    if ((current.deletingAt ?? null) === at) return true;
+    const managed = this.#file.managed.map((m) => {
+      if (m.serverKeyId !== serverKeyId) return m;
+      const { deletingAt: _previous, ...rest } = m;
+      return at === null ? rest : managedSchema.parse({ ...rest, deletingAt: at });
+    });
+    this.#write({ ...this.#file, managed });
+    return true;
+  }
+
+  /** Forgets a server once its Railway project is gone; false when it was not managed. */
+  removeManaged(serverKeyId: string): boolean {
+    if (!this.#file.managed.some((m) => m.serverKeyId === serverKeyId)) return false;
+    this.#write({ ...this.#file, managed: this.#file.managed.filter((m) => m.serverKeyId !== serverKeyId) });
     return true;
   }
 

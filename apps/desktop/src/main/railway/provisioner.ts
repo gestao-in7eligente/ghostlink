@@ -20,6 +20,7 @@ import { fetchWorkspaces } from './account.js';
 import { RailwayClient, RailwayError, type FetchLike } from './api.js';
 import { normalizeFingerprint, parseServerStart, redactLogLine } from './logs.js';
 import { DATA, OPS } from './operations.js';
+import { deleteRailwayProject } from './projectDelete.js';
 import { RailwayStore, type ManagedServer, type PendingRecord } from './store.js';
 import { RailwayTokenStore, normalizeToken } from './token.js';
 
@@ -232,7 +233,7 @@ export class RailwayProvisioner {
     if (!pending) return;
     const token = this.#requireToken();
     await this.#exclusive(async () => {
-      await this.#deleteProject(this.#client(token), pending.projectId);
+      await deleteRailwayProject(this.#client(token), pending.projectId, this.#log);
       this.#store.clearPending();
       this.#error = null;
       this.#log.info(`[railway] discarded project ${pending.projectId}`);
@@ -489,41 +490,6 @@ export class RailwayProvisioner {
         if (toAppErrorCode(e) !== 'UNREACHABLE' || this.#now() >= deadline) throw e;
       }
       await this.#sleep(this.#timing.probeRetryMs);
-    }
-  }
-
-  /** research §3.3. A project that is gone already counts as deleted. */
-  async #deleteProject(api: RailwayClient, projectId: string): Promise<void> {
-    try {
-      await api.request(OPS.projectDelete, { id: projectId }, DATA.projectDelete);
-    } catch (e) {
-      if (!(e instanceof RailwayError)) throw e;
-      // Only a refusal from Railway can mean "already gone"; offline or rate limited, the record stays.
-      const refused = e.messages.length > 0 || e.code === 'RAILWAY_TOKEN_INVALID';
-      if (!refused || !(e.notFound || (await this.#projectGone(api, projectId)))) throw e;
-      this.#log.info(`[railway] project ${projectId} was already gone`);
-    }
-  }
-
-  /**
-   * After a refused delete: true when the project no longer exists. Railway may answer "Not
-   * Authorized" for an id it cannot find (not verified), so a token that still works but cannot
-   * see the project means it is gone.
-   */
-  async #projectGone(api: RailwayClient, projectId: string): Promise<boolean> {
-    try {
-      const { project } = await api.request(OPS.project, { id: projectId }, DATA.project);
-      return project.deletedAt !== null && project.deletedAt !== undefined;
-    } catch (e) {
-      if (!(e instanceof RailwayError)) return false;
-      if (e.notFound) return true;
-      if (e.code !== 'RAILWAY_TOKEN_INVALID') return false;
-      try {
-        await api.request(OPS.apiToken, {}, DATA.apiToken);
-        return true;
-      } catch {
-        return false;
-      }
     }
   }
 
