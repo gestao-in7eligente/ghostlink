@@ -13,7 +13,7 @@
   align-items: center;
   height: var(--header-h);
   padding: 0 8px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-frame);
 }
 
 .searchOpen {

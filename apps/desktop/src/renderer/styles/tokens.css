@@ -1,5 +1,5 @@
-/* Design tokens (spec §11): Discord's dark palette (measured on the owner's reference screenshot,
-   2026-09-29), blurple (#5865f2) as the primary color, red for destructive actions. */
+/* Design tokens (spec §11): Discord's dark palette (measured on the owner's reference screenshots,
+   2026-09-29 and 2026-10-01), blurple (#5865f2) as the primary color, red for destructive actions. */
 :root {
   color-scheme: dark;
 
@@ -41,18 +41,25 @@
   --bg-input: #393a3f; /* composer box, sidebar search button */
   --bg-search: #2e2f35; /* search fields */
   --border-search: #43444a;
-  --line: #3e3f45; /* hairlines between columns and rows */
-  --text-strong: #f3f3f4; /* names, message text */
+  --line: #3e3f45; /* hairlines on the chat color: chat header, cards */
+  --line-frame: #393a3f; /* hairlines on the frame color: title bar, rail edge, sidebar header */
+  --text-bright: #ffffff; /* author names, the selected or unread channel, my name in the user panel */
+  --text-strong: #f3f3f4; /* message text, titles */
   --text-icon: #c5c6ca; /* toolbar icons, inactive tabs */
   --text-soft: #abacb2; /* channel names, secondary lines */
   --text-faint: #999aa1; /* timestamps, section headers, hints */
-  --text-ghost: #80818a; /* # glyphs, group headers */
+  --text-ghost: #80818a; /* locks, empty hints */
+  --text-placeholder: #6c6d76; /* the composer's placeholder */
+  --link: #76aff6; /* links in messages */
   --success: #23a55a; /* online dot, "voice connected", speaking ring */
   --danger-strong: #f23f43; /* exit icon, mention badges */
   --accent-soft: #3c4067; /* blurple badge background */
-  --mention-bg: rgb(88 101 242 / 12%); /* a message that mentions you */
+  --mention-bg: #413c35; /* a message that mentions you (Discord's yellow tint) */
+  --mention-bar: #fcb529; /* its left edge */
+  --bg-composer: #393a41; /* the message box, embeds, tooltips */
+  --border-composer: #44454c;
+  --border-panel: #3a3b42; /* the floating user panel */
   --overlay: rgb(0 0 0 / 60%); /* modal backdrop */
-  --shadow-up: 0 -10px 20px rgb(0 0 0 / 25%); /* the user panel over the channel list */
 
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
