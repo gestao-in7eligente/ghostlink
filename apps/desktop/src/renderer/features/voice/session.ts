@@ -54,8 +54,11 @@ export interface VideoOutlet {
 }
 
 export interface VoiceSessionDeps {
-  /** A request to the connected GhostLink server (server.request IPC); rejects with Error(code). */
-  request<T>(type: string, payload?: unknown): Promise<T>;
+  /**
+   * A request to a GhostLink server (server.request IPC); rejects with Error(code). `serverId`:
+   * that saved server's connection; by default the call's (the store's runtime server).
+   */
+  request<T>(type: string, payload?: unknown, serverId?: string | null): Promise<T>;
   createRoom(options: RoomOptions): Room;
   dispatch(action: VoiceAction): void;
   getState(): VoiceState;
@@ -75,7 +78,7 @@ export interface VoiceSessionDeps {
   createMicrophone(options: AudioCaptureOptions): Promise<LocalAudioTrack>;
   /** Runs `cb` once, on the user's next click or key press (autoplay recovery). */
   onUserGesture(cb: () => void): void;
-  /** The "host:port" main is connected to (RendererWelcome.address), or null when not connected. */
+  /** The "host:port" of the call's server connection (RendererWelcome.address), or null when not connected. */
   connectedAddress(): string | null;
   pingIntervalMs?: number;
 }
@@ -116,18 +119,33 @@ export class VoiceSession {
     this.#deps = deps;
   }
 
-  /** Joins `channelId`, leaving any other channel first. Joining the current channel again does nothing. */
-  async join(channelId: string, opts: { force?: boolean } = {}): Promise<void> {
-    const { call } = this.#deps.getState();
-    if (!opts.force && call.channelId === channelId && call.status !== 'idle') return;
+  /**
+   * Joins `channelId`, leaving any other channel first. Joining the current channel again does
+   * nothing. `serverId`: the saved server the channel belongs to (the one on screen); a call on
+   * another server ends first (chamada-continua §1: one call at a time), and its server hears
+   * voice.leave before its connection goes. A move within the call's server stays a call.
+   */
+  async join(channelId: string, opts: { force?: boolean; serverId?: string } = {}): Promise<void> {
+    const state = this.#deps.getState();
+    const { call } = state;
+    const elsewhere = call.status !== 'idle' && opts.serverId !== undefined && opts.serverId !== state.serverId;
+    if (!opts.force && !elsewhere && call.channelId === channelId && call.status !== 'idle') return;
     const attempt = ++this.#attempt;
-    await this.#teardown();
+    if (elsewhere) {
+      void this.#deps.request('voice.leave', {}, state.serverId).catch(() => {});
+      await this.#teardown();
+    } else {
+      await this.#teardown(false);
+    }
+    if (attempt !== this.#attempt) return;
     this.#deps.dispatch({ type: 'call', status: 'connecting', channelId });
     this.#deps.dispatch({ type: 'notice', notice: null });
+    // The call's server from here on (after a call elsewhere ended, the store follows the screen again).
+    const server = this.#deps.getState().serverId;
 
     let joined;
     try {
-      joined = voiceJoinResponseSchemaClient.parse(await this.#deps.request('voice.join', { channelId }));
+      joined = voiceJoinResponseSchemaClient.parse(await this.#deps.request('voice.join', { channelId }, server));
     } catch (e) {
       if (attempt !== this.#attempt) return;
       this.#deps.dispatch({ type: 'call', status: 'idle', channelId: null });
@@ -140,7 +158,7 @@ export class VoiceSession {
     if (address === null || !voiceJoinEndpointsTrusted(joined, address)) {
       this.#deps.dispatch({ type: 'call', status: 'idle', channelId: null });
       this.#deps.dispatch({ type: 'notice', notice: { kind: 'error', code: 'VOICE_URL_REJECTED' } });
-      void this.#deps.request('voice.leave', {}).catch(() => {});
+      void this.#deps.request('voice.leave', {}, server).catch(() => {});
       return;
     }
 
@@ -164,7 +182,7 @@ export class VoiceSession {
       if (attempt !== this.#attempt) return;
       await this.#teardown();
       this.#deps.dispatch({ type: 'notice', notice: { kind: 'dropped' } });
-      void this.#deps.request('voice.leave', {}).catch(() => {});
+      void this.#deps.request('voice.leave', {}, server).catch(() => {});
       return;
     }
     if (attempt !== this.#attempt || this.#room !== room) {
@@ -181,12 +199,17 @@ export class VoiceSession {
     await this.#applyMic();
   }
 
-  /** Leaves the call and tells the server. */
+  /**
+   * Leaves the call and tells the server: before the teardown, which may close that server's
+   * connection when another one is on screen (chamada-continua §1).
+   */
   async leave(): Promise<void> {
-    const wasInCall = this.#room !== null || this.#deps.getState().call.status !== 'idle';
+    const state = this.#deps.getState();
+    const wasInCall = this.#room !== null || state.call.status !== 'idle';
     this.#attempt++;
+    const told = wasInCall ? this.#deps.request('voice.leave', {}, state.serverId).catch(() => {}) : Promise.resolve();
     await this.#teardown();
-    if (wasInCall) await this.#deps.request('voice.leave', {}).catch(() => {});
+    await told;
   }
 
   async setMuted(muted: boolean): Promise<void> {
@@ -602,7 +625,8 @@ export class VoiceSession {
     return inputDeviceId ? { deviceId: inputDeviceId } : {};
   }
 
-  async #teardown(): Promise<void> {
+  /** `endCall` false: a move to another channel, the call goes on (connecting there next). */
+  async #teardown(endCall = true): Promise<void> {
     const room = this.#room;
     this.#room = null;
     this.#stopPing();
@@ -627,6 +651,6 @@ export class VoiceSession {
       this.#deps.cameras.clear();
       await room.disconnect().catch(() => {});
     }
-    if (this.#deps.getState().call.status !== 'idle') this.#deps.dispatch({ type: 'call', status: 'idle', channelId: null });
+    if (endCall && this.#deps.getState().call.status !== 'idle') this.#deps.dispatch({ type: 'call', status: 'idle', channelId: null });
   }
 }

@@ -10,7 +10,7 @@ import { HangUpIcon, StateIcons, VoiceAvatar } from './parts.js';
 import { joinVoice, leaveVoice, useVoiceDirectory, useVoiceRuntime } from './runtime.js';
 import { LiveBadge } from './screenParts.js';
 import { OwnStreamTile, StreamTile, StreamView, useScreenShareButton } from './ScreenStage.js';
-import { isSpeaking, liveIn, participantsOf, streamLayout, useVoiceStore } from './state.js';
+import { isSpeaking, liveIn, participantsOf, streamLayout, useVoiceStore, viewVoice } from './state.js';
 import { fitTiles, type TileLayout } from './tileLayout.js';
 import { CallAudioControls } from './VoiceControls.js';
 import s from './voice.module.css';
@@ -124,13 +124,14 @@ export function VoiceStage({ channelId, onOpenSettings }: { channelId: string; o
   useVoiceRuntime();
   const t = useT();
   const directory = useVoiceDirectory();
-  const participants = useVoiceStore((v) => participantsOf(v, channelId));
+  // A channel of the server on screen; the call may run on another one (chamada-continua §2).
+  const participants = useVoiceStore((v) => participantsOf(viewVoice(v), channelId));
   const call = useVoiceStore((v) => v.call);
-  const speakers = useVoiceStore(useShallow((v) => participantsOf(v, channelId).filter((p) => isSpeaking(v, p.userId)).map((p) => p.userId)));
-  const receiving = useVoiceStore((v) => v.subscribed);
-  const selfUserId = useVoiceStore((v) => v.selfUserId);
-  const available = useVoiceStore((v) => v.available);
   const here = call.channelId === channelId && call.status !== 'idle';
+  const speakers = useVoiceStore(useShallow((v) => (v.call.channelId === channelId ? participantsOf(v, channelId).filter((p) => isSpeaking(v, p.userId)).map((p) => p.userId) : NONE)));
+  const receiving = useVoiceStore((v) => v.subscribed);
+  const selfUserId = useVoiceStore((v) => viewVoice(v).selfUserId);
+  const available = useVoiceStore((v) => viewVoice(v).available);
   const name = directory.channelName(channelId) ?? '';
   // Screens are watched from inside the call only (a subscription in my room).
   const live = useVoiceStore(useShallow((v) => (here ? liveIn(v, channelId).filter((u) => u !== v.selfUserId) : NONE)));

@@ -8,7 +8,7 @@ import { useT } from '../../i18n/index.js';
 import { DrawLayer, OwnTilePencil, PencilButton } from '../draw/index.js';
 import { LiveBadge, StreamVolume, TrackVideo } from './screenParts.js';
 import { useScreenTracks } from './screenStore.js';
-import { startScreenShare, stopScreenShare, unwatchScreen, useVoiceDirectory, watchScreen } from './runtime.js';
+import { startScreenShare, stopScreenShare, unwatchScreen, useCallDirectory, useVoiceDirectory, watchScreen } from './runtime.js';
 import { useVoiceStore } from './state.js';
 import s from './voice.module.css';
 
@@ -18,7 +18,8 @@ import s from './voice.module.css';
  */
 export function useScreenShareButton(channelId: string) {
   const t = useT();
-  const directory = useVoiceDirectory();
+  // The call's channel: its server's permissions, also while another server is on screen.
+  const directory = useCallDirectory();
   const sharing = useVoiceStore((v) => v.sharing !== null);
   const connected = useVoiceStore((v) => v.call.status === 'connected' && v.call.channelId === channelId);
   const allowed = has(directory.myPermissions(channelId), PERMISSIONS.VIDEO);

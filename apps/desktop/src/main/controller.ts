@@ -32,14 +32,19 @@ export interface ControllerDeps {
   identity: Pick<IdentityStore, 'status' | 'serverKey'>;
   settings: Pick<SettingsStore, 'get'>;
   servers: SavedServersStore;
-  setRendererPin(pin: RendererPin | null): Promise<void>;
+  /** The renderer pins (pinning.ts): the server on screen and the call's, never more. */
+  setRendererPins(pins: RendererPin[]): Promise<void>;
+  /** A connection's state; `background` marks the call's while another server (or none) is on screen. */
   emitConnectionState(event: ConnectionStateEvent): void;
-  emitServerEvent(event: Envelope): void;
+  /** A server event and the saved server it came from (chamada-continua §2: the renderer routes by origin). */
+  emitServerEvent(event: Envelope, serverId: string): void;
   /** `client` field of the hello, e.g. "ghostlink/0.1.0 (win32)". */
   clientName: string;
   /** Tests shorten the timings. */
   connectionOptions?: Pick<ServerConnectionOptions, 'timing' | 'random'>;
-  /** Every welcome of the active connection, and null once it is gone or reconnecting (profile photos). */
+  /** Tests hand in fake connections; a real ServerConnection otherwise. */
+  createConnection?(options: ServerConnectionOptions): ConnectionLike;
+  /** Every welcome of the connection on screen, and null once it is gone or reconnecting (profile photos). */
   onSession?(session: ActiveSession | null): void;
   /**
    * The owner's deletion of a server, as this app learns it (leave/delete spec §3): `deleting`
@@ -47,6 +52,16 @@ export interface ControllerDeps {
    * SERVER_DELETED. Only an owner's session reports deleting/restored.
    */
   onDeletion?(update: DeletionUpdate): void;
+}
+
+/** What the controller uses of a ServerConnection (see connection.ts for the events). */
+export interface ConnectionLike {
+  readonly connectedAddress: string | null;
+  connect(): Promise<WelcomePayload>;
+  request<T>(type: string, payload?: unknown): Promise<T>;
+  close(): void;
+  on(event: 'state' | 'welcome' | 'event' | 'fatal', listener: Parameters<ServerConnection['on']>[1]): unknown;
+  removeAllListeners(): unknown;
 }
 
 export type DeletionUpdate =
@@ -101,20 +116,41 @@ interface Target {
   nameHint: string | undefined;
 }
 
+/** One live server connection: the one on screen, the call's, or both at once. */
+interface Slot {
+  conn: ConnectionLike;
+  /** The saved server's id; null until the first welcome of a server not saved yet. */
+  serverId: string | null;
+  /** The pinned key. */
+  serverKeyId: string;
+  /** The latest welcome: a return to the call's server hands it back without reconnecting. */
+  welcome: WelcomePayload | null;
+  /** host:port of the latest welcome (kept while reconnecting). */
+  address: string | null;
+  /** The renderer pin's host, kept while reconnecting so the call's LiveKit keeps it. */
+  pinHost: string | null;
+  /** After a welcome; null while reconnecting. */
+  session: ActiveSession | null;
+  /** The deadline this server announced with `server.deleting` (server clock), for its SERVER_DELETING close. */
+  deletingAt: number | null;
+}
+
 /**
- * The single active server connection (spec §1.3: one server at a time) and
- * everything around it: saved servers, the renderer pin, and the events
- * forwarded to the renderer. The IPC handlers are thin wrappers around this class.
+ * The server connections (spec §1.3 as changed by chamada-continua §2): the one on screen
+ * and, during a voice call on another server (or on the Home screen), the call's. Never
+ * more than these two. Switching servers or going Home keeps the call's connection;
+ * hanging up closes it unless it is on screen; a call on another server ends the previous
+ * one. Each reconnects on its own. Around them: saved servers, the renderer pins, and the
+ * events forwarded to the renderer with their origin. The IPC handlers are thin wrappers.
  */
 export class ClientController {
   readonly #deps: ControllerDeps;
-  #conn: ServerConnection | null = null;
-  #serverId: string | null = null;
-  /** The pinned key of the active connection. */
-  #serverKeyId: string | null = null;
+  /** The server on screen. */
+  #view: Slot | null = null;
+  /** The voice call's server (chamada-continua §2): the same slot as #view, another one, or none. */
+  #call: Slot | null = null;
+  /** The view's session as last reported through onSession. */
   #session: ActiveSession | null = null;
-  /** The deadline the active server announced with `server.deleting` (server clock), for its SERVER_DELETING close. */
-  #deletingAt: number | null = null;
 
   constructor(deps: ControllerDeps) {
     this.#deps = deps;
@@ -160,46 +196,79 @@ export class ClientController {
     return this.#deps.servers.list();
   }
 
-  /** The saved-server id of the active connection, or null (Host mode leaves it before a stop). */
+  /** The saved-server id on screen, or null (Host mode leaves it before a stop). */
   get currentServerId(): string | null {
-    return this.#serverId;
+    return this.#view?.serverId ?? null;
   }
 
-  /** The connected session (after a welcome), or null. */
+  /** The saved-server id of the voice call's connection, or null. */
+  get callServerId(): string | null {
+    return this.#call?.serverId ?? null;
+  }
+
+  /** The connected session on screen (after a welcome), or null. */
   get session(): ActiveSession | null {
     return this.#session;
   }
 
   /**
-   * Relays a renderer request to the connected server (`server.request` IPC).
-   * The IPC layer already allowed only client request types; the server validates
-   * the rest. With `serverId`, a request meant for another saved server (the user
-   * switched meanwhile) is refused instead of reaching the wrong server.
+   * Relays a renderer request (`server.request` IPC). The IPC layer already allowed only
+   * client request types; the server validates the rest. With `serverId` it goes to that
+   * server's connection, the one on screen or the call's (voice requests always name the
+   * call's, chamada-continua §2); a server with neither is refused, so a request meant for
+   * a server the user just left never reaches another one. Without it, the one on screen.
    */
   request(type: string, payload: unknown, serverId?: string): Promise<unknown> {
-    const conn = this.#conn;
-    if (!conn) return Promise.reject(new AppError('CONNECTION_LOST', 'not connected'));
-    if (serverId !== undefined && serverId !== this.#serverId) return Promise.reject(new AppError('CONNECTION_LOST', 'another server'));
-    return conn.request(type, payload ?? {});
+    const slot = serverId === undefined ? this.#view : this.#slotOf(serverId);
+    if (!slot) return Promise.reject(new AppError('CONNECTION_LOST', serverId === undefined ? 'not connected' : 'not connected to that server'));
+    return slot.conn.request(type, payload ?? {});
   }
 
+  /**
+   * The renderer's voice call (chamada-continua §2): `serverId` is the server it runs on (the
+   * one on screen, or the call's already), null once it ended. A call on another server ends
+   * the previous one: that connection closes unless it is on screen; so does hanging up.
+   */
+  async setCall(serverId: string | null): Promise<void> {
+    const next = serverId === null ? null : this.#slotOf(serverId);
+    if (serverId !== null && next === null) throw new AppError('CONNECTION_LOST', 'not connected to that server');
+    const previous = this.#call;
+    this.#call = next;
+    if (previous !== null && previous !== next && previous !== this.#view) this.#close(previous);
+    await this.#syncPins();
+  }
+
+  /** Leaves the server on screen (the Home screen); a call there goes on in the background (chamada-continua §1). */
   async disconnect(): Promise<void> {
-    const conn = this.#conn;
-    const serverId = this.#serverId;
-    this.#conn = null;
-    this.#serverId = null;
-    this.#serverKeyId = null;
-    this.#deletingAt = null;
-    if (!conn) return;
-    this.#setSession(null);
-    conn.removeAllListeners();
-    conn.close();
-    await this.#deps.setRendererPin(null);
-    this.#deps.emitConnectionState({ state: 'idle', serverId });
+    this.#leaveView();
+    await this.#syncPins();
+  }
+
+  /** Closes every connection, the call's too (an identity change, quitting). */
+  async disconnectAll(): Promise<void> {
+    this.#leaveView();
+    const call = this.#call;
+    this.#call = null;
+    if (call !== null) this.#close(call);
+    await this.#syncPins();
+  }
+
+  /** Closes this saved server's connection, on screen or the call's (Host mode stops it, it leaves the list). */
+  async closeServer(id: string): Promise<void> {
+    if (this.#view?.serverId === id) {
+      if (this.#call === this.#view) this.#call = null;
+      this.#leaveView();
+    }
+    const call = this.#call;
+    if (call?.serverId === id) {
+      this.#call = null;
+      this.#close(call);
+    }
+    await this.#syncPins();
   }
 
   async remove(id: string): Promise<void> {
-    if (this.#serverId === id) await this.disconnect();
+    await this.closeServer(id);
     this.#deps.servers.remove(id);
   }
 
@@ -250,19 +319,21 @@ export class ClientController {
   }
 
   /**
-   * The active session when `id` is the open server; otherwise a short connection of its own
-   * (no reconnect, closed afterwards), so another server's open session is never replaced.
+   * The session of `id` when it is connected (on screen or the call's); otherwise a short
+   * connection of its own (no reconnect, closed afterwards), so an open session is never
+   * replaced (one login per identity: a second one would drop it).
    */
   async #withSaved<T>(id: string, work: (session: SavedSession) => Promise<T>): Promise<T> {
-    const active = this.#session;
-    if (this.#serverId === id && this.#conn !== null) {
+    const slot = this.#slotOf(id);
+    if (slot !== null) {
+      const active = slot.session;
       if (active === null) throw new AppError('CONNECTION_LOST', 'the server is reconnecting');
       return work({ serverKeyId: active.serverKeyId, welcome: active.welcome, clockOffsetMs: active.clockOffsetMs, request: active.request });
     }
     const saved = this.#deps.servers.get(id);
     if (!saved) throw new ProtocolError('NOT_FOUND');
     if (this.#deps.identity.status !== 'ready') throw new AppError('IDENTITY_UNAVAILABLE');
-    const conn = new ServerConnection({
+    const conn = this.#connection({
       addresses: saved.addresses,
       serverKeyId: saved.serverKeyId,
       key: this.#deps.identity.serverKey(saved.serverKeyId),
@@ -292,20 +363,18 @@ export class ClientController {
     this.#deps.onDeletion?.(at === null ? { kind: 'restored', serverKeyId } : { kind: 'deleting', serverKeyId, at: at - clockOffsetMs });
   }
 
-  /** The active server's `server.deleting` / `server.restored` (the owner's app records them). */
-  #observeEvent(event: Envelope): void {
+  /** A connected server's `server.deleting` / `server.restored` (the owner's app records them). */
+  #observeEvent(slot: Slot, event: Envelope): void {
     if (event.t !== 'server.deleting' && event.t !== 'server.restored') return;
-    const session = this.#session;
-    const serverKeyId = this.#serverKeyId;
-    if (serverKeyId === null) return;
+    const { session, serverKeyId } = slot;
     if (event.t === 'server.restored') {
-      this.#deletingAt = null;
+      slot.deletingAt = null;
       if (session?.welcome.self.isOwner) this.#deps.onDeletion?.({ kind: 'restored', serverKeyId });
       return;
     }
     const parsed = serverDeletingEventSchemaClient.safeParse(event.d);
     if (!parsed.success) return;
-    this.#deletingAt = parsed.data.at;
+    slot.deletingAt = parsed.data.at;
     if (session?.welcome.self.isOwner) this.#deps.onDeletion?.({ kind: 'deleting', serverKeyId, at: parsed.data.at - session.clockOffsetMs });
   }
 
@@ -318,10 +387,22 @@ export class ClientController {
 
   async #open(target: Target): Promise<RendererWelcome> {
     if (this.#deps.identity.status !== 'ready') throw new AppError('IDENTITY_UNAVAILABLE');
+    // Back to the call's server: at once, on the connection the call already uses (chamada-continua §1).
+    const call = this.#call;
+    if (call !== null && call.serverKeyId === target.serverKeyId && call.serverId !== null && call.welcome !== null) {
+      if (this.#view !== call) {
+        this.#leaveView();
+        this.#view = call;
+        this.#setSession(call.session);
+      }
+      await this.#syncPins();
+      return toRendererWelcome(call.welcome, call.serverId, call.address ?? '');
+    }
     const key = this.#deps.identity.serverKey(target.serverKeyId);
-    await this.disconnect();
+    this.#leaveView();
+    await this.#syncPins();
 
-    const conn = new ServerConnection({
+    const conn = this.#connection({
       addresses: target.addresses,
       serverKeyId: target.serverKeyId,
       key,
@@ -334,19 +415,27 @@ export class ClientController {
       reconnect: true,
       ...this.#deps.connectionOptions,
     });
-    this.#conn = conn;
-    this.#serverId = target.savedId;
-    this.#serverKeyId = target.serverKeyId;
-    this.#deletingAt = null;
-    const current = () => this.#conn === conn;
+    const slot: Slot = {
+      conn,
+      serverId: target.savedId,
+      serverKeyId: target.serverKeyId,
+      welcome: null,
+      address: null,
+      pinHost: null,
+      session: null,
+      deletingAt: null,
+    };
+    this.#view = slot;
+    const current = () => this.#owns(slot);
     let joined = false;
 
     conn.on('state', (state: ConnState) => {
-      if (current() && state === 'reconnecting') this.#setSession(null);
+      if (!current()) return;
+      if (state === 'reconnecting') this.#setSlotSession(slot, null);
       // 'connected' of the first handshake is announced below, once the server is saved;
       // 'failed' always comes with its error code (catch below, or the 'fatal' handler).
-      if (!current() || state === 'failed' || (state === 'connected' && !joined)) return;
-      this.#deps.emitConnectionState({ state, serverId: this.#serverId });
+      if (state === 'failed' || (state === 'connected' && !joined)) return;
+      this.#emitState(slot, state);
     });
 
     let welcome: WelcomePayload;
@@ -355,7 +444,7 @@ export class ClientController {
       welcome = await conn.connect();
       receivedAt = Date.now();
     } catch (e) {
-      if (current()) this.#fail(conn, toAppErrorCode(e), deletionDeadlineOf(e));
+      if (current()) this.#fail(slot, toAppErrorCode(e), deletionDeadlineOf(e));
       throw e;
     }
     if (!current()) {
@@ -370,36 +459,43 @@ export class ClientController {
       addresses: [address, ...target.addresses],
       nickname: welcome.self.nickname,
     });
-    this.#serverId = saved.id;
+    slot.serverId = saved.id;
     joined = true;
-    await this.#pin(conn, target.serverKeyId);
+    this.#noteWelcome(slot, welcome, address);
+    await this.#syncPins();
 
     conn.on('welcome', (again: WelcomePayload) => {
       const at = Date.now();
       if (!current()) return;
       // After a reconnect the new snapshot replaces the renderer's state (spec §13),
       // and the working address may have changed.
-      void this.#pin(conn, target.serverKeyId);
-      this.#setSession(this.#activeSession(conn, saved.id, target.serverKeyId, again, at, address));
+      const now = conn.connectedAddress ?? address;
+      this.#noteWelcome(slot, again, now);
+      void this.#syncPins();
+      this.#setSlotSession(slot, this.#activeSession(conn, saved.id, target.serverKeyId, again, at, now));
       this.#observeWelcome(target.serverKeyId, again, again.serverTime - at);
-      this.#deps.emitServerEvent({ t: 'welcome', d: toRendererWelcome(again, saved.id, conn.connectedAddress ?? address) });
+      this.#deps.emitServerEvent({ t: 'welcome', d: toRendererWelcome(again, saved.id, now) }, saved.id);
     });
     conn.on('event', (event: Envelope) => {
       if (!current()) return;
-      this.#observeEvent(event);
-      this.#deps.emitServerEvent(event);
+      this.#observeEvent(slot, event);
+      this.#deps.emitServerEvent(event, saved.id);
     });
     conn.on('fatal', ({ code, at }: { code: AppErrorCode; at?: number }) => {
-      if (current()) this.#fail(conn, code, at ?? null);
+      if (current()) this.#fail(slot, code, at ?? null);
     });
 
-    this.#setSession(this.#activeSession(conn, saved.id, target.serverKeyId, welcome, receivedAt, address));
+    this.#setSlotSession(slot, this.#activeSession(conn, saved.id, target.serverKeyId, welcome, receivedAt, address));
     this.#observeWelcome(target.serverKeyId, welcome, welcome.serverTime - receivedAt);
-    this.#deps.emitConnectionState({ state: 'connected', serverId: saved.id });
+    this.#emitState(slot, 'connected');
     return toRendererWelcome(welcome, saved.id, address);
   }
 
-  #activeSession(conn: ServerConnection, serverId: string, serverKeyId: string, welcome: WelcomePayload, receivedAt: number, fallbackAddress: string): ActiveSession {
+  #connection(options: ServerConnectionOptions): ConnectionLike {
+    return this.#deps.createConnection?.(options) ?? new ServerConnection(options);
+  }
+
+  #activeSession(conn: ConnectionLike, serverId: string, serverKeyId: string, welcome: WelcomePayload, receivedAt: number, fallbackAddress: string): ActiveSession {
     return {
       serverId,
       address: conn.connectedAddress ?? fallbackAddress,
@@ -410,38 +506,86 @@ export class ClientController {
     };
   }
 
+  /** A connection still in use: on screen or the call's. */
+  #owns(slot: Slot): boolean {
+    return slot === this.#view || slot === this.#call;
+  }
+
+  /** The connection to this saved server, on screen or the call's. */
+  #slotOf(serverId: string): Slot | null {
+    if (this.#view?.serverId === serverId) return this.#view;
+    if (this.#call?.serverId === serverId) return this.#call;
+    return null;
+  }
+
+  #noteWelcome(slot: Slot, welcome: WelcomePayload, address: string): void {
+    slot.welcome = welcome;
+    slot.address = address;
+    slot.pinHost = parseHostPort(address).host;
+  }
+
+  /** A connection's session; the one on screen is what main-only features see (onSession). */
+  #setSlotSession(slot: Slot, session: ActiveSession | null): void {
+    slot.session = session;
+    if (slot === this.#view) this.#setSession(session);
+  }
+
   #setSession(session: ActiveSession | null): void {
     if (session === null && this.#session === null) return;
     this.#session = session;
     this.#deps.onSession?.(session);
   }
 
+  /** Nothing on screen any more; that connection closes unless the call uses it. */
+  #leaveView(): void {
+    const view = this.#view;
+    if (view === null) return;
+    this.#view = null;
+    this.#setSession(null);
+    if (view !== this.#call) this.#close(view, true);
+  }
+
+  /** Closes a connection already taken out of #view/#call; `wasView`: the renderer knew it as the one on screen. */
+  #close(slot: Slot, wasView = false): void {
+    slot.conn.removeAllListeners();
+    slot.conn.close();
+    this.#deps.emitConnectionState(wasView ? { state: 'idle', serverId: slot.serverId } : { state: 'idle', serverId: slot.serverId, background: true });
+  }
+
+  /** A state of this connection; marked `background` when it is the call's and another server (or none) is on screen. */
+  #emitState(slot: Slot, state: ConnState): void {
+    this.#deps.emitConnectionState(slot === this.#view ? { state, serverId: slot.serverId } : { state, serverId: slot.serverId, background: true });
+  }
+
   /**
-   * Pins the host this connection currently uses. Chromium's verify proc sees
-   * hostnames, not ports, which is why only the connected server is ever pinned (spec §4).
+   * The renderer pins: the hosts these connections currently use, so at most the one on
+   * screen and the call's. Chromium's verify proc sees hostnames, not ports, which is why
+   * nothing else is ever pinned (spec §4).
    */
-  async #pin(conn: ServerConnection, serverKeyId: string): Promise<void> {
-    const address = conn.connectedAddress;
-    if (address === null || this.#conn !== conn) return;
-    await this.#deps.setRendererPin({ hostname: parseHostPort(address).host, serverKeyId });
+  async #syncPins(): Promise<void> {
+    const pins: RendererPin[] = [];
+    for (const slot of new Set([this.#view, this.#call])) {
+      if (slot?.pinHost) pins.push({ hostname: slot.pinHost, serverKeyId: slot.serverKeyId });
+    }
+    await this.#deps.setRendererPins(pins);
   }
 
   /** `at`: the deletion deadline that came with SERVER_DELETING (else the one `server.deleting` announced). */
-  #fail(conn: ServerConnection, code: AppErrorCode, at: number | null = null): void {
-    const serverId = this.#serverId;
-    const serverKeyId = this.#serverKeyId;
-    const deletingAt = at ?? this.#deletingAt;
-    this.#conn = null;
-    this.#serverId = null;
-    this.#serverKeyId = null;
-    this.#deletingAt = null;
-    this.#setSession(null);
-    conn.removeAllListeners();
-    conn.close();
-    void this.#deps.setRendererPin(null);
-    if (code === 'SERVER_DELETED' && serverKeyId !== null) this.#serverDeleted(serverKeyId, serverId);
-    const event: ConnectionStateEvent = { state: 'failed', serverId, error: code };
+  #fail(slot: Slot, code: AppErrorCode, at: number | null = null): void {
+    const deletingAt = at ?? slot.deletingAt;
+    const wasView = slot === this.#view;
+    if (wasView) {
+      this.#view = null;
+      this.#setSession(null);
+    }
+    if (slot === this.#call) this.#call = null;
+    slot.conn.removeAllListeners();
+    slot.conn.close();
+    void this.#syncPins();
+    if (code === 'SERVER_DELETED') this.#serverDeleted(slot.serverKeyId, slot.serverId);
+    const event: ConnectionStateEvent = { state: 'failed', serverId: slot.serverId, error: code };
     if (code === 'SERVER_DELETING' && deletingAt !== null) event.deletingAt = deletingAt;
+    if (!wasView) event.background = true;
     this.#deps.emitConnectionState(event);
   }
 }

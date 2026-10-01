@@ -5,14 +5,14 @@ import { useT } from '../../i18n/index.js';
 import { Menu, MenuItem } from './parts.js';
 import { moderateVoice, setUserVolume, useVoiceDirectory } from './runtime.js';
 import { MAX_VOLUME, useVoiceSettings, volumeOf } from './settings.js';
-import { useVoiceStore } from './state.js';
+import { useVoiceStore, viewVoice } from './state.js';
 import s from './voice.module.css';
 
 /** Someone's volume for me: 0–200 %, saved per server and user (spec §8.4), with a reset. */
 export function UserVolume({ userId }: { userId: string }) {
   const t = useT();
   const sliderId = useId();
-  const serverId = useVoiceStore((v) => v.serverId);
+  const serverId = useVoiceStore((v) => viewVoice(v).serverId);
   const volume = useVoiceSettings((st) => volumeOf(st.settings, serverId, userId));
   const percent = new Intl.NumberFormat(document.documentElement.lang || undefined, { style: 'percent' }).format(volume / 100);
   return (
@@ -50,7 +50,7 @@ export function UserVolume({ userId }: { userId: string }) {
  * slot). Nothing for myself.
  */
 export function MemberVolume({ userId }: { userId: string; close?: () => void }) {
-  const selfUserId = useVoiceStore((v) => v.selfUserId);
+  const selfUserId = useVoiceStore((v) => viewVoice(v).selfUserId);
   if (userId === selfUserId) return null;
   return <UserVolume userId={userId} />;
 }

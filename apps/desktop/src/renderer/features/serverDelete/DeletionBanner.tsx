@@ -77,8 +77,9 @@ export function useServerDeleteSync(welcome: RendererWelcome): void {
   }, [welcome]);
   useLayoutEffect(
     () =>
-      window.ghostlink.onServerEvent((event) => {
-        useDeletionStore.getState().dispatch({ type: 'event', serverId: welcome.serverId, event });
+      window.ghostlink.onServerEvent((event, serverId) => {
+        // Only the open server's (a call's server in the background has its own).
+        if (serverId === welcome.serverId) useDeletionStore.getState().dispatch({ type: 'event', serverId, event });
       }),
     [welcome.serverId],
   );

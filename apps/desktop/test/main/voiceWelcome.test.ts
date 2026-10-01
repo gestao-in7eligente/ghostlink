@@ -28,7 +28,7 @@ beforeEach(() => {
     identity,
     settings: SettingsStore.load(dir.path, 'pt-BR'),
     servers: SavedServersStore.load(dir.path),
-    setRendererPin: async () => {},
+    setRendererPins: async () => {},
     emitConnectionState: () => {},
     emitServerEvent: (e) => events.push(e),
     clientName: 'ghostlink/0.1.0 (test)',

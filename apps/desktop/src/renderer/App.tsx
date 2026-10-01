@@ -20,7 +20,6 @@ import { IdentityLocked } from './screens/IdentityLocked.js';
 import { Join } from './screens/Join.js';
 import { Onboarding } from './screens/Onboarding.js';
 import { DM_CONV_ID } from './features/dm/dmModel.js';
-import { useVoiceStore } from './features/voice/state.js';
 import { useConnectionStore } from './stores/connection.js';
 import { useDmStore } from './stores/dm.js';
 import { useSavedListStore } from './stores/savedList.js';
@@ -44,7 +43,7 @@ export function App() {
       // Leave/delete spec §3: main took an erased server out of the saved list.
       if (event.error === 'SERVER_DELETED') useSavedListStore.getState().changed();
     });
-    const offEvents = api.onServerEvent((event) => dispatch({ type: 'serverEvent', event }));
+    const offEvents = api.onServerEvent((event, serverId) => dispatch({ type: 'serverEvent', event, serverId }));
     let alive = true;
     Promise.all([api.identity.status(), api.settings.get()]).then(
       ([status, loaded]) => {
@@ -65,18 +64,18 @@ export function App() {
   }, [attempt]);
 
   // A direct-message notification was clicked: its conversation opens on the Home screen. From a server
-  // the app goes Home, unless a voice call is on (the conversation then waits there).
+  // the app goes Home; a voice call there goes on (chamada-continua §1).
   useEffect(
     () =>
       window.ghostlink.onOpenChannel(({ channelId }) => {
         if (!DM_CONV_ID.test(channelId)) return;
         useDmStore.getState().select(channelId);
         const { welcome, state } = useConnectionStore.getState();
-        if (welcome === null || state === 'idle' || useVoiceStore.getState().call.status !== 'idle') return;
+        if (welcome === null || state === 'idle') return;
         void window.ghostlink.servers
           .disconnect()
           .catch(() => undefined)
-          .then(() => useConnectionStore.getState().dispatch({ type: 'state', event: { state: 'idle', serverId: null } }));
+          .then(() => useConnectionStore.getState().dispatch({ type: 'left' }));
       }),
     [],
   );
@@ -94,8 +93,9 @@ export function App() {
     useConnectionStore.getState().dispatch({ type: 'joined', welcome });
     setView('servers');
   };
+  /** The Home screen: nothing on screen any more (a call goes on in the background). */
   const leave = () => {
-    useConnectionStore.getState().dispatch({ type: 'state', event: { state: 'idle', serverId: null } });
+    useConnectionStore.getState().dispatch({ type: 'left' });
     setView('servers');
   };
 
@@ -122,7 +122,7 @@ export function App() {
   const identityChanged = (status: IdentityStatus) => {
     setIdentity(status);
     if (status === 'none') {
-      useConnectionStore.getState().dispatch({ type: 'state', event: { state: 'idle', serverId: null } });
+      useConnectionStore.getState().dispatch({ type: 'left' });
       setOnboarding(true);
     } else {
       setOnboarding(status !== 'ready' || settings.nickname === '');

@@ -5,13 +5,13 @@ import type { VoiceParticipant } from '@ghostlink/shared';
 import { useT } from '../../i18n/index.js';
 import { Avatar } from '../../layout/primitives.js';
 import { useVoiceDirectory } from './runtime.js';
-import { useVoiceStore } from './state.js';
+import { useVoiceStore, viewVoice } from './state.js';
 import s from './voice.module.css';
 
 /** The person's avatar (photo or initials, the layout's Avatar); a green ring while speaking. */
 export function VoiceAvatar({ size, speaking = false, userId }: { size: number; speaking?: boolean; userId: string }) {
   const directory = useVoiceDirectory();
-  const self = useVoiceStore((v) => v.selfUserId === userId);
+  const self = useVoiceStore((v) => viewVoice(v).selfUserId === userId);
   return (
     <span className={speaking ? `${s.avatar} ${s.avatarSpeaking}` : s.avatar} style={{ width: size, height: size }} aria-hidden="true">
       <Avatar size={size} name={directory.displayName(userId)} hash={directory.avatar(userId)} self={self} />

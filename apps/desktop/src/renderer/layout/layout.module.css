@@ -107,6 +107,22 @@
   transform: translateY(-50%);
 }
 
+/* The voice call's server (chamada-continua §1): a green speaker at the icon's bottom-right. */
+.railCall {
+  position: absolute;
+  left: calc(50% + 8px);
+  bottom: -3px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--bg-rail);
+  border-radius: 50%;
+  background: var(--success);
+  color: var(--text-bright);
+  pointer-events: none;
+}
+
 .railDivider {
   flex-shrink: 0;
   width: 32px;

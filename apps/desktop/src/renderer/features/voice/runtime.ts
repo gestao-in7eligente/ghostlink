@@ -1,6 +1,9 @@
 // Wires the voice session to the app: server events and requests over IPC, the
 // connection store, voice settings, and push-to-talk (in-app keys + the global hook).
-// Started by the first mounted voice component (useVoiceRuntime), stopped by the last.
+// Started by the first mounted voice component (useVoiceRuntime), stopped by the last
+// once no call is on: the call goes on while the screen moves to the Home screen or to
+// another server (spec 2026-10-01-chamada-continua-design.md), and its requests and
+// events always belong to the call's server, whatever is on screen.
 // The store sync (welcome + voice.* events) also runs for useVoiceAvailable() alone.
 import { Room, createLocalAudioTrack, type LocalAudioTrack } from 'livekit-client';
 import { useEffect, useMemo } from 'react';
@@ -17,14 +20,12 @@ import { NoiseSuppressors, VOICE_SAMPLE_RATE, captureFor, type ResolvedSuppressi
 import { cancelScreenPicker, createScreenOutlet, pickScreen } from './screenStore.js';
 import { VoiceSession } from './session.js';
 import { screenVolumeKey, useVoiceSettings, withVolume, type NoiseSuppression, type VoiceSettings } from './settings.js';
-import { selfVoice, useVoiceStore } from './state.js';
+import { lifetime } from './lifetime.js';
+import { callElsewhere, callServerId, selfVoice, useVoiceStore, viewVoice, welcomeServerId } from './state.js';
 
 let session: VoiceSession | null = null;
-let users = 0;
-let stopRuntime: (() => void) | null = null;
-let syncUsers = 0;
-let stopSync: (() => void) | null = null;
 let audioContext: AudioContext | null = null;
+
 /** Each open microphone's gate, its track and the noise suppression it has in use. */
 const gates = new Map<GateProcessor, { track: LocalAudioTrack; mode: NoiseSuppression }>();
 let inAppPtt = false;
@@ -161,25 +162,33 @@ function configureGlobalPtt(s: VoiceSettings): void {
   );
 }
 
-/** Keeps the voice store in step with the server: the welcome snapshot, then voice.* events (also to the session, when one runs). */
+/**
+ * Keeps the voice store in step with the servers: the screen's welcome (the connection store),
+ * then voice.* events by origin — the call's server's go to the call (and the session), the
+ * screen's to its own part when the call is elsewhere (chamada-continua §2).
+ */
 function startSync(): () => void {
   const voice = useVoiceStore;
   const dispatch = voice.getState().dispatch;
-  const welcome = useConnectionStore.getState().welcome;
-  if (welcome) dispatch({ type: 'welcome', welcome });
+  dispatch({ type: 'view', welcome: useConnectionStore.getState().welcome });
   const offConnection = useConnectionStore.subscribe((c, prev) => {
     if (c.welcome === prev.welcome) return;
-    // Another server (or none): the call and the snapshot belong to the old one.
-    if (!c.welcome || c.welcome.serverId !== voice.getState().serverId) {
-      void session?.dispose();
-      dispatch({ type: 'reset' });
-    }
-    if (c.welcome) dispatch({ type: 'welcome', welcome: c.welcome });
+    const v = voice.getState();
+    // Without a call, another server (or none) leaves nothing of the old one behind.
+    if (v.call.status === 'idle' && welcomeServerId(c.welcome) !== v.serverId) void session?.dispose();
+    dispatch({ type: 'view', welcome: c.welcome });
   });
-  const offEvents = window.ghostlink.onServerEvent((event) => {
+  const offEvents = window.ghostlink.onServerEvent((event, serverId) => {
+    const v = voice.getState();
+    if (event.t === 'welcome') {
+      // The screen's welcomes arrive through the connection store; the call's server's (a
+      // reconnect, also in the background) here.
+      if (serverId === callServerId(v)) dispatch({ type: 'serverEvent', event, serverId });
+      return;
+    }
     if (!event.t.startsWith('voice.')) return;
-    dispatch({ type: 'serverEvent', event });
-    void session?.handleServerEvent(event);
+    dispatch({ type: 'serverEvent', event, serverId });
+    if (serverId === v.serverId) void session?.handleServerEvent(event);
   });
   return () => {
     offEvents();
@@ -187,15 +196,12 @@ function startSync(): () => void {
   };
 }
 
+const sync = lifetime(startSync);
+
 function useVoiceSync(): void {
   useEffect(() => {
-    if (syncUsers++ === 0) stopSync = startSync();
-    return () => {
-      if (--syncUsers === 0) {
-        stopSync?.();
-        stopSync = null;
-      }
-    };
+    sync.retain();
+    return () => sync.release();
   }, []);
 }
 
@@ -208,7 +214,10 @@ export function useVoiceAvailable(): boolean {
   useVoiceSync();
   const welcome = useConnectionStore((c) => c.welcome);
   // Until the sync has taken this welcome in, the welcome itself is the answer.
-  return useVoiceStore((v) => (welcome && v.serverId !== welcome.serverId ? welcome.features.includes('voice') : v.available));
+  return useVoiceStore((v) => {
+    const view = viewVoice(v);
+    return welcome && view.serverId !== welcome.serverId ? welcome.features.includes('voice') : view.available;
+  });
 }
 
 function start(): () => void {
@@ -219,7 +228,8 @@ function start(): () => void {
   dispatch({ type: 'self', muted: initial.muted, deafened: initial.deafened });
 
   const current = new VoiceSession({
-    request: (type, payload) => api.server.request(type, payload),
+    // Always the call's server (chamada-continua §2), whatever is on screen.
+    request: (type, payload, serverId) => api.server.request(type, payload, (serverId === undefined ? voice.getState().serverId : serverId) ?? undefined),
     createRoom: (options) => new Room(options),
     dispatch: (action) => voice.getState().dispatch(action),
     getState: () => voice.getState(),
@@ -234,20 +244,21 @@ function start(): () => void {
     },
     createMicrophone,
     onUserGesture: onNextUserGesture,
-    connectedAddress: () => useConnectionStore.getState().welcome?.address ?? null,
+    connectedAddress: () => voice.getState().address,
   });
   session = current;
 
-  const offConnection = useConnectionStore.subscribe((c, prev) => {
-    if (c.state !== prev.state) void current.handleConnection(c.state);
+  // The call follows its own server's connection (also in the background), never the screen's.
+  const offConnection = api.onConnectionState((event) => {
+    if (event.serverId !== null && event.serverId === voice.getState().serverId) void current.handleConnection(event.state);
   });
 
   const offSelf = voice.subscribe((v, prev) => {
     if (v.selfMuted !== prev.selfMuted || v.selfDeafened !== prev.selfDeafened) {
       useVoiceSettings.getState().update({ muted: v.selfMuted, deafened: v.selfDeafened });
     }
-    // The screen picker belongs to the call: it closes when the call ends.
-    if (v.call.status === 'idle' && prev.call.status !== 'idle') cancelScreenPicker();
+    // The screen picker belongs to the call's room: it closes when the call ends or moves.
+    if (v.call.channelId !== prev.call.channelId && prev.call.channelId !== null) cancelScreenPicker();
   });
   configureGlobalPtt(initial);
   const offSettings = useVoiceSettings.subscribe(({ settings: s }, { settings: prev }) => {
@@ -302,25 +313,43 @@ function start(): () => void {
   };
 }
 
-/** Keeps the voice runtime alive while at least one voice component is mounted. */
+const runtime = lifetime(start);
+
+/** Keeps the voice runtime alive while at least one voice component is mounted, or a call is on. */
 export function useVoiceRuntime(): void {
   useVoiceSync(); // first: the store has the welcome before the session starts
   useEffect(() => {
-    if (users++ === 0) stopRuntime = start();
-    return () => {
-      if (--users === 0) {
-        stopRuntime?.();
-        stopRuntime = null;
-      }
-    };
+    runtime.retain();
+    return () => runtime.release();
   }, []);
 }
 
 // ---- actions (the public voice API for the layout) ----
 
-/** Joins a voice channel (the layout's onJoinVoice handler). */
+/** The saved server on screen, or undefined on the Home screen. */
+function viewedServerId(): string | undefined {
+  return useConnectionStore.getState().welcome?.serverId;
+}
+
+/** Joins a voice channel of the server on screen (the layout's onJoinVoice handler); a call elsewhere ends first. */
 export function joinVoice(channelId: string): Promise<void> {
-  return session?.join(channelId) ?? Promise.resolve();
+  const serverId = viewedServerId();
+  return session?.join(channelId, serverId === undefined ? {} : { serverId }) ?? Promise.resolve();
+}
+
+/**
+ * Back to the call's server from the Home screen or another server (the call panel's channel
+ * name): main hands back the connection the call uses, without reconnecting.
+ */
+export async function openCallServer(): Promise<void> {
+  const serverId = callServerId(useVoiceStore.getState());
+  if (serverId === null || serverId === viewedServerId()) return;
+  try {
+    const welcome = await window.ghostlink.servers.connect(serverId);
+    useConnectionStore.getState().dispatch({ type: 'joined', welcome });
+  } catch (e) {
+    useVoiceStore.getState().dispatch({ type: 'notice', notice: { kind: 'error', code: errorCodeOf(e) } });
+  }
 }
 
 export function leaveVoice(): Promise<void> {
@@ -347,9 +376,9 @@ export function toggleDeafen(): Promise<void> {
   return session.setDeafened(deafened);
 }
 
-/** Per-user volume in percent (0–200), saved per server and user (spec §8.4). */
+/** Per-user volume in percent (0–200), saved per server (the one on screen) and user (spec §8.4). */
 export function setUserVolume(userId: string, percent: number): void {
-  const serverId = useVoiceStore.getState().serverId;
+  const serverId = viewVoice(useVoiceStore.getState()).serverId;
   if (serverId) useVoiceSettings.getState().update((s) => withVolume(s, serverId, userId, percent));
 }
 
@@ -383,10 +412,10 @@ export function unwatchScreen(userId: string): void {
   session?.unwatch(userId);
 }
 
-/** voice.moderate; a refusal (FORBIDDEN, HIERARCHY…) shows as a voice notice. */
+/** voice.moderate on the server on screen (its sidebar or stage); a refusal (FORBIDDEN, HIERARCHY…) shows as a voice notice. */
 export async function moderateVoice(userId: string, action: VoiceModerateAction, toChannelId?: string): Promise<void> {
   try {
-    await window.ghostlink.server.request('voice.moderate', { userId, action, ...(toChannelId ? { toChannelId } : {}) });
+    await window.ghostlink.server.request('voice.moderate', { userId, action, ...(toChannelId ? { toChannelId } : {}) }, viewedServerId());
   } catch (e) {
     useVoiceStore.getState().dispatch({ type: 'notice', notice: { kind: 'error', code: errorCodeOf(e) } });
   }
@@ -413,9 +442,29 @@ export function provideVoiceDirectory(directory: VoiceDirectory | null): void {
   useDirectoryOverride.setState({ directory });
 }
 
+/** Names, channels and permissions of the server on screen. */
 export function useVoiceDirectory(): VoiceDirectory {
   const override = useDirectoryOverride((s) => s.directory);
   const welcome = useConnectionStore((c) => c.welcome);
   const names = useVoiceStore((v) => v.names);
   return useMemo(() => override ?? directoryFromWelcome(welcome, names), [override, welcome, names]);
+}
+
+const useCallDirectoryOverride = create<{ directory: VoiceDirectory | null }>()(() => ({ directory: null }));
+
+/**
+ * Integration seam (chamada-continua §2): the call's server's names, photos and channels while
+ * it is not on screen, kept live by its connection's events. Null: none kept.
+ */
+export function provideCallDirectory(directory: VoiceDirectory | null): void {
+  useCallDirectoryOverride.setState({ directory });
+}
+
+/** Names, channels and permissions of the call's server: the screen's while it is on screen, else the kept ones. */
+export function useCallDirectory(): VoiceDirectory {
+  const screen = useVoiceDirectory();
+  const kept = useCallDirectoryOverride((s) => s.directory);
+  const elsewhere = useVoiceStore(callElsewhere);
+  const names = useVoiceStore((v) => v.names);
+  return useMemo(() => (elsewhere ? (kept ?? directoryFromWelcome(null, names)) : screen), [elsewhere, kept, names, screen]);
 }

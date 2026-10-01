@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { House, LogOut, Plus, Trash2 } from 'lucide-react';
+import { House, LogOut, Plus, Trash2, Volume2 } from 'lucide-react';
 import type { AppErrorCode } from '../../shared/appErrors.js';
 import type { SavedServer } from '../../shared/ipcTypes.js';
 import { useOpenServerExit } from '../features/serverDelete/DeletionBanner.js';
 import { exitMenuItem, type ServerExitAction } from '../features/serverDelete/serverDeleteModel.js';
 import { ExitServerDialog } from '../features/serverDelete/ServerExitDialogs.js';
+import { callServerId, useVoiceStore } from '../features/voice/state.js';
 import { errorCodeOf, useT } from '../i18n/index.js';
 import { useConnectionStore } from '../stores/connection.js';
 import { useSavedListStore } from '../stores/savedList.js';
@@ -18,9 +19,11 @@ import { useLayoutSlots } from './slots.js';
 /**
  * The far-left column (owner's UI reference): home (back to the server list), the
  * round "+" right below it (the "Adicionar servidor" chooser), a divider, then the
- * saved servers. One connection at a time (spec §1.3): opening another server
- * replaces this one. A right-click on a server offers its way out (leave/delete spec
- * §2): "Sair do servidor", or "Excluir servidor" for the owner of the open server.
+ * saved servers. `currentId` is the server on screen: opening another one replaces it,
+ * except the voice call's, which stays connected (chamada-continua §1) and carries a
+ * green speaker; opening that one again is instant. A right-click on a server offers its
+ * way out (leave/delete spec §2): "Sair do servidor", or "Excluir servidor" for the
+ * owner of the open server.
  */
 export function ServerRail({
   currentId,
@@ -47,6 +50,7 @@ export function ServerRail({
   const onOpenServer = useLayoutSlots((s) => s.onOpenServer);
   const listRevision = useSavedListStore((s) => s.revision);
   const openExit = useOpenServerExit();
+  const callId = useVoiceStore(callServerId);
 
   useEffect(() => {
     let alive = true;
@@ -107,8 +111,9 @@ export function ServerRail({
       case 'server': {
         const s = e.server;
         const active = s.id === currentId;
+        const call = s.id === callId;
         return (
-          <div key={s.id} className={active ? `${l.railItem} ${l.railActive}` : l.railItem}>
+          <div key={s.id} className={active ? `${l.railItem} ${l.railActive}` : l.railItem} data-call={call || undefined}>
             <button
               type="button"
               className={l.railButton}
@@ -121,10 +126,15 @@ export function ServerRail({
               }}
               aria-label={s.name}
               aria-current={active ? 'page' : undefined}
-              title={s.name}
+              title={call ? `${s.name} · ${t('voice.callHere')}` : s.name}
             >
               {serverInitials(s.name)}
             </button>
+            {call && (
+              <span className={l.railCall} aria-hidden="true">
+                <Volume2 size={10} strokeWidth={2.5} />
+              </span>
+            )}
           </div>
         );
       }

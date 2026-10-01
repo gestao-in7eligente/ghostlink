@@ -6,7 +6,7 @@ import { release } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { APP_ID, APP_NAME, DEFAULT_PORT } from '@ghostlink/shared';
-import { IPC_EVENTS, type Locale, type Platform } from '../shared/ipcTypes.js';
+import { IPC_EVENTS, type Locale, type Platform, type ServerEventMessage } from '../shared/ipcTypes.js';
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges } from './appProtocol.js';
 import { createAvatars } from './avatars/index.js';
 import { ClientController } from './controller.js';
@@ -23,7 +23,7 @@ import { registerIpc } from './ipc.js';
 import { FileLog, consoleMirror, guardStdio, installCrashHandlers, mainLog, safeWrite, setMainLog } from './log.js';
 import { ChatNotifier } from './notifications.js';
 import { FriendsEngine, friendsEnv, watchIdentity } from './p2p/engine.js';
-import { installRendererPinning, setRendererPin } from './pinning.js';
+import { installRendererPinning, setRendererPins } from './pinning.js';
 import { PushToTalk, type PttHookModule } from './ptt.js';
 import { railwayImage } from './railway/image.js';
 import { RailwayProvisioner } from './railway/provisioner.js';
@@ -157,9 +157,9 @@ async function start(): Promise<BrowserWindow | null> {
     identity,
     settings,
     servers,
-    setRendererPin,
+    setRendererPins,
     emitConnectionState: (event) => send(IPC_EVENTS.connectionState, event),
-    emitServerEvent: (event) => send(IPC_EVENTS.server, event),
+    emitServerEvent: (event, serverId) => send(IPC_EVENTS.server, { serverId, event } satisfies ServerEventMessage),
     clientName: `ghostlink/${app.getVersion()} (${process.platform})`,
     onSession: (active) => avatars.onSession(active),
     onDeletion: (update) => deletions?.observe(update),
@@ -327,7 +327,7 @@ async function start(): Promise<BrowserWindow | null> {
     updater.dispose();
     serverUpdates.dispose();
     deletions?.dispose();
-    void controller.disconnect();
+    void controller.disconnectAll();
   });
 
   // 6. Smoke mode (spec §14): listeners first, then the page load.
@@ -412,8 +412,10 @@ function startHostMode(
       });
     },
     join: (req) => controller.join(req),
+    // Before the hosted server stops: its connection closes, on screen or the call's.
     leave: async (serverKeyId) => {
-      if (servers.findByServerKeyId(serverKeyId)?.id === controller.currentServerId) await controller.disconnect();
+      const saved = servers.findByServerKeyId(serverKeyId);
+      if (saved) await controller.closeServer(saved.id);
     },
     nickname: () => settings.get().nickname,
     emit: (status) => {
@@ -457,7 +459,7 @@ function identityBackup(window: BrowserWindow, identity: IdentityBackupDeps['ide
   const filters = [{ name: 'GhostLink', extensions: [GHOSTKEY_EXTENSION] }];
   return new IdentityBackup({
     identity,
-    disconnect: () => controller.disconnect(),
+    disconnect: () => controller.disconnectAll(),
     dialogs: {
       save: async (defaultName) => {
         const r = await dialog.showSaveDialog(window, { defaultPath: join(app.getPath('documents'), defaultName), filters });

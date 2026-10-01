@@ -6,7 +6,7 @@ import { ParticipantMenu } from './ParticipantMenu.js';
 import { StateIcons, VoiceAvatar } from './parts.js';
 import { useVoiceDirectory, useVoiceRuntime } from './runtime.js';
 import { LiveBadge } from './screenParts.js';
-import { isSpeaking, participantsOf, useVoiceStore } from './state.js';
+import { isSpeaking, participantsOf, useVoiceStore, viewVoice } from './state.js';
 import s from './voice.module.css';
 
 /**
@@ -18,9 +18,10 @@ import s from './voice.module.css';
 export function VoiceChannelParticipants({ channelId }: { channelId: string }) {
   useVoiceRuntime();
   const t = useT();
-  const participants = useVoiceStore((v) => participantsOf(v, channelId));
+  // A channel of the server on screen; the call may run on another one (chamada-continua §2).
+  const participants = useVoiceStore((v) => participantsOf(viewVoice(v), channelId));
   const speakers = useVoiceStore(useShallow((v) => (v.call.channelId === channelId ? participantsOf(v, channelId).filter((p) => isSpeaking(v, p.userId)).map((p) => p.userId) : [])));
-  const selfUserId = useVoiceStore((v) => v.selfUserId);
+  const selfUserId = useVoiceStore((v) => viewVoice(v).selfUserId);
   const here = useVoiceStore((v) => v.call.channelId === channelId && v.call.status === 'connected');
   const directory = useVoiceDirectory();
   const [menuFor, setMenuFor] = useState<string | null>(null);

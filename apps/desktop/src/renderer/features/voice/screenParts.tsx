@@ -6,7 +6,7 @@ import { useEffect, useId, useRef } from 'react';
 import { useT } from '../../i18n/index.js';
 import { setScreenVolume } from './runtime.js';
 import { MAX_VOLUME, screenVolumeKey, useVoiceSettings, volumeOf } from './settings.js';
-import { useVoiceStore } from './state.js';
+import { useVoiceStore, viewVoice } from './state.js';
 import s from './voice.module.css';
 
 /**
@@ -41,7 +41,7 @@ export function LiveBadge() {
 export function StreamVolume({ userId }: { userId: string }) {
   const t = useT();
   const id = useId();
-  const serverId = useVoiceStore((v) => v.serverId);
+  const serverId = useVoiceStore((v) => viewVoice(v).serverId);
   const volume = useVoiceSettings((st) => volumeOf(st.settings, serverId, screenVolumeKey(userId)));
   const percent = new Intl.NumberFormat(document.documentElement.lang || undefined, { style: 'percent' }).format(volume / 100);
   return (

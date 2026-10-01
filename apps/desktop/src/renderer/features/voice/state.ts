@@ -37,7 +37,8 @@ export interface ScreenSharing {
   name: string;
 }
 
-export interface VoiceState {
+/** One server's voice as the server reports it: its welcome, then voice.* events. */
+export interface ServerVoice {
   /** The saved server the snapshot belongs to (per-user volumes are stored per server). */
   serverId: string | null;
   selfUserId: string | null;
@@ -45,6 +46,23 @@ export interface VoiceState {
   available: boolean;
   /** channelId → who is in it, as the server reports (only channels this user can see). */
   channels: Readonly<Record<string, VoiceParticipant[]>>;
+  /** The server's name (the call panel's "{canal} / {servidor}"). */
+  serverName: string;
+  /** host:port of its connection: the only place voice.join may send the call (spec §4, §8.2). */
+  address: string | null;
+}
+
+/**
+ * The top-level ServerVoice is the voice runtime's server: the call's while a call is on
+ * (connecting included), else the one on screen. During a call the screen may show another
+ * server (chamada-continua §2): its own voice lives in `view` then, and switching the screen
+ * never touches the call's part.
+ */
+export interface VoiceState extends ServerVoice {
+  /** The saved server on screen; null on the Home screen. */
+  viewServerId: string | null;
+  /** The voice of the server on screen while the call runs on another one; null otherwise. */
+  view: ServerVoice | null;
   /** This app's own call. */
   call: { status: CallStatus; channelId: string | null };
   selfMuted: boolean;
@@ -79,6 +97,10 @@ export const initialVoiceState: VoiceState = {
   selfUserId: null,
   available: false,
   channels: {},
+  serverName: '',
+  address: null,
+  viewServerId: null,
+  view: null,
   call: { status: 'idle', channelId: null },
   selfMuted: false,
   selfDeafened: false,
@@ -97,8 +119,12 @@ export const initialVoiceState: VoiceState = {
 };
 
 export type VoiceAction =
+  /** A welcome of the runtime's server (its first one, or a reconnect). */
   | { type: 'welcome'; welcome: unknown }
-  | { type: 'serverEvent'; event: Envelope }
+  /** The server on screen changed, or got a new welcome; null: the Home screen. */
+  | { type: 'view'; welcome: unknown }
+  /** A server event; `serverId`: where it came from (absent: the runtime's server). */
+  | { type: 'serverEvent'; event: Envelope; serverId?: string }
   | { type: 'reset' }
   | { type: 'call'; status: CallStatus; channelId: string | null }
   | { type: 'self'; muted?: boolean; deafened?: boolean }
@@ -121,8 +147,18 @@ function channelsFrom(list: VoiceChannelState[]): Record<string, VoiceParticipan
   return out;
 }
 
-function fromWelcome(s: VoiceState, welcome: unknown): VoiceState {
-  const w = (typeof welcome === 'object' && welcome !== null ? welcome : {}) as { serverId?: unknown; self?: { userId?: unknown }; features?: unknown; voice?: unknown };
+type WelcomeFields = { serverId?: unknown; address?: unknown; self?: { userId?: unknown }; server?: { name?: unknown }; features?: unknown; voice?: unknown };
+
+const welcomeFields = (welcome: unknown): WelcomeFields => (typeof welcome === 'object' && welcome !== null ? welcome : {}) as WelcomeFields;
+
+/** The saved server a welcome belongs to, or null (none, or malformed). */
+export function welcomeServerId(welcome: unknown): string | null {
+  const id = welcomeFields(welcome).serverId;
+  return typeof id === 'string' ? id : null;
+}
+
+function fromWelcome<T extends ServerVoice>(s: T, welcome: unknown): T {
+  const w = welcomeFields(welcome);
   const voice = voiceWelcomeSchemaClient.safeParse(w.voice);
   return {
     ...s,
@@ -130,37 +166,93 @@ function fromWelcome(s: VoiceState, welcome: unknown): VoiceState {
     selfUserId: typeof w.self?.userId === 'string' ? w.self.userId : s.selfUserId,
     available: Array.isArray(w.features) && w.features.includes('voice'),
     channels: voice.success ? channelsFrom(voice.data) : {},
+    serverName: typeof w.server?.name === 'string' ? w.server.name : s.serverName,
+    address: typeof w.address === 'string' ? w.address : s.address,
   };
+}
+
+const NO_VOICE: ServerVoice = { serverId: null, selfUserId: null, available: false, channels: {}, serverName: '', address: null };
+
+/** Just the per-server part of a state (what `view` holds). */
+export function serverVoiceOf(s: ServerVoice): ServerVoice {
+  const { serverId, selfUserId, available, channels, serverName, address } = s;
+  return { serverId, selfUserId, available, channels, serverName, address };
+}
+
+/** voice.availability and voice.state on one server's snapshot. */
+function applyEvent<T extends ServerVoice>(s: T, event: Envelope): T {
+  if (event.t === 'welcome') return fromWelcome(s, event.d);
+  if (event.t === 'voice.availability') {
+    const parsed = voiceAvailabilitySchemaClient.safeParse(event.d);
+    return !parsed.success || parsed.data.available === s.available ? s : { ...s, available: parsed.data.available };
+  }
+  if (event.t !== 'voice.state') return s;
+  const parsed = voiceStateSchemaClient.safeParse(event.d);
+  if (!parsed.success) return s;
+  const { channelId, participants } = parsed.data;
+  const channels = { ...s.channels };
+  if (participants.length > 0) channels[channelId] = participants;
+  else delete channels[channelId];
+  return { ...s, channels };
+}
+
+/** Mute and deafen are the user's preference, kept across servers (Discord-like). */
+function reset(s: VoiceState): VoiceState {
+  return { ...initialVoiceState, selfMuted: s.selfMuted, selfDeafened: s.selfDeafened, globalPtt: s.globalPtt };
+}
+
+/**
+ * The screen moved (chamada-continua §2). Without a call the runtime follows it, as before.
+ * During one, the call's part stays as it is: another server's voice goes to `view`; coming
+ * back to the call's server just drops `view` (its live state is never replaced by the
+ * welcome the screen gets back).
+ */
+function onView(s: VoiceState, welcome: unknown): VoiceState {
+  const id = welcomeServerId(welcome);
+  if (s.call.status === 'idle') {
+    if (id === null) return { ...reset(s), viewServerId: null };
+    return { ...fromWelcome(id === s.serverId ? s : reset(s), welcome), view: null, viewServerId: id };
+  }
+  if (id === null || id === s.serverId) return s.view === null && s.viewServerId === id ? s : { ...s, view: null, viewServerId: id };
+  return { ...s, view: fromWelcome(s.view?.serverId === id ? s.view : NO_VOICE, welcome), viewServerId: id };
+}
+
+/** The call ended: the runtime follows the screen again (the server on screen, or nothing on the Home screen). */
+function afterCall(s: VoiceState): VoiceState {
+  if (s.view !== null) return { ...s, ...serverVoiceOf(s.view), view: null };
+  if (s.viewServerId === null && s.serverId !== null) return { ...reset(s), notice: s.notice };
+  return s;
 }
 
 /** Pure reducer behind the voice store. */
 export function voiceReducer(s: VoiceState, a: VoiceAction): VoiceState {
   switch (a.type) {
-    case 'welcome':
-      return fromWelcome(s, a.welcome);
+    case 'welcome': {
+      // Outside a call the runtime's server is the one on screen.
+      const next = fromWelcome(s, a.welcome);
+      return s.call.status === 'idle' ? { ...next, viewServerId: next.serverId } : next;
+    }
+    case 'view':
+      return onView(s, a.welcome);
     case 'serverEvent': {
-      if (a.event.t === 'welcome') return fromWelcome(s, a.event.d);
-      if (a.event.t === 'voice.availability') {
-        const parsed = voiceAvailabilitySchemaClient.safeParse(a.event.d);
-        return !parsed.success || parsed.data.available === s.available ? s : { ...s, available: parsed.data.available };
+      if (a.serverId === undefined || a.serverId === s.serverId) {
+        return a.event.t === 'welcome' ? fromWelcome(s, a.event.d) : applyEvent(s, a.event);
       }
-      if (a.event.t !== 'voice.state') return s;
-      const parsed = voiceStateSchemaClient.safeParse(a.event.d);
-      if (!parsed.success) return s;
-      const { channelId, participants } = parsed.data;
-      const channels = { ...s.channels };
-      if (participants.length > 0) channels[channelId] = participants;
-      else delete channels[channelId];
-      return { ...s, channels };
+      if (s.view === null || a.serverId !== s.view.serverId) return s;
+      const view = applyEvent(s.view, a.event);
+      return view === s.view ? s : { ...s, view };
     }
     case 'reset':
-      // Mute and deafen are the user's preference, kept across servers (Discord-like).
-      return { ...initialVoiceState, selfMuted: s.selfMuted, selfDeafened: s.selfDeafened, globalPtt: s.globalPtt };
-    case 'call':
+      return reset(s);
+    case 'call': {
       if (a.status === 'idle') {
-        return { ...s, call: { status: 'idle', channelId: null }, speaking: [], subscribed: [], pingMs: null, transmitting: false, sharing: null, watching: [], camera: false };
+        return afterCall({ ...s, call: { status: 'idle', channelId: null }, ...ROOM_CLEARED });
       }
-      return { ...s, call: { status: a.status, channelId: a.channelId } };
+      // A move to another channel (voice.forceMove, or a click) does not pass through idle:
+      // the call stays on its server, only what belonged to the old room goes.
+      const moved = s.call.channelId !== null && s.call.channelId !== a.channelId;
+      return { ...s, call: { status: a.status, channelId: a.channelId }, ...(moved ? ROOM_CLEARED : {}) };
+    }
     case 'self':
       return { ...s, selfMuted: a.muted ?? s.selfMuted, selfDeafened: a.deafened ?? s.selfDeafened };
     case 'speaking':
@@ -194,11 +286,29 @@ export function voiceReducer(s: VoiceState, a: VoiceAction): VoiceState {
   }
 }
 
+/** What belongs to one LiveKit room and goes with it. */
+const ROOM_CLEARED = { speaking: [], subscribed: [], pingMs: null, transmitting: false, sharing: null, watching: [], camera: false } satisfies Partial<VoiceState>;
+
 const NOBODY: VoiceParticipant[] = [];
 
 /** Who is in a voice channel (a stable empty list when nobody is). */
-export function participantsOf(s: VoiceState, channelId: string): VoiceParticipant[] {
+export function participantsOf(s: Pick<ServerVoice, 'channels'>, channelId: string): VoiceParticipant[] {
   return s.channels[channelId] ?? NOBODY;
+}
+
+/** The voice of the server on screen: its own during a call on another server, else the runtime's. */
+export function viewVoice(s: VoiceState): ServerVoice {
+  return s.view ?? s;
+}
+
+/** The saved server of the call (connecting included), or null without one. */
+export function callServerId(s: VoiceState): string | null {
+  return s.call.status === 'idle' ? null : s.serverId;
+}
+
+/** The call runs on a server that is not on screen (another one, or the Home screen). */
+export function callElsewhere(s: VoiceState): boolean {
+  return s.call.status !== 'idle' && s.serverId !== s.viewServerId;
 }
 
 /** My own entry in the channel I am in, as the server reports it (server mute lives here). */
@@ -211,7 +321,7 @@ export function selfVoice(s: VoiceState): VoiceParticipant | null {
 const NOBODY_LIVE: string[] = [];
 
 /** Who shares a screen in a voice channel, in the channel's order (from voice.state). */
-export function liveIn(s: VoiceState, channelId: string): string[] {
+export function liveIn(s: Pick<ServerVoice, 'channels'>, channelId: string): string[] {
   const live = participantsOf(s, channelId).filter((p) => p.screen);
   return live.length === 0 ? NOBODY_LIVE : live.map((p) => p.userId);
 }

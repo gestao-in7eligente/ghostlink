@@ -106,6 +106,17 @@ export interface ConnectionStateEvent {
   error?: AppErrorCode;
   /** With SERVER_DELETING: when the server is erased (ms epoch, the server's clock), when it said. */
   deletingAt?: number;
+  /**
+   * The voice call's connection while another server (or the Home screen) is on screen
+   * (chamada-continua §2): the screen's connection state ignores it; the call follows it.
+   */
+  background?: true;
+}
+
+/** What `IPC_EVENTS.server` carries: a server event and the saved server it came from. */
+export interface ServerEventMessage {
+  serverId: string;
+  event: Envelope;
 }
 
 /**
@@ -159,17 +170,24 @@ export interface GhostlinkApi {
     leave(id: string, deleteMyMessages: boolean): Promise<void>;
     /** The owner's `server.delete`: offline now, erased at `at` (ms epoch, the server's clock). */
     delete(id: string): Promise<{ at: number }>;
+    /**
+     * The voice call runs on this saved server (null: it ended). Its connection then outlives
+     * a switch to another server or to the Home screen (chamada-continua §2).
+     */
+    setCall(serverId: string | null): Promise<void>;
   };
   host: HostApi;
   onConnectionState(cb: (s: ConnectionStateEvent) => void): () => void;
-  onServerEvent(cb: (e: Envelope) => void): () => void;
+  /** Every connected server's events, with the saved server they came from (on screen or the call's). */
+  onServerEvent(cb: (e: Envelope, serverId: string) => void): () => void;
   onHostStatus(cb: (s: HostStatus) => void): () => void;
   /** spec §12: a ghostlink:// link that arrived before the page listened (then null). */
   deepLink: { take(): Promise<ParsedJoinInput | null> };
   onDeepLink(cb: (link: ParsedJoinInput) => void): () => void;
   /**
-   * A client request of spec §5.2 to the connected server. With `serverId` (the saved
-   * server the caller believes it talks to), main refuses it after a switch.
+   * A client request of spec §5.2. With `serverId` it goes to that saved server's connection
+   * (on screen or the call's), and is refused when neither is that server; without it, to the
+   * server on screen.
    */
   server: { request<T = unknown>(type: string, payload?: unknown, serverId?: string): Promise<T> };
   notifications: { show(n: ChatNotification): Promise<boolean> };
@@ -234,6 +252,7 @@ export const IPC = {
   serversCheckExit: 'ghostlink:servers.checkExit',
   serversLeave: 'ghostlink:servers.leave',
   serversDelete: 'ghostlink:servers.delete',
+  serversSetCall: 'ghostlink:servers.setCall',
   hostStatus: 'ghostlink:host.status',
   hostStart: 'ghostlink:host.start',
   hostStop: 'ghostlink:host.stop',
@@ -332,6 +351,7 @@ export interface IpcContract {
   [IPC.serversCheckExit]: { args: [id: string]; result: ServerExitCheck };
   [IPC.serversLeave]: { args: [id: string, deleteMyMessages: boolean]; result: void };
   [IPC.serversDelete]: { args: [id: string]; result: { at: number } };
+  [IPC.serversSetCall]: { args: [serverId: string | null]; result: void };
   [IPC.hostStatus]: { args: []; result: HostStatus };
   [IPC.hostStart]: { args: [config: HostConfig]; result: HostStartResult };
   [IPC.hostStop]: { args: []; result: HostStatus };

@@ -29,7 +29,7 @@ describe('preload bridge', () => {
     expect(Object.keys(api.identity).sort()).toEqual(['create', 'delete', 'exportBackup', 'importBackup', 'pickBackup', 'replaceKeepingBackup', 'retry', 'status']);
     expect(Object.keys(api.ptt)).toEqual(['configure']);
     expect(Object.keys(api.join).sort()).toEqual(['connect', 'parse', 'probe']);
-    expect(Object.keys(api.servers).sort()).toEqual(['checkExit', 'connect', 'delete', 'disconnect', 'leave', 'list', 'remove']);
+    expect(Object.keys(api.servers).sort()).toEqual(['checkExit', 'connect', 'delete', 'disconnect', 'leave', 'list', 'remove', 'setCall']);
     expect(Object.keys(api.settings).sort()).toEqual(['get', 'set']);
     expect(Object.keys(api.dm).sort()).toEqual(['conversations', 'edit', 'hide', 'history', 'onEvent', 'open', 'read', 'remove', 'send', 'typing']);
     expect(Object.keys(api.friends).sort()).toEqual(['accept', 'add', 'block', 'dismiss', 'newCode', 'onChange', 'remove', 'rename', 'setAvailable', 'setInbox', 'state']);
@@ -66,6 +66,8 @@ describe('preload bridge', () => {
     ['servers.checkExit', () => api.servers.checkExit('s1'), IPC.serversCheckExit, ['s1']],
     ['servers.leave', () => api.servers.leave('s1', true), IPC.serversLeave, ['s1', true]],
     ['servers.delete', () => api.servers.delete('s1'), IPC.serversDelete, ['s1']],
+    ['servers.setCall', () => api.servers.setCall('s1'), IPC.serversSetCall, ['s1']],
+    ['servers.setCall null', () => api.servers.setCall(null), IPC.serversSetCall, [null]],
     ['host.status', () => api.host.status(), IPC.hostStatus, []],
     ['host.start', () => api.host.start(hostConfig), IPC.hostStart, [hostConfig]],
     ['host.stop', () => api.host.stop(), IPC.hostStop, []],
@@ -145,8 +147,13 @@ describe('preload bridge', () => {
     off();
     expect(electron.ipcRenderer.removeListener).toHaveBeenCalledWith(IPC_EVENTS.connectionState, listener);
 
-    api.onServerEvent(() => {});
-    expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.server);
+    // A server event arrives with its origin (chamada-continua §2): the page gets both.
+    const events: unknown[] = [];
+    api.onServerEvent((event, serverId) => events.push([event, serverId]));
+    const [serverChannel, serverListener] = electron.ipcRenderer.on.mock.calls.at(-1)!;
+    expect(serverChannel).toBe(IPC_EVENTS.server);
+    (serverListener as (e: unknown, p: unknown) => void)({ sender: 'SECRET' }, { serverId: 's2', event: { t: 'voice.state', d: {} } });
+    expect(events).toEqual([[{ t: 'voice.state', d: {} }, 's2']]);
     api.onHostStatus(() => {});
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.host);
     api.onDeepLink(() => {});

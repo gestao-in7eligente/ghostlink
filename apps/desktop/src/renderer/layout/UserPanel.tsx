@@ -1,5 +1,6 @@
 import { forwardRef } from 'react';
 import { LogOut, Settings } from 'lucide-react';
+import { useVoiceStore } from '../features/voice/state.js';
 import { useT } from '../i18n/index.js';
 import { useConnectionStore } from '../stores/connection.js';
 import { useTextStore } from '../stores/text.js';
@@ -10,7 +11,9 @@ import { useLayoutSlots } from './slots.js';
 /**
  * The card at the bottom-left (owner's UI reference). Its top row is the Voice
  * track's panel (only while in voice); the bottom row is the user, the Voice
- * track's mic/headphones controls, settings and disconnect.
+ * track's mic/headphones controls, settings and disconnect. On the Home screen the
+ * voice parts show only during a call, which goes on there (chamada-continua §1):
+ * "Voz conectada — {canal} / {servidor}" with the microphone, the headphones and hang-up.
  */
 export const UserPanel = forwardRef<
   HTMLElement,
@@ -34,13 +37,15 @@ export const UserPanel = forwardRef<
   const VoicePanel = useLayoutSlots((s) => s.VoicePanel);
   const VoiceControls = useLayoutSlots((s) => s.VoiceControls);
   const home = homeNickname !== undefined;
+  const inCall = useVoiceStore((v) => v.call.status !== 'idle');
+  const voice = !home || inCall;
   const online = home ? homeStatus?.online === true : state === 'connected';
   const name = homeNickname ?? (nickname || fallbackNick);
   const status = home ? (homeStatus?.text ?? t('home.panelStatus')) : online ? t('layout.online') : t(`state.${state}`);
 
   return (
     <section ref={ref} className={l.userPanel} aria-label={t('layout.userPanel')}>
-      {!home && VoicePanel && <VoicePanel onOpenSettings={onVoiceSettings} />}
+      {voice && VoicePanel && <VoicePanel onOpenSettings={onVoiceSettings} />}
       <div className={l.panelRow}>
         <Avatar size={32} name={name} hash={home ? null : avatar} self online={online} />
         <div className={l.who}>
@@ -50,7 +55,7 @@ export const UserPanel = forwardRef<
           </span>
         </div>
         <div className={l.panelActions}>
-          {!home && VoiceControls && <VoiceControls onOpenSettings={onVoiceSettings} />}
+          {voice && VoiceControls && <VoiceControls onOpenSettings={onVoiceSettings} />}
           <button type="button" className={l.panelButton} onClick={onSettings} aria-label={t('layout.userSettings')} title={t('layout.userSettings')}>
             <Settings size={19} aria-hidden="true" />
           </button>

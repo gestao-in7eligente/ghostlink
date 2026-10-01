@@ -3,13 +3,13 @@ import { errorMessage, useT } from '../../i18n/index.js';
 import { DrawLayer, OwnShareDrawControls, useDrawRuntime } from '../draw/index.js';
 import { PanelCameraButton } from './CameraParts.js';
 import { HangUpIcon } from './parts.js';
-import { leaveVoice, useVoiceDirectory, useVoiceRuntime } from './runtime.js';
+import { leaveVoice, openCallServer, useCallDirectory, useVoiceRuntime } from './runtime.js';
 import { LiveBadge, TrackVideo } from './screenParts.js';
 import { ScreenPickerHost } from './ScreenPicker.js';
 import { screenQualityParts } from './screenShare.js';
 import { useScreenShareButton } from './ScreenStage.js';
 import { useScreenTracks } from './screenStore.js';
-import { useVoiceStore, type ScreenSharing, type VoiceNotice } from './state.js';
+import { callElsewhere, useVoiceStore, type ScreenSharing, type VoiceNotice } from './state.js';
 import s from './voice.module.css';
 
 function NoticeText({ notice }: { notice: VoiceNotice }) {
@@ -100,7 +100,8 @@ function ScreenShareButton({ channelId }: { channelId: string }) {
  * the channel, the signal round trip and the hang-up; the preview while I share; then a
  * row of equal buttons (Discord: camera, screen, activities, soundboard; here the camera,
  * the screen and, when the layout offers it, the voice settings). Renders nothing outside a call,
- * except a pending voice notice.
+ * except a pending voice notice. On the Home screen or another server the call goes on
+ * (chamada-continua §1): the row then says "{canal} / {servidor}", and a click there goes back.
  */
 export function VoicePanel({ onOpenSettings }: { onOpenSettings?: () => void }) {
   useVoiceRuntime();
@@ -110,8 +111,11 @@ export function VoicePanel({ onOpenSettings }: { onOpenSettings?: () => void }) 
   const call = useVoiceStore((v) => v.call);
   const pingMs = useVoiceStore((v) => v.pingMs);
   const sharing = useVoiceStore((v) => v.sharing);
-  const directory = useVoiceDirectory();
+  const elsewhere = useVoiceStore(callElsewhere);
+  const serverName = useVoiceStore((v) => v.serverName);
+  const directory = useCallDirectory();
   if (call.status === 'idle' || !call.channelId) return <VoiceNoticeBar />;
+  const channelName = directory.channelName(call.channelId) ?? '';
   const waiting = call.status !== 'connected';
   const title = t(call.status === 'connected' ? 'voice.connected' : call.status === 'connecting' ? 'voice.connecting' : 'voice.reconnecting');
   const locale = document.documentElement.lang || undefined;
@@ -129,7 +133,19 @@ export function VoicePanel({ onOpenSettings }: { onOpenSettings?: () => void }) 
             <span className={waiting ? `${s.panelTitle} ${s.panelTitleWait}` : s.panelTitle} aria-live="polite">
               {title}
             </span>
-            <span className={s.panelChannel}>{directory.channelName(call.channelId) ?? ''}</span>
+            {elsewhere ? (
+              <button
+                type="button"
+                className={`${s.panelChannel} ${s.panelChannelLink}`}
+                onClick={() => void openCallServer()}
+                title={t('voice.backToCall', { server: serverName })}
+                data-call-return=""
+              >
+                {t('voice.channelOnServer', { channel: channelName, server: serverName })}
+              </button>
+            ) : (
+              <span className={s.panelChannel}>{channelName}</span>
+            )}
           </div>
           {ping && (
             <span className={s.ping} title={t('voice.latency')}>

@@ -239,6 +239,20 @@ button.participantRow:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The call on another server (or the Home screen): "{canal} / {servidor}", a link back to it. */
+.panelChannelLink {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.panelChannelLink:hover,
+.panelChannelLink:focus-visible {
+  color: var(--text-strong);
+  text-decoration: underline;
+}
 .ping {
   flex: none;
   color: var(--text-faint);

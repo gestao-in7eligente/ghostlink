@@ -41,7 +41,7 @@ function person(name: string): Person {
     identity,
     settings: SettingsStore.load(home, 'pt-BR'),
     servers,
-    setRendererPin: async () => {},
+    setRendererPins: async () => {},
     emitConnectionState: (e) => states.push(e),
     emitServerEvent: () => {},
     clientName: 'ghostlink/0.2.4 (test)',
