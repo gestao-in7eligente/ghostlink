@@ -122,6 +122,7 @@ describe('argument validation', () => {
     ['an extra argument', IPC.serversList, ['surprise']],
     ['a missing id', IPC.serversConnect, []],
     ['an unknown locale', IPC.settingsSet, [{ locale: 'fr' }]],
+    ['a non-boolean closeToTray', IPC.settingsSet, [{ closeToTray: 'no' }]],
     ['an own __proto__ key', IPC.settingsSet, [JSON.parse('{"__proto__":{"nickname":"x"}}')]],
     ['a huge join input', IPC.joinParse, ['x'.repeat(5_000)]],
     ['a non-boolean auto-check', IPC.updatesSetAutoCheck, ['false']],
