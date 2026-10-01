@@ -39,7 +39,7 @@ export class AvatarStore {
     if (record !== null) {
       const path = join(dir, `avatar.${EXTENSIONS[record.mime]}`);
       const bytes = existsSync(path) ? readFileSync(path) : null;
-      let info: AvatarInfo | null = null;
+      let info: AvatarInfo | null;
       try {
         info = bytes === null ? null : checkMyAvatar(bytes);
       } catch {

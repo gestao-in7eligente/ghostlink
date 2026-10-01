@@ -33,7 +33,7 @@ export class AvatarCache {
 
   static open(dir: string, opts: { maxBytes?: number } = {}): AvatarCache {
     const cache = new AvatarCache(dir, opts.maxBytes ?? AVATAR_CACHE_MAX_BYTES);
-    let names: string[] = [];
+    let names: string[];
     try {
       names = readdirSync(dir);
     } catch {
