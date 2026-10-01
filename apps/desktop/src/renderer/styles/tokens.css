@@ -54,6 +54,22 @@
   --overlay: rgb(0 0 0 / 60%); /* modal backdrop */
   --shadow-up: 0 -10px 20px rgb(0 0 0 / 25%); /* the user panel over the channel list */
 
+  /* Voice call (Discord's call screen, measured on the owner's reference, 2026-10-01). */
+  --bg-stage: #000000; /* the whole call column, header included */
+  --bg-tile: #50545b; /* a participant tile */
+  --bg-tile-top: #2b2d31; /* a tile's top edge: the gradient reaches --bg-tile ~90 px down */
+  --bg-tile-label: #232528; /* the name label at a tile's bottom-left */
+  --bg-stage-button: #121213; /* buttons on the stage ("Assistir") */
+  --border-stage-button: #27272a;
+  --bg-call-group: #0a0a0c; /* a group of the call control bar */
+  --border-call-group: #202024;
+  --call-hangup: #d22d39; /* the red hang-up button */
+  --call-hangup-border: #c83e4a;
+  --bg-panel-button: #414249; /* the equal buttons of the user panel's voice section */
+  --border-panel-button: #45454c;
+  --bg-call-signal: #323d3e; /* the square behind the panel's connection icon */
+  --text-positive: #7ecb94; /* "Voz conectada", the connection icon, the connected channel's icon */
+
   --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
   --shadow: 0 12px 40px rgb(0 0 0 / 45%);
