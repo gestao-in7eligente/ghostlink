@@ -14,6 +14,7 @@ import {
   type IpcReturn,
   type PttEvent,
 } from '../shared/ipcTypes.js';
+import type { DmEvent } from '../shared/dmTypes.js';
 import type { FriendsSnapshot } from '../shared/friendsTypes.js';
 import type { HostStatus } from '../shared/hostTypes.js';
 import type { RailwayProgress } from '../shared/railwayTypes.js';
@@ -120,6 +121,18 @@ export const api: GhostlinkApi = {
     setInbox: (enabled) => invoke(IPC.friendsSetInbox, enabled),
     setAvailable: (enabled) => invoke(IPC.friendsSetAvailable, enabled),
     onChange: (cb) => subscribe<FriendsSnapshot>(IPC_EVENTS.friends, cb),
+  },
+  dm: {
+    conversations: () => invoke(IPC.dmConversations),
+    open: (friendKey) => invoke(IPC.dmOpen, friendKey),
+    hide: (conv) => invoke(IPC.dmHide, conv),
+    history: (conv, before, limit) => invoke(IPC.dmHistory, conv, before, limit),
+    send: (conv, text, replyTo) => invoke(IPC.dmSend, conv, text, replyTo),
+    edit: (conv, id, text) => invoke(IPC.dmEdit, conv, id, text),
+    remove: (conv, id) => invoke(IPC.dmRemove, conv, id),
+    read: (conv, ts) => invoke(IPC.dmRead, conv, ts),
+    typing: (conv) => invoke(IPC.dmTyping, conv),
+    onEvent: (cb) => subscribe<DmEvent>(IPC_EVENTS.dm, cb),
   },
 };
 

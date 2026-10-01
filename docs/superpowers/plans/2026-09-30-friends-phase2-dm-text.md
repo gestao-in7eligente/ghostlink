@@ -9,7 +9,7 @@
 ## The contract
 
 - `apps/desktop/src/shared/dmTypes.ts` (committed): `DmConversation`, `DmMessage`, `DmEvent`, `DmApi`, `DM_TEXT_MAX`, `DM_PAGE`.
-- To add when Phase 1 has landed (so its typecheck stays green meanwhile): the `ghostlink:dm.*` channels and `IPC_EVENTS.dm` in `shared/ipcTypes.ts`, `window.ghostlink.dm` in the preload, and the pinned lists in `test/shared/contract.test.ts` and `test/preload/preload.test.ts`.
+- Committed after Phase 1: the `ghostlink:dm.*` channels, `IPC_EVENTS.dm` and `DmIpcChannel` in `shared/ipcTypes.ts`, `window.ghostlink.dm` in the preload, and the pinned lists in `test/shared/contract.test.ts` and `test/preload/preload.test.ts`.
 - No new error codes: `P2P_UNAVAILABLE` (engine off), `NOT_FOUND` (unknown conversation or message), `FORBIDDEN` (editing someone else's message), `BAD_REQUEST` (empty or oversized text).
 
 ## Track A — the engine (main process)
