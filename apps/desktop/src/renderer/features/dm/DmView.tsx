@@ -336,21 +336,25 @@ const DmRowView = memo(function DmRowView({ row, env }: { row: DmRow; env: DmEnv
             </time>
           </div>
         )}
-        <div className={c.content}>
-          {m.text !== '' && <Content text={m.text} md={env.md} />}
-          {m.editedAt !== null && (
-            <span className={c.edited} title={formatFull(m.editedAt, env.locale)}>
-              {' '}
-              {t('chat.edited')}
-            </span>
-          )}
-          {m.mine && (
-            <span className={m.delivered ? `${d.mark} ${d.markDelivered}` : d.mark} role="img" aria-label={t(m.delivered ? 'dm.delivered' : 'dm.sent')} title={t(m.delivered ? 'dm.delivered' : 'dm.sent')}>
-              {m.delivered ? <CheckCheck size={14} aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}
-            </span>
-          )}
-        </div>
+        {m.text !== '' && (
+          <div className={c.content}>
+            <Content text={m.text} md={env.md} />
+            {m.editedAt !== null && (
+              <span className={c.edited} title={formatFull(m.editedAt, env.locale)}>
+                {' '}
+                {t('chat.edited')}
+              </span>
+            )}
+            {m.mine && <DeliveryMark delivered={m.delivered} t={t} />}
+          </div>
+        )}
         {m.attachments.length > 0 && <AttachmentList items={env.files(m)} onDownload={env.onDownload} />}
+        {/* A message of files alone: the mark goes under them. */}
+        {m.text === '' && m.mine && (
+          <div className={c.content}>
+            <DeliveryMark delivered={m.delivered} t={t} />
+          </div>
+        )}
       </div>
       {env.canWrite && (
         <div className={c.actions} role="toolbar" aria-label={t('chat.messageActions')}>
@@ -372,6 +376,16 @@ const DmRowView = memo(function DmRowView({ row, env }: { row: DmRow; env: DmEnv
     </div>
   );
 });
+
+/** ✓ sent, ✓✓ delivered (friends spec §4.3), after my own messages. */
+function DeliveryMark({ delivered, t }: { delivered: boolean; t: Translate }) {
+  const label = t(delivered ? 'dm.delivered' : 'dm.sent');
+  return (
+    <span className={delivered ? `${d.mark} ${d.markDelivered}` : d.mark} role="img" aria-label={label} title={label}>
+      {delivered ? <CheckCheck size={14} aria-hidden="true" /> : <Check size={14} aria-hidden="true" />}
+    </span>
+  );
+}
 
 /** "{name} está digitando…", gone 5 s after the last signal. */
 function TypingLine({ conv, peer, name }: { conv: string; peer: string; name: string }) {
