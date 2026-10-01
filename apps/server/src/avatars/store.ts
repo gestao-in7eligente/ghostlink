@@ -1,8 +1,7 @@
-import { randomBytes } from 'node:crypto';
 import { mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { AVATAR_HASH, type ImageMime } from '@ghostlink/shared';
+import { STAGED_NAME as STAGED } from '../uploads/http.js';
 
 const EXTENSION: Readonly<Record<ImageMime, string>> = {
   'image/png': 'png',
@@ -13,8 +12,6 @@ const EXTENSION: Readonly<Record<ImageMime, string>> = {
 const BY_EXTENSION: ReadonlyArray<readonly [string, ImageMime]> = Object.entries(EXTENSION).map(([mime, ext]) => [ext, mime as ImageMime] as const);
 /** A stored photo: `<sha256>.<ext>`. */
 const STORED = /^([0-9a-f]{64})\.(?:png|jpg|webp|gif)$/;
-/** An upload being written (or left half-written by a crash). */
-const STAGED = /^upload-[0-9a-f]+\.tmp$/;
 
 export interface StoredAvatar {
   path: string;
@@ -31,7 +28,7 @@ function isFile(path: string): boolean {
 
 /**
  * The photos of a server: `<dataDir>/avatars/<hash>.<ext>`, one file per SHA-256, shared by
- * every member who uses it. An upload is written to a temp file first (stage, async) and
+ * every member who uses it. An upload is written to a temp file first (by the upload hub) and
  * then renamed into place (commit, synchronous): the caller points the database at it in
  * the same tick, so a sweep never sees a stored photo that nobody references yet.
  * Paths contain hashes: never log them.
@@ -56,18 +53,6 @@ export class AvatarStore {
     return null;
   }
 
-  /** Writes the bytes to a new temp file and returns its path, for commit() or discard(). */
-  async stage(bytes: Uint8Array): Promise<string> {
-    const path = join(this.dir, `upload-${randomBytes(8).toString('hex')}.tmp`);
-    try {
-      await writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
-    } catch (e) {
-      rmSync(path, { force: true });
-      throw e;
-    }
-    return path;
-  }
-
   /** Moves a staged upload into place; an existing file with that hash is reused. Synchronous on purpose (see the class). */
   commit(staged: string, hash: string, mime: ImageMime): void {
     if (this.find(hash)) {
@@ -75,10 +60,6 @@ export class AvatarStore {
       return;
     }
     renameSync(staged, join(this.dir, `${hash}.${EXTENSION[mime]}`));
-  }
-
-  discard(staged: string): void {
-    rmSync(staged, { force: true });
   }
 
   /** Every stored photo's hash. Unknown files are left alone. */
