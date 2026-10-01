@@ -85,6 +85,12 @@ body {
   background: var(--bg-3);
 }
 
+/* A hidden bar keeps its place, so the ghost does not jump when the download starts. */
+.progress[hidden] {
+  display: block !important;
+  visibility: hidden;
+}
+
 .progress::-webkit-progress-bar {
   background: var(--bg-3);
   border-radius: 2px;
