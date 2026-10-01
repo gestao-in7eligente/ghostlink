@@ -9,7 +9,7 @@ import type { AvatarInfo, ProfileApi } from './profileTypes.js';
 import type { RailwayAccount, RailwayCreateRequest, RailwayPending, RailwayProgress } from './railwayTypes.js';
 import type { ScreenApi, ScreenChoice, ScreenSource } from './screenTypes.js';
 import type { ManagedServerUpdate, ServerUpdatesApi } from './serverUpdateTypes.js';
-import type { UpdateState, UpdatesApi } from './updates.js';
+import type { ReleaseNotesResult, UpdateState, UpdatesApi } from './updates.js';
 
 export type IdentityStatus = 'none' | 'ready' | 'locked';
 export type ConnState = 'idle' | 'connecting' | 'authenticating' | 'connected' | 'reconnecting' | 'failed';
@@ -220,6 +220,7 @@ export const IPC = {
   updatesState: 'ghostlink:updates.state',
   updatesSetAutoCheck: 'ghostlink:updates.setAutoCheck',
   updatesCheckNow: 'ghostlink:updates.checkNow',
+  updatesNotes: 'ghostlink:updates.notes',
   updatesRestart: 'ghostlink:updates.restart',
   pttConfigure: 'ghostlink:ptt.configure',
   railwayStatus: 'ghostlink:railway.status',
@@ -293,6 +294,7 @@ export interface IpcContract {
   [IPC.updatesState]: { args: []; result: UpdateState };
   [IPC.updatesSetAutoCheck]: { args: [enabled: boolean]; result: UpdateState };
   [IPC.updatesCheckNow]: { args: []; result: UpdateState };
+  [IPC.updatesNotes]: { args: [version: string]; result: ReleaseNotesResult };
   [IPC.updatesRestart]: { args: []; result: void };
   [IPC.pttConfigure]: { args: [config: PttConfig]; result: PttStatus };
   [IPC.railwayStatus]: { args: []; result: RailwayAccount };

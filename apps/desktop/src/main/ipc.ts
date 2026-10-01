@@ -1,6 +1,6 @@
 import { ipcMain, type WebFrameMain } from 'electron';
 import { z } from 'zod';
-import { LIMITS } from '@ghostlink/shared';
+import { LIMITS, isReleaseVersion } from '@ghostlink/shared';
 import { toAppErrorCode } from '../shared/appErrors.js';
 import { IPC, type AppInfo, type ChatNotification, type IpcArgs, type IpcChannel, type IpcResult, type IpcReturn } from '../shared/ipcTypes.js';
 import type { ClientController } from './controller.js';
@@ -13,6 +13,7 @@ import { mainLog } from './log.js';
 import type { PushToTalk } from './ptt.js';
 import { PROFILE_IPC_ARG_SCHEMAS, createProfileIpcHandlers, type ProfileIpcDeps } from './profileIpc.js';
 import { RAILWAY_IPC_ARG_SCHEMAS, createRailwayIpcHandlers, type RailwayIpcDeps } from './railwayIpc.js';
+import type { ReleaseNotes } from './releaseNotes.js';
 import { SCREEN_IPC_ARG_SCHEMAS, createScreenIpcHandlers, type ScreenIpcDeps } from './screenIpc.js';
 import { SERVER_UPDATES_IPC_ARG_SCHEMAS, createServerUpdatesIpcHandlers, type ServerUpdatesIpcDeps } from './serverUpdatesIpc.js';
 import { originOf } from './security.js';
@@ -36,6 +37,8 @@ export interface IpcDeps {
   shell: { openExternal(url: string): Promise<boolean>; copyText(text: string): void };
   notifications: { show(n: ChatNotification): boolean };
   updates: Pick<Updater, 'state' | 'setAutoCheck' | 'checkNow' | 'restart'>;
+  /** The notes of the new version the updater found (Updates page, v0.2.3). */
+  releaseNotes?: Pick<ReleaseNotes, 'get' | 'follow' | 'forgetFailures'>;
   /** Global push-to-talk (voice track). */
   ptt: Pick<PushToTalk, 'configure'>;
   /** "Criar um servidor" on Railway (v0.2). */
@@ -145,6 +148,7 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.updatesState]: z.tuple([]),
   [IPC.updatesSetAutoCheck]: z.tuple([z.boolean()]),
   [IPC.updatesCheckNow]: z.tuple([]),
+  [IPC.updatesNotes]: z.tuple([z.string().max(20).refine(isReleaseVersion)]),
   [IPC.updatesRestart]: z.tuple([]),
   // A DOM KeyboardEvent.code such as "KeyV" or "ControlRight"; main maps it to the hook's keycode.
   [IPC.pttConfigure]: z.tuple([z.strictObject({ enabled: z.boolean(), code: z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,23}$/).nullable() })]),
@@ -184,9 +188,14 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     [IPC.updatesState]: () => updates.state(),
     [IPC.updatesSetAutoCheck]: (enabled) => updates.setAutoCheck(enabled),
     [IPC.updatesCheckNow]: async () => {
+      // A click is the moment notes that failed to load may be asked for again.
+      deps.releaseNotes?.forgetFailures();
       await updates.checkNow(); // never throws; skipped while a check runs or an update waits
-      return updates.state();
+      const state = updates.state();
+      deps.releaseNotes?.follow(state); // the update already found when the check was skipped
+      return state;
     },
+    [IPC.updatesNotes]: (version) => deps.releaseNotes?.get(version) ?? { version, status: 'unavailable' },
     [IPC.updatesRestart]: () => updates.restart(),
     [IPC.pttConfigure]: (config) => deps.ptt.configure(config),
   };

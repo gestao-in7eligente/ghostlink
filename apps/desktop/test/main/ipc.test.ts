@@ -22,6 +22,7 @@ let deps: {
   settings: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
   controller: Record<'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove', ReturnType<typeof vi.fn>>;
   updates: Record<'state' | 'setAutoCheck' | 'checkNow' | 'restart', ReturnType<typeof vi.fn>>;
+  releaseNotes: Record<'get' | 'follow' | 'forgetFailures', ReturnType<typeof vi.fn>>;
 };
 
 beforeEach(() => {
@@ -44,6 +45,11 @@ beforeEach(() => {
       setAutoCheck: vi.fn((autoCheck: boolean) => ({ ...UPDATE_STATE, autoCheck })),
       checkNow: vi.fn(async () => {}),
       restart: vi.fn(),
+    },
+    releaseNotes: {
+      get: vi.fn(async (version: string) => ({ version, status: 'ready', markdown: '- x' })),
+      follow: vi.fn(),
+      forgetFailures: vi.fn(),
     },
   };
   registerIpc({ appOrigin: APP, ...deps } as unknown as Deps);
@@ -111,9 +117,17 @@ describe('argument validation', () => {
     ['an argument to restart', IPC.updatesRestart, [true]],
     ['an argument to checkNow', IPC.updatesCheckNow, [true]],
     ['an options object to checkNow', IPC.updatesCheckNow, [{ force: true }]],
+    ['notes without a version', IPC.updatesNotes, []],
+    ['notes of a pre-release', IPC.updatesNotes, ['0.2.3-rc.1']],
+    ['notes of a path', IPC.updatesNotes, ['../../users']],
+    ['notes of a number', IPC.updatesNotes, [23]],
+    ['notes of a huge version', IPC.updatesNotes, ['1'.repeat(64)]],
+    ['notes with an extra argument', IPC.updatesNotes, ['0.2.3', 'en']],
   ])('refuses %s with BAD_REQUEST', async (_label, channel, args) => {
     expect(await invoke(channel, TOP, ...args)).toEqual({ ok: false, code: 'BAD_REQUEST' });
-    for (const fn of [...Object.values(deps.controller), ...Object.values(deps.updates), deps.settings.set]) expect(fn).not.toHaveBeenCalled();
+    for (const fn of [...Object.values(deps.controller), ...Object.values(deps.updates), ...Object.values(deps.releaseNotes), deps.settings.set]) {
+      expect(fn).not.toHaveBeenCalled();
+    }
   });
 });
 
@@ -169,6 +183,23 @@ describe('updates channels (spec §15)', () => {
     expect(await invoke(IPC.updatesCheckNow, TOP)).toEqual({ ok: true, value: { ...UPDATE_STATE, status: 'idle', version: null, lastCheckedAt: 2_000 } });
     expect(deps.updates.checkNow).toHaveBeenCalledOnce();
     expect(deps.updates.checkNow).toHaveBeenCalledWith();
+  });
+
+  it('a click lets notes that failed load again: forgotten before the check, the found version followed after it', async () => {
+    const order: string[] = [];
+    deps.releaseNotes.forgetFailures.mockImplementation(() => order.push('forget'));
+    deps.updates.checkNow.mockImplementation(async () => void order.push('check'));
+    deps.releaseNotes.follow.mockImplementation(() => order.push('follow'));
+    await invoke(IPC.updatesCheckNow, TOP);
+    expect(order).toEqual(['forget', 'check', 'follow']);
+    expect(deps.releaseNotes.follow).toHaveBeenCalledWith(UPDATE_STATE);
+  });
+
+  it('gives the page the notes main holds for a version', async () => {
+    expect(await invoke(IPC.updatesNotes, TOP, '0.2.3')).toEqual({ ok: true, value: { version: '0.2.3', status: 'ready', markdown: '- x' } });
+    expect(deps.releaseNotes.get).toHaveBeenCalledWith('0.2.3');
+    expect(await invoke(IPC.updatesNotes, { url: 'https://evil.example/', parent: null }, '0.2.3')).toEqual({ ok: false, code: 'FORBIDDEN' });
+    expect(deps.releaseNotes.get).toHaveBeenCalledOnce();
   });
 
   it.each([

@@ -44,6 +44,7 @@ describe('syncUpdates', () => {
       state: vi.fn(async () => base),
       setAutoCheck: vi.fn(),
       checkNow: vi.fn(),
+      notes: vi.fn(),
       restart: vi.fn(),
       onState: vi.fn((cb: (state: UpdateState) => void) => {
         push = cb;
@@ -64,6 +65,7 @@ describe('syncUpdates', () => {
       state: vi.fn(async () => Promise.reject(new Error('INTERNAL'))),
       setAutoCheck: vi.fn(),
       checkNow: vi.fn(),
+      notes: vi.fn(),
       restart: vi.fn(),
       onState: vi.fn(() => () => {}),
     };

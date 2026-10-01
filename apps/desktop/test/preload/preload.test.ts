@@ -31,7 +31,7 @@ describe('preload bridge', () => {
     expect(Object.keys(api.join).sort()).toEqual(['connect', 'parse', 'probe']);
     expect(Object.keys(api.servers).sort()).toEqual(['connect', 'disconnect', 'list', 'remove']);
     expect(Object.keys(api.settings).sort()).toEqual(['get', 'set']);
-    expect(Object.keys(api.updates).sort()).toEqual(['checkNow', 'onState', 'restart', 'setAutoCheck', 'state']);
+    expect(Object.keys(api.updates).sort()).toEqual(['checkNow', 'notes', 'onState', 'restart', 'setAutoCheck', 'state']);
     expect(Object.keys(api.screen).sort()).toEqual(['choose', 'sources']);
     expect(Object.keys(api.draw).sort()).toEqual(['overlayClose', 'overlayOpen', 'overlayStroke']);
     expect(Object.keys(api.railway).sort()).toEqual(['connect', 'create', 'discard', 'disconnect', 'onProgress', 'pending', 'resume', 'status']);
@@ -81,6 +81,7 @@ describe('preload bridge', () => {
     ['updates.state', () => api.updates.state(), IPC.updatesState, []],
     ['updates.setAutoCheck', () => api.updates.setAutoCheck(false), IPC.updatesSetAutoCheck, [false]],
     ['updates.checkNow', () => api.updates.checkNow(), IPC.updatesCheckNow, []],
+    ['updates.notes', () => api.updates.notes('0.2.3'), IPC.updatesNotes, ['0.2.3']],
     ['updates.restart', () => api.updates.restart(), IPC.updatesRestart, []],
     ['ptt.configure', () => api.ptt.configure({ enabled: true, code: 'KeyV' }), IPC.pttConfigure, [{ enabled: true, code: 'KeyV' }]],
     ['screen.sources', () => api.screen.sources(), IPC.screenSources, []],
