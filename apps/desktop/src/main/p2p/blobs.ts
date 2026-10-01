@@ -224,11 +224,11 @@ export class Blobs {
 
   #finish(fetch: Fetch): void {
     this.#d.timers.clearTimeout(fetch.timer);
-    let kept = false;
+    let kept: boolean;
     try {
       kept = fetch.file!.finish();
     } catch {
-      kept = false;
+      kept = false; // the disk refused the rename: nothing is kept
     }
     fetch.file = null;
     this.#fetches.delete(fetch.hash);
