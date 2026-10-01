@@ -44,7 +44,8 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
   const listRevision = useSavedListStore((st) => st.revision);
   const locale = useSettingsStore((st) => st.settings?.locale ?? 'pt-BR');
   const [error, setError] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  /** 'voice': opened on the voice section (the call panel's shortcut, during a call). */
+  const [settingsOpen, setSettingsOpen] = useState<false | 'user' | 'voice'>(false);
   const shellRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -174,9 +175,10 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
         ref={panelRef}
         homeNickname={nickname}
         homeStatus={friends ? { online: friends.running, text: t(friends.running ? 'friends.panel.online' : 'friends.panel.invisible') } : undefined}
-        onSettings={() => setSettingsOpen(true)}
+        onSettings={() => setSettingsOpen('user')}
+        onVoiceSettings={() => setSettingsOpen('voice')}
       />
-      {settingsOpen && <UserSettings offline onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <UserSettings offline section={settingsOpen === 'voice' ? 'voice' : undefined} onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }
