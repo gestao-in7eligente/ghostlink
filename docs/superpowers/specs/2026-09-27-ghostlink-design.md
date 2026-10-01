@@ -883,7 +883,7 @@ Algumas plataformas de nuvem só expõem um serviço por HTTP ou por um proxy TC
 - **Todo handler de IPC** confere `event.senderFrame` (frame principal e origem do app) antes de validar com zod.
 
 **Permissões do navegador**
-- `setPermissionRequestHandler` libera **só `media`**, e só quando a origem é a do app: `new URL(url).origin === 'app://ghostlink'`, ou a origem do dev server em desenvolvimento.
+- `setPermissionRequestHandler` libera **só `media` e `fullscreen`** (o "Tela cheia" de uma transmissão assistida), e só quando a origem é a do app: `new URL(url).origin === 'app://ghostlink'`, ou a origem do dev server em desenvolvimento.
   - Nunca comparar a URL inteira.
   - Todo o resto é negado.
   - `media` cobre microfone, câmera e o `getDisplayMedia` (que chega com `mediaTypes: []`).
