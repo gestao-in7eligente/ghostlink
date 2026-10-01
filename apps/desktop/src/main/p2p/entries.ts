@@ -8,9 +8,10 @@
 // verifies the signature, which binds it.
 import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import { CRYPTO_LABELS, cleanMessageContent, fromBase64Url, toBase64Url, utf8 } from '@ghostlink/shared';
-import { DM_TEXT_MAX } from '../../shared/dmTypes.js';
+import { ATTACHMENT_KINDS, ATTACHMENT_LIMITS, CRYPTO_LABELS, cleanFileName, cleanMessageContent, fromBase64Url, toBase64Url, utf8 } from '@ghostlink/shared';
+import { DM_ATTACHMENTS_MAX, DM_FILE_MAX_BYTES, DM_TEXT_MAX, type DmFileInfo } from '../../shared/dmTypes.js';
 import { isMember } from './conversations.js';
+import { FILE_HASH } from './dmFiles.js';
 import { verifyFriendSignature, type FriendKey } from './friendKey.js';
 
 /** spec §3.4: one entry, as JSON, in UTF-8 bytes. */
@@ -45,25 +46,56 @@ export type EntryFields = Omit<Entry, 'author' | 'sig'>;
 
 /** A message text as it travels: at most 4000 characters, never blank. */
 const text = z.string().max(DM_TEXT_MAX).refine((t) => cleanMessageContent(t) !== '');
+const side = z.number().int().min(1).max(ATTACHMENT_LIMITS.maxImageSide);
+
+/**
+ * A file of a message (attachments spec §3), as its sender read it from the bytes. The receiver
+ * trusts none of it to show the file: the bytes must match `hash` before they are kept, and
+ * app://ghostlink/_dmfile reads their type from them again. `name` is cleaned on arrival.
+ */
+const attachmentSchema = z.strictObject({
+  hash: z.string().regex(FILE_HASH),
+  name: z.string().min(1).max(ATTACHMENT_LIMITS.nameInputMax),
+  size: z.number().int().min(1).max(DM_FILE_MAX_BYTES),
+  kind: z.enum(ATTACHMENT_KINDS),
+  mime: z.string().max(100).regex(/^[a-z]+\/[a-z0-9.+-]+$/),
+  width: side.optional(),
+  height: side.optional(),
+});
 
 const bodySchemas = {
-  // `attachments` stays empty until files arrive (phase 3); `replyTo` is absent when there is none.
-  msg: z.strictObject({ id: hexId, text, replyTo: hexId.optional(), attachments: z.tuple([]) }),
+  // The text may be blank only when files go with it; `replyTo` is absent when there is none.
+  msg: z
+    .strictObject({ id: hexId, text: z.string().max(DM_TEXT_MAX), replyTo: hexId.optional(), attachments: z.array(attachmentSchema).max(DM_ATTACHMENTS_MAX) })
+    .refine((b) => cleanMessageContent(b.text) !== '' || b.attachments.length > 0),
   edit: z.strictObject({ id: hexId, text }),
   delete: z.strictObject({ id: hexId }),
 } as const;
 
 /** What an entry does to the conversation. */
 export type EntryBody =
-  | { kind: 'msg'; id: string; text: string; replyTo: string | null }
+  | { kind: 'msg'; id: string; text: string; replyTo: string | null; attachments: readonly DmFileInfo[] }
   | { kind: 'edit'; id: string; text: string }
   | { kind: 'delete'; id: string };
+
+/** A file as it goes into an entry: a fixed key order, the sides only when known. */
+function wireFile(f: DmFileInfo): DmFileInfo {
+  return {
+    hash: f.hash,
+    name: f.name,
+    size: f.size,
+    kind: f.kind,
+    mime: f.mime,
+    ...(f.width === undefined ? {} : { width: f.width }),
+    ...(f.height === undefined ? {} : { height: f.height }),
+  };
+}
 
 /** The body text of an entry this side writes. */
 export function entryBodyJson(body: EntryBody): string {
   switch (body.kind) {
     case 'msg':
-      return JSON.stringify({ id: body.id, text: body.text, ...(body.replyTo === null ? {} : { replyTo: body.replyTo }), attachments: [] });
+      return JSON.stringify({ id: body.id, text: body.text, ...(body.replyTo === null ? {} : { replyTo: body.replyTo }), attachments: body.attachments.map(wireFile) });
     case 'edit':
       return JSON.stringify({ id: body.id, text: body.text });
     case 'delete':
@@ -74,7 +106,8 @@ export function entryBodyJson(body: EntryBody): string {
 /**
  * What a received body says, or null when it does not follow its kind's schema. Such an entry
  * still counts in its author's log (the seq goes on); it just changes nothing on screen.
- * Text comes back cleaned like a channel message's (no control characters, trimmed).
+ * Text comes back cleaned like a channel message's (no control characters, trimmed), and file
+ * names cleaned like the ones this side picks (dmFiles.ts).
  */
 export function parseEntryBody(kind: EntryKind, body: string): EntryBody | null {
   let value: unknown;
@@ -86,7 +119,10 @@ export function parseEntryBody(kind: EntryKind, body: string): EntryBody | null 
   switch (kind) {
     case 'msg': {
       const parsed = bodySchemas.msg.safeParse(value);
-      return parsed.success ? { kind, id: parsed.data.id, text: cleanMessageContent(parsed.data.text), replyTo: parsed.data.replyTo ?? null } : null;
+      if (!parsed.success) return null;
+      const { id, replyTo, attachments } = parsed.data;
+      const files = attachments.map((f) => ({ ...wireFile(f), name: cleanFileName(f.name) }));
+      return { kind, id, text: cleanMessageContent(parsed.data.text), replyTo: replyTo ?? null, attachments: files };
     }
     case 'edit': {
       const parsed = bodySchemas.edit.safeParse(value);

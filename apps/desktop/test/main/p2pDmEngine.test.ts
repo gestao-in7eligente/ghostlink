@@ -208,7 +208,7 @@ describe('direct messages between two engines over a loopback DHT (friends spec 
     eva.onLink((l) => {
       link = l;
       l.send(encodeMessage({ t: 'hello', v: 1, nickname: 'Eva' }));
-      const body = entryBodyJson({ kind: 'msg', id: 'ab'.repeat(16), text: 'me adiciona', replyTo: null });
+      const body = entryBodyJson({ kind: 'msg', id: 'ab'.repeat(16), text: 'me adiciona', replyTo: null, attachments: [] });
       l.send(encodeMessage({ t: 'entry', entry: signEntry(evaKey, { conv, seq: 1, ts: Date.now(), kind: 'msg', body }) }));
       l.send(encodeMessage({ t: 'sync.have', convs: [{ id: conv, heads: { [keyToText(evaKey.publicKey)]: 1 } }] }));
     });

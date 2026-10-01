@@ -6,7 +6,7 @@ import type { AppErrorCode } from './appErrors.js';
 import type { AttachmentsApi, SaveResult, UploadResult } from './attachmentTypes.js';
 import type { DrawApi, OverlayStroke } from './drawOverlay.js';
 import type { FirewallFixResult, FirewallStatus, HostApi, HostConfig, HostInvite, HostInviteOptions, HostStartResult, HostStatus } from './hostTypes.js';
-import type { DmApi, DmConversation, DmMessage } from './dmTypes.js';
+import type { DmApi, DmConversation, DmFileInfo, DmFileRef, DmMessage } from './dmTypes.js';
 import type { FriendsApi, FriendsSnapshot } from './friendsTypes.js';
 import type { AvatarInfo, ProfileApi } from './profileTypes.js';
 import type { RailwayAccount, RailwayCreateRequest, RailwayPending, RailwayProgress } from './railwayTypes.js';
@@ -299,6 +299,9 @@ export const IPC = {
   dmRemove: 'ghostlink:dm.remove',
   dmRead: 'ghostlink:dm.read',
   dmTyping: 'ghostlink:dm.typing',
+  dmAttach: 'ghostlink:dm.attach',
+  dmFetchFile: 'ghostlink:dm.fetchFile',
+  dmSaveFile: 'ghostlink:dm.saveFile',
   profileAvatar: 'ghostlink:profile.avatar',
   profileSetAvatar: 'ghostlink:profile.setAvatar',
   profileClearAvatar: 'ghostlink:profile.clearAvatar',
@@ -396,11 +399,14 @@ export interface IpcContract {
   [IPC.dmOpen]: { args: [friendKey: string]; result: DmConversation };
   [IPC.dmHide]: { args: [conv: string]; result: void };
   [IPC.dmHistory]: { args: [conv: string, before: number | null, limit: number]; result: DmMessage[] };
-  [IPC.dmSend]: { args: [conv: string, text: string, replyTo: string | null]; result: DmMessage };
+  [IPC.dmSend]: { args: [conv: string, text: string, replyTo: string | null, files: DmFileRef[]]; result: DmMessage };
   [IPC.dmEdit]: { args: [conv: string, id: string, text: string]; result: DmMessage };
   [IPC.dmRemove]: { args: [conv: string, id: string]; result: DmMessage };
   [IPC.dmRead]: { args: [conv: string, ts: number]; result: void };
   [IPC.dmTyping]: { args: [conv: string]; result: void };
+  [IPC.dmAttach]: { args: [conv: string, name: string, bytes: Uint8Array]; result: DmFileInfo };
+  [IPC.dmFetchFile]: { args: [conv: string, hash: string]; result: void };
+  [IPC.dmSaveFile]: { args: [conv: string, hash: string]; result: boolean };
   [IPC.profileAvatar]: { args: []; result: AvatarInfo | null };
   [IPC.profileSetAvatar]: { args: [bytes: Uint8Array]; result: AvatarInfo };
   [IPC.profileClearAvatar]: { args: []; result: null };

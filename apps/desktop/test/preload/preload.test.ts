@@ -31,7 +31,7 @@ describe('preload bridge', () => {
     expect(Object.keys(api.join).sort()).toEqual(['connect', 'parse', 'probe']);
     expect(Object.keys(api.servers).sort()).toEqual(['checkExit', 'connect', 'delete', 'disconnect', 'leave', 'list', 'remove', 'setCall']);
     expect(Object.keys(api.settings).sort()).toEqual(['get', 'set']);
-    expect(Object.keys(api.dm).sort()).toEqual(['conversations', 'edit', 'hide', 'history', 'onEvent', 'open', 'read', 'remove', 'send', 'typing']);
+    expect(Object.keys(api.dm).sort()).toEqual(['attach', 'conversations', 'edit', 'fetchFile', 'hide', 'history', 'onEvent', 'open', 'read', 'remove', 'saveFile', 'send', 'typing']);
     expect(Object.keys(api.friends).sort()).toEqual(['accept', 'add', 'block', 'dismiss', 'newCode', 'onChange', 'remove', 'rename', 'setAvailable', 'setInbox', 'state']);
     expect(Object.keys(api.updates).sort()).toEqual(['checkNow', 'notes', 'onState', 'restart', 'setAutoCheck', 'state']);
     expect(Object.keys(api.screen).sort()).toEqual(['choose', 'sources']);
@@ -97,11 +97,15 @@ describe('preload bridge', () => {
     ['dm.open', () => api.dm.open('k'), IPC.dmOpen, ['k']],
     ['dm.hide', () => api.dm.hide('c'), IPC.dmHide, ['c']],
     ['dm.history', () => api.dm.history('c', null, 50), IPC.dmHistory, ['c', null, 50]],
-    ['dm.send', () => api.dm.send('c', 'oi', null), IPC.dmSend, ['c', 'oi', null]],
+    ['dm.send', () => api.dm.send('c', 'oi', null), IPC.dmSend, ['c', 'oi', null, []]],
+    ['dm.send with files', () => api.dm.send('c', '', null, [{ hash: 'h', name: 'a.png' }]), IPC.dmSend, ['c', '', null, [{ hash: 'h', name: 'a.png' }]]],
     ['dm.edit', () => api.dm.edit('c', 'm', 'oi!'), IPC.dmEdit, ['c', 'm', 'oi!']],
     ['dm.remove', () => api.dm.remove('c', 'm'), IPC.dmRemove, ['c', 'm']],
     ['dm.read', () => api.dm.read('c', 5), IPC.dmRead, ['c', 5]],
     ['dm.typing', () => api.dm.typing('c'), IPC.dmTyping, ['c']],
+    ['dm.attach', () => api.dm.attach('c', 'a.png', new Uint8Array([1])), IPC.dmAttach, ['c', 'a.png', new Uint8Array([1])]],
+    ['dm.fetchFile', () => api.dm.fetchFile('c', 'h'), IPC.dmFetchFile, ['c', 'h']],
+    ['dm.saveFile', () => api.dm.saveFile('c', 'h'), IPC.dmSaveFile, ['c', 'h']],
     ['friends.state', () => api.friends.state(), IPC.friendsState, []],
     ['friends.add', () => api.friends.add('GLF1-AAAA'), IPC.friendsAdd, ['GLF1-AAAA']],
     ['friends.accept', () => api.friends.accept('k'), IPC.friendsAccept, ['k']],

@@ -2,8 +2,13 @@
 // same sender check → zod → handler pipeline as every other channel. Conversation and message ids
 // cross as 32 lowercase hex characters, a friend key as base64url of 32 bytes; text crosses as
 // the person typed it, and main cleans it and checks its length (BAD_REQUEST).
+//
+// Files (attachments spec §3, §4): attach() hands main the picked bytes (capped at 25 MB here,
+// and again in main), send() names them by hash; fetchFile() and saveFile() act on a file a
+// message of that conversation carries.
 import { z } from 'zod';
-import { DM_TEXT_MAX } from '../shared/dmTypes.js';
+import { ATTACHMENT_LIMITS } from '@ghostlink/shared';
+import { DM_ATTACHMENTS_MAX, DM_FILE_MAX_BYTES, DM_TEXT_MAX } from '../shared/dmTypes.js';
 import { IPC, type DmIpcChannel, type IpcArgs, type IpcReturn } from '../shared/ipcTypes.js';
 import type { DmService } from './p2p/engine.js';
 
@@ -19,17 +24,24 @@ const key = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 const text = z.string().max(DM_TEXT_INPUT_MAX);
 // zod 4: z.number() already refuses Infinity and NaN.
 const ts = z.number();
+const hash = z.string().regex(/^[0-9a-f]{64}$/);
+/** A name as the person's system gave it; main cleans it (cleanFileName). */
+const fileName = z.string().min(1).max(ATTACHMENT_LIMITS.nameInputMax);
+const files = z.array(z.strictObject({ hash, name: fileName })).max(DM_ATTACHMENTS_MAX);
 
 export const DM_IPC_ARG_SCHEMAS: { readonly [C in DmIpcChannel]: z.ZodType<IpcArgs<C>> } = {
   [IPC.dmConversations]: z.tuple([]),
   [IPC.dmOpen]: z.tuple([key]),
   [IPC.dmHide]: z.tuple([id]),
   [IPC.dmHistory]: z.tuple([id, ts.nullable(), z.number().int().min(1).max(DM_HISTORY_LIMIT_MAX)]),
-  [IPC.dmSend]: z.tuple([id, text, id.nullable()]),
+  [IPC.dmSend]: z.tuple([id, text, id.nullable(), files]),
   [IPC.dmEdit]: z.tuple([id, id, text]),
   [IPC.dmRemove]: z.tuple([id, id]),
   [IPC.dmRead]: z.tuple([id, ts]),
   [IPC.dmTyping]: z.tuple([id]),
+  [IPC.dmAttach]: z.tuple([id, fileName, z.instanceof(Uint8Array).refine((b) => b.byteLength > 0 && b.byteLength <= DM_FILE_MAX_BYTES)]),
+  [IPC.dmFetchFile]: z.tuple([id, hash]),
+  [IPC.dmSaveFile]: z.tuple([id, hash]),
 };
 
 type DmHandlers = { [C in DmIpcChannel]: (...args: IpcArgs<C>) => IpcReturn<C> | Promise<IpcReturn<C>> };
@@ -44,10 +56,13 @@ export function createDmIpcHandlers(deps: DmIpcDeps | undefined): DmHandlers {
     [IPC.dmOpen]: (friendKey) => dm().open(friendKey),
     [IPC.dmHide]: (conv) => dm().hide(conv),
     [IPC.dmHistory]: (conv, before, limit) => dm().history(conv, before, limit),
-    [IPC.dmSend]: (conv, body, replyTo) => dm().send(conv, body, replyTo),
+    [IPC.dmSend]: (conv, body, replyTo, refs) => dm().send(conv, body, replyTo, refs),
     [IPC.dmEdit]: (conv, messageId, body) => dm().edit(conv, messageId, body),
     [IPC.dmRemove]: (conv, messageId) => dm().remove(conv, messageId),
     [IPC.dmRead]: (conv, at) => dm().read(conv, at),
     [IPC.dmTyping]: (conv) => dm().typing(conv),
+    [IPC.dmAttach]: (conv, name, bytes) => dm().attach(conv, name, bytes),
+    [IPC.dmFetchFile]: (conv, fileHash) => dm().fetchFile(conv, fileHash),
+    [IPC.dmSaveFile]: (conv, fileHash) => dm().saveFile(conv, fileHash),
   };
 }

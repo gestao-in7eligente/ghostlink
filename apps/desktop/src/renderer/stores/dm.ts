@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import type { AppErrorCode } from '../../shared/appErrors.js';
 import { DM_PAGE, type DmApi, type DmConversation, type DmEvent, type DmMessage } from '../../shared/dmTypes.js';
-import { applyConversation, applyMessage, mergeHistory } from '../features/dm/dmModel.js';
+import { applyConversation, applyFile, applyMessage, mergeHistory } from '../features/dm/dmModel.js';
 import { errorCodeOf } from '../i18n/index.js';
 
 export interface DmLog {
@@ -66,6 +66,19 @@ export const useDmStore = create<DmStore>()((set, get) => {
       if (event.type === 'typing') {
         const forConv = get().typing[event.conv] ?? {};
         set({ typing: { ...get().typing, [event.conv]: { ...forConv, [event.author]: Date.now() } } });
+        return;
+      }
+      if (event.type === 'file') {
+        // A file is the same in every message that carries it, whatever the conversation.
+        const logs = get().logs;
+        let changed = false;
+        const next: Record<string, DmLog> = {};
+        for (const [conv, log] of Object.entries(logs)) {
+          const messages = applyFile(log.messages, event.hash, event.state, event.received);
+          changed ||= messages !== log.messages;
+          next[conv] = messages === log.messages ? log : { ...log, messages };
+        }
+        if (changed) set({ logs: next });
         return;
       }
       const { message } = event;

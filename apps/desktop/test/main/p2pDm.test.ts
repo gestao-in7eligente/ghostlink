@@ -135,7 +135,7 @@ const heard = (link: FakeLink) => link.peer.messages;
 function entryOf(signer: FriendKey, conv: string, seq: number, body: EntryBody, ts: number): Entry {
   return signEntry(signer, { conv, seq, ts, kind: body.kind, body: entryBodyJson(body) });
 }
-const msg = (n: number, text = `m${n}`): EntryBody => ({ kind: 'msg', id: n.toString(16).padStart(32, '0'), text, replyTo: null });
+const msg = (n: number, text = `m${n}`): EntryBody => ({ kind: 'msg', id: n.toString(16).padStart(32, '0'), text, replyTo: null, attachments: [] });
 
 describe('opening a conversation (friends spec §4.1, §8)', () => {
   it('needs a friend: strangers, requests and blocked people are FORBIDDEN', async () => {

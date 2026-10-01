@@ -40,6 +40,7 @@ const msg = (id: string, author: string, ts: number, over: Partial<DmMessage> = 
   editedAt: null,
   deleted: false,
   delivered: true,
+  attachments: [],
   ...over,
 });
 

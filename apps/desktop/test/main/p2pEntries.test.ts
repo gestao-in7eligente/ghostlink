@@ -28,7 +28,7 @@ const NOW = 1_700_000_000_000;
 const ID = 'ab'.repeat(16);
 
 function entry(patch: Partial<Omit<Entry, 'author' | 'sig'>> = {}, key = ana): Entry {
-  return signEntry(key, { conv: CONV, seq: 1, ts: NOW, kind: 'msg', body: entryBodyJson({ kind: 'msg', id: ID, text: 'oi', replyTo: null }), ...patch });
+  return signEntry(key, { conv: CONV, seq: 1, ts: NOW, kind: 'msg', body: entryBodyJson({ kind: 'msg', id: ID, text: 'oi', replyTo: null, attachments: [] }), ...patch });
 }
 
 /** Ana's and Bia's conversation, as Bia's computer sees it: nobody wrote yet. */
@@ -121,7 +121,7 @@ describe('accepting an entry (friends spec §4.2)', () => {
   });
 
   it('refuses a bad signature, whatever else is right', () => {
-    expect(checkEntry({ ...entry(), body: entryBodyJson({ kind: 'msg', id: ID, text: 'tchau', replyTo: null }) }, context())).toBe('bad-signature');
+    expect(checkEntry({ ...entry(), body: entryBodyJson({ kind: 'msg', id: ID, text: 'tchau', replyTo: null, attachments: [] }) }, context())).toBe('bad-signature');
     // Signed by Ana, claimed as Bia's.
     expect(checkEntry({ ...entry(), author: keyToText(bia.publicKey) }, context())).toBe('bad-signature');
   });
@@ -163,14 +163,14 @@ describe('accepting an entry (friends spec §4.2)', () => {
 describe('entry bodies (friends spec §4.2)', () => {
   it('builds and reads msg, edit and delete', () => {
     for (const body of [
-      { kind: 'msg', id: ID, text: 'oi', replyTo: null },
-      { kind: 'msg', id: ID, text: 'resposta', replyTo: 'cd'.repeat(16) },
+      { kind: 'msg', id: ID, text: 'oi', replyTo: null, attachments: [] },
+      { kind: 'msg', id: ID, text: 'resposta', replyTo: 'cd'.repeat(16), attachments: [] },
       { kind: 'edit', id: ID, text: 'oi!' },
       { kind: 'delete', id: ID },
     ] as const) {
       expect(parseEntryBody(body.kind, entryBodyJson(body))).toEqual(body);
     }
-    expect(JSON.parse(entryBodyJson({ kind: 'msg', id: ID, text: 'oi', replyTo: null }))).toEqual({ id: ID, text: 'oi', attachments: [] });
+    expect(JSON.parse(entryBodyJson({ kind: 'msg', id: ID, text: 'oi', replyTo: null, attachments: [] }))).toEqual({ id: ID, text: 'oi', attachments: [] });
   });
 
   it('takes text up to 4000 characters', () => {

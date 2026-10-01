@@ -1,7 +1,7 @@
 // Pure rules of the direct-message screen (friends spec §8): rows of a conversation,
 // the sidebar order, and how events from main change what is on screen.
 import { CHAT_LIMITS } from '@ghostlink/shared';
-import type { DmConversation, DmMessage } from '../../../shared/dmTypes.js';
+import type { DmConversation, DmFileState, DmMessage } from '../../../shared/dmTypes.js';
 import { dayKey } from '../chat/grouping.js';
 import { markdownToPlainText, parseMarkdown } from '../chat/markdown.js';
 
@@ -41,6 +41,17 @@ export function applyMessage(messages: readonly DmMessage[], message: DmMessage)
   const at = messages.findIndex((m) => m.id === message.id);
   if (at >= 0) return messages.map((m, i) => (i === at ? message : m));
   return [...messages, message].sort(byTime);
+}
+
+/**
+ * A file moved (it is coming, it arrived, it failed, it went away): every loaded message that
+ * carries it shows the new state. The same array comes back when no message carries it.
+ */
+export function applyFile(messages: DmMessage[], hash: string, state: DmFileState, received: number): DmMessage[] {
+  if (!messages.some((m) => m.attachments.some((a) => a.hash === hash))) return messages;
+  return messages.map((m) =>
+    m.attachments.some((a) => a.hash === hash) ? { ...m, attachments: m.attachments.map((a) => (a.hash === hash ? { ...a, state, received } : a)) } : m,
+  );
 }
 
 /** An older page loaded on scroll: joins it without repeating what is already there. */

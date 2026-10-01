@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
+import type { DmAttachmentKind, DmFileInfo } from '../../shared/dmTypes.js';
 import type { FriendState } from '../../shared/friendsTypes.js';
 import { fileTimestamp, freePath } from '../files.js';
 import type { EntryBody, EntryKind } from './entries.js';
@@ -99,6 +100,29 @@ export const FRIENDS_MIGRATIONS: readonly FriendsMigration[] = [
 
       CREATE INDEX messages_by_time ON messages (conv, ts, author, seq);
       CREATE INDEX messages_by_author ON messages (conv, author, seq);
+    `,
+  },
+  {
+    // Files of messages (attachments spec §3): what each msg entry says about them. The bytes
+    // live in <userData>/friends/files/<hash>; a deleted message loses its rows.
+    version: 3,
+    sql: `
+      CREATE TABLE attachments (
+        conv TEXT NOT NULL,
+        message TEXT NOT NULL,
+        position INTEGER NOT NULL CHECK (position >= 0),
+        hash TEXT NOT NULL CHECK (length(hash) = 64),
+        name TEXT NOT NULL,
+        size INTEGER NOT NULL CHECK (size >= 1),
+        kind TEXT NOT NULL CHECK (kind IN ('image', 'video', 'audio', 'file')),
+        mime TEXT NOT NULL,
+        width INTEGER,
+        height INTEGER,
+        PRIMARY KEY (conv, message, position),
+        FOREIGN KEY (conv, message) REFERENCES messages (conv, id) ON DELETE CASCADE
+      ) STRICT, WITHOUT ROWID;
+
+      CREATE INDEX attachments_by_hash ON attachments (hash, conv);
     `,
   },
 ];
@@ -284,6 +308,26 @@ const toConversation = (r: ConversationSqlRow): ConversationRow => ({
   deliveredSeq: Number(r.delivered_seq),
 });
 
+interface AttachmentSqlRow {
+  hash: string;
+  name: string;
+  size: number;
+  kind: DmAttachmentKind;
+  mime: string;
+  width: number | null;
+  height: number | null;
+}
+
+const toFile = (r: AttachmentSqlRow): DmFileInfo => ({
+  hash: r.hash,
+  name: r.name,
+  size: Number(r.size),
+  kind: r.kind,
+  mime: r.mime,
+  ...(r.width === null ? {} : { width: Number(r.width) }),
+  ...(r.height === null ? {} : { height: Number(r.height) }),
+});
+
 const toEntry = (r: EntrySqlRow): StoredEntry => ({ conv: r.conv, author: r.author, seq: Number(r.seq), ts: Number(r.ts), kind: r.kind, body: r.body, sig: r.sig });
 
 const toMessage = (r: MessageSqlRow): MessageRow => ({
@@ -438,24 +482,63 @@ export class DmStore {
     return (rows as unknown as MessageSqlRow[]).map(toMessage);
   }
 
+  /** The files of a message, in order ([] once it is deleted). */
+  attachments(conv: string, message: string): DmFileInfo[] {
+    const rows = this.#prepare('SELECT hash, name, size, kind, mime, width, height FROM attachments WHERE conv = ? AND message = ? ORDER BY position').all(conv, message);
+    return (rows as unknown as AttachmentSqlRow[]).map(toFile);
+  }
+
+  /** That file as some message of the conversation (not deleted) describes it; undefined when none does. */
+  file(conv: string, hash: string): DmFileInfo | undefined {
+    const row = this.#prepare('SELECT hash, name, size, kind, mime, width, height FROM attachments WHERE hash = ? AND conv = ? LIMIT 1').get(hash, conv) as AttachmentSqlRow | undefined;
+    return row && toFile(row);
+  }
+
+  /** Every file of the conversation's messages, once per hash, the newest message first. */
+  files(conv: string): DmFileInfo[] {
+    const rows = this.#prepare(
+      `SELECT a.hash, a.name, a.size, a.kind, a.mime, a.width, a.height FROM attachments a JOIN messages m ON m.conv = a.conv AND m.id = a.message
+       WHERE a.conv = ? ORDER BY m.ts DESC, a.position`,
+    ).all(conv) as unknown as AttachmentSqlRow[];
+    const seen = new Set<string>();
+    return rows.filter((r) => !seen.has(r.hash) && seen.add(r.hash)).map(toFile);
+  }
+
+  /** How many messages, in every conversation, still carry that file. */
+  fileRefs(hash: string): number {
+    return Number((this.#prepare('SELECT count(*) AS n FROM attachments WHERE hash = ?').get(hash) as { n: number }).n);
+  }
+
   /** Edit and delete touch only the author's own message, and never one already deleted. */
   #apply(entry: StoredEntry, body: EntryBody): boolean {
     switch (body.kind) {
-      case 'msg':
-        return Number(
+      case 'msg': {
+        const added = Number(
           this.#prepare('INSERT INTO messages (conv, id, author, seq, ts, text, reply_to) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (conv, id) DO NOTHING')
             .run(entry.conv, body.id, entry.author, entry.seq, entry.ts, body.text, body.replyTo).changes,
         ) > 0;
+        if (added) {
+          body.attachments.forEach((f, position) => {
+            this.#prepare('INSERT INTO attachments (conv, message, position, hash, name, size, kind, mime, width, height) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+              .run(entry.conv, body.id, position, f.hash, f.name, f.size, f.kind, f.mime, f.width ?? null, f.height ?? null);
+          });
+        }
+        return added;
+      }
       case 'edit':
         return Number(
           this.#prepare('UPDATE messages SET text = ?, edited_at = ? WHERE conv = ? AND id = ? AND author = ? AND deleted = 0')
             .run(body.text, entry.ts, entry.conv, body.id, entry.author).changes,
         ) > 0;
-      case 'delete':
-        return Number(
+      case 'delete': {
+        const deleted = Number(
           this.#prepare("UPDATE messages SET text = '', deleted = 1 WHERE conv = ? AND id = ? AND author = ? AND deleted = 0")
             .run(entry.conv, body.id, entry.author).changes,
         ) > 0;
+        // Its files go with it (attachments spec §1); dm.ts removes the bytes nothing else uses.
+        if (deleted) this.#prepare('DELETE FROM attachments WHERE conv = ? AND message = ?').run(entry.conv, body.id);
+        return deleted;
+      }
     }
   }
 

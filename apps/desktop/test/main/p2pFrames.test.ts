@@ -36,7 +36,7 @@ const bia = friendKeyFromSeed(createHash('sha256').update('Bia').digest());
 const CONV = dmConversationId(ana.publicKey, bia.publicKey);
 const ANA = keyToText(ana.publicKey);
 const BIA = keyToText(bia.publicKey);
-const ENTRY = signEntry(ana, { conv: CONV, seq: 1, ts: 1_700_000_000_000, kind: 'msg', body: entryBodyJson({ kind: 'msg', id: 'ab'.repeat(16), text: 'oi', replyTo: null }) });
+const ENTRY = signEntry(ana, { conv: CONV, seq: 1, ts: 1_700_000_000_000, kind: 'msg', body: entryBodyJson({ kind: 'msg', id: 'ab'.repeat(16), text: 'oi', replyTo: null, attachments: [] }) });
 
 describe('frames (friends spec §3.3)', () => {
   it.each<[P2pMessage]>([

@@ -33,7 +33,7 @@ describe('FriendsStore (friends spec §4.4)', () => {
     const db = new DatabaseSync(join(dir.path, FRIENDS_DB_FILE));
     expect(db.prepare('PRAGMA journal_mode').get()).toEqual({ journal_mode: 'wal' });
     expect(db.prepare('PRAGMA user_version').get()).toEqual({ user_version: FRIENDS_MIGRATIONS.at(-1)!.version });
-    expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((t) => t.name)).toEqual(['conversations', 'entries', 'friends', 'me', 'members', 'messages']);
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((t) => t.name)).toEqual(['attachments', 'conversations', 'entries', 'friends', 'me', 'members', 'messages']);
     db.close();
   });
 
@@ -234,7 +234,7 @@ describe('DmStore (friends spec §4.2, §4.4)', () => {
   /** Appends `author`'s next msg entry, making message number `n`. */
   function say(store: FriendsStore, author: Uint8Array, n: number, ts: number, text = `m${n}`, replyTo: string | null = null) {
     const seq = store.dm.head(CONV, author) + 1;
-    return store.dm.append(stored(author, seq, ts), { kind: 'msg', id: id(n), text, replyTo });
+    return store.dm.append(stored(author, seq, ts), { kind: 'msg', id: id(n), text, replyTo, attachments: [] });
   }
 
   it('creates a conversation once, with its members', () => {
@@ -276,14 +276,14 @@ describe('DmStore (friends spec §4.2, §4.4)', () => {
 
   it('leaves no entry behind when its effect fails', () => {
     const store = withConversation();
-    expect(() => store.dm.append(stored(BIA, 1, 1_000), { kind: 'msg', id: 'not-an-id', text: 'oi', replyTo: null })).toThrow();
+    expect(() => store.dm.append(stored(BIA, 1, 1_000), { kind: 'msg', id: 'not-an-id', text: 'oi', replyTo: null, attachments: [] })).toThrow();
     expect(store.dm.head(CONV, BIA)).toBe(0);
     expect(store.dm.history(CONV, null, 50)).toEqual([]);
   });
 
   it('refuses an entry of a conversation it does not have', () => {
     const store = withConversation();
-    expect(() => store.dm.append({ ...stored(BIA, 1, 1_000), conv: 'd0'.repeat(16) }, { kind: 'msg', id: id(1), text: 'oi', replyTo: null })).toThrow();
+    expect(() => store.dm.append({ ...stored(BIA, 1, 1_000), conv: 'd0'.repeat(16) }, { kind: 'msg', id: id(1), text: 'oi', replyTo: null, attachments: [] })).toThrow();
   });
 
   it('stores an entry that changes nothing (a body it could not read)', () => {
@@ -315,7 +315,7 @@ describe('DmStore (friends spec §4.2, §4.4)', () => {
   it('never lets a message take the id of another', () => {
     const store = withConversation();
     say(store, ANA, 1, 1_000, 'meu');
-    const body: EntryBody = { kind: 'msg', id: id(1), text: 'roubado', replyTo: null };
+    const body: EntryBody = { kind: 'msg', id: id(1), text: 'roubado', replyTo: null, attachments: [] };
     expect(store.dm.append(stored(BIA, 1, 1_100), body)).toBeNull();
     expect(store.dm.message(CONV, id(1))).toMatchObject({ author: ANA, text: 'meu' });
     expect(store.dm.head(CONV, BIA)).toBe(1);
