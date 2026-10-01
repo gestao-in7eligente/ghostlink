@@ -12,14 +12,16 @@ export interface HomeServerRow {
   stopped: boolean;
 }
 
-/** The Home screen's server list: saved servers, the one hosted here marked. */
+/**
+ * The Home screen's server list: saved servers, the one hosted here marked by its key only
+ * (leave/delete spec §6). Never by name: a Railway server may share the name of an old local
+ * one. The Host mode knows the key whenever the last hosted server's data dir exists.
+ */
 export function homeServerRows(servers: readonly SavedServer[], host: HostStatus | null): HomeServerRow[] {
   const hostedKey = host?.serverKeyId ?? null;
-  const hostedName = host?.config?.name ?? null;
   const running = host?.state === 'running';
   return servers.map((s) => {
-    // While stopped the Host mode may not know its key yet (fresh app start): fall back to the last hosted name.
-    const hosted = hostedKey !== null ? s.serverKeyId === hostedKey : hostedName !== null && s.name === hostedName;
+    const hosted = hostedKey !== null && s.serverKeyId === hostedKey;
     return { id: s.id, name: s.name, address: s.addresses[0] ?? null, hosted, stopped: hosted && !running };
   });
 }

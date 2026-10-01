@@ -268,6 +268,32 @@ describe('HostManager.start (spec §9)', () => {
     expect(makeManager().status()).toMatchObject({ state: 'stopped', config: CONFIG });
   });
 
+  it("knows the last hosted server's key at load, from its data dir's certificate (spec §6)", async () => {
+    const { status } = await manager.start(CONFIG);
+    await manager.stop();
+    expect(makeManager().status()).toMatchObject({ state: 'stopped', config: CONFIG, serverKeyId: status.serverKeyId, fingerprint: status.fingerprint });
+  });
+
+  it("reports no key at load when the last server's data dir has no certificate", () => {
+    mkdirSync(join(dir.path, HOSTED_DIR), { recursive: true });
+    writeFileSync(join(dir.path, HOSTED_DIR, HOST_FILE), JSON.stringify({ version: 1, last: CONFIG, trayNoticeShown: false }));
+    expect(makeManager().status()).toMatchObject({ state: 'stopped', config: CONFIG, serverKeyId: null });
+    mkdirSync(join(dir.path, HOSTED_DIR, 'casa-do-ze', 'tls'), { recursive: true });
+    writeFileSync(join(dir.path, HOSTED_DIR, 'casa-do-ze', ...SERVER_CERT_FILE), 'not a certificate');
+    expect(makeManager().status().serverKeyId).toBeNull();
+  });
+
+  it("a crash keeps the key; hosting another name switches to that data dir's key", async () => {
+    const first = (await manager.start(CONFIG)).status;
+    forks[0]!.crash();
+    await vi.waitFor(() => expect(manager.status().state).toBe('failed'));
+    expect(manager.status().serverKeyId).toBe(first.serverKeyId);
+    await manager.stop();
+    const other = (await manager.start({ ...CONFIG, name: 'Outro' })).status;
+    expect(other.serverKeyId).not.toBeNull();
+    expect(other.serverKeyId).not.toBe(first.serverKeyId);
+  });
+
   it('survives a corrupt host.json', () => {
     mkdirSync(join(dir.path, HOSTED_DIR), { recursive: true });
     writeFileSync(join(dir.path, HOSTED_DIR, HOST_FILE), '{"version":1,"last":{"name":"x","port":"7700"}}');
@@ -327,7 +353,8 @@ describe('HostManager stop / restart / crash', () => {
     const stopped = await manager.stop();
     expect(leaves).toEqual([status.serverKeyId]);
     expect(forks[0]!.shutdowns).toBe(1);
-    expect(stopped).toMatchObject({ state: 'stopped', port: null, serverKeyId: null, invite: null, addresses: [], config: CONFIG });
+    // The pin stays (leave/delete spec §6): the server list still recognizes the stopped server by key.
+    expect(stopped).toMatchObject({ state: 'stopped', port: null, serverKeyId: status.serverKeyId, invite: null, addresses: [], config: CONFIG });
     expect(emitted.at(-2)!.state).toBe('stopping');
     expect(emitted.at(-1)!.state).toBe('stopped');
     expect(manager.isActive()).toBe(false);

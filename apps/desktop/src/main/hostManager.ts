@@ -90,6 +90,16 @@ function readServerKeyId(dataDir: string): string {
   return serverKeyIdFromCertificate(readFileSync(join(dataDir, ...SERVER_CERT_FILE), 'utf8'));
 }
 
+/** The pin of a server hosted here before, or null when its data dir has no readable certificate. */
+function knownServerKeyId(dataDir: string): string | null {
+  if (!existsSync(join(dataDir, ...SERVER_CERT_FILE))) return null;
+  try {
+    return readServerKeyId(dataDir);
+  } catch {
+    return null;
+  }
+}
+
 function errnoOf(e: unknown): string | undefined {
   const code = typeof e === 'object' && e !== null ? (e as { code?: unknown }).code : undefined;
   return typeof code === 'string' ? code : undefined;
@@ -148,6 +158,10 @@ export class HostManager {
   #revision = 0;
   #server: ForkedServer | null = null;
   #dataDir: string | null = null;
+  /**
+   * The pin of the server in the last config's data dir: read at load and kept after a stop
+   * (leave/delete spec §6), so the server list recognizes it by key, never by name.
+   */
   #serverKeyId: string | null = null;
   #port: number | null = null;
   #info: HostedStatus | null = null;
@@ -163,6 +177,7 @@ export class HostManager {
     this.#filePath = join(deps.userDataDir, HOSTED_DIR, HOST_FILE);
     this.#file = readJsonFile(this.#filePath, fileSchema, () => ({ version: 1 as const, last: null, trayNoticeShown: false }));
     this.#config = this.#file.last;
+    if (this.#config) this.#serverKeyId = knownServerKeyId(this.#dataDirOf(this.#config));
   }
 
   /** starting, running or stopping: closing the window must not end the app (spec §9). */
@@ -299,11 +314,12 @@ export class HostManager {
   }
 
   async #launch(config: HostConfig): Promise<void> {
-    const dataDir = join(this.#deps.userDataDir, HOSTED_DIR, hostSlug(config.name));
+    const dataDir = this.#dataDirOf(config);
     mkdirSync(dataDir, { recursive: true });
     this.#config = config;
     this.#save({ ...this.#file, last: config });
     this.#resetRunning();
+    this.#serverKeyId = knownServerKeyId(dataDir); // another name is another data dir (or a new one)
     this.#state = 'starting';
     this.#error = null;
     this.#errorPort = null;
@@ -337,6 +353,7 @@ export class HostManager {
     } catch (e) {
       this.#logs.push(`[GhostLink] cannot read the server certificate: ${e instanceof Error ? e.message : String(e)}`);
       await server.shutdown();
+      this.#serverKeyId = null;
       this.#fail('HOST_FAILED', null);
       return;
     }
@@ -436,10 +453,10 @@ export class HostManager {
     this.#emit();
   }
 
+  /** Everything that only exists while a server runs; the pin stays (it belongs to the data dir). */
   #resetRunning(): void {
     this.#server = null;
     this.#dataDir = null;
-    this.#serverKeyId = null;
     this.#port = null;
     this.#info = null;
     this.#invite = null;
@@ -466,6 +483,10 @@ export class HostManager {
   #emit(): void {
     this.#revision++;
     this.#deps.emit(this.status());
+  }
+
+  #dataDirOf(config: HostConfig): string {
+    return join(this.#deps.userDataDir, HOSTED_DIR, hostSlug(config.name));
   }
 
   #save(file: HostFile): void {
