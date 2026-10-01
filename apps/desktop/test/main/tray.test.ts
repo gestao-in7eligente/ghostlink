@@ -143,17 +143,17 @@ describe('AppTray', () => {
     expect(calls).toEqual({ open: 2, quit: 1 });
   });
 
-  it('shows the hosting entry while a server is hosted (a failed one too), and stays when it stops', () => {
+  it('names the hosted server in the tooltip, keeps one quit entry, and stays when hosting stops', () => {
     const { tray, calls } = make();
     tray.show();
     tray.setHost(status('running'));
     const t = electron.trays[0]!;
     expect(t.tooltip).toBe('GhostLink — hospedando Casa do Zé');
-    expect(labels()).toEqual(['Abrir GhostLink', '—', 'Parar servidor e sair', '—', 'Sair do GhostLink']);
+    expect(labels()).toEqual(['Abrir GhostLink', '—', 'Sair do GhostLink']);
     t.menu!.items[2]!.click!();
     expect(calls.quit).toBe(1);
     tray.setHost(status('failed'));
-    expect(labels()).toHaveLength(5);
+    expect(labels()).toHaveLength(3);
     tray.setHost(status('stopped'));
     expect(t.destroyed).toBe(false);
     expect(t.tooltip).toBe('GhostLink');
