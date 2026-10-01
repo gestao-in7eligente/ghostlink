@@ -15,14 +15,18 @@ type DeviceKind = 'audioinput' | 'audiooutput' | 'videoinput';
 const DEVICE_SETTING = { audioinput: 'inputDeviceId', audiooutput: 'outputDeviceId', videoinput: 'cameraDeviceId' } as const;
 const DEVICE_LABEL = { audioinput: 'voice.inputDevice', audiooutput: 'voice.outputDevice', videoinput: 'voice.camera.device' } as const;
 
-/** Real devices only: Chromium's "default"/"communications" aliases are the system default entry. */
+/**
+ * Real devices only: Chromium's "default"/"communications" aliases are the system default entry.
+ * Cameras are listed without opening one (LiveKit would, to unlock the names, and the light
+ * would flash): the app's media permission already gives the names.
+ */
 export function useDevices(kind: DeviceKind, active: boolean): MediaDeviceInfo[] {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   useEffect(() => {
     if (!active) return;
     let alive = true;
     const load = () =>
-      Room.getLocalDevices(kind, true).then(
+      Room.getLocalDevices(kind, kind !== 'videoinput').then(
         (list) => alive && setDevices(list.filter((d) => d.deviceId !== 'default' && d.deviceId !== 'communications' && d.deviceId !== '')),
         () => alive && setDevices([]),
       );
