@@ -13,6 +13,7 @@ import type { PushToTalk } from './ptt.js';
 import { PROFILE_IPC_ARG_SCHEMAS, createProfileIpcHandlers, type ProfileIpcDeps } from './profileIpc.js';
 import { RAILWAY_IPC_ARG_SCHEMAS, createRailwayIpcHandlers, type RailwayIpcDeps } from './railwayIpc.js';
 import { SCREEN_IPC_ARG_SCHEMAS, createScreenIpcHandlers, type ScreenIpcDeps } from './screenIpc.js';
+import { SERVER_UPDATES_IPC_ARG_SCHEMAS, createServerUpdatesIpcHandlers, type ServerUpdatesIpcDeps } from './serverUpdatesIpc.js';
 import { originOf } from './security.js';
 import { LOCALES, type SettingsStore } from './settings.js';
 import type { Updater } from './updater.js';
@@ -42,6 +43,8 @@ export interface IpcDeps {
   profile?: ProfileIpcDeps;
   /** Screen sharing: the sources and the choice (screen sharing spec §3). */
   screen?: ScreenIpcDeps;
+  /** The Railway servers this app created follow its version (v0.2.2). */
+  serverUpdates?: ServerUpdatesIpcDeps;
 }
 
 /** The handshake belongs to the main process alone: the renderer may never send it (release plan "Seams"). */
@@ -131,6 +134,7 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   ...RAILWAY_IPC_ARG_SCHEMAS,
   ...PROFILE_IPC_ARG_SCHEMAS,
   ...SCREEN_IPC_ARG_SCHEMAS,
+  ...SERVER_UPDATES_IPC_ARG_SCHEMAS,
   [IPC.deepLinkTake]: z.tuple([]),
   [IPC.updatesState]: z.tuple([]),
   [IPC.updatesSetAutoCheck]: z.tuple([z.boolean()]),
@@ -167,6 +171,7 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     ...createRailwayIpcHandlers(deps.railway),
     ...createProfileIpcHandlers(deps.profile),
     ...createScreenIpcHandlers(deps.screen),
+    ...createServerUpdatesIpcHandlers(deps.serverUpdates),
     [IPC.deepLinkTake]: () => deps.deepLinks?.take() ?? null,
     [IPC.updatesState]: () => updates.state(),
     [IPC.updatesSetAutoCheck]: (enabled) => updates.setAutoCheck(enabled),

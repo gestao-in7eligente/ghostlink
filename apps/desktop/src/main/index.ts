@@ -24,6 +24,9 @@ import { installRendererPinning, setRendererPin } from './pinning.js';
 import { PushToTalk, type PttHookModule } from './ptt.js';
 import { railwayImage } from './railway/image.js';
 import { RailwayProvisioner } from './railway/provisioner.js';
+import { ServerUpdates } from './railway/serverUpdates.js';
+import { RailwayStore } from './railway/store.js';
+import { RailwayTokenStore } from './railway/token.js';
 import { SavedServersStore } from './savedServers.js';
 import { ScreenPicker } from './screenPicker.js';
 import { installSecurity, originOf } from './security.js';
@@ -166,14 +169,28 @@ async function start(): Promise<BrowserWindow | null> {
   });
   app.on('before-quit', () => void ptt.dispose());
   // "Criar um servidor" on Railway (v0.2): the token stays encrypted here; only main talks to Railway.
+  const railwayStore = RailwayStore.load(userData); // one copy in memory, shared by both below
+  const serverImage = railwayImage({ version: app.getVersion(), packaged: app.isPackaged, env: process.env });
   const railway = new RailwayProvisioner({
     userDataDir: userData,
     safeStorage,
+    store: railwayStore,
     fetch: (url, init) => net.fetch(url, init),
-    image: railwayImage({ version: app.getVersion(), packaged: app.isPackaged, env: process.env }),
+    image: serverImage,
     probe: (address) => controller.probe(address),
     join: (req) => controller.join(req),
     emit: (progress) => send(IPC_EVENTS.railway, progress),
+  });
+  // Servers follow the app's version (v0.2.2): the Railway servers this app created get its version.
+  const railwayTokens = new RailwayTokenStore(userData, safeStorage);
+  const serverUpdates = new ServerUpdates({
+    store: railwayStore,
+    token: () => railwayTokens.read(),
+    fetch: (url, init) => net.fetch(url, init),
+    appVersion: app.getVersion(),
+    image: serverImage,
+    serverKey: (serverKeyId) => identity.serverKey(serverKeyId),
+    emit: (update) => send(IPC_EVENTS.serverUpdates, update),
   });
   // Screen sharing (screen sharing spec §3): the renderer's own picker lists the sources, and the
   // capture request gets exactly the chosen one. Never the system picker (no useSystemPicker).
@@ -218,10 +235,16 @@ async function start(): Promise<BrowserWindow | null> {
     railway,
     profile: avatars.profile,
     screen: screenPicker,
+    serverUpdates,
   });
   updater.start(); // the 6 h checks; the first one already ran behind the splash when it showed
+  // After the update check at startup (the app runs its newest version by now), then every 30 min.
+  // Installed apps only: a development build must not redeploy real servers on its own (opt in with
+  // GHOSTLINK_SERVER_UPDATES=1); "Atualizar agora" works in both.
+  if (!smoke && (app.isPackaged || process.env.GHOSTLINK_SERVER_UPDATES === '1')) serverUpdates.start();
   app.on('before-quit', () => {
     updater.dispose();
+    serverUpdates.dispose();
     void controller.disconnect();
   });
 
