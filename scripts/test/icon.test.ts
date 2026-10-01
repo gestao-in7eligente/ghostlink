@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
 const svg = read('../../apps/desktop/build/icon.svg');
 const mark = read('../../apps/desktop/src/renderer/components/GhostMark.tsx');
+const splash = read('../../apps/desktop/src/renderer/splash.html');
 const tokens = read('../../apps/desktop/src/renderer/styles/tokens.css');
 
 const ghostPath = svg.match(/<path id="ghost" d="([^"]+)"/)?.[1];
@@ -57,6 +58,12 @@ describe('renderer brand mark', () => {
   it('draws the same ghost as the app icon', () => {
     expect(mark).toContain(`'${ghostPath}'`);
     for (const [cx, cy, rx, ry] of eyes) expect(mark).toContain(`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#1e1f22" />`);
+  });
+
+  it('the update splash draws the same ghost on the same tile', () => {
+    expect(splash).toContain(`<path d="${ghostPath}" fill="#ffffff" />`);
+    expect(splash).toContain('<rect x="64" y="64" width="896" height="896" rx="200" fill="#5865f2" />');
+    for (const [cx, cy, rx, ry] of eyes) expect(splash).toContain(`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#1e1f22" />`);
   });
 
   it('uses the blurple accent tokens', () => {

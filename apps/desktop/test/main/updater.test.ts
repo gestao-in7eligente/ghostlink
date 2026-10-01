@@ -6,10 +6,14 @@ import type { UpdateState } from '../../src/shared/updates.js';
 import {
   CHECK_INTERVAL_MS,
   FIRST_CHECK_DELAY_MS,
+  STARTUP_CHECK_TIMEOUT_MS,
+  STARTUP_SKIP_AFTER_MS,
   UPDATES_FILE,
   Updater,
   appUpdateConfigVerifies,
   createUpdaterBackend,
+  type StartupOutcome,
+  type StartupStep,
   type UpdaterBackend,
 } from '../../src/main/updater.js';
 import { useTempDir } from '../helpers/tempDir.js';
@@ -246,6 +250,223 @@ describe('Updater state for the banner', () => {
     backend.emit('update-available', { version: '0.1.1' });
     backend.emit('update-downloaded', { version: '0.1.1' });
     expect(updater.setAutoCheck(false)).toMatchObject({ status: 'downloaded', autoCheck: false });
+    updater.dispose();
+  });
+});
+
+describe('Updater.checkAtStartup (atualizar ao abrir, spec §4)', () => {
+  /** Runs the startup check the way index.ts does: the splash collects the steps, its link aborts. */
+  function openApp(updater: Updater, onStep?: (step: StartupStep) => void) {
+    const steps: StartupStep[] = [];
+    const skip = new AbortController();
+    let outcome: StartupOutcome | null = null;
+    const done = updater
+      .checkAtStartup({
+        signal: skip.signal,
+        onStep: (step) => {
+          steps.push(step);
+          onStep?.(step);
+        },
+      })
+      .then((result) => (outcome = result));
+    return { steps, skip, done, outcome: () => outcome };
+  }
+  /** checkForUpdates the way electron-updater runs it: the events come before the promise resolves. */
+  function checkFinds(...events: Array<[string, unknown?]>) {
+    backend.checkForUpdates.mockImplementation(async () => {
+      backend.emit('checking-for-update');
+      for (const [event, payload] of events) backend.emit(event, payload);
+      return null;
+    });
+  }
+
+  it('uses the spec times: 10 s for the check, 20 s of download before "Open without updating"', () => {
+    expect(STARTUP_CHECK_TIMEOUT_MS).toBe(10_000);
+    expect(STARTUP_SKIP_AFTER_MS).toBe(20_000);
+  });
+
+  it('opens the app when there is no new version', async () => {
+    checkFinds(['update-not-available', { version: '0.1.0' }]);
+    const updater = load();
+    const run = openApp(updater);
+    await run.done;
+    expect(run.outcome()).toBe('continue');
+    expect(run.steps[0]).toEqual({ step: 'checking' });
+    expect(run.steps).not.toContainEqual({ step: 'installing' });
+    expect(backend.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(backend.quitAndInstall).not.toHaveBeenCalled();
+    expect(updater.state().status).toBe('idle');
+    updater.dispose();
+  });
+
+  it('opens the app when the check fails (offline)', async () => {
+    backend.checkForUpdates.mockImplementation(async () => {
+      backend.emit('checking-for-update');
+      backend.emit('error', Object.assign(new Error('net::ERR_INTERNET_DISCONNECTED'), { code: 'ERR_NETWORK' }));
+      throw new Error('net::ERR_INTERNET_DISCONNECTED');
+    });
+    const updater = load();
+    const run = openApp(updater);
+    await run.done;
+    expect(run.outcome()).toBe('continue');
+    expect(updater.state().status).toBe('idle');
+    expect(backend.quitAndInstall).not.toHaveBeenCalled();
+    updater.dispose();
+  });
+
+  it('opens the app when the check takes longer than 10 s', async () => {
+    backend.checkForUpdates.mockImplementation(() => {
+      backend.emit('checking-for-update');
+      return new Promise<never>(() => {});
+    });
+    const updater = load();
+    const run = openApp(updater);
+    await vi.advanceTimersByTimeAsync(STARTUP_CHECK_TIMEOUT_MS - 1);
+    expect(run.outcome()).toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(run.outcome()).toBe('continue');
+    expect(backend.quitAndInstall).not.toHaveBeenCalled();
+    updater.dispose();
+  });
+
+  it('installs a new version once it is downloaded and verified: quitAndInstall(true, true) once', async () => {
+    checkFinds(['update-available', { version: '0.1.1' }]);
+    const updater = load();
+    const run = openApp(updater);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(run.steps.at(-1)).toEqual({ step: 'downloading', percent: 0, canSkip: false });
+    backend.emit('download-progress', { percent: 42.2 });
+    expect(run.steps.at(-1)).toEqual({ step: 'downloading', percent: 42, canSkip: false });
+    // The 10 s limit is for the check only: a slower download is not cut off.
+    await vi.advanceTimersByTimeAsync(STARTUP_CHECK_TIMEOUT_MS * 1.5);
+    expect(run.outcome()).toBeNull();
+    // electron-updater emits update-downloaded only after verifyUpdateCodeSignature accepted the file.
+    backend.emit('update-downloaded', { version: '0.1.1' });
+    await run.done;
+    expect(run.outcome()).toBe('installing');
+    expect(run.steps.at(-1)).toEqual({ step: 'installing' });
+    expect(backend.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(backend.quitAndInstall).toHaveBeenCalledWith(true, true);
+    updater.dispose();
+  });
+
+  it('opens the app with the usual notice when the download fails the signature check', async () => {
+    checkFinds(['update-available', { version: '0.1.1' }]);
+    const updater = load();
+    const run = openApp(updater);
+    await vi.advanceTimersByTimeAsync(0);
+    backend.emit('error', Object.assign(new Error('not signed by the application owner'), { code: 'ERR_UPDATER_INVALID_SIGNATURE' }));
+    await run.done;
+    expect(run.outcome()).toBe('continue');
+    expect(updater.state()).toMatchObject({ status: 'rejected', version: '0.1.1' });
+    expect(backend.quitAndInstall).not.toHaveBeenCalled();
+    updater.dispose();
+  });
+
+  it('offers "Open without updating" after 20 s of download; the download goes on and nothing installs by itself', async () => {
+    checkFinds(['update-available', { version: '0.1.1' }]);
+    const updater = load();
+    const run = openApp(updater);
+    await vi.advanceTimersByTimeAsync(STARTUP_SKIP_AFTER_MS - 1);
+    expect(run.steps.some((s) => s.step === 'downloading' && s.canSkip)).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(run.steps.at(-1)).toEqual({ step: 'downloading', percent: 0, canSkip: true });
+    backend.emit('download-progress', { percent: 30 });
+    expect(run.steps.at(-1)).toEqual({ step: 'downloading', percent: 30, canSkip: true });
+
+    run.skip.abort();
+    await run.done;
+    expect(run.outcome()).toBe('continue');
+    const shown = run.steps.length;
+    backend.emit('download-progress', { percent: 80 });
+    expect(last()).toMatchObject({ status: 'downloading', percent: 80 });
+    backend.emit('update-downloaded', { version: '0.1.1' });
+    expect(last()).toMatchObject({ status: 'downloaded', version: '0.1.1' });
+    await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
+    expect(backend.quitAndInstall).not.toHaveBeenCalled();
+    expect(run.steps).toHaveLength(shown); // the splash is gone: nothing more is reported to it
+    expect(backend.checkForUpdates).toHaveBeenCalledTimes(1); // the 6 h check skips a waiting update
+    updater.dispose();
+  });
+
+  it('installs an update that was already downloaded, without checking again', async () => {
+    const updater = load();
+    updater.start();
+    backend.emit('update-available', { version: '0.1.1' });
+    backend.emit('update-downloaded', { version: '0.1.1' });
+    const run = openApp(updater);
+    await run.done;
+    expect(run.outcome()).toBe('installing');
+    expect(run.steps).toEqual([{ step: 'installing' }]);
+    expect(backend.checkForUpdates).not.toHaveBeenCalled();
+    expect(backend.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(backend.quitAndInstall).toHaveBeenCalledWith(true, true);
+    updater.dispose();
+  });
+
+  it('turned off or unsupported: opens the app at once, without a splash or a check', async () => {
+    const off = load();
+    off.setAutoCheck(false);
+    const offRun = openApp(off);
+    await offRun.done;
+    expect(offRun.outcome()).toBe('continue');
+    expect(offRun.steps).toEqual([]);
+    off.start();
+    await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS * 2);
+    expect(backend.checkForUpdates).not.toHaveBeenCalled();
+    off.dispose();
+
+    backend.setFeedURL.mockClear();
+    const unsupported = load({ supported: false });
+    const unsupportedRun = openApp(unsupported);
+    await unsupportedRun.done;
+    expect(unsupportedRun.outcome()).toBe('continue');
+    expect(unsupportedRun.steps).toEqual([]);
+    expect(backend.setFeedURL).not.toHaveBeenCalled();
+    expect(backend.checkForUpdates).not.toHaveBeenCalled();
+    unsupported.dispose();
+  });
+
+  it('replaces the delayed first check; the 6 h checks go on', async () => {
+    checkFinds(['update-not-available', { version: '0.1.0' }]);
+    const updater = load();
+    await openApp(updater).done;
+    expect(backend.checkForUpdates).toHaveBeenCalledTimes(1);
+    updater.start(); // index.ts still calls it once the window exists: a no-op by then
+    await vi.advanceTimersByTimeAsync(FIRST_CHECK_DELAY_MS * 2);
+    expect(backend.checkForUpdates).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
+    expect(backend.checkForUpdates).toHaveBeenCalledTimes(2);
+    updater.dispose();
+  });
+
+  it('opens the app when the installer cannot be started (electron-updater then does not quit)', async () => {
+    checkFinds(['update-available', { version: '0.1.1' }]);
+    backend.quitAndInstall.mockImplementation(() => {
+      backend.emit('error', new Error("No update filepath provided, can't quit and install"));
+    });
+    const updater = load();
+    const run = openApp(updater);
+    await vi.advanceTimersByTimeAsync(0);
+    backend.emit('update-downloaded', { version: '0.1.1' });
+    await run.done;
+    expect(run.outcome()).toBe('continue');
+    expect(backend.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(updater.state().status).toBe('downloaded'); // "Restart to update" stays available
+    updater.dispose();
+  });
+
+  it('keeps updating when the splash fails to show a step', async () => {
+    checkFinds(['update-available', { version: '0.1.1' }]);
+    const updater = load();
+    const run = openApp(updater, () => {
+      throw new Error('Object has been destroyed');
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    backend.emit('update-downloaded', { version: '0.1.1' });
+    await run.done;
+    expect(run.outcome()).toBe('installing');
+    expect(backend.quitAndInstall).toHaveBeenCalledTimes(1);
     updater.dispose();
   });
 });
