@@ -1,5 +1,5 @@
-// Small building blocks of the main screen: avatar, dialog and menu. Dialogs trap
-// focus and close on Esc; menus move with the arrow keys (keyboard access, spec §11).
+// Small building blocks of the main screen: avatar, dialog, menu and select. Dialogs trap
+// focus and close on Esc; menus and selects move with the arrow keys (keyboard access, spec §11).
 import {
   useEffect,
   useId,
@@ -10,9 +10,10 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, X } from 'lucide-react';
+import { Check, ChevronDown, X } from 'lucide-react';
 import { errorMessage, useT } from '../i18n/index.js';
 import p from './primitives.module.css';
+import { isTypeaheadKey, selectMove, selectTypeahead } from './selectModel.js';
 
 // ---- avatar ----
 
@@ -351,6 +352,245 @@ export function MenuSeparator() {
 
 export function MenuHeading({ children }: { children: ReactNode }) {
   return <div className={p.menuHeading}>{children}</div>;
+}
+
+// ---- select ----
+
+export interface SelectOption<V extends string | number> {
+  value: V;
+  label: string;
+  /** A second, quieter line under the label. */
+  hint?: string;
+}
+
+export interface SelectProps<V extends string | number> {
+  value: V;
+  options: readonly SelectOption<V>[];
+  onChange: (value: V) => void;
+  /** The id of the visible label (preferred), or a label of its own. */
+  labelledBy?: string;
+  label?: string;
+  disabled?: boolean;
+  id?: string;
+  className?: string;
+}
+
+/** Gap between the field and its list, and the list's distance to the window's edges. */
+const SELECT_GAP = 4;
+const SELECT_MARGIN = 8;
+/** About eight options; longer lists scroll. */
+const SELECT_MAX_HEIGHT = 312;
+const TYPEAHEAD_MS = 600;
+
+/**
+ * A dropdown in the app's style (a native <select> opens the system's own light list).
+ * The field is a combobox button that keeps the focus; the list (role listbox) opens under
+ * it, or over it when there is no room below, and follows the active option with
+ * aria-activedescendant. Keys: Enter, Space or the arrows open; the arrows, Home, End and
+ * Page keys move; Enter (or Space) chooses; Esc and Tab close; letters jump to an option.
+ */
+export function Select<V extends string | number>({ value, options, onChange, labelledBy, label, disabled = false, id, className }: SelectProps<V>) {
+  const listId = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const [pos, setPos] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
+  const typed = useRef({ text: '', at: 0 });
+  const selectedIndex = options.findIndex((o) => o.value === value);
+  const selected = selectedIndex >= 0 ? options[selectedIndex] : undefined;
+  const optionId = (i: number) => `${listId}-${i}`;
+
+  const show = (index: number) => {
+    setActive(index);
+    setOpen(true);
+  };
+  /** Closes the list; the focus stays where it went (a click elsewhere, Tab). */
+  const dismiss = () => {
+    setOpen(false);
+    setPos(null);
+  };
+  /** Closes the list and puts the focus back on the field. */
+  const close = () => {
+    dismiss();
+    triggerRef.current?.focus();
+  };
+  const choose = (index: number) => {
+    const option = options[index];
+    close();
+    if (option && option.value !== value) onChange(option.value);
+  };
+  const typeahead = (key: string): number => {
+    const now = performance.now();
+    const text = now - typed.current.at < TYPEAHEAD_MS ? typed.current.text + key : key;
+    typed.current = { text, at: now };
+    return selectTypeahead(
+      options.map((o) => o.label),
+      text,
+      open ? active : selectedIndex,
+    );
+  };
+
+  // Under the field, or over it when it fits better there; as wide as the field.
+  useLayoutEffect(() => {
+    const trigger = triggerRef.current;
+    const list = listRef.current;
+    if (!open || !trigger || !list) return;
+    const place = () => {
+      const rect = trigger.getBoundingClientRect();
+      const height = Math.min(list.scrollHeight, SELECT_MAX_HEIGHT);
+      const below = window.innerHeight - rect.bottom - SELECT_GAP - SELECT_MARGIN;
+      const above = rect.top - SELECT_GAP - SELECT_MARGIN;
+      const up = height > below && above > below;
+      const maxHeight = Math.min(SELECT_MAX_HEIGHT, Math.max(up ? above : below, 80));
+      const top = up ? rect.top - SELECT_GAP - Math.min(height, maxHeight) : rect.bottom + SELECT_GAP;
+      setPos({ left: rect.left, top, width: rect.width, maxHeight });
+    };
+    place();
+  }, [open, options.length]);
+
+  // The active option stays in view.
+  useLayoutEffect(() => {
+    if (open && pos && active >= 0) document.getElementById(optionId(active))?.scrollIntoView({ block: 'nearest' });
+  });
+
+  // A click elsewhere, the window losing focus, resizing or scrolling the page closes it.
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: Event) => {
+      const target = e.target as Node;
+      return !triggerRef.current?.contains(target) && !listRef.current?.contains(target);
+    };
+    const onDown = (e: MouseEvent) => {
+      if (outside(e)) dismiss();
+    };
+    const onScroll = (e: Event) => {
+      if (outside(e)) dismiss();
+    };
+    const onLeave = () => dismiss();
+    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('scroll', onScroll, true);
+    window.addEventListener('blur', onLeave);
+    window.addEventListener('resize', onLeave);
+    return () => {
+      document.removeEventListener('mousedown', onDown, true);
+      document.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('blur', onLeave);
+      window.removeEventListener('resize', onLeave);
+    };
+  }, [open]);
+
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (disabled) return;
+    if (!open) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        show(Math.max(selectedIndex, 0));
+      } else if (e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        show(e.key === 'Home' ? 0 : options.length - 1);
+      } else if (isTypeaheadKey(e)) {
+        e.preventDefault();
+        const match = typeahead(e.key);
+        show(match >= 0 ? match : Math.max(selectedIndex, 0));
+      }
+      return;
+    }
+    const moved = selectMove(e.key, active, options.length);
+    if (moved !== null) {
+      e.preventDefault();
+      setActive(moved);
+      return;
+    }
+    switch (e.key) {
+      case 'Enter':
+        e.preventDefault();
+        choose(active);
+        return;
+      case 'Escape':
+        // Only the list closes, not the dialog around it.
+        e.preventDefault();
+        e.stopPropagation();
+        close();
+        return;
+      case 'Tab':
+        dismiss();
+        return;
+    }
+    // Space chooses, unless it is part of a name being typed.
+    if (e.key === ' ' && performance.now() - typed.current.at >= TYPEAHEAD_MS) {
+      e.preventDefault();
+      choose(active);
+      return;
+    }
+    if (isTypeaheadKey(e)) {
+      e.preventDefault();
+      const match = typeahead(e.key);
+      if (match >= 0) setActive(match);
+    }
+  };
+
+  const triggerClass = [p.select, open ? p.selectOpen : '', className ?? ''].filter(Boolean).join(' ');
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        id={id}
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open && active >= 0 ? optionId(active) : undefined}
+        aria-labelledby={labelledBy}
+        aria-label={labelledBy ? undefined : label}
+        disabled={disabled}
+        className={triggerClass}
+        onClick={() => (open ? close() : show(Math.max(selectedIndex, 0)))}
+        onKeyDown={onKeyDown}
+      >
+        <span className={p.selectValue}>{selected?.label ?? ''}</span>
+        <ChevronDown size={18} className={p.selectChevron} aria-hidden="true" />
+      </button>
+      {open &&
+        createPortal(
+          <div
+            ref={listRef}
+            id={listId}
+            role="listbox"
+            aria-labelledby={labelledBy}
+            aria-label={labelledBy ? undefined : label}
+            className={p.selectList}
+            style={pos ? { left: pos.left, top: pos.top, width: pos.width, maxHeight: pos.maxHeight } : { left: -9999, top: -9999 }}
+            // The focus stays on the field (aria-activedescendant).
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            {options.map((option, i) => {
+              const isSelected = i === selectedIndex;
+              const cls = [p.selectOption, i === active ? p.selectOptionActive : '', isSelected ? p.selectOptionSelected : ''].filter(Boolean).join(' ');
+              return (
+                <div
+                  key={String(option.value)}
+                  id={optionId(i)}
+                  role="option"
+                  aria-selected={isSelected}
+                  className={cls}
+                  onMouseMove={() => i !== active && setActive(i)}
+                  onClick={() => choose(i)}
+                >
+                  <span className={p.selectOptionText}>
+                    <span className={p.selectOptionLabel}>{option.label}</span>
+                    {option.hint && <span className={p.selectOptionHint}>{option.hint}</span>}
+                  </span>
+                  {isSelected && <Check size={18} strokeWidth={2.5} className={p.selectCheck} aria-hidden="true" />}
+                </div>
+              );
+            })}
+          </div>,
+          document.body,
+        )}
+    </>
+  );
 }
 
 export { p as primitives };

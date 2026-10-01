@@ -51,6 +51,7 @@
   --danger-strong: #f23f43; /* exit icon, mention badges */
   --accent-soft: #3c4067; /* blurple badge background */
   --mention-bg: rgb(88 101 242 / 12%); /* a message that mentions you */
+  --border-panel: #3a3b42; /* floating panels: the user panel, dropdown lists */
   --overlay: rgb(0 0 0 / 60%); /* modal backdrop */
   --shadow-up: 0 -10px 20px rgb(0 0 0 / 25%); /* the user panel over the channel list */
 
