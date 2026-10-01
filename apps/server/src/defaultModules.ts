@@ -1,4 +1,5 @@
 import { createAvatarsModule } from './avatars/index.js';
+import { createServerDeleteModule } from './deletion/index.js';
 import type { ServerModule } from './modules.js';
 import { createScreenDrawModule } from './screenDraw/index.js';
 import { createStatusModule } from './status/index.js';
@@ -14,5 +15,6 @@ import { createVoiceModule } from './voice/index.js';
 export function defaultModules(): ServerModule[] {
   // Text first: voice reads channels and permissions from it (VoiceAccess), avatars announces members through it.
   // After voice: the pencil (screenDraw) reads voice's rooms, and status reports whether anyone is in a call.
-  return [createTextModule(), createVoiceModule(), createAvatarsModule(), createScreenDrawModule(), createStatusModule()];
+  // serverDelete last: it may close a session from its onSessionOpened, after every other module saw it open.
+  return [createTextModule(), createVoiceModule(), createAvatarsModule(), createScreenDrawModule(), createStatusModule(), createServerDeleteModule()];
 }
