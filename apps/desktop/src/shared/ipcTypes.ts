@@ -29,6 +29,8 @@ export interface AppInfo {
 export interface Settings {
   locale: Locale;
   nickname: string;
+  /** "Ao fechar, manter na bandeja" (on by default): the X hides the window instead of quitting. */
+  closeToTray: boolean;
 }
 
 export interface SavedServer {
@@ -38,6 +40,8 @@ export interface SavedServer {
   serverKeyId: string;
   nickname: string;
   addedAt: number;
+  /** The server icon's hash as last seen (welcome, server.updated); absent: initials (spec 2026-10-01-icone-do-servidor). */
+  iconHash?: string;
 }
 
 /**
@@ -299,6 +303,7 @@ export const IPC = {
   profileAvatar: 'ghostlink:profile.avatar',
   profileSetAvatar: 'ghostlink:profile.setAvatar',
   profileClearAvatar: 'ghostlink:profile.clearAvatar',
+  profileSetServerIcon: 'ghostlink:profile.setServerIcon',
   screenSources: 'ghostlink:screen.sources',
   screenChoose: 'ghostlink:screen.choose',
   drawOverlayOpen: 'ghostlink:draw.overlayOpen',
@@ -398,6 +403,7 @@ export interface IpcContract {
   [IPC.profileAvatar]: { args: []; result: AvatarInfo | null };
   [IPC.profileSetAvatar]: { args: [bytes: Uint8Array]; result: AvatarInfo };
   [IPC.profileClearAvatar]: { args: []; result: null };
+  [IPC.profileSetServerIcon]: { args: [serverId: string, bytes: Uint8Array]; result: AvatarInfo };
   [IPC.screenSources]: { args: []; result: ScreenSource[] };
   [IPC.screenChoose]: { args: [choice: ScreenChoice]; result: void };
   [IPC.drawOverlayOpen]: { args: []; result: boolean };

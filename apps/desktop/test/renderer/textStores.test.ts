@@ -84,7 +84,7 @@ describe('reset (welcome)', () => {
   });
 
   it('uses self.isOwner when the text module sends no owner', () => {
-    const snap = snapshot({ serverSettings: { ownerId: null, maxMembers: 1, hasPassword: false } });
+    const snap = snapshot({ serverSettings: { ownerId: null, maxMembers: 1, hasPassword: false, icon: null } });
     snap.self.isOwner = true;
     expect(start(snap).server.ownerId).toBe(ME);
   });
@@ -356,7 +356,7 @@ describe('members and roles', () => {
   });
 
   it('server.updated patches name, mode, owner and limits', () => {
-    const s = run(start(), ev({ t: 'server.updated', server: { name: 'Nova casa', joinMode: 'password', ownerId: ME, maxMembers: 5, hasPassword: true } }));
+    const s = run(start(), ev({ t: 'server.updated', server: { name: 'Nova casa', joinMode: 'password', ownerId: ME, maxMembers: 5, hasPassword: true, icon: null } }));
     expect(s.server).toMatchObject({ name: 'Nova casa', joinMode: 'password', ownerId: ME, maxMembers: 5, hasPassword: true });
   });
 
@@ -385,7 +385,7 @@ describe('permissions in the UI (spec §6: only to hide buttons)', () => {
   it('a plain member has the @todos bits; the owner and admins have everything', () => {
     const s = start();
     expect(myPermissions(s)).toBe(DEFAULT_EVERYONE_PERMISSIONS);
-    const owner = run(s, ev({ t: 'server.updated', server: { name: 'Casa', joinMode: 'invite', ownerId: ME, maxMembers: 1, hasPassword: false } }));
+    const owner = run(s, ev({ t: 'server.updated', server: { name: 'Casa', joinMode: 'invite', ownerId: ME, maxMembers: 1, hasPassword: false, icon: null } }));
     expect(myPermissions(owner)).toBe(ALL_PERMISSIONS);
     const admin = run(s, ev({ t: 'member.updated', member: member(ME, 'Eu', { roleIds: [ADMIN_ROLE] }) }));
     expect(myPermissions(admin)).toBe(ALL_PERMISSIONS);

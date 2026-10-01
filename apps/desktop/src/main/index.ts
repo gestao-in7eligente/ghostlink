@@ -113,7 +113,8 @@ if (!app.requestSingleInstanceLock()) {
 async function start(): Promise<BrowserWindow | null> {
   const userData = app.getPath('userData');
   // Profile photos (v0.2.2): served at app://ghostlink/_avatar/<hash>, also to the dev server's page.
-  const avatars = createAvatars({ userDataDir: userData, warn: (message) => mainLog.warn(message) });
+  // The server icon goes up over the connection of its server, which the controller (created below) holds.
+  const avatars = createAvatars({ userDataDir: userData, warn: (message) => mainLog.warn(message), sessionOf: (id) => controller.sessionOf(id) });
   registerAppProtocol(fileURLToPath(new URL('../renderer/', import.meta.url)), { avatar: avatars.route });
   if (!smoke) registerProtocolClient(app, { argv: process.argv, execPath: process.execPath, env: process.env });
   installSecurity({ appOrigin });

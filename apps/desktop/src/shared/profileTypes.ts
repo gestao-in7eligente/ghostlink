@@ -16,6 +16,12 @@ export interface ProfileApi {
   setAvatar(bytes: Uint8Array): Promise<AvatarInfo>;
   /** Back to initials, here and on the connected server. */
   clearAvatar(): Promise<null>;
+  /**
+   * The icon of a connected server (MANAGE_SERVER; spec 2026-10-01-icone-do-servidor), with the
+   * photo's checks. Resolves once the server holds it; `server.updated` then tells everyone.
+   * `server.iconClear` (a plain request) takes it away.
+   */
+  setServerIcon(serverId: string, bytes: Uint8Array): Promise<AvatarInfo>;
 }
 
 /** Where the renderer loads any photo from; main's app:// handler serves it from the cache or fetches it (spec §3). */
