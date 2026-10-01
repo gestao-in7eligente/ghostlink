@@ -3,14 +3,18 @@ import { useT } from '../../i18n/index.js';
 import { startLevelMeter } from './gateProcessor.js';
 import { SILENCE_DB } from './gateLogic.js';
 import { keyLabel } from './keys.js';
-import { setKeyCapture, useVoiceRuntime, voiceAudioContext } from './runtime.js';
-import { MIN_THRESHOLD_DB, isPttCode, useVoiceSettings } from './settings.js';
+import { captureFor } from './noiseSuppression.js';
+import { resolveNoiseSuppression, setKeyCapture, useVoiceRuntime, voiceAudioContext } from './runtime.js';
+import { MIN_THRESHOLD_DB, isPttCode, useVoiceSettings, type NoiseSuppression } from './settings.js';
 import { useVoiceStore } from './state.js';
 import { useDevices } from './VoiceControls.js';
 import s from './voice.module.css';
 
-/** The microphone level: the call's gate while in a call, else a test stream on demand. */
-function useMicLevel(testing: boolean, deviceId: string | null): number {
+/**
+ * The microphone level: the call's gate while in a call, else a test stream on demand,
+ * through the chosen noise suppression like a call (noise spec §2).
+ */
+function useMicLevel(testing: boolean, deviceId: string | null, noise: NoiseSuppression): number {
   const inCall = useVoiceStore((v) => v.call.status !== 'idle');
   const callLevel = useVoiceStore((v) => v.inputLevelDb);
   const [testLevel, setTestLevel] = useState(SILENCE_DB);
@@ -19,20 +23,27 @@ function useMicLevel(testing: boolean, deviceId: string | null): number {
     let stopMeter: (() => void) | null = null;
     let stream: MediaStream | null = null;
     let alive = true;
-    navigator.mediaDevices
-      .getUserMedia({ audio: { ...(deviceId ? { deviceId } : {}), echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
-      .then((s) => {
+    void (async () => {
+      const { mode, suppressor } = await resolveNoiseSuppression(noise);
+      try {
+        if (!alive) return;
+        const s = await navigator.mediaDevices.getUserMedia({ audio: { ...(deviceId ? { deviceId } : {}), ...captureFor(mode) } });
         stream = s;
-        if (!alive) return s.getTracks().forEach((t) => t.stop());
-        stopMeter = startLevelMeter(s, voiceAudioContext(), setTestLevel);
-      })
-      .catch(() => setTestLevel(SILENCE_DB));
+        if (!alive) return;
+        stopMeter = startLevelMeter(s, voiceAudioContext(), setTestLevel, suppressor);
+      } catch {
+        setTestLevel(SILENCE_DB);
+      } finally {
+        if (!stopMeter) suppressor?.destroy();
+        if (!alive) stream?.getTracks().forEach((t) => t.stop());
+      }
+    })();
     return () => {
       alive = false;
       stopMeter?.();
       stream?.getTracks().forEach((t) => t.stop());
     };
-  }, [testing, inCall, deviceId]);
+  }, [testing, inCall, deviceId, noise]);
   return inCall ? callLevel : testLevel;
 }
 
@@ -65,7 +76,7 @@ export function VoiceSettings() {
   const outputs = useDevices('audiooutput', true);
   const [testing, setTesting] = useState(false);
   const [recording, setRecording] = useState(false);
-  const level = useMicLevel(testing, settings.inputDeviceId);
+  const level = useMicLevel(testing, settings.inputDeviceId, settings.noiseSuppression);
 
   useEffect(() => {
     if (!recording) return;

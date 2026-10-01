@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -60,5 +60,17 @@ describe('electron-vite build', () => {
     const html = read('renderer/index.html');
     expect(html).toMatch(/<script type="module" crossorigin src="\.\/assets\/index-[\w-]+\.js"><\/script>/);
     expect(html).not.toMatch(/<script(?![^>]*\ssrc=)[^>]*>/);
+  });
+
+  it('ships the noise suppressors as files under app:// (script-src allows no data: URLs)', () => {
+    const assets = readdirSync(join(out, 'renderer', 'assets'));
+    for (const wasm of ['rnnoise', 'rnnoise_simd', 'speex', 'gtcrn']) {
+      expect(assets.filter((a) => new RegExp(`^${wasm}-[\\w-]+\\.wasm$`).test(a)), wasm).toHaveLength(1);
+    }
+    expect(assets.filter((a) => /^workletProcessor-[\w-]+\.js$/.test(a))).toHaveLength(3);
+    expect(assets.filter((a) => /^workletPorts-[\w-]+\.js$/.test(a))).toHaveLength(1);
+    const bundle = assets.filter((a) => /^index-[\w-]+\.js$/.test(a)).map((a) => read(`renderer/assets/${a}`)).join('\n');
+    expect(bundle).toContain('workletPorts-');
+    expect(bundle).not.toMatch(/data:(?:text|application)\/javascript|data:application\/wasm/);
   });
 });
