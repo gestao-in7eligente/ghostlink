@@ -44,17 +44,6 @@ export function stoppedHostedServer(host: HostStatus | null): { name: string } |
   return { name: host.config.name };
 }
 
-/** The Home list's tabs: every saved server, or only the one hosted on this computer. */
-export type HomeTab = 'all' | 'hosted';
-
-const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
-
-/** The rows of a tab that match the search box (name or address, case and accents ignored). */
-export function filterHomeRows(rows: readonly HomeServerRow[], tab: HomeTab, query: string): HomeServerRow[] {
-  const q = fold(query.trim());
-  return rows.filter((r) => (tab === 'all' || r.hosted) && (q === '' || fold(r.name).includes(q) || (r.address !== null && fold(r.address).includes(q))));
-}
-
 export interface HomeActivity {
   name: string;
   state: HostState;

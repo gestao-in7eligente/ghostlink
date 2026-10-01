@@ -10,9 +10,28 @@ describe('IPC channel names (contract §5)', () => {
       'ghostlink:app.info',
       'ghostlink:app.openExternal',
       'ghostlink:deepLink.take',
+      'ghostlink:dm.conversations',
+      'ghostlink:dm.edit',
+      'ghostlink:dm.hide',
+      'ghostlink:dm.history',
+      'ghostlink:dm.open',
+      'ghostlink:dm.read',
+      'ghostlink:dm.remove',
+      'ghostlink:dm.send',
+      'ghostlink:dm.typing',
       'ghostlink:draw.overlayClose',
       'ghostlink:draw.overlayOpen',
       'ghostlink:draw.overlayStroke',
+      'ghostlink:friends.accept',
+      'ghostlink:friends.add',
+      'ghostlink:friends.block',
+      'ghostlink:friends.dismiss',
+      'ghostlink:friends.newCode',
+      'ghostlink:friends.remove',
+      'ghostlink:friends.rename',
+      'ghostlink:friends.setAvailable',
+      'ghostlink:friends.setInbox',
+      'ghostlink:friends.state',
       'ghostlink:host.copyText',
       'ghostlink:host.firewall',
       'ghostlink:host.fixFirewall',
@@ -70,7 +89,7 @@ describe('IPC channel names (contract §5)', () => {
   });
 
   it('keeps the event channels apart from the invoke channels', () => {
-    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server', 'ghostlink:event.host', 'ghostlink:event.deepLink', 'ghostlink:event.openChannel', 'ghostlink:event.updates', 'ghostlink:event.ptt', 'ghostlink:event.railway', 'ghostlink:event.serverUpdates']);
+    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server', 'ghostlink:event.host', 'ghostlink:event.deepLink', 'ghostlink:event.openChannel', 'ghostlink:event.updates', 'ghostlink:event.ptt', 'ghostlink:event.railway', 'ghostlink:event.friends', 'ghostlink:event.dm', 'ghostlink:event.serverUpdates']);
     for (const event of Object.values(IPC_EVENTS)) expect(Object.values(IPC)).not.toContain(event);
   });
 });

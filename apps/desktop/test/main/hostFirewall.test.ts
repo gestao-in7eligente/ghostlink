@@ -101,7 +101,8 @@ describe('PowerShell scripts', () => {
     const { code, stdout } = await runPowerShell(['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')]);
     expect(code).toBe(0);
     expect(Buffer.from(stdout.trim(), 'base64').toString('utf8')).toBe(path);
-  });
+    // A cold Windows PowerShell on a CI runner can take over 20 s to start.
+  }, 90_000);
 
   it('the query only reads (no Set/New/Remove cmdlets) and quotes every path', () => {
     const script = firewallQueryScript([EXE, "C:\\it's\\livekit-server.exe"]);

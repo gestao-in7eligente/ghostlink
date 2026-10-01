@@ -1,4 +1,5 @@
 import type { ChatNotification, OpenChannelEvent } from '../shared/ipcTypes.js';
+import type { DmNotification } from './p2p/dm.js';
 
 const TITLE_MAX = 64;
 const BODY_MAX = 200;
@@ -30,12 +31,15 @@ export interface NotifierDeps {
   create(options: { title: string; body: string; silent: boolean }): NativeNotification;
   window(): NotifierWindow | null;
   openChannel(event: OpenChannelEvent): void;
+  /** A direct message's notification was clicked: show that conversation. */
+  openConversation(conv: string): void;
 }
 
 /**
- * Windows notifications for mentions and replies (spec §11.1 item 8). The
- * renderer decides what deserves one; the main process shows it only while the
- * window is not focused, and a click brings the window back on that channel.
+ * Windows notifications for mentions and replies (spec §11.1 item 8) and for direct messages
+ * from friends (friends spec §8). The renderer decides which channel messages deserve one, the
+ * friends engine which direct messages; the main process shows them only while the window is
+ * not focused, and a click brings the window back on that channel or conversation.
  */
 export class ChatNotifier {
   /** Kept alive until closed (a collected Notification loses its click handler), newest last, bounded. */
@@ -44,10 +48,19 @@ export class ChatNotifier {
   constructor(private readonly deps: NotifierDeps) {}
 
   show(n: ChatNotification): boolean {
+    return this.#show(n.title, n.body, () => this.deps.openChannel({ channelId: n.channelId }));
+  }
+
+  /** A message from a friend: their name and the text. Never logged. */
+  showDm(n: DmNotification): boolean {
+    return this.#show(n.title, n.body, () => this.deps.openConversation(n.conv));
+  }
+
+  #show(rawTitle: string, rawBody: string, open: () => void): boolean {
     const win = this.deps.window();
     if (!win || win.isDestroyed() || win.isFocused() || !this.deps.isSupported()) return false;
-    const title = notificationText(n.title, TITLE_MAX);
-    const body = notificationText(n.body, BODY_MAX);
+    const title = notificationText(rawTitle, TITLE_MAX);
+    const body = notificationText(rawBody, BODY_MAX);
     if (title === '') return false;
     const note = this.deps.create({ title, body, silent: false });
     this.#live.add(note);
@@ -59,7 +72,7 @@ export class ChatNotifier {
       if (w.isMinimized()) w.restore();
       w.show();
       w.focus();
-      this.deps.openChannel({ channelId: n.channelId });
+      open();
     });
     note.on('close', () => this.#live.delete(note));
     note.on('failed', () => this.#live.delete(note));

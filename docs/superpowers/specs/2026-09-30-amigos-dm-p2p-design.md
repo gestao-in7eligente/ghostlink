@@ -57,7 +57,7 @@ O site e o README ganham estes pontos, em linguagem simples:
 ### 3.1 Motor
 
 - Um motor P2P no app, fora do renderer, com uma instância de Hyperswarm cuja chave é a chave de amigo.
-- **Onde roda:** no processo principal. Se a fase 0 mostrar problema com os módulos nativos no processo principal, roda num `utilityProcess` (como o servidor hospedado), que recebe só a chave de amigo, nunca a semente-mestra.
+- **Onde roda:** no processo principal do Electron. A fase 0 (§12.1) mostrou que os módulos nativos carregam ali, em desenvolvimento e no app empacotado.
 - **Bootstrap:** os nós públicos padrão do Hyperswarm. Em desenvolvimento e nos testes, `GHOSTLINK_DHT_BOOTSTRAP` aponta para uma rede local (`hyperdht/testnet`).
 - **Ligado só com identidade:** sem identidade utilizável o motor não sobe. Em "Configurações → Amigos" há um interruptor "Ficar disponível para amigos" (padrão: ligado); desligado, o motor não anuncia nem conecta.
 
@@ -67,6 +67,7 @@ O site e o README ganham estes pontos, em linguagem simples:
 - **Firewall:** conexões de entrada só passam se a chave remota é de um amigo aceito, de um colega de grupo ou de alguém a quem você enviou um pedido (para a confirmação conseguir entrar), e não está bloqueada. O resto é recusado antes de a conexão abrir, então desconhecidos não descobrem o IP por esse caminho.
 - **Caixa de pedidos (inbox):** para receber pedidos por código, o app escuta também numa segunda chave, `inboxKey = Ed25519(SHA-256("ghostlink/inbox/v1" ‖ friendPub ‖ inviteSecret))`. Só quem tem o código completo consegue derivar essa chave e conectar.
   - Quem conecta na inbox só pode enviar um `friend.request` (até 1 KiB) e a conexão fecha.
+  - **Quem pede prova que tem o código inteiro.** Os nós da DHT que guardam o anúncio da inbox veem a chave dela, então só a chave não pode bastar. O `friend.request` leva `proof = HMAC-SHA256(chave = inviteSecret, "ghostlink/inbox/v1\nrequest\n" ‖ hash do handshake)`, que vale só para aquela conexão. Sem a prova certa, o dono fecha a conexão e o pedido não existe.
   - Como quem tem o código também conhece a chave privada da inbox, o dono **prova que é ele**: a primeira mensagem do dono é `inbox.hello` com a assinatura, pela chave de amigo, do hash do handshake dessa conexão. O solicitante confere antes de enviar o pedido.
   - Limites: 8 conexões simultâneas de desconhecidos e 30 por hora; acima disso, recusa.
   - "Desligar pedidos por código" para de escutar na inbox.
@@ -296,6 +297,20 @@ Cada fase tem plano próprio, termina com `lint`, `typecheck` e testes verdes, e
 | 4 | Grupos. |
 | 5 | Chamadas de voz 1:1 e em grupo. |
 | 6 | "Adicionar amigo" por servidor (módulo do servidor e menu do membro), textos de privacidade no site e no README, e2e completo, release v0.3.0. |
+
+### 12.1 Resultado da fase 0 (2026-09-30)
+
+| Verificação | Resultado |
+|---|---|
+| Testes (`p2pSwarm.test.ts`) sobre DHT local | passou, 5 testes |
+| `npm run smoke:dev` (processo principal real) | `smoke: OK (renderer ready, hosted server served TLS on port 59402 and stopped, P2P link exchanged a message)` |
+| `npm run dist` + `npm run smoke` (app empacotado, fuses atuais) | `smoke: OK (renderer ready, hosted server served TLS on port 60766 and stopped, P2P link exchanged a message)` |
+| Precisou de `asarUnpack` explícito? | não: o electron-builder já coloca `udx-native` e `sodium-native` em `app.asar.unpacked` |
+| Tamanho somado de `udx-native` + `sodium-native` no pacote | 22,2 MiB (4,9 + 17,3), com os prebuilds de 13 plataformas; os de `win32-x64` somam 1,9 MiB |
+| Tamanho do instalador | 127,7 MiB (v0.1.0: 121,0 MiB) |
+| DHT pública, dois nós nesta máquina (prova descartável) | escutar 4,4 s, conectar 2,3 s |
+
+Ainda falta: conexão entre duas redes diferentes, a testar com o dono e um amigo quando a fase 1 tiver tela.
 
 ## 13. Riscos
 

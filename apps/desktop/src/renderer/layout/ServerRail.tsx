@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { House, LogOut, Plus, Trash2 } from 'lucide-react';
+import type { AppErrorCode } from '../../shared/appErrors.js';
 import type { SavedServer } from '../../shared/ipcTypes.js';
 import { useOpenServerExit } from '../features/serverDelete/DeletionBanner.js';
 import { exitMenuItem, type ServerExitAction } from '../features/serverDelete/serverDeleteModel.js';
 import { ExitServerDialog } from '../features/serverDelete/ServerExitDialogs.js';
-import { useT } from '../i18n/index.js';
+import { errorCodeOf, useT } from '../i18n/index.js';
 import { useConnectionStore } from '../stores/connection.js';
 import { useSavedListStore } from '../stores/savedList.js';
 import { AddServerDialog } from './AddServerDialog.js';
@@ -26,6 +27,7 @@ export function ServerRail({
   onHome,
   homeActive = false,
   onCurrentExit,
+  onOpenFailed,
 }: {
   currentId: string;
   onHome: () => void;
@@ -33,6 +35,8 @@ export function ServerRail({
   homeActive?: boolean;
   /** The open server's leave or delete dialog (the main layout owns them). */
   onCurrentExit?: (action: ServerExitAction) => void;
+  /** Home screen: why a server could not be opened, and which one (null when a new attempt starts). */
+  onOpenFailed?: (failure: { code: AppErrorCode; server: SavedServer } | null) => void;
 }) {
   const t = useT();
   const [servers, setServers] = useState<SavedServer[]>([]);
@@ -63,11 +67,13 @@ export function ServerRail({
     if (id === currentId) return;
     const server = servers.find((s) => s.id === id);
     if (server && onOpenServer?.(server)) return;
+    onOpenFailed?.(null);
     try {
       const welcome = await window.ghostlink.servers.connect(id);
       useConnectionStore.getState().dispatch({ type: 'joined', welcome });
-    } catch {
-      // The connection store already shows the failure (state "failed").
+    } catch (e) {
+      // In a server, the connection store shows the failure (state "failed"); the Home screen has its own line.
+      if (server) onOpenFailed?.({ code: errorCodeOf(e), server });
     }
   };
 

@@ -22,8 +22,10 @@ export const UserPanel = forwardRef<
     onDisconnect?: () => void;
     /** Home screen: the global nickname, shown instead of the server nickname. */
     homeNickname?: string;
+    /** Home screen: the presence line and dot (friends network); omitted while it loads. */
+    homeStatus?: { online: boolean; text: string };
   }
->(function UserPanel({ onSettings, onVoiceSettings, onDisconnect, homeNickname }, ref) {
+>(function UserPanel({ onSettings, onVoiceSettings, onDisconnect, homeNickname, homeStatus }, ref) {
   const t = useT();
   const nickname = useTextStore((s) => (Object.hasOwn(s.members.byId, s.server.selfId) ? s.members.byId[s.server.selfId]!.nickname : ''));
   const avatar = useTextStore((s) => (Object.hasOwn(s.members.byId, s.server.selfId) ? s.members.byId[s.server.selfId]!.avatar : null));
@@ -32,9 +34,9 @@ export const UserPanel = forwardRef<
   const VoicePanel = useLayoutSlots((s) => s.VoicePanel);
   const VoiceControls = useLayoutSlots((s) => s.VoiceControls);
   const home = homeNickname !== undefined;
-  const online = !home && state === 'connected';
+  const online = home ? homeStatus?.online === true : state === 'connected';
   const name = homeNickname ?? (nickname || fallbackNick);
-  const status = home ? t('home.panelStatus') : online ? t('layout.online') : t(`state.${state}`);
+  const status = home ? (homeStatus?.text ?? t('home.panelStatus')) : online ? t('layout.online') : t(`state.${state}`);
 
   return (
     <section ref={ref} className={l.userPanel} aria-label={t('layout.userPanel')}>

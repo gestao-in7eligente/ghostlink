@@ -113,8 +113,9 @@ describe('apps/desktop/package.json (packaging)', () => {
   // build.test.ts checks that ws and zod stay external and that reflect-metadata loads before x509).
   // Add one only for a package that must stay external (a native module, electron-updater…).
   // livekit-server-sdk: the hosted server's LiveKit client; uiohook-napi: native global push-to-talk hook;
+  // hyperswarm + hyperdht: the P2P engine for friends and DMs (native prebuilds udx-native, sodium-native);
   // koffi: the Win32 calls that place the pencil overlay over a shared window (prebuilt, nothing compiled).
-  const RUNTIME_DEPENDENCIES = ['@peculiar/x509', 'electron-updater', 'koffi', 'livekit-server-sdk', 'reflect-metadata', 'uiohook-napi', 'ws', 'zod'];
+  const RUNTIME_DEPENDENCIES = ['@peculiar/x509', 'electron-updater', 'hyperdht', 'hyperswarm', 'koffi', 'livekit-server-sdk', 'reflect-metadata', 'uiohook-napi', 'ws', 'zod'];
 
   it('ships only the packages the bundles load at run time', () => {
     expect(Object.keys(pkg.dependencies ?? {}).sort()).toEqual(RUNTIME_DEPENDENCIES);

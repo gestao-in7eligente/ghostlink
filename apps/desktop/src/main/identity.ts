@@ -40,6 +40,16 @@ export function deriveServerSeed(masterSeed: Uint8Array, serverKeyId: string): U
   return new Uint8Array(hkdfSync('sha256', masterSeed, utf8(CRYPTO_LABELS.identitySalt), utf8(serverKeyId), 32));
 }
 
+/**
+ * friendSeed = HKDF-SHA256(ikm = masterSeed, salt = "ghostlink/friend/v1", info = "", 32 bytes),
+ * friends spec §2. The friend key comes from it and is unrelated to every per-server key, so a
+ * server cannot link a person to their friends.
+ */
+export function deriveFriendSeed(masterSeed: Uint8Array): Uint8Array {
+  if (masterSeed.length !== 32) throw new RangeError('masterSeed must be 32 bytes');
+  return new Uint8Array(hkdfSync('sha256', masterSeed, utf8(CRYPTO_LABELS.friendSalt), new Uint8Array(0), 32));
+}
+
 /** Ed25519 key from a 32-byte seed, built exactly like the server's test identities (spec §3.2). */
 export function serverKeyFromSeed(seed: Uint8Array): ServerKey {
   if (seed.length !== 32) throw new RangeError('seed must be 32 bytes');
@@ -160,6 +170,12 @@ export class IdentityStore {
   serverKey(serverKeyId: string): ServerKey {
     if (this.#status !== 'ready' || this.#masterSeed === null) throw new AppError('IDENTITY_UNAVAILABLE');
     return serverKeyFromSeed(deriveServerSeed(this.#masterSeed, serverKeyId));
+  }
+
+  /** The seed of the friend key (friends spec §2), for the P2P engine only: main process, never the renderer. */
+  friendSeed(): Uint8Array {
+    if (this.#status !== 'ready' || this.#masterSeed === null) throw new AppError('IDENTITY_UNAVAILABLE');
+    return deriveFriendSeed(this.#masterSeed);
   }
 
   /** identity.bin → identity.bin.bak-<yyyyMMdd-HHmmss>, never overwriting an older backup. */

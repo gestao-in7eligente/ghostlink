@@ -12,7 +12,7 @@ export const releasePtBR = {
   'updates.settings.title': 'Atualizações',
   'updates.settings.autoCheck': 'Procurar atualizações automaticamente',
   'updates.settings.autoCheckHint':
-    'Ao abrir e a cada 6 horas, o app consulta as releases do GhostLink no GitHub. É o único contato do app com terceiros. Uma atualização só é instalada se tiver a assinatura da chave oficial de release.',
+    'Ao abrir e a cada 6 horas, o app consulta as releases do GhostLink no GitHub. Uma atualização só é instalada se tiver a assinatura da chave oficial de release. Fora o GitHub, o app só fala com terceiros com "Ficar disponível para amigos" ligado: aí ele usa a rede pública de amigos (a DHT do Hyperswarm) e conecta direto nos computadores dos seus amigos.',
   'updates.settings.version': 'Versão instalada: {version}',
   'updates.settings.unsupported': 'A atualização automática só funciona no app instalado no Windows. As versões novas ficam no site do GhostLink.',
 

@@ -14,6 +14,8 @@ import {
   type IpcReturn,
   type PttEvent,
 } from '../shared/ipcTypes.js';
+import type { DmEvent } from '../shared/dmTypes.js';
+import type { FriendsSnapshot } from '../shared/friendsTypes.js';
 import type { HostStatus } from '../shared/hostTypes.js';
 import type { RailwayProgress } from '../shared/railwayTypes.js';
 import type { ManagedServerUpdate } from '../shared/serverUpdateTypes.js';
@@ -112,6 +114,31 @@ export const api: GhostlinkApi = {
     resume: () => invoke(IPC.railwayResume),
     discard: () => invoke(IPC.railwayDiscard),
     onProgress: (cb) => subscribe<RailwayProgress>(IPC_EVENTS.railway, cb),
+  },
+  friends: {
+    state: () => invoke(IPC.friendsState),
+    add: (code) => invoke(IPC.friendsAdd, code),
+    accept: (key) => invoke(IPC.friendsAccept, key),
+    dismiss: (key) => invoke(IPC.friendsDismiss, key),
+    remove: (key) => invoke(IPC.friendsRemove, key),
+    block: (key) => invoke(IPC.friendsBlock, key),
+    rename: (key, localName) => invoke(IPC.friendsRename, key, localName),
+    newCode: () => invoke(IPC.friendsNewCode),
+    setInbox: (enabled) => invoke(IPC.friendsSetInbox, enabled),
+    setAvailable: (enabled) => invoke(IPC.friendsSetAvailable, enabled),
+    onChange: (cb) => subscribe<FriendsSnapshot>(IPC_EVENTS.friends, cb),
+  },
+  dm: {
+    conversations: () => invoke(IPC.dmConversations),
+    open: (friendKey) => invoke(IPC.dmOpen, friendKey),
+    hide: (conv) => invoke(IPC.dmHide, conv),
+    history: (conv, before, limit) => invoke(IPC.dmHistory, conv, before, limit),
+    send: (conv, text, replyTo) => invoke(IPC.dmSend, conv, text, replyTo),
+    edit: (conv, id, text) => invoke(IPC.dmEdit, conv, id, text),
+    remove: (conv, id) => invoke(IPC.dmRemove, conv, id),
+    read: (conv, ts) => invoke(IPC.dmRead, conv, ts),
+    typing: (conv) => invoke(IPC.dmTyping, conv),
+    onEvent: (cb) => subscribe<DmEvent>(IPC_EVENTS.dm, cb),
   },
   profile: {
     avatar: () => invoke(IPC.profileAvatar),

@@ -20,7 +20,8 @@ const SERVER = 'Tropa do ADS';
 /** Screenshots for the owner (GHOSTLINK_E2E_SHOTS, else the temp dir). */
 const shot = (name: string) => join(process.env.GHOSTLINK_E2E_SHOTS ?? tmpdir(), `ghostlink-e2e-delete-${name}.png`);
 const serverMenu = (page: Page) => page.getByRole('button', { name: /Menu do servidor/ });
-const homeServer = (page: Page) => page.getByRole('navigation', { name: 'Início' }).getByRole('button', { name: SERVER, exact: true });
+/** The server in the rail: on the Home screen (the Friends page since v0.3) servers live in the rail only. */
+const homeServer = (page: Page) => page.getByRole('navigation', { name: 'Servidores' }).getByRole('button', { name: SERVER, exact: true });
 
 /** The Join screen with an invite; `setupCode` makes this person the owner. */
 async function joinByInvite(page: Page, invite: string, setupCode?: string): Promise<void> {
@@ -151,10 +152,10 @@ describe('leave and delete a server: Ana deletes, Bia is out, Ana restores, Bia 
     await textChannel(bia.page, 'geral').waitFor({ timeout: 30_000 });
   });
 
-  step('leave from Home: Bia\'s ⋮ "Sair do servidor" connects first and offers the leave dialog', 60_000, async () => {
+  step('leave from Home: Bia\'s right-click "Sair do servidor" in the rail connects first and offers the leave dialog', 60_000, async () => {
     await bia.page.getByRole('button', { name: 'Início: seus servidores' }).click();
     await bia.page.getByRole('navigation', { name: 'Início' }).waitFor();
-    await bia.page.getByRole('button', { name: `Mais opções de ${SERVER}` }).click();
+    await homeServer(bia.page).click({ button: 'right' });
     await bia.page.getByRole('menuitem', { name: 'Sair do servidor' }).click();
     const leave = bia.page.getByRole('dialog', { name: `Sair de ${SERVER}?` });
     await leave.getByText('Apagar também todas as minhas mensagens').waitFor({ timeout: 20_000 });
@@ -173,7 +174,6 @@ describe('leave and delete a server: Ana deletes, Bia is out, Ana restores, Bia 
     await homeServer(bia.page).click();
     await bia.page.getByRole('alert').filter({ hasText: `${SERVER} foi excluído pelo dono.` }).waitFor({ timeout: 20_000 });
     await homeServer(bia.page).waitFor({ state: 'detached', timeout: 15_000 });
-    await bia.page.getByRole('navigation', { name: 'Servidores' }).getByRole('button', { name: SERVER, exact: true }).waitFor({ state: 'detached', timeout: 15_000 });
     await bia.page.screenshot({ path: shot('member-deleted') });
   });
 });

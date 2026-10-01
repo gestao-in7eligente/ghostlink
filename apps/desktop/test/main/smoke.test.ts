@@ -77,4 +77,25 @@ describe('runSmoke', () => {
     await run;
     expect(exits).toEqual([1]);
   });
+
+  it('runs the P2P check after the hosted server stopped, and says so', async () => {
+    const messages: string[] = [];
+    const { d, calls, exits } = deps({ log: (m) => messages.push(m) });
+    d.p2p = async () => {
+      calls.push('p2p');
+    };
+    await runSmoke(d);
+    expect(calls).toEqual(['load', 'ready?', 'ready?', 'ready?', 'fork', 'shutdown', 'p2p']);
+    expect(exits).toEqual([0]);
+    expect(messages[0]).toMatch(/^smoke: OK \(.*P2P link exchanged a message\)$/);
+  });
+
+  it('fails when the P2P check fails', async () => {
+    const messages: string[] = [];
+    const { d, exits } = deps({ log: (m) => messages.push(m) });
+    d.p2p = async () => Promise.reject(new Error('P2P self-test timed out'));
+    await runSmoke(d);
+    expect(exits).toEqual([1]);
+    expect(messages).toEqual(['smoke: FAILED (P2P self-test timed out)']);
+  });
 });

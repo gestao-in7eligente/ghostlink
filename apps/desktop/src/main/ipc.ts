@@ -6,7 +6,9 @@ import { IPC, type AppInfo, type ChatNotification, type IpcArgs, type IpcChannel
 import type { ClientController } from './controller.js';
 import { BACKUP_IPC_ARG_SCHEMAS, createBackupIpcHandlers, type IdentityBackup } from './backup.js';
 import type { DeepLinks } from './deeplink.js';
+import { DM_IPC_ARG_SCHEMAS, createDmIpcHandlers, type DmIpcDeps } from './dmIpc.js';
 import { DRAW_IPC_ARG_SCHEMAS, createDrawIpcHandlers, type DrawIpcDeps } from './drawOverlayIpc.js';
+import { FRIENDS_IPC_ARG_SCHEMAS, createFriendsIpcHandlers, type FriendsIpcDeps } from './friendsIpc.js';
 import { HOST_IPC_ARG_SCHEMAS, createHostIpcHandlers, type HostIpcDeps } from './hostIpc.js';
 import type { IdentityStore } from './identity.js';
 import { mainLog } from './log.js';
@@ -43,6 +45,10 @@ export interface IpcDeps {
   ptt: Pick<PushToTalk, 'configure'>;
   /** "Criar um servidor" on Railway (v0.2). */
   railway?: RailwayIpcDeps;
+  /** Friends over P2P (v0.3). */
+  friends?: FriendsIpcDeps;
+  /** Direct messages between friends (v0.3 phase 2). */
+  dm?: DmIpcDeps;
   /** The profile photo (v0.2.2). */
   profile?: ProfileIpcDeps;
   /** Screen sharing: the sources and the choice (screen sharing spec §3). */
@@ -145,6 +151,8 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   ...HOST_IPC_ARG_SCHEMAS,
   ...BACKUP_IPC_ARG_SCHEMAS,
   ...RAILWAY_IPC_ARG_SCHEMAS,
+  ...FRIENDS_IPC_ARG_SCHEMAS,
+  ...DM_IPC_ARG_SCHEMAS,
   ...PROFILE_IPC_ARG_SCHEMAS,
   ...SCREEN_IPC_ARG_SCHEMAS,
   ...DRAW_IPC_ARG_SCHEMAS,
@@ -188,6 +196,8 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     ...createHostIpcHandlers(deps.host),
     ...createBackupIpcHandlers(deps.backup),
     ...createRailwayIpcHandlers(deps.railway),
+    ...createFriendsIpcHandlers(deps.friends),
+    ...createDmIpcHandlers(deps.dm),
     ...createProfileIpcHandlers(deps.profile),
     ...createScreenIpcHandlers(deps.screen),
     ...createDrawIpcHandlers(deps.draw),

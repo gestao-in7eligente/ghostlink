@@ -20,7 +20,7 @@ describe('preload bridge', () => {
     expect(Object.keys(electron.exposed)).toEqual(['ghostlink']);
     expect(electron.exposed.ghostlink).toBe(api);
     expect(Object.keys(api).sort()).toEqual([
-      'app', 'deepLink', 'draw', 'host', 'identity', 'join', 'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onPtt', 'onServerEvent', 'profile', 'ptt', 'railway', 'screen', 'server', 'serverUpdates', 'servers', 'settings', 'updates',
+      'app', 'deepLink', 'dm', 'draw', 'friends', 'host', 'identity', 'join', 'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onPtt', 'onServerEvent', 'profile', 'ptt', 'railway', 'screen', 'server', 'serverUpdates', 'servers', 'settings', 'updates',
     ]);
     expect(Object.keys(api.host).sort()).toEqual(['copyText', 'firewall', 'fixFirewall', 'invite', 'join', 'logs', 'recoverOwnership', 'restart', 'start', 'status', 'stop']);
     expect(Object.keys(api.app).sort()).toEqual(['copyText', 'info', 'openExternal']);
@@ -31,6 +31,8 @@ describe('preload bridge', () => {
     expect(Object.keys(api.join).sort()).toEqual(['connect', 'parse', 'probe']);
     expect(Object.keys(api.servers).sort()).toEqual(['checkExit', 'connect', 'delete', 'disconnect', 'leave', 'list', 'remove']);
     expect(Object.keys(api.settings).sort()).toEqual(['get', 'set']);
+    expect(Object.keys(api.dm).sort()).toEqual(['conversations', 'edit', 'hide', 'history', 'onEvent', 'open', 'read', 'remove', 'send', 'typing']);
+    expect(Object.keys(api.friends).sort()).toEqual(['accept', 'add', 'block', 'dismiss', 'newCode', 'onChange', 'remove', 'rename', 'setAvailable', 'setInbox', 'state']);
     expect(Object.keys(api.updates).sort()).toEqual(['checkNow', 'notes', 'onState', 'restart', 'setAutoCheck', 'state']);
     expect(Object.keys(api.screen).sort()).toEqual(['choose', 'sources']);
     expect(Object.keys(api.draw).sort()).toEqual(['overlayClose', 'overlayOpen', 'overlayStroke']);
@@ -87,6 +89,25 @@ describe('preload bridge', () => {
     ['updates.notes', () => api.updates.notes('0.2.3'), IPC.updatesNotes, ['0.2.3']],
     ['updates.restart', () => api.updates.restart(), IPC.updatesRestart, []],
     ['ptt.configure', () => api.ptt.configure({ enabled: true, code: 'KeyV' }), IPC.pttConfigure, [{ enabled: true, code: 'KeyV' }]],
+    ['dm.conversations', () => api.dm.conversations(), IPC.dmConversations, []],
+    ['dm.open', () => api.dm.open('k'), IPC.dmOpen, ['k']],
+    ['dm.hide', () => api.dm.hide('c'), IPC.dmHide, ['c']],
+    ['dm.history', () => api.dm.history('c', null, 50), IPC.dmHistory, ['c', null, 50]],
+    ['dm.send', () => api.dm.send('c', 'oi', null), IPC.dmSend, ['c', 'oi', null]],
+    ['dm.edit', () => api.dm.edit('c', 'm', 'oi!'), IPC.dmEdit, ['c', 'm', 'oi!']],
+    ['dm.remove', () => api.dm.remove('c', 'm'), IPC.dmRemove, ['c', 'm']],
+    ['dm.read', () => api.dm.read('c', 5), IPC.dmRead, ['c', 5]],
+    ['dm.typing', () => api.dm.typing('c'), IPC.dmTyping, ['c']],
+    ['friends.state', () => api.friends.state(), IPC.friendsState, []],
+    ['friends.add', () => api.friends.add('GLF1-AAAA'), IPC.friendsAdd, ['GLF1-AAAA']],
+    ['friends.accept', () => api.friends.accept('k'), IPC.friendsAccept, ['k']],
+    ['friends.dismiss', () => api.friends.dismiss('k'), IPC.friendsDismiss, ['k']],
+    ['friends.remove', () => api.friends.remove('k'), IPC.friendsRemove, ['k']],
+    ['friends.block', () => api.friends.block('k'), IPC.friendsBlock, ['k']],
+    ['friends.rename', () => api.friends.rename('k', 'Bia'), IPC.friendsRename, ['k', 'Bia']],
+    ['friends.newCode', () => api.friends.newCode(), IPC.friendsNewCode, []],
+    ['friends.setInbox', () => api.friends.setInbox(false), IPC.friendsSetInbox, [false]],
+    ['friends.setAvailable', () => api.friends.setAvailable(true), IPC.friendsSetAvailable, [true]],
     ['screen.sources', () => api.screen.sources(), IPC.screenSources, []],
     ['screen.choose', () => api.screen.choose({ sourceId: 'screen:0:0', audio: true }), IPC.screenChoose, [{ sourceId: 'screen:0:0', audio: true }]],
     ['draw.overlayOpen', () => api.draw.overlayOpen(), IPC.drawOverlayOpen, []],
@@ -136,6 +157,10 @@ describe('preload bridge', () => {
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.updates);
     api.onPtt(() => {});
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.ptt);
+    api.dm.onEvent(() => {});
+    expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.dm);
+    api.friends.onChange(() => {});
+    expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.friends);
     api.railway.onProgress(() => {});
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.railway);
     api.serverUpdates.onState(() => {});

@@ -1,6 +1,6 @@
 {
   "name": "@ghostlink/desktop",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-or-later",
@@ -18,6 +18,8 @@
   "dependencies": {
     "@peculiar/x509": "2.1.0",
     "electron-updater": "6.8.10",
+    "hyperdht": "6.34.0",
+    "hyperswarm": "4.17.2",
     "koffi": "3.3.2",
     "livekit-server-sdk": "2.19.1",
     "reflect-metadata": "0.2.2",

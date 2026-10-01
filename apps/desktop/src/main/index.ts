@@ -10,7 +10,7 @@ import { IPC_EVENTS, type Locale, type Platform } from '../shared/ipcTypes.js';
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges } from './appProtocol.js';
 import { createAvatars } from './avatars/index.js';
 import { ClientController } from './controller.js';
-import { GHOSTKEY_EXTENSION, IdentityBackup } from './backup.js';
+import { GHOSTKEY_EXTENSION, IdentityBackup, type IdentityBackupDeps } from './backup.js';
 import { DeepLinks, extractDeepLink, registerProtocolClient } from './deeplink.js';
 import { DrawOverlay, keepsOutOfCapture } from './drawOverlay.js';
 import { openExternalWithConfirm } from './externalLinks.js';
@@ -22,6 +22,7 @@ import { IdentityStore } from './identity.js';
 import { registerIpc } from './ipc.js';
 import { FileLog, consoleMirror, guardStdio, installCrashHandlers, mainLog, safeWrite, setMainLog } from './log.js';
 import { ChatNotifier } from './notifications.js';
+import { FriendsEngine, friendsEnv, watchIdentity } from './p2p/engine.js';
 import { installRendererPinning, setRendererPin } from './pinning.js';
 import { PushToTalk, type PttHookModule } from './ptt.js';
 import { railwayImage } from './railway/image.js';
@@ -169,7 +170,25 @@ async function start(): Promise<BrowserWindow | null> {
     create: (options) => new Notification(options),
     window: () => (window.isDestroyed() ? null : window),
     openChannel: (event) => send(IPC_EVENTS.openChannel, event),
+    // A direct message's click takes the same path: a conversation id is 32 lowercase hex
+    // characters, never a channel id (26 base32 characters), so the renderer can tell them apart.
+    openConversation: (conv) => send(IPC_EVENTS.openChannel, { channelId: conv }),
   });
+  // Friends over P2P (v0.3): the engine follows the identity; the smoke run has its own self-test on loopback.
+  const friends = new FriendsEngine({
+    identity,
+    settings,
+    userDataDir: userData,
+    emit: (snapshot) => send(IPC_EVENTS.friends, snapshot),
+    emitDm: (event) => send(IPC_EVENTS.dm, event),
+    notifyDm: (notification) => void notifier.showDm(notification),
+    log: mainLog,
+    ...(smoke ? { network: false } : friendsEnv(process.env, app.isPackaged)),
+  });
+  // What IPC and the backup do to the identity (create, unlock, import, delete) reaches the engine.
+  const watchedIdentity = watchIdentity(identity, () => void friends.sync());
+  void friends.sync();
+  app.on('before-quit', () => void friends.dispose());
   // Global push-to-talk: the native hook is imported only once the user turns it on (spec §8.4).
   const ptt = new PushToTalk({
     platform: process.platform,
@@ -251,8 +270,16 @@ async function start(): Promise<BrowserWindow | null> {
   });
   registerIpc({
     appOrigin,
-    identity,
-    settings,
+    identity: watchedIdentity,
+    // A new global nickname is announced to the friends with an open link.
+    settings: {
+      get: () => settings.get(),
+      set: (patch) => {
+        const next = settings.set(patch);
+        if (patch.nickname !== undefined) friends.nicknameChanged();
+        return next;
+      },
+    },
     controller,
     notifications: notifier,
     shell: {
@@ -277,9 +304,11 @@ async function start(): Promise<BrowserWindow | null> {
     ptt,
     appInfo: () => ({ version: app.getVersion(), platform: process.platform as Platform, locale: app.getLocale() }),
     host: { manager: host, copyText: (text) => clipboard.writeText(text), firewall: hostFirewall(host) },
-    backup: identityBackup(window, identity, controller),
+    backup: identityBackup(window, watchedIdentity, controller),
     deepLinks: deepLinks ?? undefined,
     railway,
+    friends,
+    dm: friends.dm,
     profile: avatars.profile,
     screen: screenPicker,
     draw: drawOverlay,
@@ -424,7 +453,7 @@ function startHostMode(
 }
 
 /** spec §3.4: .ghostkey export/import through the native dialogs; the seed stays in this process. */
-function identityBackup(window: BrowserWindow, identity: IdentityStore, controller: ClientController): IdentityBackup {
+function identityBackup(window: BrowserWindow, identity: IdentityBackupDeps['identity'], controller: ClientController): IdentityBackup {
   const filters = [{ name: 'GhostLink', extensions: [GHOSTKEY_EXTENSION] }];
   return new IdentityBackup({
     identity,
@@ -482,6 +511,8 @@ function startSmoke(window: BrowserWindow): void {
       )) === true,
     forkServer: () =>
       forkServer({ dataDir: mkdtempSync(join(app.getPath('temp'), 'ghostlink-smoke-')), port: 0, ...hostedServerLogging(mainLog) }),
+    // Loaded only here: the native modules of the P2P stack must never be needed just to start the app.
+    p2p: async () => (await import('./p2p/selfTest.js')).p2pSelfTest(),
     exit: (code) => app.exit(code),
     // `npm run smoke` reads "smoke: OK" from stdout; in development the log mirror prints it.
     log: (message) => {
