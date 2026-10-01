@@ -508,3 +508,58 @@
     animation: none;
   }
 }
+
+/* ---- Server settings → Overview: files ---- */
+
+.filesSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.filesTitle {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.filesRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.storage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-input);
+}
+
+.storageText {
+  color: var(--text-strong);
+  font-size: 14px;
+}
+
+.storageBar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--bg-hover);
+}
+
+.storageFill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+.storageFull {
+  background: var(--danger-strong);
+}

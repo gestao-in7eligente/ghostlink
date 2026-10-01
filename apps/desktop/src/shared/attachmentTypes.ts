@@ -17,6 +17,13 @@ export function dmFileUrl(hash: string): string {
   return `${DM_FILE_URL_PREFIX}${hash}`;
 }
 
+/**
+ * The largest file the renderer may hand to main in one IPC call, whatever a server allows (a
+ * server may allow up to 2 GB): the tray holds bigger files back with the same message as for
+ * the server's limit.
+ */
+export const ATTACHMENT_IPC_MAX_BYTES = 500 * 1024 * 1024;
+
 /** An upload's progress, pushed by main while the bytes go out (IPC_EVENTS.attachmentProgress). */
 export interface UploadProgressEvent {
   /** The id the renderer gave the upload. */

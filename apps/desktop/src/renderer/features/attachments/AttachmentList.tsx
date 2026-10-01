@@ -2,14 +2,11 @@ import { memo, useState } from 'react';
 import { ImageOff } from 'lucide-react';
 import { useT } from '../../i18n/index.js';
 import { useSettingsStore } from '../../stores/settings.js';
-import { fitImage, formatSize, middleEllipsis, mosaicRows, type AttachmentView } from './attachmentModel.js';
+import { MOSAIC_ROW_HEIGHT, fitImage, formatSize, middleEllipsis, mosaicRows, type AttachmentView } from './attachmentModel.js';
 import a from './attachments.module.css';
 import { DownloadButton, type DownloadHandler } from './DownloadButton.js';
 import { FileIcon } from './FileIcon.js';
 import { Lightbox } from './Lightbox.js';
-
-/** Height of a mosaic row by how many images share it (the grid is 400 px wide, 4 px gaps). */
-const ROW_HEIGHT: Readonly<Record<number, number>> = { 1: 220, 2: 198, 3: 131 };
 
 /**
  * A message's files (spec §1): images inside it (one fitted in 400×300, several in a grid; a
@@ -73,7 +70,7 @@ function Mosaic({ images, onOpen }: { images: readonly AttachmentView[]; onOpen:
         const first = start;
         start += count;
         return (
-          <div key={row} className={a.mosaicRow} style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`, height: ROW_HEIGHT[count] }}>
+          <div key={row} className={a.mosaicRow} style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`, height: MOSAIC_ROW_HEIGHT[count] }}>
             {images.slice(first, first + count).map((item, i) => (
               <button
                 key={item.key}

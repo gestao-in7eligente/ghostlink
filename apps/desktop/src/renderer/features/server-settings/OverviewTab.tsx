@@ -1,17 +1,27 @@
-import { useState, type FormEvent } from 'react';
-import { CHAT_LIMITS, type JoinMode } from '@ghostlink/shared';
+import { useEffect, useState, type FormEvent } from 'react';
+import { ATTACHMENT_LIMITS, CHAT_LIMITS, FEATURE_ATTACHMENTS, MB, type JoinMode, type ServerStorage } from '@ghostlink/shared';
 import { errorCodeOf, useT } from '../../i18n/index.js';
 import { ErrorText, primitives as p } from '../../layout/primitives.js';
 import s from '../../layout/settings.module.css';
+import { useConnectionStore } from '../../stores/connection.js';
+import { useSettingsStore } from '../../stores/settings.js';
 import { useTextStore } from '../../stores/text.js';
-import { updateServer, type ServerPatch } from '../chat/actions.js';
+import { formatSize } from '../attachments/attachmentModel.js';
+import a from '../attachments/attachments.module.css';
+import { serverStorage, updateServer, type ServerPatch } from '../chat/actions.js';
 import { useOpenServerExit } from '../serverDelete/DeletionBanner.js';
 import d from '../serverDelete/serverDelete.module.css';
 import { DeleteServerDialog } from '../serverDelete/ServerExitDialogs.js';
 
 const MODES: JoinMode[] = ['invite', 'password', 'open'];
+const { uploadLimitMb: UPLOAD, storageQuotaMb: QUOTA } = ATTACHMENT_LIMITS;
 
-/** Name, who can join (with the password) and the member limit (MANAGE_SERVER). */
+/** A whole number of MB within the server's bounds (a blank or odd field falls back to the lowest). */
+function clampMb(value: string, bounds: { min: number; max: number }): number {
+  return Math.max(bounds.min, Math.min(bounds.max, Math.trunc(Number(value) || bounds.min)));
+}
+
+/** Name, who can join (with the password), the member limit and the file limits (MANAGE_SERVER). */
 export function OverviewTab() {
   const t = useT();
   const server = useTextStore((st) => st.server);
@@ -19,6 +29,10 @@ export function OverviewTab() {
   const [joinMode, setJoinMode] = useState<JoinMode>(server.joinMode);
   const [password, setPassword] = useState('');
   const [maxMembers, setMaxMembers] = useState(server.maxMembers || 100);
+  const locale = useSettingsStore((st) => st.settings?.locale ?? 'pt-BR');
+  const takesFiles = useConnectionStore((st) => st.welcome?.serverId === server.serverId && st.welcome.features.includes(FEATURE_ATTACHMENTS));
+  const [uploadLimitMb, setUploadLimitMb] = useState(server.uploadLimitMb);
+  const [storageQuotaMb, setStorageQuotaMb] = useState(server.storageQuotaMb);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -33,6 +47,8 @@ export function OverviewTab() {
     if (joinMode !== server.joinMode) patch.joinMode = joinMode;
     if (password !== '') patch.password = password;
     if (maxMembers !== server.maxMembers) patch.maxMembers = maxMembers;
+    if (takesFiles && uploadLimitMb !== server.uploadLimitMb) patch.uploadLimitMb = uploadLimitMb;
+    if (takesFiles && storageQuotaMb !== server.storageQuotaMb) patch.storageQuotaMb = storageQuotaMb;
     setBusy(true);
     setError(null);
     setSaved(false);
@@ -93,6 +109,41 @@ export function OverviewTab() {
             onChange={(e) => setMaxMembers(Math.max(1, Math.min(CHAT_LIMITS.maxMembersLimit, Math.trunc(Number(e.target.value) || 1))))}
           />
         </label>
+        {takesFiles && (
+          <section className={a.filesSection} aria-labelledby="overview-files">
+            <h3 id="overview-files" className={a.filesTitle}>
+              {t('serverSettings.overview.files')}
+            </h3>
+            <div className={a.filesRow}>
+              <label className={s.field}>
+                <span className={s.label}>{t('serverSettings.overview.uploadLimit')}</span>
+                <input
+                  className={s.input}
+                  type="number"
+                  min={UPLOAD.min}
+                  max={UPLOAD.max}
+                  value={uploadLimitMb}
+                  onChange={(e) => setUploadLimitMb(clampMb(e.target.value, UPLOAD))}
+                />
+              </label>
+              <label className={s.field}>
+                <span className={s.label}>{t('serverSettings.overview.storageQuota')}</span>
+                <input
+                  className={s.input}
+                  type="number"
+                  min={QUOTA.min}
+                  max={QUOTA.max}
+                  value={storageQuotaMb}
+                  onChange={(e) => setStorageQuotaMb(clampMb(e.target.value, QUOTA))}
+                />
+              </label>
+            </div>
+            <p className={s.hint}>
+              {t('serverSettings.overview.uploadLimitHint', { max: UPLOAD.max })} {t('serverSettings.overview.storageQuotaHint', { size: formatSize(storageQuotaMb * MB, locale) })}
+            </p>
+            <StorageUse quotaMb={server.storageQuotaMb} />
+          </section>
+        )}
         {needsPassword && <p className={s.warning}>{t('serverSettings.overview.passwordRequired')}</p>}
         {error && <ErrorText code={error} />}
         {saved && <p className={s.ok}>{t('serverSettings.saved')}</p>}
@@ -104,6 +155,45 @@ export function OverviewTab() {
       </form>
       <DangerZone />
     </>
+  );
+}
+
+/** The space attachments use, against the quota the server has now (`server.storage`). */
+function StorageUse({ quotaMb }: { quotaMb: number }) {
+  const t = useT();
+  const locale = useSettingsStore((st) => st.settings?.locale ?? 'pt-BR');
+  const [storage, setStorage] = useState<ServerStorage | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let live = true;
+    serverStorage().then(
+      (value) => live && setStorage(value),
+      () => live && setFailed(true),
+    );
+    return () => {
+      live = false;
+    };
+  }, [quotaMb]);
+  if (failed) return <p className={s.hint}>{t('serverSettings.overview.storageError')}</p>;
+  if (storage === null) return <p className={s.hint}>{t('serverSettings.overview.storageLoading')}</p>;
+  const total = quotaMb * MB;
+  const share = total > 0 ? Math.min(1, storage.usedBytes / total) : 1;
+  const full = storage.usedBytes >= total;
+  return (
+    <div className={a.storage} data-storage>
+      <span className={a.storageText}>{t('serverSettings.overview.storageUsed', { used: formatSize(storage.usedBytes, locale), total: formatSize(total, locale) })}</span>
+      <span
+        className={a.storageBar}
+        role="meter"
+        aria-label={t('serverSettings.overview.storageQuota')}
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={Math.min(storage.usedBytes, total)}
+      >
+        <span className={full ? `${a.storageFill} ${a.storageFull}` : a.storageFill} style={{ width: `${Math.max(share * 100, storage.usedBytes > 0 ? 1 : 0)}%` }} />
+      </span>
+      {full && <span className={s.hint}>{t('serverSettings.overview.storageFull')}</span>}
+    </div>
   );
 }
 

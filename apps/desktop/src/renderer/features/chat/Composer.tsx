@@ -1,10 +1,13 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { CirclePlus, Code, SendHorizontal, Smile, X } from 'lucide-react';
 import { CHAT_LIMITS, PERMISSIONS, has, type Channel } from '@ghostlink/shared';
 import { errorCodeOf, errorMessage, useT } from '../../i18n/index.js';
 import { channelLog } from '../../stores/messages.js';
 import { myPermissions, rolesByPosition } from '../../stores/server.js';
 import { textState, useTextStore } from '../../stores/text.js';
+import type { TrayLimits, TrayRejection } from '../attachments/attachmentModel.js';
+import { AttachmentTray } from '../attachments/AttachmentTray.js';
+import { TrayNotice, pastedFiles, useFilePicker, type PickedFile, type TrayFile } from '../attachments/filePicking.js';
 import { editMessage, resetTyping, sendMessage, sendTyping } from './actions.js';
 import c from './chat.module.css';
 import { useComposerStore } from './composerStore.js';
@@ -21,8 +24,38 @@ import { memberName, plainContent } from './notify.js';
 
 const MAX_HEIGHT_RATIO = 0.4;
 
-/** The message box (owner's UI reference): +, emoji, code, text, counter and "Enviar". */
-export function Composer({ channel, canSend, onSent }: { channel: Channel; canSend: boolean; onSent: () => void }) {
+/** The channel's tray of files (filePicking.useTray), kept by the chat so a drop anywhere on it lands here. */
+export interface ComposerFiles {
+  items: readonly TrayFile[];
+  rejected: readonly TrayRejection[];
+  add(files: readonly File[]): void;
+  remove(id: string): void;
+  take(): PickedFile[];
+}
+
+/**
+ * The message box (owner's UI reference): +, emoji, code, text, counter and "Enviar". The "+"
+ * picks files (anexos §1), as do a drop on the chat and Ctrl+V of an image; they wait in the
+ * tray above the box, and the text is optional when there are files.
+ */
+export function Composer({
+  channel,
+  canSend,
+  files,
+  limits,
+  canAttach,
+  attachHint,
+  onSent,
+}: {
+  channel: Channel;
+  canSend: boolean;
+  files: ComposerFiles;
+  limits: TrayLimits;
+  canAttach: boolean;
+  /** Why "+" is off (an old server, no permission), or null. */
+  attachHint: string | null;
+  onSent: () => void;
+}) {
   const t = useT();
   const listId = useId();
   const draft = useComposerStore((s) => (Object.hasOwn(s.drafts, channel.id) ? s.drafts[channel.id]! : ''));
@@ -40,6 +73,7 @@ export function Composer({ channel, canSend, onSent }: { channel: Channel; canSe
   const [busy, setBusy] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const saved = useRef({ text: draft, picked: [] as MentionCandidate[] });
+  const picker = useFilePicker(files.add);
 
   const canMentionEveryone = useMemo(() => has(myPermissions({ server, members }, channel), PERMISSIONS.MENTION_EVERYONE), [server, members, channel]);
 
@@ -122,6 +156,8 @@ export function Composer({ channel, canSend, onSent }: { channel: Channel; canSe
   const encoded = useMemo(() => encodeMentions(text, picked), [text, picked]);
   const length = encoded.trim().length;
   const tooLong = encoded.length > CHAT_LIMITS.messageMaxLength;
+  // Nothing to send yet: no text and (outside an edit) no file in the tray.
+  const idle = length === 0 && (edit !== null || files.items.length === 0);
 
   const query = canSend ? mentionQueryAt(text, caret) : null;
   const suggestions = useMemo(() => {
@@ -192,15 +228,25 @@ export function Composer({ channel, canSend, onSent }: { channel: Channel; canSe
       }
       return;
     }
-    if (!content) return;
+    if (!content && files.items.length === 0) return;
     const replyTo = reply?.messageId ?? null;
+    const outgoing = files.take();
     setText('');
     setPicked([]);
     setError(null);
     useComposerStore.getState().cancel();
     resetTyping();
     onSent();
-    await sendMessage(channel.id, content, replyTo);
+    await sendMessage(channel.id, content, replyTo, outgoing);
+  };
+
+  // Ctrl+V of a screenshot or a copied file goes to the tray; plain text pastes as usual.
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!canAttach || edit) return;
+    const pasted = pastedFiles(e, t('attachments.pastedImage'));
+    if (pasted.length === 0) return;
+    e.preventDefault();
+    files.add(pasted);
   };
 
   const editLastOwn = () => {
@@ -285,11 +331,20 @@ export function Composer({ channel, canSend, onSent }: { channel: Channel; canSe
           </button>
         </div>
       )}
+      {!edit && <AttachmentTray items={files.items} onRemove={files.remove} />}
       <div className={canSend ? c.composer : `${c.composer} ${c.composerDisabled}`}>
         <div className={c.tools}>
-          <button type="button" className={c.tool} disabled aria-label={t('chat.attachSoon')} title={t('chat.attachSoon')}>
+          <button
+            type="button"
+            className={c.tool}
+            disabled={!canAttach || edit !== null}
+            aria-label={attachHint ?? t('attachments.add')}
+            title={attachHint ?? t('attachments.add')}
+            onClick={picker.open}
+          >
             <CirclePlus size={20} aria-hidden="true" />
           </button>
+          {picker.input}
           <button
             type="button"
             className={c.tool}
@@ -332,15 +387,16 @@ export function Composer({ channel, canSend, onSent }: { channel: Channel; canSe
           }}
           onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
         />
         <span className={tooLong ? `${c.counter} ${c.counterOver}` : c.counter} aria-live="polite">
           {length}/{CHAT_LIMITS.messageMaxLength}
         </span>
         <button
           type="button"
-          className={length === 0 ? `${c.send} ${c.sendIdle}` : c.send}
+          className={idle ? `${c.send} ${c.sendIdle}` : c.send}
           disabled={!canSend || busy || tooLong}
-          aria-disabled={length === 0 || undefined}
+          aria-disabled={idle || undefined}
           onClick={() => void submit()}
         >
           <SendHorizontal size={16} aria-hidden="true" />
@@ -352,6 +408,7 @@ export function Composer({ channel, canSend, onSent }: { channel: Channel; canSe
           {errorMessage(t, error)}
         </p>
       )}
+      <TrayNotice rejected={files.rejected} limits={limits} />
       {emoji && <EmojiPicker anchor={emoji} onClose={() => setEmoji(null)} onPick={(e) => insert(e)} />}
     </div>
   );

@@ -35,4 +35,14 @@ export const attachments = {
   'attachments.kind.file': 'Arquivo',
   'attachments.noFeature': 'Este servidor ainda não recebe arquivos. Avise o dono para atualizá-lo.',
   'attachments.noPermission': 'Você não tem permissão para enviar arquivos neste canal.',
+
+  'serverSettings.overview.files': 'Arquivos',
+  'serverSettings.overview.uploadLimit': 'Tamanho máximo por arquivo (MB)',
+  'serverSettings.overview.uploadLimitHint': 'De 1 a {max} MB. Imagens também param em 8192 px de lado e 40 megapixels.',
+  'serverSettings.overview.storageQuota': 'Espaço total para arquivos (MB)',
+  'serverSettings.overview.storageQuotaHint': 'Somando os arquivos de todos os canais: {size}.',
+  'serverSettings.overview.storageUsed': '{used} usados de {total}',
+  'serverSettings.overview.storageLoading': 'Calculando o espaço usado…',
+  'serverSettings.overview.storageFull': 'O espaço acabou: ninguém consegue enviar arquivos até apagar mensagens com anexos ou aumentar o espaço total.',
+  'serverSettings.overview.storageError': 'Não foi possível ver o espaço usado.',
 } as const;

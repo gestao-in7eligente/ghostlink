@@ -2,17 +2,13 @@
 // sender check → zod → handler pipeline as every other channel. The bytes are only shaped and
 // capped here; main checks them again against the server's own limit before sending.
 import { z } from 'zod';
-import { DM_FILE_URL_PREFIX, SERVER_FILE_URL_PREFIX } from '../../shared/attachmentTypes.js';
+import { ATTACHMENT_LIMITS } from '@ghostlink/shared';
+import { ATTACHMENT_IPC_MAX_BYTES, DM_FILE_URL_PREFIX, SERVER_FILE_URL_PREFIX } from '../../shared/attachmentTypes.js';
 import { IPC, type AttachmentsIpcChannel, type IpcArgs, type IpcReturn } from '../../shared/ipcTypes.js';
 import type { SaveResult, UploadResult } from '../../shared/attachmentTypes.js';
 
-/**
- * The largest file the renderer may hand over in one IPC call, whatever a server allows: a
- * server's `upload_limit_mb` is checked per upload in main (attachmentHttp.ts).
- */
-export const ATTACHMENT_IPC_MAX_BYTES = 500 * 1024 * 1024;
-/** A file name as the server stores it (main spec §7); longer names are refused, never cut silently. */
-export const ATTACHMENT_NAME_MAX = 255;
+/** A file name as upload.begin takes it (the server cleans it, main spec §7); longer ones are refused. */
+export const ATTACHMENT_NAME_MAX = ATTACHMENT_LIMITS.nameInputMax;
 
 export interface AttachmentsIpcDeps {
   upload(uploadId: string, serverId: string, channelId: string, name: string, bytes: Uint8Array): Promise<UploadResult>;

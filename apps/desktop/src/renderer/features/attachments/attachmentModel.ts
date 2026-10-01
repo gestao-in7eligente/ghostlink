@@ -120,6 +120,24 @@ export function mosaicRows(count: number): number[] {
   return rows;
 }
 
+/** Height of a mosaic row by how many images share it (the grid is 400 px wide, 4 px gaps). */
+export const MOSAIC_ROW_HEIGHT: Readonly<Record<number, number>> = { 1: 220, 2: 198, 3: 131 };
+
+/** Roughly how tall a message's files stand (the list's first guess before it measures the row). */
+export function attachmentsHeight(items: ReadonlyArray<Pick<AttachmentView, 'kind' | 'width' | 'height'>>): number {
+  if (items.length === 0) return 0;
+  const images = items.filter((x) => x.kind === 'image');
+  let height = 8;
+  if (images.length === 1) height += fitImage(images[0]!.width, images[0]!.height)?.height ?? IMAGE_BOX.height;
+  else if (images.length > 1) height += mosaicRows(images.length).reduce((sum, n) => sum + (MOSAIC_ROW_HEIGHT[n] ?? 131) + 4, 0);
+  for (const x of items) {
+    if (x.kind === 'video') height += (fitImage(x.width, x.height)?.height ?? 225) + 6;
+    else if (x.kind === 'audio') height += 112;
+    else if (x.kind === 'file') height += 70;
+  }
+  return height;
+}
+
 export type TrayRejectionReason = 'tooMany' | 'tooLarge' | 'empty';
 
 export interface TrayRejection {

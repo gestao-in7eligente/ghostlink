@@ -34,4 +34,14 @@ export const attachments: Record<keyof typeof ptBR, string> = {
   'attachments.kind.file': 'File',
   'attachments.noFeature': 'This server does not take files yet. Ask the owner to update it.',
   'attachments.noPermission': 'You do not have permission to send files in this channel.',
+
+  'serverSettings.overview.files': 'Files',
+  'serverSettings.overview.uploadLimit': 'Largest file (MB)',
+  'serverSettings.overview.uploadLimitHint': 'From 1 to {max} MB. Images also stop at 8192 px a side and 40 megapixels.',
+  'serverSettings.overview.storageQuota': 'Total space for files (MB)',
+  'serverSettings.overview.storageQuotaHint': 'The files of every channel together: {size}.',
+  'serverSettings.overview.storageUsed': '{used} used of {total}',
+  'serverSettings.overview.storageLoading': 'Working out the space in use…',
+  'serverSettings.overview.storageFull': 'The space is full: nobody can send files until messages with attachments are deleted or the total space grows.',
+  'serverSettings.overview.storageError': 'Could not read the space in use.',
 };

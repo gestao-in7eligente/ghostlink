@@ -1,9 +1,12 @@
 import { memo, useMemo, type MouseEvent } from 'react';
 import { CornerUpLeft, Pencil, Reply, SmilePlus, Trash2 } from 'lucide-react';
-import type { Message } from '@ghostlink/shared';
+import type { Attachment, Message } from '@ghostlink/shared';
 import { errorMessage, type Translate } from '../../i18n/index.js';
 import { Avatar } from '../../layout/primitives.js';
-import type { PendingMessage } from '../../stores/textState.js';
+import type { PendingFile, PendingMessage } from '../../stores/textState.js';
+import type { AttachmentView, UploadView } from '../attachments/attachmentModel.js';
+import { AttachmentList } from '../attachments/AttachmentList.js';
+import { UploadProgress } from '../attachments/UploadProgress.js';
 import c from './chat.module.css';
 import { formatDay, formatFull, formatStamp, formatTime, type Row } from './grouping.js';
 import { parseMarkdown } from './markdown.js';
@@ -23,6 +26,8 @@ export interface MessageEnv {
   avatar(userId: string | null): string | null;
   /** Message text without markup, mentions shown as names (reply previews). */
   plain(content: string): string;
+  /** Where the page loads one of this server's files from (main's app:// route), or null. */
+  fileUrl(fileId: string): string | null;
   /** True when the message pings the current user (a mention, their role or @everyone). */
   pingsMe(message: Message): boolean;
   highlightId: number | null;
@@ -39,6 +44,15 @@ export interface MessageEnv {
 function Content({ content, everyone, md }: { content: string; everyone: boolean; md: MarkdownContext }) {
   const nodes = useMemo(() => renderMarkdown(parseMarkdown(content, { everyone }), md), [content, everyone, md]);
   return <>{nodes}</>;
+}
+
+/** A server's files as the shared list shows them (anexos §4). */
+function attachmentViews(attachments: readonly Attachment[], env: MessageEnv): AttachmentView[] {
+  return attachments.map((x) => ({ key: x.id, name: x.name, size: x.size, kind: x.kind, mime: x.mime, width: x.width, height: x.height, src: env.fileUrl(x.id) }));
+}
+
+function uploadViews(files: readonly PendingFile[]): UploadView[] {
+  return files.map((f) => ({ id: f.id, name: f.name, size: f.size, kind: f.kind, progress: f.progress, done: f.fileId !== null }));
 }
 
 function Header({ name, at, env }: { name: string; at: number; env: MessageEnv }) {
@@ -158,9 +172,12 @@ export const MessageRow = memo(function MessageRow({ row, env }: { row: Row; env
         {row.head ? <Avatar size={40} name={env.name(env.selfId)} hash={env.avatar(env.selfId)} self /> : <span className={c.gutter} />}
         <div className={c.msgBody}>
           {row.head && <Header name={env.name(env.selfId)} at={p.createdAt} env={env} />}
-          <div className={c.content}>
-            <Content content={p.content} everyone={false} md={env.md} />
-          </div>
+          {(p.content !== '' || !p.files?.length) && (
+            <div className={c.content}>
+              <Content content={p.content} everyone={false} md={env.md} />
+            </div>
+          )}
+          {p.files && p.files.length > 0 && <UploadProgress files={uploadViews(p.files)} failed={p.error !== null} />}
           {p.error && (
             <div className={c.failed} role="alert">
               <span>{env.t('chat.sendFailed', { reason: errorMessage(env.t, p.error) })}</span>
@@ -191,15 +208,18 @@ export const MessageRow = memo(function MessageRow({ row, env }: { row: Row; env
       )}
       <div className={c.msgBody}>
         {row.head && <Header name={env.name(m.authorId)} at={m.createdAt} env={env} />}
-        <div className={c.content}>
-          <Content content={m.content} everyone={m.mentions.everyone} md={env.md} />
-          {m.editedAt !== null && (
-            <span className={c.edited} title={formatFull(m.editedAt, env.locale)}>
-              {' '}
-              {env.t('chat.edited')}
-            </span>
-          )}
-        </div>
+        {(m.content !== '' || m.attachments.length === 0) && (
+          <div className={c.content}>
+            <Content content={m.content} everyone={m.mentions.everyone} md={env.md} />
+            {m.editedAt !== null && (
+              <span className={c.edited} title={formatFull(m.editedAt, env.locale)}>
+                {' '}
+                {env.t('chat.edited')}
+              </span>
+            )}
+          </div>
+        )}
+        {m.attachments.length > 0 && <AttachmentList items={attachmentViews(m.attachments, env)} />}
         <Reactions message={m} env={env} />
       </div>
       <Actions message={m} env={env} />
