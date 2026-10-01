@@ -110,7 +110,7 @@ describe('Electron registration', () => {
   it('registers app:// as a standard, secure, fetch-capable scheme', () => {
     registerAppSchemePrivileges();
     expect(electron.protocol.registerSchemesAsPrivileged).toHaveBeenCalledWith([
-      { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+      { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
     ]);
   });
 

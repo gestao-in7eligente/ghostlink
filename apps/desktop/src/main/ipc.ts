@@ -79,6 +79,8 @@ export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
   'invite.create', 'invite.list', 'invite.revoke', 'server.update', 'server.transferOwnership', 'server.leave',
   // Deleting a server (v0.2.4): the owner's banner restores it; `server.delete` goes through servers.delete.
   'server.restore',
+  // Attachments (v0.3.3): the space in use, for Server settings → Overview. upload.begin stays in main.
+  'server.storage',
   // Voice track
   'voice.join', 'voice.leave', 'voice.selfState', 'voice.moderate',
   // The pencil on shared screens (v0.2.3)

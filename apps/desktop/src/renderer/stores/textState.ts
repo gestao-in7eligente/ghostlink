@@ -14,6 +14,9 @@ export interface ServerState {
   ownerId: string | null;
   maxMembers: number;
   hasPassword: boolean;
+  /** Attachments (anexos §2): the largest file, and all files together, in MB. */
+  uploadLimitMb: number;
+  storageQuotaMb: number;
   roles: Readonly<Record<string, Role>>;
 }
 

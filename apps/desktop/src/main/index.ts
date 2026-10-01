@@ -3,11 +3,12 @@
 import { BrowserWindow, Menu, Notification, app, clipboard, desktopCapturer, dialog, net, safeStorage, screen, session, shell } from 'electron';
 import { mkdtempSync } from 'node:fs';
 import { release } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { APP_ID, APP_NAME, DEFAULT_PORT } from '@ghostlink/shared';
 import { IPC_EVENTS, type Locale, type Platform, type ServerEventMessage } from '../shared/ipcTypes.js';
-import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges } from './appProtocol.js';
+import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges, type AppRoutes } from './appProtocol.js';
+import { createAttachments } from './attachments/index.js';
 import { createAvatars } from './avatars/index.js';
 import { ClientController } from './controller.js';
 import { GHOSTKEY_EXTENSION, IdentityBackup, type IdentityBackupDeps } from './backup.js';
@@ -114,7 +115,9 @@ async function start(): Promise<BrowserWindow | null> {
   const userData = app.getPath('userData');
   // Profile photos (v0.2.2): served at app://ghostlink/_avatar/<hash>, also to the dev server's page.
   const avatars = createAvatars({ userDataDir: userData, warn: (message) => mainLog.warn(message) });
-  registerAppProtocol(fileURLToPath(new URL('../renderer/', import.meta.url)), { avatar: avatars.route });
+  // Attachments' _file route joins once the window exists (its "Baixar" needs the window's dialog).
+  const appRoutes: AppRoutes = { avatar: avatars.route };
+  const appRequests = registerAppProtocol(fileURLToPath(new URL('../renderer/', import.meta.url)), appRoutes);
   if (!smoke) registerProtocolClient(app, { argv: process.argv, execPath: process.execPath, env: process.env });
   installSecurity({ appOrigin });
   installRendererPinning(session.defaultSession);
@@ -151,6 +154,14 @@ async function start(): Promise<BrowserWindow | null> {
   const window = createMainWindow();
   target = window;
   if (opening.splash) closeSplashWhenShown(opening.splash, window);
+  // Files in server channels (v0.3.3): uploads with progress, app://ghostlink/_file and "Baixar".
+  const attachments = createAttachments({
+    userDataDir: userData,
+    emitProgress: (event) => send(IPC_EVENTS.attachmentProgress, event),
+    save: { fetch: appRequests, choosePath: attachmentSavePath(window) },
+    warn: (message) => mainLog.warn(message),
+  });
+  appRoutes.file = attachments.route;
   // Deleting a server (v0.2.4): what the connection learns reaches the sweep created further down.
   let deletions: ServerDeletions | null = null;
   const controller = new ClientController({
@@ -161,7 +172,10 @@ async function start(): Promise<BrowserWindow | null> {
     emitConnectionState: (event) => send(IPC_EVENTS.connectionState, event),
     emitServerEvent: (event, serverId) => send(IPC_EVENTS.server, { serverId, event } satisfies ServerEventMessage),
     clientName: `ghostlink/${app.getVersion()} (${process.platform})`,
-    onSession: (active) => avatars.onSession(active),
+    onSession: (active) => {
+      avatars.onSession(active);
+      attachments.onSession(active);
+    },
     onDeletion: (update) => deletions?.observe(update),
   });
   const host = startHostMode(window, controller, servers, settings, send);
@@ -310,6 +324,7 @@ async function start(): Promise<BrowserWindow | null> {
     friends,
     dm: friends.dm,
     profile: avatars.profile,
+    attachments: attachments.ipc,
     screen: screenPicker,
     draw: drawOverlay,
     serverUpdates,
@@ -452,6 +467,20 @@ function startHostMode(
       });
   });
   return host;
+}
+
+/**
+ * Where "Baixar" saves (anexos §1): the system's save dialog, starting in Downloads with the file's
+ * name. Test hook (never honoured when packaged): GHOSTLINK_E2E_SAVE_DIR saves there without a
+ * dialog, so end-to-end runs never block on a native window.
+ */
+function attachmentSavePath(window: BrowserWindow): (name: string) => Promise<string | null> {
+  const testDir = app.isPackaged ? undefined : process.env.GHOSTLINK_E2E_SAVE_DIR || undefined;
+  if (testDir) return async (name) => join(resolve(testDir), basename(name));
+  return async (name) => {
+    const r = await dialog.showSaveDialog(window, { defaultPath: join(app.getPath('downloads'), name) });
+    return r.canceled || !r.filePath ? null : r.filePath;
+  };
 }
 
 /** spec §3.4: .ghostkey export/import through the native dialogs; the seed stays in this process. */

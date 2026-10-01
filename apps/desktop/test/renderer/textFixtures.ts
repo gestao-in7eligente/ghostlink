@@ -51,6 +51,7 @@ export function message(id: number, extra: Partial<Message> = {}): Message {
     reactions: [],
     mentions: { users: [], roles: [], everyone: false },
     clientMsgId: `c${++nextClient}`,
+    attachments: [],
     ...extra,
   };
 }
@@ -72,7 +73,7 @@ export function snapshot(extra: Partial<TextSnapshot['text']> = {}, serverId = '
         { channelId: GERAL, lastReadMessageId: 10, mentionCount: 0 },
         { channelId: RANDOM, lastReadMessageId: 3, mentionCount: 1 },
       ],
-      serverSettings: { ownerId: OWNER, maxMembers: 100, hasPassword: false },
+      serverSettings: { ownerId: OWNER, maxMembers: 100, hasPassword: false, uploadLimitMb: 25, storageQuotaMb: 10_240 },
       ...extra,
     },
   };
