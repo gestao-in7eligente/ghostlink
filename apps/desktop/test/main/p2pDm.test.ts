@@ -279,7 +279,8 @@ describe('sending (friends spec §4.2, §4.3)', () => {
     expect(bia.store.dm.head(conv, ana.key)).toBe(count);
     const wants = bia.node.links.get(hexOf(ana.key))!.messages.filter((m) => m.t === 'sync.want');
     expect(wants.map((m) => m.t === 'sync.want' && [m.from, m.to])).toEqual([[1, WANT_MAX], [WANT_MAX + 1, 2 * WANT_MAX], [2 * WANT_MAX + 1, count]]);
-  });
+    // 1001 signed entries written and verified: a Windows CI runner needed 42 s.
+  }, 120_000);
 
   it('refuses empty, blank and oversized text, and cleans it like a channel message', async () => {
     const { ana, bia } = await friendsAlready();
