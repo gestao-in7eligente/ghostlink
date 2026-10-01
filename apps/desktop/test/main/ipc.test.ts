@@ -14,14 +14,14 @@ const APP = 'app://ghostlink';
 const TOP = { url: 'app://ghostlink/index.html#/join', parent: null };
 const KEY_ID = toBase64Url(new Uint8Array(32).fill(4));
 const WELCOME = { serverId: 's1', sessionId: 'x' };
-const UPDATE_STATE = { status: 'downloaded', autoCheck: true, currentVersion: '0.1.0', version: '0.1.1', percent: null };
+const UPDATE_STATE = { status: 'downloaded', autoCheck: true, currentVersion: '0.1.0', version: '0.1.1', percent: null, lastCheckedAt: 1_000 };
 
 let deps: {
   appInfo: ReturnType<typeof vi.fn>;
   identity: { status: string; create: ReturnType<typeof vi.fn>; retry: ReturnType<typeof vi.fn>; replaceKeepingBackup: ReturnType<typeof vi.fn> };
   settings: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
   controller: Record<'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove', ReturnType<typeof vi.fn>>;
-  updates: Record<'state' | 'setAutoCheck' | 'restart', ReturnType<typeof vi.fn>>;
+  updates: Record<'state' | 'setAutoCheck' | 'checkNow' | 'restart', ReturnType<typeof vi.fn>>;
 };
 
 beforeEach(() => {
@@ -42,6 +42,7 @@ beforeEach(() => {
     updates: {
       state: vi.fn(() => UPDATE_STATE),
       setAutoCheck: vi.fn((autoCheck: boolean) => ({ ...UPDATE_STATE, autoCheck })),
+      checkNow: vi.fn(async () => {}),
       restart: vi.fn(),
     },
   };
@@ -108,6 +109,8 @@ describe('argument validation', () => {
     ['a non-boolean auto-check', IPC.updatesSetAutoCheck, ['false']],
     ['a missing auto-check', IPC.updatesSetAutoCheck, []],
     ['an argument to restart', IPC.updatesRestart, [true]],
+    ['an argument to checkNow', IPC.updatesCheckNow, [true]],
+    ['an options object to checkNow', IPC.updatesCheckNow, [{ force: true }]],
   ])('refuses %s with BAD_REQUEST', async (_label, channel, args) => {
     expect(await invoke(channel, TOP, ...args)).toEqual({ ok: false, code: 'BAD_REQUEST' });
     for (const fn of [...Object.values(deps.controller), ...Object.values(deps.updates), deps.settings.set]) expect(fn).not.toHaveBeenCalled();
@@ -154,6 +157,26 @@ describe('updates channels (spec §15)', () => {
     expect(await invoke(IPC.updatesRestart, frame)).toEqual({ ok: false, code: 'FORBIDDEN' });
     expect(deps.updates.setAutoCheck).not.toHaveBeenCalled();
     expect(deps.updates.restart).not.toHaveBeenCalled();
+  });
+
+  it('"Procurar atualizações" runs one check and answers with the state once it ended', async () => {
+    let checked = false;
+    deps.updates.checkNow.mockImplementationOnce(async () => {
+      await Promise.resolve();
+      checked = true;
+    });
+    deps.updates.state.mockImplementation(() => (checked ? { ...UPDATE_STATE, status: 'idle', version: null, lastCheckedAt: 2_000 } : UPDATE_STATE));
+    expect(await invoke(IPC.updatesCheckNow, TOP)).toEqual({ ok: true, value: { ...UPDATE_STATE, status: 'idle', version: null, lastCheckedAt: 2_000 } });
+    expect(deps.updates.checkNow).toHaveBeenCalledOnce();
+    expect(deps.updates.checkNow).toHaveBeenCalledWith();
+  });
+
+  it.each([
+    ['an iframe of the app', { url: 'app://ghostlink/index.html', parent: TOP }],
+    ['another origin', { url: 'https://evil.example/', parent: null }],
+  ])('refuses a check from %s', async (_label, frame) => {
+    expect(await invoke(IPC.updatesCheckNow, frame)).toEqual({ ok: false, code: 'FORBIDDEN' });
+    expect(deps.updates.checkNow).not.toHaveBeenCalled();
   });
 
   it('reports a restart without a downloaded update as BAD_REQUEST', async () => {

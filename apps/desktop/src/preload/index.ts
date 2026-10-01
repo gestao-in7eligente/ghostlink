@@ -93,6 +93,7 @@ export const api: GhostlinkApi = {
   updates: {
     state: () => invoke(IPC.updatesState),
     setAutoCheck: (enabled) => invoke(IPC.updatesSetAutoCheck, enabled),
+    checkNow: () => invoke(IPC.updatesCheckNow),
     restart: () => invoke(IPC.updatesRestart),
     onState: (cb) => subscribe<UpdateState>(IPC_EVENTS.updates, cb),
   },

@@ -35,7 +35,7 @@ export interface IpcDeps {
   /** Confirmed external links and the clipboard (Text track). */
   shell: { openExternal(url: string): Promise<boolean>; copyText(text: string): void };
   notifications: { show(n: ChatNotification): boolean };
-  updates: Pick<Updater, 'state' | 'setAutoCheck' | 'restart'>;
+  updates: Pick<Updater, 'state' | 'setAutoCheck' | 'checkNow' | 'restart'>;
   /** Global push-to-talk (voice track). */
   ptt: Pick<PushToTalk, 'configure'>;
   /** "Criar um servidor" on Railway (v0.2). */
@@ -144,6 +144,7 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.deepLinkTake]: z.tuple([]),
   [IPC.updatesState]: z.tuple([]),
   [IPC.updatesSetAutoCheck]: z.tuple([z.boolean()]),
+  [IPC.updatesCheckNow]: z.tuple([]),
   [IPC.updatesRestart]: z.tuple([]),
   // A DOM KeyboardEvent.code such as "KeyV" or "ControlRight"; main maps it to the hook's keycode.
   [IPC.pttConfigure]: z.tuple([z.strictObject({ enabled: z.boolean(), code: z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,23}$/).nullable() })]),
@@ -182,6 +183,10 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     [IPC.deepLinkTake]: () => deps.deepLinks?.take() ?? null,
     [IPC.updatesState]: () => updates.state(),
     [IPC.updatesSetAutoCheck]: (enabled) => updates.setAutoCheck(enabled),
+    [IPC.updatesCheckNow]: async () => {
+      await updates.checkNow(); // never throws; skipped while a check runs or an update waits
+      return updates.state();
+    },
     [IPC.updatesRestart]: () => updates.restart(),
     [IPC.pttConfigure]: (config) => deps.ptt.configure(config),
   };

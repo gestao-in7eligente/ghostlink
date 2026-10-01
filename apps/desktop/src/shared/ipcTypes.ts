@@ -219,6 +219,7 @@ export const IPC = {
   hostFixFirewall: 'ghostlink:host.fixFirewall',
   updatesState: 'ghostlink:updates.state',
   updatesSetAutoCheck: 'ghostlink:updates.setAutoCheck',
+  updatesCheckNow: 'ghostlink:updates.checkNow',
   updatesRestart: 'ghostlink:updates.restart',
   pttConfigure: 'ghostlink:ptt.configure',
   railwayStatus: 'ghostlink:railway.status',
@@ -291,6 +292,7 @@ export interface IpcContract {
   [IPC.hostFixFirewall]: { args: []; result: { result: FirewallFixResult; status: FirewallStatus } };
   [IPC.updatesState]: { args: []; result: UpdateState };
   [IPC.updatesSetAutoCheck]: { args: [enabled: boolean]; result: UpdateState };
+  [IPC.updatesCheckNow]: { args: []; result: UpdateState };
   [IPC.updatesRestart]: { args: []; result: void };
   [IPC.pttConfigure]: { args: [config: PttConfig]; result: PttStatus };
   [IPC.railwayStatus]: { args: []; result: RailwayAccount };

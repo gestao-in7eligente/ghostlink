@@ -19,11 +19,18 @@ export interface UpdateState {
   version: string | null;
   /** 0–100 while downloading. */
   percent: number | null;
+  /** When a check last got GitHub's answer (ms since the epoch), this session; null before the first one. */
+  lastCheckedAt: number | null;
 }
 
 export interface UpdatesApi {
   state(): Promise<UpdateState>;
   setAutoCheck(enabled: boolean): Promise<UpdateState>;
+  /**
+   * "Procurar atualizações": one check now, resolving with the state once it ended. Skipped while
+   * another check runs or an update is downloading or waiting for the restart.
+   */
+  checkNow(): Promise<UpdateState>;
   /** Quits and runs the downloaded installer; refused unless the status is `downloaded`. */
   restart(): Promise<void>;
   onState(cb: (state: UpdateState) => void): () => void;

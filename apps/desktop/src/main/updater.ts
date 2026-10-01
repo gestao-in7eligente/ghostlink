@@ -71,6 +71,8 @@ export interface UpdaterOptions {
   fetchReleaseFile: ReleaseFileFetcher;
   emit(state: UpdateState): void;
   log?: (message: string) => void;
+  /** The clock of `lastCheckedAt` (Date.now unless a test passes its own). */
+  now?: () => number;
 }
 
 const fileSchema = z.object({ version: z.literal(1), autoCheck: z.boolean() });
@@ -94,6 +96,8 @@ export class Updater {
   #status: UpdateStatus;
   #version: string | null = null;
   #percent: number | null = null;
+  /** When a check last got an answer ("Você está na versão mais recente" shows it). */
+  #lastCheckedAt: number | null = null;
   /** The version announced by update-available: the only one whose signatures are fetched. */
   #pendingVersion: string | null = null;
   #started = false;
@@ -120,7 +124,14 @@ export class Updater {
   }
 
   state(): UpdateState {
-    return { status: this.#status, autoCheck: this.#autoCheck, currentVersion: this.#opts.currentVersion, version: this.#version, percent: this.#percent };
+    return {
+      status: this.#status,
+      autoCheck: this.#autoCheck,
+      currentVersion: this.#opts.currentVersion,
+      version: this.#version,
+      percent: this.#percent,
+      lastCheckedAt: this.#lastCheckedAt,
+    };
   }
 
   /**
@@ -234,6 +245,7 @@ export class Updater {
       if (this.#status !== 'downloading' && this.#status !== 'downloaded') this.#set('checking');
     });
     backend.on('update-available', (info: { version?: unknown }) => {
+      this.#lastCheckedAt = this.#now();
       this.#pendingVersion = isReleaseVersion(info?.version) ? info.version : null;
       this.#set('downloading', this.#pendingVersion, 0);
     });
@@ -243,7 +255,9 @@ export class Updater {
       if (percent !== this.#percent) this.#set('downloading', this.#version, percent);
     });
     backend.on('update-not-available', () => {
+      this.#lastCheckedAt = this.#now();
       if (this.#status === 'checking') this.#set(this.#restingStatus());
+      else this.#emit();
     });
     backend.on('update-downloaded', (info: { version?: unknown }) => {
       this.#set('downloaded', isReleaseVersion(info?.version) ? info.version : this.#pendingVersion);
@@ -350,6 +364,10 @@ export class Updater {
   #emit(): void {
     this.#opts.emit(this.state());
     this.#startupWatch?.();
+  }
+
+  #now(): number {
+    return (this.#opts.now ?? Date.now)();
   }
 
   #log(message: string): void {
