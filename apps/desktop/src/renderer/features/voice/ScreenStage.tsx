@@ -65,7 +65,7 @@ export function StreamView({ userId, size, onFocus, onShowAll }: { userId: strin
         </p>
       )}
       {onFocus && <button type="button" className={s.streamFocus} aria-label={t('voice.screen.focus', { name })} title={t('voice.screen.focus', { name })} onClick={onFocus} />}
-      <div className={s.streamTop}>
+      <div className={s.streamLabel}>
         <LiveBadge />
         <span className={s.streamName}>{name}</span>
       </div>
@@ -104,7 +104,7 @@ export function StreamTile({ userId }: { userId: string }) {
   return (
     <div className={s.streamTile} role="group" aria-label={t('voice.screen.streamOf', { name })} data-screen-tile={userId}>
       <Monitor size={36} className={s.streamTileIcon} aria-hidden="true" />
-      <button type="button" className={s.watchButton} onClick={() => watchScreen(userId)} data-screen-watch={userId}>
+      <button type="button" className={s.stageButton} onClick={() => watchScreen(userId)} data-screen-watch={userId}>
         <Eye size={18} aria-hidden="true" />
         {t('voice.screen.watch')}
       </button>
@@ -122,7 +122,7 @@ export function OwnStreamTile({ userId }: { userId: string }) {
   const directory = useVoiceDirectory();
   const preview = useScreenTracks((st) => st.local);
   return (
-    <div className={s.streamTile} role="group" aria-label={t('voice.screen.yours')} data-screen-tile={userId}>
+    <div className={`${s.streamTile} ${s.streamTileVideo}`} role="group" aria-label={t('voice.screen.yours')} data-screen-tile={userId}>
       <TrackVideo track={preview} className={s.streamVideo} label={t('voice.screen.preview')} />
       <span className={s.streamTileName}>
         <LiveBadge />

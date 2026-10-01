@@ -1,4 +1,4 @@
-import { HeadphoneOff, MicOff } from 'lucide-react';
+import { HeadphoneOff, MicOff, Phone } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { VoiceParticipant } from '@ghostlink/shared';
@@ -15,6 +15,11 @@ export function VoiceAvatar({ size, speaking = false }: { size: number; speaking
       </svg>
     </span>
   );
+}
+
+/** Discord's hang-up glyph: a filled handset lying on its back (a phone turned 135°). */
+export function HangUpIcon({ size }: { size: number }) {
+  return <Phone size={size} fill="currentColor" strokeWidth={1.5} className={s.hangUpIcon} aria-hidden="true" />;
 }
 
 /** Mute, deafen and server-mute marks for one participant. */

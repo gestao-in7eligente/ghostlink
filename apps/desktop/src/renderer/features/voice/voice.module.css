@@ -19,7 +19,7 @@
   box-shadow: 0 0 0 2px var(--success);
 }
 
-/* ---- icon buttons (user panel, stage bar) ---- */
+/* ---- icon buttons (user panel) ---- */
 .iconButton {
   display: inline-grid;
   place-items: center;
@@ -353,93 +353,93 @@ button.participantRow:hover {
   height: 22px;
 }
 
-/* ---- stage (center) ---- */
+
+/* ---- stage (center): Discord's call screen, black from the header down ---- */
 .stage {
   display: grid;
   grid-template-rows: auto 1fr auto;
   height: 100%;
   min-height: 0;
-  background: var(--bg-0);
+  background: var(--bg-stage);
 }
 .stageHeader {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 52px;
-  padding: 0 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-2);
+  gap: 8px;
+  height: var(--header-h, 48px);
+  padding: 0 16px;
+  background: var(--bg-stage);
 }
 .stageHeader h2 {
   flex: 1;
   margin: 0;
   overflow: hidden;
+  color: var(--text);
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .stageHeaderIcon {
-  color: var(--text-faint);
-}
-.pill {
   flex: none;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--bg-3);
-  color: var(--text-muted);
-  font-size: 12px;
+  color: var(--text-ghost);
 }
 .stageBody {
   min-height: 0;
-  padding: 20px;
+  padding: 16px 16px 0;
   overflow: auto;
 }
+/* Columns and tile width come from fitTiles (tileLayout.ts): the largest 16:9 tiles that fit. */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
+  align-content: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 100%;
 }
 .tile {
   position: relative;
   display: grid;
   place-items: center;
+  width: 100%;
   aspect-ratio: 16 / 9;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg-1);
-  color: var(--text);
-  outline-offset: 2px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(var(--bg-tile-top), var(--bg-tile) 90px);
+  color: var(--text-strong);
 }
 button.tile {
   cursor: pointer;
 }
-button.tile:hover {
-  border-color: var(--border-strong);
-}
+/* Speaking: a 2px green ring inside the tile, only while the voice is on. */
 .tileSpeaking {
-  border-color: var(--success);
-  box-shadow: inset 0 0 0 1px var(--success);
+  box-shadow: inset 0 0 0 2px var(--success);
 }
-button.tileSpeaking:hover {
-  border-color: var(--success);
-}
-.tileName {
+/* The name label at the bottom-left of every tile (people and screens). */
+.tileName,
+.streamTileName,
+.streamLabel {
   position: absolute;
-  bottom: 8px;
-  left: 8px;
+  bottom: 12px;
+  left: 12px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: calc(100% - 72px);
-  padding: 3px 8px;
+  max-width: calc(100% - 24px);
+  padding: 5px 8px;
   border-radius: 6px;
-  background: var(--bg-0);
-  font-size: 13px;
-  font-weight: 600;
+  background: var(--bg-tile-label);
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 20px;
 }
-.tileNameText {
+.tileName {
+  max-width: calc(100% - 96px);
+}
+.tileNameText,
+.streamTileName > span:last-child {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -447,27 +447,29 @@ button.tileSpeaking:hover {
 }
 .tileIcons {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
+  right: 12px;
+  bottom: 12px;
   display: inline-flex;
   gap: 4px;
-  padding: 4px 6px;
+  padding: 7px 8px;
   border-radius: 6px;
-  background: var(--bg-0);
-  color: var(--text-muted);
+  background: var(--bg-tile-label);
+  color: var(--text-icon);
 }
+
 /* ---- screens on the stage (spec 2026-10-01 §5) ---- */
 .stageBodyWatching {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  padding-bottom: 8px;
 }
 .streamGrid {
   display: grid;
   flex: 1 1 auto;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   align-content: center;
-  gap: 12px;
+  gap: 8px;
   min-height: 0;
 }
 /* Everyone else under the large stream: a row of small tiles, like Discord's focused layout. */
@@ -476,18 +478,19 @@ button.tileSpeaking:hover {
   flex: none;
   grid-auto-columns: 192px;
   grid-auto-flow: column;
-  gap: 12px;
-  padding-bottom: 4px;
+  justify-content: center;
+  gap: 8px;
   overflow-x: auto;
 }
+/* A watched screen: the video stays on black inside the tile. */
 .stream {
   position: relative;
   display: grid;
   place-items: center;
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  border-radius: 10px;
-  background: var(--overlay);
+  border-radius: 8px;
+  background: var(--bg-stage);
 }
 .streamLarge {
   flex: 1 1 auto;
@@ -524,24 +527,12 @@ button.tileSpeaking:hover {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
-.streamTop {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: calc(100% - 16px);
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: var(--overlay);
+.streamLabel {
+  z-index: 1;
   pointer-events: none;
 }
 .streamName {
   overflow: hidden;
-  color: var(--text-strong);
-  font-size: 13px;
-  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -572,7 +563,7 @@ button.tileSpeaking:hover {
   height: 32px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-strong);
   cursor: pointer;
@@ -593,21 +584,22 @@ button.tileSpeaking:hover {
   display: inline-grid;
   place-items: center;
 }
+/* "Parar de assistir": the hang-up's red. */
 .streamStop {
   height: 32px;
   padding: 0 12px;
-  border: 0;
-  border-radius: 6px;
-  background: var(--danger-strong);
+  border: 1px solid var(--call-hangup-border);
+  border-radius: 8px;
+  background: var(--call-hangup);
   color: var(--accent-ink);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
 }
 .streamStop:hover {
   filter: brightness(0.9);
 }
-/* Someone live I do not watch: a dark tile with "Assistir" (no picture until I subscribe). */
+/* Someone live I do not watch: a tile with "Assistir" (no picture until I subscribe). */
 .streamTile {
   position: relative;
   display: grid;
@@ -616,49 +608,37 @@ button.tileSpeaking:hover {
   gap: 12px;
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--overlay);
+  border-radius: 8px;
+  background: linear-gradient(var(--bg-tile-top), var(--bg-tile) 90px);
 }
-.streamTileIcon {
-  color: var(--text-ghost);
+/* My own share: its preview, on black. */
+.streamTileVideo {
+  background: var(--bg-stage);
 }
 .streamTileName {
-  position: absolute;
-  bottom: 8px;
-  left: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: calc(100% - 16px);
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: var(--bg-0);
-  font-size: 13px;
-  font-weight: 600;
+  z-index: 1;
 }
-.streamTileName > span:last-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.streamTileIcon {
+  color: var(--text-icon);
 }
-.watchButton {
+/* Discord's buttons on the stage ("Convidar para voz", "Escolher atividade"): here "Assistir". */
+.stageButton {
   z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 36px;
+  height: 40px;
   padding: 0 16px;
-  border: 0;
+  border: 1px solid var(--border-stage-button);
   border-radius: 8px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 600;
+  background: var(--bg-stage-button);
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 500;
   cursor: pointer;
 }
-.watchButton:hover {
-  background: var(--accent-hover);
+.stageButton:hover {
+  background: var(--border-stage-button);
 }
 .strip .streamTile,
 .strip .tile,
@@ -669,7 +649,23 @@ button.tileSpeaking:hover {
   display: none;
 }
 .strip .avatar {
-  scale: 0.66;
+  scale: 0.5;
+}
+/* Small tiles (the strip, a compact stream): a smaller label closer to the corner. */
+.strip .tileName,
+.strip .streamTileName,
+.streamCompact .streamLabel {
+  bottom: 8px;
+  left: 8px;
+  max-width: calc(100% - 16px);
+  padding: 2px 6px;
+  font-size: 13px;
+  line-height: 18px;
+}
+.strip .tileIcons {
+  right: 8px;
+  bottom: 8px;
+  padding: 3px 6px;
 }
 
 .empty {
@@ -699,49 +695,84 @@ button.tileSpeaking:hover {
   background: var(--bg-3);
   color: var(--text-muted);
 }
+/* ---- the call bar: Discord's control groups and the red hang-up ---- */
 .stageBar {
   display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 14px 20px 18px;
+  gap: 12px;
+  padding: 16px 16px 12px;
+}
+.callGroup {
+  display: flex;
+  align-items: center;
+  height: 49px;
+  border: 1px solid var(--border-call-group);
+  border-radius: 8px;
+  background: var(--bg-call-group);
+}
+.callButton {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 47px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-strong);
+  cursor: pointer;
+}
+.callButton:hover {
+  background: var(--border-call-group);
+}
+.callButton:focus-visible {
+  outline-offset: -2px;
+}
+.callButton[aria-pressed='true'] {
+  color: var(--danger-strong);
+}
+.callButton:disabled,
+.callButton[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.callButton:disabled:hover,
+.callButton[aria-disabled='true']:hover {
+  background: transparent;
+}
+/* The device menu's chevron right after mic and headphones. */
+.callChevron {
+  width: 24px;
+  margin-left: -6px;
+}
+.hangUp {
+  display: inline-grid;
+  place-items: center;
+  width: 65px;
+  height: 49px;
+  padding: 0;
+  border: 1px solid var(--call-hangup-border);
+  border-radius: 8px;
+  background: var(--call-hangup);
+  color: var(--accent-ink);
+  cursor: pointer;
+}
+.hangUp:hover {
+  filter: brightness(0.9);
+}
+.hangUp:focus-visible {
+  outline-color: var(--accent-ink);
+}
+/* Discord's hang-up glyph: the handset lying on its back. */
+.hangUpIcon {
+  rotate: 135deg;
 }
 .unavailable {
   margin: 0;
   padding: 10px 0;
   color: var(--text-muted);
   font-size: 14px;
-}
-.roundButton {
-  display: inline-grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  border: 0;
-  border-radius: 50%;
-  background: var(--bg-3);
-  color: var(--text);
-  cursor: pointer;
-}
-.roundButton:hover {
-  background: var(--border-strong);
-}
-.roundButton[aria-pressed='true'] {
-  color: var(--danger);
-}
-.roundButton[aria-disabled='true'] {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-.roundButton[aria-disabled='true']:hover {
-  background: var(--bg-3);
-}
-.roundDanger {
-  background: var(--danger-bg);
-  color: var(--danger);
-}
-.roundDanger:hover {
-  background: var(--danger);
-  color: var(--accent-ink);
 }
 .primary {
   display: inline-flex;

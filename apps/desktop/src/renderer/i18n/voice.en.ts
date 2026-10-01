@@ -21,7 +21,6 @@ export const voice: Record<keyof typeof voicePt, string> = {
   'voice.openSettings': 'Voice settings',
   'voice.join': 'Join voice',
   'voice.unavailable': 'Voice is not available on this server right now.',
-  'voice.channelType': 'Voice channel',
   'voice.empty': 'Nobody here yet',
   'voice.emptyHint': 'Join to start talking.',
   'voice.speaking': 'speaking',
