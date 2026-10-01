@@ -5,6 +5,7 @@ import { Eye, LayoutGrid, Maximize, Minimize, Monitor } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { PERMISSIONS, has } from '@ghostlink/shared';
 import { useT } from '../../i18n/index.js';
+import { DrawLayer, OwnTilePencil, PencilButton } from '../draw/index.js';
 import { LiveBadge, StreamVolume, TrackVideo } from './screenParts.js';
 import { useScreenTracks } from './screenStore.js';
 import { startScreenShare, stopScreenShare, unwatchScreen, useVoiceDirectory, watchScreen } from './runtime.js';
@@ -69,6 +70,7 @@ export function StreamView({ userId, size, onFocus, onShowAll }: { userId: strin
         <LiveBadge />
         <span className={s.streamName}>{name}</span>
       </div>
+      <DrawLayer sharerId={userId} interactive={size !== 'compact'} />
       {size !== 'compact' && (
         <div className={s.streamBar}>
           {onShowAll && (
@@ -77,6 +79,7 @@ export function StreamView({ userId, size, onFocus, onShowAll }: { userId: strin
             </button>
           )}
           <StreamVolume userId={userId} />
+          <PencilButton sharerId={userId} className={s.streamIcon} />
           <button
             type="button"
             className={s.streamIcon}
@@ -124,6 +127,8 @@ export function OwnStreamTile({ userId }: { userId: string }) {
   return (
     <div className={`${s.streamTile} ${s.streamTileVideo}`} role="group" aria-label={t('voice.screen.yours')} data-screen-tile={userId}>
       <TrackVideo track={preview} className={s.streamVideo} label={t('voice.screen.preview')} />
+      <DrawLayer sharerId={userId} />
+      <OwnTilePencil userId={userId} />
       <span className={s.streamTileName}>
         <LiveBadge />
         <span>

@@ -5,6 +5,7 @@ import { releasePtBR } from './release.pt-BR.js';
 // Source catalog: every key exists here first; en.ts must have exactly the same keys.
 import { camera } from './camera.pt-BR.js';
 import { chat } from './chat.pt-BR.js';
+import { draw } from './draw.pt-BR.js';
 import { integration } from './integration.pt-BR.js';
 import { owner } from './owner.pt-BR.js';
 import { profile } from './profile.pt-BR.js';
@@ -146,6 +147,7 @@ export const messages = {
   ...owner,
   ...voice,
   ...camera,
+  ...draw,
   ...railway,
   ...profile,
 } as const;

@@ -1,5 +1,6 @@
 import { MonitorUp, MonitorX, Rss, SlidersHorizontal, Volume2, VolumeX, X } from 'lucide-react';
 import { errorMessage, useT } from '../../i18n/index.js';
+import { DrawLayer, OwnShareDrawControls, useDrawRuntime } from '../draw/index.js';
 import { PanelCameraButton } from './CameraParts.js';
 import { HangUpIcon } from './parts.js';
 import { leaveVoice, useVoiceDirectory, useVoiceRuntime } from './runtime.js';
@@ -53,11 +54,13 @@ export function VoiceNoticeBar() {
 function SharingPreview({ sharing }: { sharing: ScreenSharing }) {
   const t = useT();
   const preview = useScreenTracks((st) => st.local);
+  const self = useVoiceStore((v) => v.selfUserId);
   const sound = t(sharing.audio ? 'voice.screen.soundOn' : 'voice.screen.soundOff');
   return (
     <div className={s.sharing} data-screen-sharing="">
       <span className={s.sharingPreview}>
         <TrackVideo track={preview} className={s.streamVideo} label={t('voice.screen.preview')} />
+        {self && <DrawLayer sharerId={self} interactive={false} />}
       </span>
       <span className={s.sharingText}>
         <span className={s.sharingTitle}>
@@ -101,6 +104,8 @@ function ScreenShareButton({ channelId }: { channelId: string }) {
  */
 export function VoicePanel({ onOpenSettings }: { onOpenSettings?: () => void }) {
   useVoiceRuntime();
+  // The pencil follows "Permitir desenhos" and the strokes on my share for the whole call.
+  useDrawRuntime();
   const t = useT();
   const call = useVoiceStore((v) => v.call);
   const pingMs = useVoiceStore((v) => v.pingMs);
@@ -142,6 +147,7 @@ export function VoicePanel({ onOpenSettings }: { onOpenSettings?: () => void }) 
           </button>
         </div>
         {sharing && <SharingPreview sharing={sharing} />}
+        {sharing && <OwnShareDrawControls />}
         <div className={s.panelActions}>
           <PanelCameraButton channelId={call.channelId} />
           <ScreenShareButton channelId={call.channelId} />
