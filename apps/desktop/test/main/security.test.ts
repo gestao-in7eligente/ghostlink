@@ -45,7 +45,7 @@ describe('permission policy (spec §12)', () => {
     }
   });
 
-  it('grants fullscreen (a stream's "Tela cheia") to the app page only', () => {
+  it('grants fullscreen (a watched stream\'s "Tela cheia") to the app page only', () => {
     expect(allowPermissionRequest('fullscreen', 'app://ghostlink/index.html', APP)).toBe(true);
     for (const url of ['https://evil.example/', 'app://ghostlink.evil/', 'file:///index.html', '']) {
       expect(allowPermissionRequest('fullscreen', url, APP), url).toBe(false);
