@@ -5,7 +5,7 @@ import { startLevelMeter } from './gateProcessor.js';
 import { SILENCE_DB } from './gateLogic.js';
 import { keyLabel } from './keys.js';
 import { captureFor } from './noiseSuppression.js';
-import { resolveNoiseSuppression, setKeyCapture, useNoiseFailures, useVoiceRuntime, voiceAudioContext } from './runtime.js';
+import { resolveNoiseSuppression, setKeyCapture, useNoiseStatus, useVoiceRuntime, voiceAudioContext } from './runtime.js';
 import { MIN_THRESHOLD_DB, NOISE_SUPPRESSIONS, isPttCode, useVoiceSettings, type NoiseSuppression } from './settings.js';
 import { useVoiceStore } from './state.js';
 import { useDevices } from './VoiceControls.js';
@@ -82,7 +82,8 @@ export function VoiceSettings() {
   const [testing, setTesting] = useState(false);
   const [recording, setRecording] = useState(false);
   const level = useMicLevel(testing, settings.inputDeviceId, settings.noiseSuppression);
-  const noiseFailed = useNoiseFailures((f) => f.failed.includes(settings.noiseSuppression));
+  const noiseFailed = useNoiseStatus((n) => n.failed.includes(settings.noiseSuppression));
+  const noiseInUse = useNoiseStatus((n) => n.inUse);
 
   useEffect(() => {
     if (!recording) return;
@@ -181,7 +182,7 @@ export function VoiceSettings() {
         )}
       </div>
 
-      <div className={s.settingsGroup} data-voice-noise="">
+      <div className={s.settingsGroup} data-voice-noise={noiseInUse ?? ''}>
         <span id={ids.noise} className={s.settingsLabel}>
           {t('voice.settings.noise')}
         </span>

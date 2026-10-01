@@ -40,11 +40,19 @@ export function voiceAudioContext(): AudioContext {
   return audioContext;
 }
 
-/** The noise suppressors that failed in this session: the settings show a note under the choice. */
-export const useNoiseFailures = create<{ failed: readonly NoiseSuppression[] }>()(() => ({ failed: [] }));
+/**
+ * Noise suppression as it runs: the suppressors that failed in this session (the settings show
+ * a note under the choice) and the mode the call's microphone has in use, null outside a call.
+ */
+export const useNoiseStatus = create<{ failed: readonly NoiseSuppression[]; inUse: NoiseSuppression | null }>()(() => ({ failed: [], inUse: null }));
+
+function noteInUse(): void {
+  const [mic] = gates.values();
+  useNoiseStatus.setState({ inUse: mic?.mode ?? null });
+}
 
 const suppressors = new NoiseSuppressors(webNoiseBackend, (kind) => {
-  useNoiseFailures.setState((s) => ({ failed: [...s.failed, kind] }));
+  useNoiseStatus.setState((s) => ({ failed: [...s.failed, kind] }));
   // A processor that broke during a call: move that microphone to the fallback.
   void applyNoiseSuppression();
 });
@@ -89,9 +97,11 @@ async function createMicrophone(options: Parameters<typeof createLocalAudioTrack
   const destroy = gate.destroy.bind(gate);
   gate.destroy = async () => {
     gates.delete(gate);
+    noteInUse();
     await destroy();
   };
   gates.set(gate, { track, mode });
+  noteInUse();
   await track.setProcessor(gate);
   // The choice may have changed while the microphone was opening.
   void applyNoiseSuppression();
@@ -124,6 +134,7 @@ async function applyNoiseSuppressionNow(): Promise<void> {
     gate.setSuppressor(suppressor);
     if (captureFor(mode).noiseSuppression !== captureFor(mic.mode).noiseSuppression) await setBrowserSuppression(mic.track, mode);
     mic.mode = mode;
+    noteInUse();
   }
 }
 
