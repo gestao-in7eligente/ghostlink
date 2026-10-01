@@ -33,6 +33,8 @@ describe('voice settings', () => {
       muted: false,
       deafened: false,
       volumes: {},
+      cameraDeviceId: null,
+      cameraQuality: '720p30',
     });
   });
 

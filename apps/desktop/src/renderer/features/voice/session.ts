@@ -26,6 +26,7 @@ import {
 } from '@ghostlink/shared';
 import type { ConnState } from '../../../shared/ipcTypes.js';
 import { errorCodeOf } from '../../i18n/index.js';
+import { cameraCaptureOptions, cameraPublishOptions, canPublishCamera } from './camera.js';
 import { startScreenShare, stopScreenShare, wantsSubscription, type LiveScreenShare, type ScreenShareDeps } from './screenShare.js';
 import { screenVolumeKey, volumeOf, type VoiceSettings } from './settings.js';
 import { selfVoice, type VoiceAction, type VoiceState } from './state.js';
@@ -60,6 +61,8 @@ export interface VoiceSessionDeps {
   settings(): VoiceSettings;
   outlet: AudioOutlet;
   video: VideoOutlet;
+  /** Where cameras show (the same shape as the screens' outlet): everyone's received camera, and my own. */
+  cameras: VideoOutlet;
   /** The screen picker and window.ghostlink.screen (spec 2026-10-01 §2, §3). */
   screen: ScreenShareDeps;
   /**
@@ -101,6 +104,12 @@ export class VoiceSession {
   #share: LiveScreenShare | null = null;
   /** A share between "Transmitir tela" and live (the picker is open, or capturing). */
   #shareStarting = false;
+  /** My live camera track. */
+  #camera: LocalVideoTrack | null = null;
+  /** The camera button's state: on from the click, until turned off, failed or the call ends. */
+  #cameraWanted = false;
+  /** Camera changes, one at a time (opening a camera takes a while). */
+  #cameraOps: Promise<void> = Promise.resolve();
 
   constructor(deps: VoiceSessionDeps) {
     this.#deps = deps;
@@ -143,6 +152,8 @@ export class VoiceSession {
       ...(settings.outputDeviceId ? { audioOutput: { deviceId: settings.outputDeviceId } } : {}),
     });
     this.#room = room;
+    // A camera change still waiting on the old room must not hold up this one.
+    this.#cameraOps = Promise.resolve();
     this.#wire(room);
     try {
       // autoSubscribe off: microphones are subscribed by hand (spec §8.4); iceServers from
@@ -264,6 +275,41 @@ export class VoiceSession {
     else for (const track of [share.video, share.audio]) track?.stop();
   }
 
+  /**
+   * The camera button (spec 2026-10-01-camera §3): on publishes my camera with the chosen
+   * quality and device, everyone in the call receives it; off takes it back. Only in a
+   * connected call, and only with VIDEO (LiveKit lists the camera source for it).
+   */
+  setCamera(on: boolean): Promise<void> {
+    const room = this.#room;
+    if (on && (!room || this.#deps.getState().call.status !== 'connected' || !canPublishCamera(room.localParticipant.permissions))) return Promise.resolve();
+    if (on !== this.#cameraWanted) {
+      this.#cameraWanted = on;
+      this.#deps.dispatch({ type: 'camera', on });
+    }
+    return this.#applyCamera();
+  }
+
+  /** Another camera was chosen: switched live while mine is on (null, the system default, reopens it). */
+  switchCamera(deviceId: string | null): Promise<void> {
+    if (deviceId === null) return this.#applyCamera(true);
+    const room = this.#room;
+    this.#cameraOps = this.#cameraOps
+      .then(async () => {
+        if (!room || this.#room !== room || !this.#camera) return;
+        const switched = await room.switchActiveDevice('videoinput', deviceId).catch(() => false);
+        // That camera is gone: reopen with it as a preference (another one is used instead).
+        if (!switched) await this.#applyCameraNow(true);
+      })
+      .catch(() => {});
+    return this.#cameraOps;
+  }
+
+  /** Another quality: a live camera is published again with the new preset and layers. */
+  restartCamera(): Promise<void> {
+    return this.#applyCamera(true);
+  }
+
   /** voice.forceMove, voice.forceDisconnect, and voice.state that may change my server mute. */
   async handleServerEvent(event: Envelope): Promise<void> {
     if (event.t === 'voice.forceMove') {
@@ -311,6 +357,10 @@ export class VoiceSession {
           this.#deps.dispatch({ type: 'subscribed', userId, subscribed: true });
           return;
         }
+        if (pub.source === Track.Source.Camera) {
+          if (track.kind === Track.Kind.Video) this.#deps.cameras.remote(userId, track);
+          return;
+        }
         // A screen that arrives after "Parar de assistir" is on its way out: not shown.
         if (!wantsSubscription(pub.source, track.kind, userId, this.#deps.getState().watching)) return;
         if (track.kind === Track.Kind.Video) {
@@ -325,6 +375,7 @@ export class VoiceSession {
         const userId = userIdOf(participant);
         if (track.kind === Track.Kind.Video) {
           if (userId && pub.source === Track.Source.ScreenShare) this.#deps.video.remote(userId, null);
+          if (userId && pub.source === Track.Source.Camera) this.#deps.cameras.remote(userId, null);
           return;
         }
         this.#deps.outlet.detach(track);
@@ -340,6 +391,14 @@ export class VoiceSession {
       .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
         // LiveKit took my screen off the air (the capture ended, or VIDEO was taken away).
         if (mine() && this.#share && pub.track === this.#share.video) void this.stopScreenShare();
+        // The same for my camera (VIDEO taken away): the button goes off.
+        if (mine() && this.#camera && pub.track === this.#camera) {
+          this.#camera.stop();
+          this.#camera = null;
+          this.#deps.cameras.local(null);
+          this.#cameraWanted = false;
+          this.#deps.dispatch({ type: 'camera', on: false });
+        }
       })
       .on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
         if (mine()) this.#noteNames([participant]);
@@ -352,11 +411,14 @@ export class VoiceSession {
         if (mine()) this.#checkPlayback(room);
       })
       .on(RoomEvent.ParticipantPermissionsChanged, (_previous: unknown, participant: Participant) => {
-        // A server mute or unmute arrives as new LiveKit permissions (spec §8.3).
-        if (mine() && participant === (room.localParticipant as Participant)) void this.#applyMic();
+        // A server mute or unmute arrives as new LiveKit permissions (spec §8.3); so does VIDEO.
+        if (!mine() || participant !== (room.localParticipant as Participant)) return;
+        void this.#applyMic();
+        void this.#applyCamera();
       })
-      .on(RoomEvent.MediaDevicesError, () => {
-        if (mine()) this.#deps.dispatch({ type: 'notice', notice: { kind: 'micUnavailable' } });
+      .on(RoomEvent.MediaDevicesError, (_error: unknown, kind?: string) => {
+        // A camera failure has its own notice (#applyCameraNow).
+        if (mine() && kind !== 'videoinput') this.#deps.dispatch({ type: 'notice', notice: { kind: 'micUnavailable' } });
       })
       .on(RoomEvent.Reconnecting, () => {
         if (mine()) this.#deps.dispatch({ type: 'call', status: 'reconnecting', channelId: this.#deps.getState().call.channelId });
@@ -372,7 +434,7 @@ export class VoiceSession {
       });
   }
 
-  /** Microphones always; a screen and its sound while watched (spec §8.4); no cameras yet. */
+  /** Microphones and cameras always; a screen and its sound while watched (spec §8.4). */
   #maybeSubscribe(pub: TrackPublication, participant: Pick<Participant, 'identity'>): void {
     if (wantsSubscription(pub.source, pub.kind, userIdOf(participant), this.#deps.getState().watching)) (pub as RemoteTrackPublication).setSubscribed(true);
   }
@@ -480,6 +542,60 @@ export class VoiceSession {
     if (now.selfMuted || now.selfDeafened) await local.setMicrophoneEnabled(false).catch(() => {});
   }
 
+  /** Turns my camera on or off to match the button, the call and VIDEO. Serialized. */
+  #applyCamera(restart = false): Promise<void> {
+    this.#cameraOps = this.#cameraOps.then(() => this.#applyCameraNow(restart)).catch(() => {});
+    return this.#cameraOps;
+  }
+
+  /** `restart`: a live camera is taken back and published again (another quality or device). */
+  async #applyCameraNow(restart: boolean): Promise<void> {
+    const room = this.#room;
+    if (!room) return;
+    const local = room.localParticipant;
+    if (this.#cameraWanted && !canPublishCamera(local.permissions)) {
+      this.#cameraWanted = false;
+      this.#deps.dispatch({ type: 'camera', on: false });
+    }
+    const want = this.#cameraWanted && this.#deps.getState().call.status !== 'idle';
+    const live = this.#camera;
+    if (live && (!want || restart)) {
+      this.#camera = null;
+      this.#deps.cameras.local(null);
+      // Unpublished, not just muted (setCameraEnabled(false) would only mute): the server's
+      // voice.state drops `camera` for everyone, and stopping the track turns the light off.
+      await local.unpublishTrack(live, true).catch(() => live.stop());
+    }
+    if (!want || (live && !restart) || this.#room !== room) return;
+
+    const { cameraQuality, cameraDeviceId } = this.#deps.settings();
+    let track: LocalVideoTrack | undefined;
+    try {
+      const pub = await local.setCameraEnabled(true, cameraCaptureOptions(cameraQuality, cameraDeviceId), cameraPublishOptions(cameraQuality));
+      track = pub?.track as LocalVideoTrack | undefined;
+    } catch {
+      if (this.#room === room) this.#cameraFailed();
+      return;
+    }
+    if (this.#room !== room) {
+      // The call ended while the camera was opening.
+      track?.stop();
+      return;
+    }
+    if (!track) {
+      this.#cameraFailed();
+      return;
+    }
+    this.#camera = track;
+    this.#deps.cameras.local(track);
+  }
+
+  #cameraFailed(): void {
+    this.#cameraWanted = false;
+    this.#deps.dispatch({ type: 'camera', on: false });
+    this.#deps.dispatch({ type: 'notice', notice: { kind: 'cameraUnavailable' } });
+  }
+
   #deviceConstraint(): Pick<AudioCaptureOptions, 'deviceId'> {
     const { inputDeviceId } = this.#deps.settings();
     return inputDeviceId ? { deviceId: inputDeviceId } : {};
@@ -495,10 +611,19 @@ export class VoiceSession {
       this.#deps.video.local(null);
       for (const track of [share.video, share.audio]) track?.stop();
     }
+    // Leaving the call turns the camera off (spec 2026-10-01-camera §3).
+    const camera = this.#camera;
+    this.#camera = null;
+    this.#cameraWanted = false;
+    if (camera) {
+      this.#deps.cameras.local(null);
+      camera.stop();
+    }
     if (room) {
       room.removeAllListeners();
       this.#deps.outlet.detachAll();
       this.#deps.video.clear();
+      this.#deps.cameras.clear();
       await room.disconnect().catch(() => {});
     }
     if (this.#deps.getState().call.status !== 'idle') this.#deps.dispatch({ type: 'call', status: 'idle', channelId: null });

@@ -23,7 +23,9 @@ export type VoiceNotice =
   /** The chosen screen or window could not be captured (spec 2026-10-01 §8). */
   | { kind: 'screenFailed' }
   /** The PC's sound without GhostLink's own is unavailable: picture only (spec 2026-10-01 §4). */
-  | { kind: 'screenAudio' };
+  | { kind: 'screenAudio' }
+  /** The camera could not be opened or published (spec 2026-10-01-camera). */
+  | { kind: 'cameraUnavailable' };
 
 /** My own screen share while it is live. */
 export interface ScreenSharing {
@@ -68,6 +70,8 @@ export interface VoiceState {
   sharing: ScreenSharing | null;
   /** People whose screen I watch (spec §8.4): re-applied on TrackPublished, also after a reconnect. */
   watching: string[];
+  /** My camera is on (or opening). Who else has one comes from voice.state (`camera` per person). */
+  camera: boolean;
 }
 
 export const initialVoiceState: VoiceState = {
@@ -89,6 +93,7 @@ export const initialVoiceState: VoiceState = {
   notice: null,
   sharing: null,
   watching: [],
+  camera: false,
 };
 
 export type VoiceAction =
@@ -107,7 +112,8 @@ export type VoiceAction =
   | { type: 'level'; db: number }
   | { type: 'notice'; notice: VoiceNotice | null }
   | { type: 'sharing'; sharing: ScreenSharing | null }
-  | { type: 'watch'; userId: string; watching: boolean };
+  | { type: 'watch'; userId: string; watching: boolean }
+  | { type: 'camera'; on: boolean };
 
 function channelsFrom(list: VoiceChannelState[]): Record<string, VoiceParticipant[]> {
   const out: Record<string, VoiceParticipant[]> = {};
@@ -152,7 +158,7 @@ export function voiceReducer(s: VoiceState, a: VoiceAction): VoiceState {
       return { ...initialVoiceState, selfMuted: s.selfMuted, selfDeafened: s.selfDeafened, globalPtt: s.globalPtt };
     case 'call':
       if (a.status === 'idle') {
-        return { ...s, call: { status: 'idle', channelId: null }, speaking: [], subscribed: [], pingMs: null, transmitting: false, sharing: null, watching: [] };
+        return { ...s, call: { status: 'idle', channelId: null }, speaking: [], subscribed: [], pingMs: null, transmitting: false, sharing: null, watching: [], camera: false };
       }
       return { ...s, call: { status: a.status, channelId: a.channelId } };
     case 'self':
@@ -183,6 +189,8 @@ export function voiceReducer(s: VoiceState, a: VoiceAction): VoiceState {
       if (s.watching.includes(a.userId) === a.watching) return s;
       return { ...s, watching: a.watching ? [...s.watching, a.userId] : s.watching.filter((u) => u !== a.userId) };
     }
+    case 'camera':
+      return s.camera === a.on ? s : { ...s, camera: a.on };
   }
 }
 

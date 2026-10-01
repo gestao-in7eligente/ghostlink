@@ -1,7 +1,9 @@
 // Local voice settings (spec §8.4, §11.1 item 7): devices, input mode and key, the
-// voice-activity threshold, mute/deafen and per-user volume per server. They live in
-// this app's localStorage (per userData profile); what is read back is never trusted.
+// voice-activity threshold, mute/deafen, per-user volume per server, and the camera with
+// its quality. They live in this app's localStorage (per userData profile); what is read
+// back is never trusted.
 import { create } from 'zustand';
+import { DEFAULT_CAMERA_QUALITY, isCameraQuality, type CameraQuality } from './camera.js';
 
 export type InputMode = 'vad' | 'ptt';
 
@@ -19,6 +21,10 @@ export interface VoiceSettings {
   deafened: boolean;
   /** serverId → userId (or screenVolumeKey(userId) for their stream) → volume in percent (0–200); absent means 100. */
   volumes: Readonly<Record<string, Readonly<Record<string, number>>>>;
+  /** null = the system's first camera (spec 2026-10-01-camera §2). */
+  cameraDeviceId: string | null;
+  /** What my camera sends: 720p30 by default. */
+  cameraQuality: CameraQuality;
 }
 
 export const defaultVoiceSettings: VoiceSettings = {
@@ -30,6 +36,8 @@ export const defaultVoiceSettings: VoiceSettings = {
   muted: false,
   deafened: false,
   volumes: {},
+  cameraDeviceId: null,
+  cameraQuality: DEFAULT_CAMERA_QUALITY,
 };
 
 export const VOICE_SETTINGS_KEY = 'ghostlink.voice.v1';
@@ -89,6 +97,7 @@ export function parseVoiceSettings(raw: unknown): VoiceSettings {
   const muted = own(raw, 'muted');
   const deafened = own(raw, 'deafened');
   const pttCode = own(raw, 'pttCode');
+  const cameraQuality = own(raw, 'cameraQuality');
   return {
     inputDeviceId: deviceId(own(raw, 'inputDeviceId')),
     outputDeviceId: deviceId(own(raw, 'outputDeviceId')),
@@ -101,6 +110,8 @@ export function parseVoiceSettings(raw: unknown): VoiceSettings {
     muted: typeof muted === 'boolean' ? muted : false,
     deafened: typeof deafened === 'boolean' ? deafened : false,
     volumes: parseVolumes(own(raw, 'volumes')),
+    cameraDeviceId: deviceId(own(raw, 'cameraDeviceId')),
+    cameraQuality: isCameraQuality(cameraQuality) ? cameraQuality : DEFAULT_CAMERA_QUALITY,
   };
 }
 

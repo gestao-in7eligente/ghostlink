@@ -131,7 +131,7 @@ describe('joining a voice channel (spec §8.2)', () => {
 });
 
 describe('media in the call (spec §8.4)', () => {
-  it('subscribes to microphones already there and to new ones, never to camera or screen', async () => {
+  it('subscribes to microphones and cameras already there and to new ones, never to a screen', async () => {
     h.respond.set('voice.join', () => {
       // Someone is already in the room when we connect.
       return { livekitUrl: 'wss://127.0.0.1:7700', token: 't', iceServers: [] };
@@ -150,7 +150,7 @@ describe('media in the call (spec §8.4)', () => {
     const subs = [...bia.trackPublications.values()].map((p) => [p.source, p.subscribed]);
     expect(subs).toEqual([
       [Track.Source.Microphone, true],
-      [Track.Source.Camera, null],
+      [Track.Source.Camera, true],
       [Track.Source.ScreenShare, null],
     ]);
     expect(h.state().names[BIA]).toBe('Bia');
@@ -161,7 +161,7 @@ describe('media in the call (spec §8.4)', () => {
     room().emit(RoomEvent.TrackPublished, mic, caio);
     room().emit(RoomEvent.TrackPublished, cam, caio);
     expect(mic.subscribed).toBe(true);
-    expect(cam.subscribed).toBeNull();
+    expect(cam.subscribed).toBe(true);
   });
 
   it('attaches subscribed audio with the per-user volume, and detaches it again', async () => {

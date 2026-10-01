@@ -8,6 +8,7 @@ import { create } from 'zustand';
 import type { VoiceModerateAction } from '@ghostlink/shared';
 import { errorCodeOf } from '../../i18n/index.js';
 import { useConnectionStore } from '../../stores/connection.js';
+import { createCameraOutlet } from './cameraStore.js';
 import { directoryFromWelcome, type VoiceDirectory } from './directory.js';
 import { createDomOutlet, onNextUserGesture } from './dom.js';
 import { GateProcessor } from './gateProcessor.js';
@@ -136,6 +137,7 @@ function start(): () => void {
     settings: () => useVoiceSettings.getState().settings,
     outlet: createDomOutlet(),
     video: createScreenOutlet(),
+    cameras: createCameraOutlet(),
     screen: {
       sources: () => api.screen.sources(),
       choose: (choice) => api.screen.choose(choice),
@@ -169,6 +171,8 @@ function start(): () => void {
     if (s.volumes !== prev.volumes) current.applyVolumes();
     if (s.inputDeviceId !== prev.inputDeviceId) void current.switchDevice('audioinput', s.inputDeviceId ?? 'default');
     if (s.outputDeviceId !== prev.outputDeviceId) void current.switchDevice('audiooutput', s.outputDeviceId ?? 'default');
+    if (s.cameraDeviceId !== prev.cameraDeviceId) void current.switchCamera(s.cameraDeviceId);
+    if (s.cameraQuality !== prev.cameraQuality) void current.restartCamera();
     if (s.thresholdDb !== prev.thresholdDb) for (const gate of gates) gate.update();
   });
 
@@ -272,6 +276,11 @@ export function startScreenShare(): Promise<void> {
 /** "Parar transmissão". */
 export function stopScreenShare(): Promise<void> {
   return session?.stopScreenShare() ?? Promise.resolve();
+}
+
+/** The camera button: on or off (spec 2026-10-01-camera §2). */
+export function toggleCamera(): Promise<void> {
+  return session?.setCamera(!useVoiceStore.getState().camera) ?? Promise.resolve();
 }
 
 /** "Assistir" (spec §8.4: a screen is received only on demand). */

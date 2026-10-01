@@ -58,7 +58,8 @@ describe('watching a screen (spec §8.4: only on "Assistir")', () => {
     expect(room().publish(bia, S.ScreenShare).subscribed).toBe(true);
     expect(room().publish(bia, S.ScreenShareAudio).subscribed).toBe(true);
     expect(room().publish(caio, S.ScreenShare).subscribed).toBeNull();
-    expect(room().publish(bia, S.Camera).subscribed).toBeNull();
+    // Cameras do not wait for "Assistir" (spec 2026-10-01-camera §1).
+    expect(room().publish(caio, S.Camera).subscribed).toBe(true);
   });
 
   it('is re-applied after a full reconnect: everyone comes back through TrackPublished', async () => {

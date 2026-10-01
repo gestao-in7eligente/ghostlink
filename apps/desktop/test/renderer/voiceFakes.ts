@@ -13,6 +13,7 @@ export const ME = 'a'.repeat(32);
 export const BIA = 'b'.repeat(32);
 export const CAIO = 'c'.repeat(32);
 export const MIC = TrackSource.MICROPHONE;
+export const CAMERA = TrackSource.CAMERA;
 
 const kindOf = (source: Track.Source) => (source === Track.Source.Microphone || source === Track.Source.ScreenShareAudio ? Track.Kind.Audio : Track.Kind.Video);
 
@@ -86,6 +87,10 @@ export class FakeLocal {
   screenCapture: { audioDeviceId: string | null } | Error = { audioDeviceId: 'loopbackWithoutChrome' };
   readonly captures: unknown[] = [];
   readonly screenTracks: FakeScreenTrack[] = [];
+  /** setCameraEnabled(true, capture, publish) calls, the cameras it opened, and what the next open does. */
+  readonly cameraCalls: Array<{ capture: unknown; publish: unknown }> = [];
+  readonly cameraTracks: FakeScreenTrack[] = [];
+  cameraOpen: { fail: Error | null; wait: Promise<void> | null } = { fail: null, wait: null };
   async publishTrack(track: FakeTrack | FakeScreenTrack, options: { source?: Track.Source }): Promise<void> {
     this.published.push({ track, options });
     const pub = new FakePub(options.source ?? Track.Source.Microphone);
@@ -93,9 +98,22 @@ export class FakeLocal {
     if (pub.source === Track.Source.Microphone) this.mic = pub;
     else this.screenPubs.set(pub.source, pub);
   }
-  async unpublishTrack(track: unknown): Promise<void> {
+  async unpublishTrack(track: unknown, stopOnUnpublish?: boolean): Promise<void> {
     this.unpublished.push(track);
     for (const [source, pub] of this.screenPubs) if (pub.track === track) this.screenPubs.delete(source);
+    if (stopOnUnpublish) (track as { stop(): void }).stop();
+  }
+  /** LiveKit's camera: opens a track and publishes it (on); off would only mute, so the session never asks for it. */
+  async setCameraEnabled(enabled: boolean, capture?: unknown, publish?: { source?: Track.Source }): Promise<FakePub | undefined> {
+    if (!enabled) throw new Error('the session unpublishes the camera instead of muting it');
+    this.cameraCalls.push({ capture, publish });
+    const { fail, wait } = this.cameraOpen;
+    if (wait) await wait;
+    if (fail) throw fail;
+    const track = new FakeScreenTrack(Track.Kind.Video, Track.Source.Camera);
+    this.cameraTracks.push(track);
+    await this.publishTrack(track, { ...publish, source: Track.Source.Camera });
+    return this.screenPubs.get(Track.Source.Camera);
   }
   async createScreenTracks(options: unknown): Promise<LocalTrack[]> {
     this.captures.push(options);
@@ -194,6 +212,8 @@ export interface Harness {
   chosen: ScreenChoice[];
   /** The video outlet: watched screens by user, and my own preview. */
   videos: { remote: Map<string, unknown>; local: unknown; clears: number };
+  /** The camera outlet: received cameras by user, and my own. */
+  cameras: { remote: Map<string, unknown>; local: unknown; clears: number };
   deps: ConstructorParameters<typeof VoiceSession>[0];
 }
 
@@ -213,6 +233,7 @@ export function harness(): Harness {
   const picker: Harness['picker'] = { next: null, opened: 0 };
   const chosen: ScreenChoice[] = [];
   const videos: Harness['videos'] = { remote: new Map(), local: null, clears: 0 };
+  const cameras: Harness['cameras'] = { remote: new Map(), local: null, clears: 0 };
   const respond = new Map<string, (payload: unknown) => unknown>([
     ['voice.join', (p) => ({ livekitUrl: 'wss://127.0.0.1:7700', token: `token-${(p as { channelId: string }).channelId}`, iceServers: [] })],
   ]);
@@ -224,20 +245,21 @@ export function harness(): Harness {
     },
     detachAll: () => void attached.splice(0),
   };
-  const video: VideoOutlet = {
+  const outletInto = (into: Harness['videos']): VideoOutlet => ({
     remote: (userId, track) => {
-      if (track) videos.remote.set(userId, track);
-      else videos.remote.delete(userId);
+      if (track) into.remote.set(userId, track);
+      else into.remote.delete(userId);
     },
     local: (track) => {
-      videos.local = track;
+      into.local = track;
     },
     clear: () => {
-      videos.remote.clear();
-      videos.local = null;
-      videos.clears++;
+      into.remote.clear();
+      into.local = null;
+      into.clears++;
     },
-  };
+  });
+  const video = outletInto(videos);
   const dispatch = (a: VoiceAction) => {
     state = voiceReducer(state, a);
   };
@@ -257,6 +279,7 @@ export function harness(): Harness {
     settings: () => settings.value,
     outlet,
     video,
+    cameras: outletInto(cameras),
     screen: {
       sources: async () => [SCREEN_SOURCE],
       choose: async (choice) => void chosen.push(choice),
@@ -280,7 +303,7 @@ export function harness(): Harness {
     pingIntervalMs: 1_000,
   };
   const session = new VoiceSession(deps);
-  return { session, rooms, requests, state: () => state, dispatch, settings, attached, gestures, respond, microphones, failMicrophone, address, picker, chosen, videos, deps };
+  return { session, rooms, requests, state: () => state, dispatch, settings, attached, gestures, respond, microphones, failMicrophone, address, picker, chosen, videos, cameras, deps };
 }
 
 export const flush = () => new Promise((r) => setTimeout(r, 0));
