@@ -29,7 +29,7 @@ describe('preload bridge', () => {
     expect(Object.keys(api.identity).sort()).toEqual(['create', 'delete', 'exportBackup', 'importBackup', 'pickBackup', 'replaceKeepingBackup', 'retry', 'status']);
     expect(Object.keys(api.ptt)).toEqual(['configure']);
     expect(Object.keys(api.join).sort()).toEqual(['connect', 'parse', 'probe']);
-    expect(Object.keys(api.servers).sort()).toEqual(['connect', 'disconnect', 'list', 'remove']);
+    expect(Object.keys(api.servers).sort()).toEqual(['checkExit', 'connect', 'delete', 'disconnect', 'leave', 'list', 'remove']);
     expect(Object.keys(api.settings).sort()).toEqual(['get', 'set']);
     expect(Object.keys(api.updates).sort()).toEqual(['checkNow', 'notes', 'onState', 'restart', 'setAutoCheck', 'state']);
     expect(Object.keys(api.screen).sort()).toEqual(['choose', 'sources']);
@@ -61,6 +61,9 @@ describe('preload bridge', () => {
     ['servers.connect', () => api.servers.connect('s1'), IPC.serversConnect, ['s1']],
     ['servers.disconnect', () => api.servers.disconnect(), IPC.serversDisconnect, []],
     ['servers.remove', () => api.servers.remove('s1'), IPC.serversRemove, ['s1']],
+    ['servers.checkExit', () => api.servers.checkExit('s1'), IPC.serversCheckExit, ['s1']],
+    ['servers.leave', () => api.servers.leave('s1', true), IPC.serversLeave, ['s1', true]],
+    ['servers.delete', () => api.servers.delete('s1'), IPC.serversDelete, ['s1']],
     ['host.status', () => api.host.status(), IPC.hostStatus, []],
     ['host.start', () => api.host.start(hostConfig), IPC.hostStart, [hostConfig]],
     ['host.stop', () => api.host.stop(), IPC.hostStop, []],

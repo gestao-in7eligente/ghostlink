@@ -9,6 +9,7 @@ import { profile } from './profile.en.js';
 import { railway } from './railway.en.js';
 import type { messages as ptBR } from './pt-BR.js';
 import { releaseEn } from './release.en.js';
+import { serverDelete } from './serverDelete.en.js';
 import { serverUpdate } from './serverUpdate.en.js';
 import { voice } from './voice.en.js';
 
@@ -102,8 +103,6 @@ export const messages: Record<keyof typeof ptBR, string> = {
   'servers.empty': 'You have not joined any server yet.',
   'servers.join': 'Join a server',
   'servers.connect': 'Connect',
-  'servers.remove': 'Remove',
-  'servers.removeConfirm': 'Remove {name} from the list? You stay a member and can come back through its address.',
   'servers.as': 'as {nickname}',
 
   'errors.BAD_REQUEST': 'Something in this request is not right. Check it and try again.',
@@ -126,6 +125,8 @@ export const messages: Record<keyof typeof ptBR, string> = {
   'errors.SESSION_REPLACED': 'You signed in somewhere else, so this session ended.',
   'errors.KICKED': 'You were kicked from the server.',
   'errors.SERVER_SHUTDOWN': 'The server was shut down.',
+  'errors.SERVER_DELETING': 'The owner shut this server down, and it will be deleted soon.',
+  'errors.SERVER_DELETED': 'This server was deleted by its owner.',
   'errors.CHANNEL_FULL': 'The channel is full.',
   'errors.FILE_TOO_LARGE': 'The file is too large.',
   'errors.IMAGE_TOO_LARGE': 'The image is too large.',
@@ -152,4 +153,5 @@ export const messages: Record<keyof typeof ptBR, string> = {
   ...railway,
   ...profile,
   ...serverUpdate,
+  ...serverDelete,
 };

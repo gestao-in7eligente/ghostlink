@@ -102,7 +102,21 @@ export interface ConnectionStateEvent {
   state: ConnState;
   serverId: string | null;
   error?: AppErrorCode;
+  /** With SERVER_DELETING: when the server is erased (ms epoch, the server's clock), when it said. */
+  deletingAt?: number;
 }
+
+/**
+ * What "Sair do servidor" finds on a saved server that is not open (leave/delete spec §2, §3):
+ * a member (the leave dialog), the owner (the delete dialog, when the server can delete itself),
+ * a server being deleted or already erased, or no answer ("Tirar só da minha lista").
+ */
+export type ServerExitCheck =
+  | { kind: 'member' }
+  | { kind: 'owner'; name: string; canDelete: boolean; deletingAt: number | null }
+  | { kind: 'deleting'; at: number | null }
+  | { kind: 'deleted' }
+  | { kind: 'unreachable'; code: AppErrorCode };
 
 export interface GhostlinkApi {
   app: {
@@ -135,7 +149,14 @@ export interface GhostlinkApi {
     list(): Promise<SavedServer[]>;
     connect(id: string): Promise<RendererWelcome>;
     disconnect(): Promise<void>;
+    /** Takes a saved server out of the list only (the fallback when it cannot be reached). */
     remove(id: string): Promise<void>;
+    /** Connects (a short connection of its own unless it is the open server) to see what leaving it means. */
+    checkExit(id: string): Promise<ServerExitCheck>;
+    /** `server.leave`, then out of the list. */
+    leave(id: string, deleteMyMessages: boolean): Promise<void>;
+    /** The owner's `server.delete`: offline now, erased at `at` (ms epoch, the server's clock). */
+    delete(id: string): Promise<{ at: number }>;
   };
   host: HostApi;
   onConnectionState(cb: (s: ConnectionStateEvent) => void): () => void;
@@ -206,6 +227,9 @@ export const IPC = {
   serversConnect: 'ghostlink:servers.connect',
   serversDisconnect: 'ghostlink:servers.disconnect',
   serversRemove: 'ghostlink:servers.remove',
+  serversCheckExit: 'ghostlink:servers.checkExit',
+  serversLeave: 'ghostlink:servers.leave',
+  serversDelete: 'ghostlink:servers.delete',
   hostStatus: 'ghostlink:host.status',
   hostStart: 'ghostlink:host.start',
   hostStop: 'ghostlink:host.stop',
@@ -280,6 +304,9 @@ export interface IpcContract {
   [IPC.serversConnect]: { args: [id: string]; result: RendererWelcome };
   [IPC.serversDisconnect]: { args: []; result: void };
   [IPC.serversRemove]: { args: [id: string]; result: void };
+  [IPC.serversCheckExit]: { args: [id: string]; result: ServerExitCheck };
+  [IPC.serversLeave]: { args: [id: string, deleteMyMessages: boolean]; result: void };
+  [IPC.serversDelete]: { args: [id: string]; result: { at: number } };
   [IPC.hostStatus]: { args: []; result: HostStatus };
   [IPC.hostStart]: { args: [config: HostConfig]; result: HostStartResult };
   [IPC.hostStop]: { args: []; result: HostStatus };

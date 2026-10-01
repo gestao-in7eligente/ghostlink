@@ -65,6 +65,9 @@ export const api: GhostlinkApi = {
     connect: (id) => invoke(IPC.serversConnect, id),
     disconnect: () => invoke(IPC.serversDisconnect),
     remove: (id) => invoke(IPC.serversRemove, id),
+    checkExit: (id) => invoke(IPC.serversCheckExit, id),
+    leave: (id, deleteMyMessages) => invoke(IPC.serversLeave, id, deleteMyMessages),
+    delete: (id) => invoke(IPC.serversDelete, id),
   },
   host: {
     status: () => invoke(IPC.hostStatus),

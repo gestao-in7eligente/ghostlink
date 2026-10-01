@@ -20,7 +20,7 @@ let deps: {
   appInfo: ReturnType<typeof vi.fn>;
   identity: { status: string; create: ReturnType<typeof vi.fn>; retry: ReturnType<typeof vi.fn>; replaceKeepingBackup: ReturnType<typeof vi.fn> };
   settings: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
-  controller: Record<'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove', ReturnType<typeof vi.fn>>;
+  controller: Record<'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'checkExit' | 'leaveSaved' | 'deleteSaved', ReturnType<typeof vi.fn>>;
   updates: Record<'state' | 'setAutoCheck' | 'checkNow' | 'restart', ReturnType<typeof vi.fn>>;
   releaseNotes: Record<'get' | 'follow' | 'forgetFailures', ReturnType<typeof vi.fn>>;
 };
@@ -39,6 +39,9 @@ beforeEach(() => {
       connectSaved: vi.fn(async () => WELCOME),
       disconnect: vi.fn(async () => {}),
       remove: vi.fn(async () => {}),
+      checkExit: vi.fn(async () => ({ kind: 'member' })),
+      leaveSaved: vi.fn(async () => {}),
+      deleteSaved: vi.fn(async () => ({ at: 9_000 })),
     },
     updates: {
       state: vi.fn(() => UPDATE_STATE),
@@ -76,6 +79,15 @@ describe('registerIpc', () => {
     expect(deps.controller.join).toHaveBeenCalledWith({ ...validJoin, inviteCode: 'ABCDEFGH23' });
     expect(await invoke(IPC.serversConnect, TOP, 's1')).toEqual({ ok: true, value: WELCOME });
     expect(await invoke(IPC.settingsSet, TOP, { nickname: 'Bia' })).toEqual({ ok: true, value: { locale: 'en', nickname: 'Bia' } });
+  });
+
+  it('leaving and deleting a saved server call the controller with checked arguments (v0.2.4)', async () => {
+    expect(await invoke(IPC.serversCheckExit, TOP, 's1')).toEqual({ ok: true, value: { kind: 'member' } });
+    expect(await invoke(IPC.serversLeave, TOP, 's1', true)).toEqual({ ok: true, value: undefined });
+    expect(deps.controller.leaveSaved).toHaveBeenCalledWith('s1', true);
+    expect(await invoke(IPC.serversDelete, TOP, 's1')).toEqual({ ok: true, value: { at: 9_000 } });
+    expect(await invoke(IPC.serversLeave, TOP, 's1', 'yes')).toEqual({ ok: false, code: 'BAD_REQUEST' });
+    expect(await invoke(IPC.serversDelete, TOP, '')).toEqual({ ok: false, code: 'BAD_REQUEST' });
   });
 });
 
