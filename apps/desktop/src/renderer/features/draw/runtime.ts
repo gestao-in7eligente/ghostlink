@@ -9,7 +9,7 @@ import { useConnectionStore } from '../../stores/connection.js';
 import { useVoiceDirectory } from '../voice/runtime.js';
 import { useVoiceStore, type VoiceState } from '../voice/state.js';
 import { StrokeBatcher, newStrokeId } from './batcher.js';
-import { pencilColor } from './colors.js';
+import { labelText, pencilColor } from './colors.js';
 import { useDrawStore, type VoiceView } from './state.js';
 import { StrokeStore, type StrokeInput } from './strokes.js';
 
@@ -65,15 +65,18 @@ let overlayOpen = false;
 
 function feedOverlay(input: StrokeInput): void {
   if (!overlayOpen) return;
-  const stroke = { id: input.key, color: pencilColor(input.userId), label: nameOf(input.userId), points: [...input.points], end: input.end };
+  const stroke = { id: input.key, color: pencilColor(input.userId), label: labelText(nameOf(input.userId)), points: [...input.points], end: input.end };
   void window.ghostlink.draw.overlayStroke(stroke).catch(() => {});
 }
 
-function shareStarted(v: VoiceState): void {
+/** My share went live (`fresh`), or the runtime starts while it already is: open the overlay. */
+function shareStarted(v: VoiceState, fresh: boolean): void {
   const current = ++share;
   overlayOpen = false;
-  // "Permitir desenhos" starts on for every share (spec §3; the server does the same).
-  if (v.call.channelId && v.selfUserId) useDrawStore.getState().dispatch({ type: 'allow', channelId: v.call.channelId, sharerId: v.selfUserId, allow: true });
+  // "Permitir desenhos" starts on for every new share (spec §3; the server does the same).
+  if (fresh && v.call.channelId && v.selfUserId) {
+    useDrawStore.getState().dispatch({ type: 'allow', channelId: v.call.channelId, sharerId: v.selfUserId, allow: true });
+  }
   window.ghostlink.draw.overlayOpen().then(
     (open) => {
       if (current === share) overlayOpen = open;
@@ -131,7 +134,7 @@ function start(): () => void {
   });
   const offVoice = useVoiceStore.subscribe((v, prev) => {
     if ((v.sharing === null) !== (prev.sharing === null)) {
-      if (v.sharing) shareStarted(v);
+      if (v.sharing) shareStarted(v, true);
       else shareEnded(prev.selfUserId);
     }
     if (v.channels !== prev.channels || v.call !== prev.call || v.watching !== prev.watching || v.sharing !== prev.sharing) {
@@ -140,7 +143,7 @@ function start(): () => void {
     if (v.call.status === 'idle' && prev.call.status !== 'idle') clearBoards();
   });
   const v = useVoiceStore.getState();
-  if (v.sharing) shareStarted(v);
+  if (v.sharing) shareStarted(v, false);
   draw({ type: 'voice', voice: voiceView(v) });
   return () => {
     offVoice();
