@@ -20,7 +20,7 @@ describe('preload bridge', () => {
     expect(Object.keys(electron.exposed)).toEqual(['ghostlink']);
     expect(electron.exposed.ghostlink).toBe(api);
     expect(Object.keys(api).sort()).toEqual([
-      'app', 'deepLink', 'host', 'identity', 'join', 'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onPtt', 'onServerEvent', 'ptt', 'railway', 'server', 'servers', 'settings', 'updates',
+      'app', 'deepLink', 'host', 'identity', 'join', 'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onPtt', 'onServerEvent', 'profile', 'ptt', 'railway', 'server', 'servers', 'settings', 'updates',
     ]);
     expect(Object.keys(api.host).sort()).toEqual(['copyText', 'firewall', 'fixFirewall', 'invite', 'join', 'logs', 'recoverOwnership', 'restart', 'start', 'status', 'stop']);
     expect(Object.keys(api.app).sort()).toEqual(['copyText', 'info', 'openExternal']);
@@ -33,6 +33,7 @@ describe('preload bridge', () => {
     expect(Object.keys(api.settings).sort()).toEqual(['get', 'set']);
     expect(Object.keys(api.updates).sort()).toEqual(['onState', 'restart', 'setAutoCheck', 'state']);
     expect(Object.keys(api.railway).sort()).toEqual(['connect', 'create', 'discard', 'disconnect', 'onProgress', 'pending', 'resume', 'status']);
+    expect(Object.keys(api.profile).sort()).toEqual(['avatar', 'clearAvatar', 'setAvatar']);
   });
 
   const req = { addresses: ['10.0.0.1:7700'], serverKeyId: 'k'.repeat(43), nickname: 'Ana' };

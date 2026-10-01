@@ -34,6 +34,12 @@ export interface TextModule extends ServerModule {
   readonly events: TextEvents;
   /** Usable once the server started (after init). */
   readonly voiceAccess: VoiceAccess;
+  /**
+   * Sends `member.updated` with the member as stored now to every member (spec §5.3), as
+   * profile.update does; nothing when `userId` is not a member. For modules that change a
+   * users column the member carries (the avatars module's `avatar_file_id`).
+   */
+  announceMember(userId: string): void;
 }
 
 export interface TextModuleOptions {
@@ -107,6 +113,12 @@ export function createTextModule(opts: TextModuleOptions = {}): TextModule {
     handlers,
     events,
     voiceAccess,
+
+    announceMember(userId) {
+      const c = need();
+      const member = c.repo.member(userId, c.isOnline(userId));
+      if (member) c.broadcastAll({ t: 'member.updated', d: { member } });
+    },
 
     init(ctx) {
       seedDefaults(ctx.db, ctx.now());

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { APP_ID, APP_NAME, DEFAULT_PORT } from '@ghostlink/shared';
 import { IPC_EVENTS, type Locale, type Platform } from '../shared/ipcTypes.js';
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges } from './appProtocol.js';
+import { createAvatars } from './avatars/index.js';
 import { ClientController } from './controller.js';
 import { GHOSTKEY_EXTENSION, IdentityBackup } from './backup.js';
 import { DeepLinks, extractDeepLink, registerProtocolClient } from './deeplink.js';
@@ -100,12 +101,14 @@ if (!app.requestSingleInstanceLock()) {
 
 /** The main window, or null when the app is about to quit (an update installs, or the splash was closed). */
 async function start(): Promise<BrowserWindow | null> {
-  registerAppProtocol(fileURLToPath(new URL('../renderer/', import.meta.url)));
+  const userData = app.getPath('userData');
+  // Profile photos (v0.2.2): served at app://ghostlink/_avatar/<hash>, also to the dev server's page.
+  const avatars = createAvatars({ userDataDir: userData, warn: (message) => mainLog.warn(message) });
+  registerAppProtocol(fileURLToPath(new URL('../renderer/', import.meta.url)), { avatar: avatars.route });
   if (!smoke) registerProtocolClient(app, { argv: process.argv, execPath: process.execPath, env: process.env });
   installSecurity({ appOrigin });
   installRendererPinning(session.defaultSession);
 
-  const userData = app.getPath('userData');
   const identity = IdentityStore.load(userData, safeStorage);
   const settings = SettingsStore.load(userData, app.getLocale());
   const servers = SavedServersStore.load(userData);
@@ -141,6 +144,7 @@ async function start(): Promise<BrowserWindow | null> {
     emitConnectionState: (event) => send(IPC_EVENTS.connectionState, event),
     emitServerEvent: (event) => send(IPC_EVENTS.server, event),
     clientName: `ghostlink/${app.getVersion()} (${process.platform})`,
+    onSession: (active) => avatars.onSession(active),
   });
   const host = startHostMode(window, controller, servers, settings, send);
   const notifier = new ChatNotifier({
@@ -200,6 +204,7 @@ async function start(): Promise<BrowserWindow | null> {
     backup: identityBackup(window, identity, controller),
     deepLinks: deepLinks ?? undefined,
     railway,
+    profile: avatars.profile,
   });
   updater.start(); // the 6 h checks; the first one already ran behind the splash when it showed
   app.on('before-quit', () => {

@@ -33,6 +33,26 @@ export interface ControllerDeps {
   clientName: string;
   /** Tests shorten the timings. */
   connectionOptions?: Pick<ServerConnectionOptions, 'timing' | 'random'>;
+  /** Every welcome of the active connection, and null once it is gone or reconnecting (profile photos). */
+  onSession?(session: ActiveSession | null): void;
+}
+
+/**
+ * The live session as main-only features see it (profile photos, spec 2026-10-01 §4).
+ * It holds the fileToken: never hand it to the renderer.
+ */
+export interface ActiveSession {
+  serverId: string;
+  /** host:port of the current connection. */
+  address: string;
+  /** The pinned serverKeyId. */
+  serverKeyId: string;
+  /** The whole welcome: fileToken and module keys (members…) included. */
+  welcome: WelcomePayload;
+  /** welcome.serverTime minus the local clock when it arrived. */
+  clockOffsetMs: number;
+  /** A request on this connection only; it fails once the connection is replaced. */
+  request<T>(type: string, payload?: unknown): Promise<T>;
 }
 
 /** The fileToken never leaves the main process (spec §3.1, §5.3); `address` is the connected host:port. */
@@ -59,6 +79,7 @@ export class ClientController {
   readonly #deps: ControllerDeps;
   #conn: ServerConnection | null = null;
   #serverId: string | null = null;
+  #session: ActiveSession | null = null;
 
   constructor(deps: ControllerDeps) {
     this.#deps = deps;
@@ -109,6 +130,11 @@ export class ClientController {
     return this.#serverId;
   }
 
+  /** The connected session (after a welcome), or null. */
+  get session(): ActiveSession | null {
+    return this.#session;
+  }
+
   /**
    * Relays a renderer request to the connected server (`server.request` IPC).
    * The IPC layer already allowed only client request types; the server validates
@@ -128,6 +154,7 @@ export class ClientController {
     this.#conn = null;
     this.#serverId = null;
     if (!conn) return;
+    this.#setSession(null);
     conn.removeAllListeners();
     conn.close();
     await this.#deps.setRendererPin(null);
@@ -163,6 +190,7 @@ export class ClientController {
     let joined = false;
 
     conn.on('state', (state: ConnState) => {
+      if (current() && state === 'reconnecting') this.#setSession(null);
       // 'connected' of the first handshake is announced below, once the server is saved;
       // 'failed' always comes with its error code (catch below, or the 'fatal' handler).
       if (!current() || state === 'failed' || (state === 'connected' && !joined)) return;
@@ -170,8 +198,10 @@ export class ClientController {
     });
 
     let welcome: WelcomePayload;
+    let receivedAt: number;
     try {
       welcome = await conn.connect();
+      receivedAt = Date.now();
     } catch (e) {
       if (current()) this.#fail(conn, toAppErrorCode(e));
       throw e;
@@ -193,10 +223,12 @@ export class ClientController {
     await this.#pin(conn, target.serverKeyId);
 
     conn.on('welcome', (again: WelcomePayload) => {
+      const at = Date.now();
       if (!current()) return;
       // After a reconnect the new snapshot replaces the renderer's state (spec §13),
       // and the working address may have changed.
       void this.#pin(conn, target.serverKeyId);
+      this.#setSession(this.#activeSession(conn, saved.id, target.serverKeyId, again, at, address));
       this.#deps.emitServerEvent({ t: 'welcome', d: toRendererWelcome(again, saved.id, conn.connectedAddress ?? address) });
     });
     conn.on('event', (event: Envelope) => {
@@ -206,8 +238,26 @@ export class ClientController {
       if (current()) this.#fail(conn, code);
     });
 
+    this.#setSession(this.#activeSession(conn, saved.id, target.serverKeyId, welcome, receivedAt, address));
     this.#deps.emitConnectionState({ state: 'connected', serverId: saved.id });
     return toRendererWelcome(welcome, saved.id, address);
+  }
+
+  #activeSession(conn: ServerConnection, serverId: string, serverKeyId: string, welcome: WelcomePayload, receivedAt: number, fallbackAddress: string): ActiveSession {
+    return {
+      serverId,
+      address: conn.connectedAddress ?? fallbackAddress,
+      serverKeyId,
+      welcome,
+      clockOffsetMs: welcome.serverTime - receivedAt,
+      request: <T>(type: string, payload?: unknown) => conn.request<T>(type, payload ?? {}),
+    };
+  }
+
+  #setSession(session: ActiveSession | null): void {
+    if (session === null && this.#session === null) return;
+    this.#session = session;
+    this.#deps.onSession?.(session);
   }
 
   /**
@@ -224,6 +274,7 @@ export class ClientController {
     const serverId = this.#serverId;
     this.#conn = null;
     this.#serverId = null;
+    this.#setSession(null);
     conn.removeAllListeners();
     conn.close();
     void this.#deps.setRendererPin(null);

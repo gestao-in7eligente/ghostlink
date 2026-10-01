@@ -171,8 +171,16 @@ describe('client schemas (lenient)', () => {
   it('parses a channel and a member', () => {
     const channel = { id: ROLE, name: 'geral', type: 'text', topic: '', position: 0, private: false, allowedRoleIds: [], userLimit: 0, lastMessageId: 0 };
     expect(channelSchemaClient.parse(channel)).toEqual(channel);
-    const member = { userId: USER, nickname: 'Ana', roleIds: [], online: true, joinedAt: 1 };
+    const member = { userId: USER, nickname: 'Ana', roleIds: [], online: true, joinedAt: 1, avatar: 'a'.repeat(64) };
     expect(memberSchemaClient.parse(member)).toEqual(member);
+  });
+
+  it('reads a member without a photo, or with a broken one, as initials', () => {
+    const member = { userId: USER, nickname: 'Ana', roleIds: [], online: true, joinedAt: 1 };
+    // A server before 0.2.2 sends no avatar key.
+    expect(memberSchemaClient.parse(member)).toEqual({ ...member, avatar: null });
+    expect(memberSchemaClient.parse({ ...member, avatar: '../etc/passwd' })).toEqual({ ...member, avatar: null });
+    expect(memberSchemaClient.parse({ ...member, avatar: 'A'.repeat(64) })).toEqual({ ...member, avatar: null });
   });
 
   it('parses the text part of a welcome, defaulting missing lists', () => {

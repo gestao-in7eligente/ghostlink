@@ -1,3 +1,4 @@
+import { createAvatarsModule } from './avatars/index.js';
 import type { ServerModule } from './modules.js';
 import { createTextModule } from './text/index.js';
 import { createVoiceModule } from './voice/index.js';
@@ -9,6 +10,6 @@ import { createVoiceModule } from './voice/index.js';
  * that satisfies getModule() dependencies (a module after those it calls in init).
  */
 export function defaultModules(): ServerModule[] {
-  // Text first: the voice module reads channels and permissions from it (VoiceAccess).
-  return [createTextModule(), createVoiceModule()];
+  // Text first: voice reads channels and permissions from it (VoiceAccess), avatars announces members through it.
+  return [createTextModule(), createVoiceModule(), createAvatarsModule()];
 }

@@ -1,10 +1,12 @@
 // Who is who, for the voice UI: names, voice channels and my own permission bits.
 // The default reads the Text track's welcome fields (channels, roles, members) leniently;
 // the integrated layout can provide its live stores instead (provideVoiceDirectory).
-import { permissionsFor, type RoleGrant } from '@ghostlink/shared';
+import { AVATAR_HASH, permissionsFor, type RoleGrant } from '@ghostlink/shared';
 
 export interface VoiceDirectory {
   displayName(userId: string): string;
+  /** The member's profile photo hash, or null (initials). */
+  avatar(userId: string): string | null;
   channelName(channelId: string): string | null;
   /** Voice channels this user can see, in display order (for "Move to"). */
   voiceChannels(): { id: string; name: string }[];
@@ -55,9 +57,11 @@ export function directoryFromWelcome(welcome: unknown, livekitNames: Readonly<Re
   const roles = rolesOf(w);
   const nicknames = new Map<string, string>();
   const roleIdsOf = new Map<string, string[]>();
+  const avatars = new Map<string, string>();
   for (const m of list(w.members)) {
     if (!isObject(m) || typeof m.userId !== 'string') continue;
     if (typeof m.nickname === 'string') nicknames.set(m.userId, m.nickname);
+    if (typeof m.avatar === 'string' && AVATAR_HASH.test(m.avatar)) avatars.set(m.userId, m.avatar);
     roleIdsOf.set(m.userId, strings(m.roleIds));
   }
   if (selfId && typeof self.nickname === 'string' && !nicknames.has(selfId)) nicknames.set(selfId, self.nickname);
@@ -65,6 +69,7 @@ export function directoryFromWelcome(welcome: unknown, livekitNames: Readonly<Re
   return {
     displayName: (userId) =>
       nicknames.get(userId) ?? (Object.hasOwn(livekitNames, userId) ? livekitNames[userId]! : userId.slice(0, 8)),
+    avatar: (userId) => avatars.get(userId) ?? null,
     channelName: (channelId) => channels.find((c) => c.id === channelId)?.name ?? null,
     voiceChannels: () => channels.filter((c) => c.type === 'voice').map(({ id, name }) => ({ id, name })),
     myPermissions: (channelId) => {

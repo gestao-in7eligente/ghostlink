@@ -36,6 +36,7 @@
     "electron": "44.4.5",
     "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
+    "gifenc": "1.0.3",
     "livekit-client": "2.22.3",
     "lucide-react": "1.48.0",
     "playwright-core": "1.63.0",

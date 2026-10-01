@@ -14,7 +14,7 @@
   align-items: center;
   height: var(--header-h, 52px);
   padding: 0 16px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-frame);
 }
 
 .title {

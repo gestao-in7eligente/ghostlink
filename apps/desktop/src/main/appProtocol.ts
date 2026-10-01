@@ -1,6 +1,7 @@
 import { protocol } from 'electron';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isAvatarRequest } from './avatars/avatarRoute.js';
 
 export const APP_SCHEME = 'app';
 export const APP_HOST = 'ghostlink';
@@ -98,7 +99,28 @@ export function createAppProtocolHandler(rendererDir: string): (request: Request
   };
 }
 
+/** Routes served next to the renderer's files. */
+export interface AppRoutes {
+  /** app://ghostlink/_avatar/<hash>: profile photos (avatars/avatarRoute.ts). */
+  avatar?: (request: Request) => Promise<Response>;
+}
+
+/**
+ * The renderer's files plus the app's own routes. Every path under /_avatar belongs to the
+ * photo route (a 404 there, never index.html), and it works from the dev server's page too:
+ * an http://localhost page may load app:// images (measured with Electron 44).
+ */
+export function createAppRequestHandler(rendererDir: string, routes: AppRoutes = {}): (request: Request) => Response | Promise<Response> {
+  const files = createAppProtocolHandler(rendererDir);
+  return (request) => {
+    if (isAvatarRequest(request.url)) {
+      return routes.avatar ? routes.avatar(request) : new Response(null, { status: 404, headers: { 'X-Content-Type-Options': 'nosniff' } });
+    }
+    return files(request);
+  };
+}
+
 /** Step 5 of the bootstrap: serve the built renderer at app://ghostlink/ (never file://). */
-export function registerAppProtocol(rendererDir: string): void {
-  protocol.handle(APP_SCHEME, createAppProtocolHandler(rendererDir));
+export function registerAppProtocol(rendererDir: string, routes: AppRoutes = {}): void {
+  protocol.handle(APP_SCHEME, createAppRequestHandler(rendererDir, routes));
 }

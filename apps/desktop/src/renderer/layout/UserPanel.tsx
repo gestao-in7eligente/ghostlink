@@ -24,21 +24,23 @@ export const UserPanel = forwardRef<
 >(function UserPanel({ onSettings, onDisconnect, homeNickname }, ref) {
   const t = useT();
   const nickname = useTextStore((s) => (Object.hasOwn(s.members.byId, s.server.selfId) ? s.members.byId[s.server.selfId]!.nickname : ''));
+  const avatar = useTextStore((s) => (Object.hasOwn(s.members.byId, s.server.selfId) ? s.members.byId[s.server.selfId]!.avatar : null));
   const state = useConnectionStore((s) => s.state);
   const fallbackNick = useConnectionStore((s) => s.welcome?.self.nickname ?? '');
   const VoicePanel = useLayoutSlots((s) => s.VoicePanel);
   const VoiceControls = useLayoutSlots((s) => s.VoiceControls);
   const home = homeNickname !== undefined;
   const online = !home && state === 'connected';
+  const name = homeNickname ?? (nickname || fallbackNick);
   const status = home ? t('home.panelStatus') : online ? t('layout.online') : t(`state.${state}`);
 
   return (
     <section ref={ref} className={l.userPanel} aria-label={t('layout.userPanel')}>
       {!home && VoicePanel && <VoicePanel />}
       <div className={l.panelRow}>
-        <Avatar size={32} online={online} />
+        <Avatar size={32} name={name} hash={home ? null : avatar} self online={online} />
         <div className={l.who}>
-          <span className={l.whoName}>{home ? homeNickname : nickname || fallbackNick}</span>
+          <span className={l.whoName}>{name}</span>
           <span className={l.whoStatus} role="status">
             {status}
           </span>

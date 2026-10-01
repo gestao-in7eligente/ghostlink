@@ -1,0 +1,18 @@
+import type { profile as profilePt } from './profile.pt-BR.js';
+
+// Typed against the pt-BR namespace: a missing or extra key fails the typecheck.
+export const profile: Record<keyof typeof profilePt, string> = {
+  'profile.photo.title': 'Profile photo',
+  'profile.photo.change': 'Change photo',
+  'profile.photo.remove': 'Remove photo',
+  'profile.photo.hint': 'The same photo is used on every server. PNG, JPEG, WebP or GIF, up to 10 MB; animated GIFs stay animated.',
+  'profile.photo.unreadable': 'Couldn’t open this image.',
+
+  'profile.crop.title': 'Edit image',
+  'profile.crop.frame': 'Drag the image to frame it. The arrow keys move it too.',
+  'profile.crop.zoom': 'Zoom',
+  'profile.crop.reset': 'Reset',
+  'profile.crop.apply': 'Apply',
+  'profile.crop.applying': 'Applying…',
+  'profile.crop.tooLarge': 'GIF too large. Try a shorter one or one with fewer colors.',
+};

@@ -45,7 +45,7 @@
   overflow-y: auto;
   scrollbar-width: none;
   background: var(--bg-rail);
-  border-right: 1px solid var(--line);
+  border-right: 1px solid var(--line-frame);
 }
 
 .railItem {
@@ -202,7 +202,7 @@
   height: var(--header-h);
   padding: 0 16px;
   border: none;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-frame);
   background: none;
   color: var(--text-strong);
   text-align: left;
@@ -302,7 +302,7 @@
   border: none;
   border-radius: 6px;
   background: none;
-  color: var(--text-soft);
+  color: var(--text-faint);
   font-size: 15px;
   font-weight: 500;
   text-align: left;
@@ -316,13 +316,13 @@
 
 .channelActive,
 .channelActive:hover {
-  background: var(--bg-hover);
-  color: var(--text-strong);
+  background: var(--bg-selected);
+  color: var(--text-bright);
   font-weight: 600;
 }
 
 .channelUnread {
-  color: var(--text-strong);
+  color: var(--text-bright);
   font-weight: 600;
 }
 
@@ -341,7 +341,7 @@
 
 .channelIcon {
   flex-shrink: 0;
-  color: var(--text-ghost);
+  color: var(--text-faint);
 }
 
 .channelName {
@@ -394,9 +394,8 @@
   gap: 8px;
   padding: 8px;
   background: var(--bg-raised);
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-panel);
   border-radius: 12px;
-  box-shadow: var(--shadow-up);
   --dot-ring: var(--bg-raised);
 }
 
@@ -417,6 +416,7 @@
 
 .whoName {
   overflow: hidden;
+  color: var(--text-bright);
   font-size: 15px;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -425,7 +425,7 @@
 
 .whoStatus {
   overflow: hidden;
-  color: var(--text-faint);
+  color: var(--text-icon);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -475,7 +475,7 @@
 .members {
   min-height: 0;
   background: var(--bg-sidebar);
-  border-left: 1px solid var(--line);
+  border-left: 1px solid var(--line-frame);
 }
 
 /* ---- connection problems ---- */
