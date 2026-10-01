@@ -84,4 +84,23 @@ describe('electron-vite build', () => {
     expect(bundle).toContain('workletPorts-');
     expect(bundle).not.toMatch(/data:(?:text|application)\/javascript|data:application\/wasm/);
   });
+
+  it('embeds the release notes of the version being built in the main window bundle (the Updates page)', () => {
+    const { version } = JSON.parse(readFileSync(join(appDir, 'package.json'), 'utf8')) as { version: string };
+    const notesFile = join(appDir, '..', '..', 'release-notes', `${version}.md`);
+    const bundle = readdirSync(join(out, 'renderer', 'assets'))
+      .filter((a) => /^index-[\w-]+\.js$/.test(a))
+      .map((a) => read(`renderer/assets/${a}`))
+      .join('\n');
+    // Embedded as a JS string literal: compare a line of it, encoded the same way.
+    const literal = (line: string) => JSON.stringify(line).slice(1, -1);
+    if (existsSync(notesFile)) {
+      const notes = readFileSync(notesFile, 'utf8');
+      expect(bundle).toContain(literal('### What changed'));
+      const firstChange = notes.split(/\r?\n/).find((line) => line.startsWith('- '))!;
+      expect(bundle).toContain(literal(firstChange.slice(0, 40)));
+    } else {
+      expect(bundle).not.toContain('### What changed'); // a version without notes yet builds with none
+    }
+  });
 });

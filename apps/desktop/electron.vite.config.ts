@@ -1,4 +1,4 @@
-import { cpSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
@@ -17,6 +17,29 @@ function copyServerMigrations(): Plugin {
     writeBundle(options) {
       if (!options.dir) throw new Error('the main build needs an output directory');
       cpSync(here('../server/src/db/migrations/'), join(options.dir, 'migrations'), { recursive: true });
+    },
+  };
+}
+
+/**
+ * `virtual:ghostlink/release-notes`: release-notes/<version>.md of the version being built (the
+ * package version, which is app.getVersion()), so the Updates page shows "O que mudou na sua
+ * versão" without asking anyone. A version without a notes file yet builds with `markdown: null`
+ * (the release workflow refuses to publish one).
+ */
+const RELEASE_NOTES_MODULE = 'virtual:ghostlink/release-notes';
+function bundledReleaseNotes(): Plugin {
+  const resolved = `\0${RELEASE_NOTES_MODULE}`;
+  return {
+    name: 'ghostlink:release-notes',
+    resolveId: (id) => (id === RELEASE_NOTES_MODULE ? resolved : null),
+    load(id) {
+      if (id !== resolved) return null;
+      const { version } = JSON.parse(readFileSync(here('package.json'), 'utf8')) as { version: string };
+      const file = here(`../../release-notes/${version}.md`);
+      const markdown = existsSync(file) ? readFileSync(file, 'utf8') : null;
+      if (markdown !== null) this.addWatchFile(file);
+      return `export const version = ${JSON.stringify(version)};\nexport const markdown = ${JSON.stringify(markdown)};\n`;
     },
   };
 }
@@ -56,7 +79,7 @@ export default defineConfig({
   },
   renderer: {
     root: here('src/renderer'),
-    plugins: [react()],
+    plugins: [react(), bundledReleaseNotes()],
     build: {
       target: 'chrome152',
       // `?url` scripts (the noise suppressors' AudioWorklets) and WebAssembly stay files under
