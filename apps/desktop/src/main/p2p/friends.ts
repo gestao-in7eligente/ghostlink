@@ -9,7 +9,7 @@ import { LIMITS, sanitizeLabel } from '@ghostlink/shared';
 import { AppError } from '../../shared/appErrors.js';
 import type { Friend } from '../../shared/friendsTypes.js';
 import type { Log } from '../log.js';
-import { P2P_VERSION, decodeMessage, encodeMessage, wireNickname, type P2pMessage } from './frames.js';
+import { P2P_VERSION, decodeMessage, encodeMessage, wireNickname, type ConversationMessage, type P2pMessage } from './frames.js';
 import { INVITE_SECRET_BYTES, decodeFriendCode, encodeFriendCode, inboxPublicKey, inboxSeed, shortCode } from './friendCode.js';
 import { keyToText, sameKey, type FriendKey } from './friendKey.js';
 import { InboxLimiter, knock, serveInbox, type Timers } from './inbox.js';
@@ -34,6 +34,24 @@ export function retryDelayMs(attempt: number): number {
 /** The part of FriendSwarm the rules use (tests give an in-memory one). */
 export type FriendsNetwork = Pick<FriendSwarm, 'connectTo' | 'disconnectFrom' | 'onLink' | 'setInbox' | 'requestVia'>;
 
+/** One friend's open link, as conversations see it. */
+export interface PeerLink {
+  send(message: P2pMessage): void;
+}
+
+/**
+ * What friend links carry besides the friendship itself: conversations (dm.ts). up() comes once
+ * a friend's hello arrived on a link, or once someone whose link is open becomes a friend; down()
+ * when that link closes or the friendship ends (removed, blocked, the node stops). Only a
+ * friend's conversation frames reach receive(); from anyone else they are dropped without a
+ * word. Throwing from receive() drops the link.
+ */
+export interface FriendTraffic {
+  up(peer: Uint8Array, link: PeerLink): void;
+  down(peer: Uint8Array, link: PeerLink): void;
+  receive(peer: Uint8Array, message: ConversationMessage, link: PeerLink): void;
+}
+
 export interface FriendsDeps {
   store: Pick<FriendsStore, 'me' | 'setInviteSecret' | 'setInboxEnabled' | 'get' | 'list' | 'put' | 'remove' | 'count' | 'oldest'>;
   /** This person's friend key. */
@@ -46,6 +64,8 @@ export interface FriendsDeps {
   now?: () => number;
   timers?: Timers;
   retryDelayMs?: (attempt: number) => number;
+  /** Conversations over friend links (dm.ts). */
+  traffic?: FriendTraffic;
 }
 
 /** An open friend link. */
@@ -55,6 +75,9 @@ interface Session {
   greeted: boolean;
   lastSeen: number;
   closed: boolean;
+  /** The link as conversations use it, and whether they were told it is up (FriendTraffic). */
+  peer: PeerLink;
+  up: boolean;
 }
 
 /** A request on its way to someone's inbox. */
@@ -227,6 +250,7 @@ export class Friends {
     for (const link of [...this.#inboxLinks]) link.close();
     for (const [id, session] of [...this.#sessions]) {
       this.#sessions.delete(id);
+      this.#down(session);
       session.link.close();
     }
   }
@@ -238,7 +262,7 @@ export class Friends {
     const row = this.#store.get(link.remoteKey);
     if (!reaches(row)) return link.close();
     const id = hexOf(link.remoteKey);
-    const session: Session = { link, greeted: false, lastSeen: this.#now(), closed: false };
+    const session: Session = { link, greeted: false, lastSeen: this.#now(), closed: false, peer: { send: (m) => this.#send(link, m) }, up: false };
     const previous = this.#sessions.get(id);
     this.#sessions.set(id, session);
     previous?.link.close();
@@ -247,6 +271,7 @@ export class Friends {
     if (row.state === 'friend') this.#send(link, { t: 'friend.accept' });
     link.onClose(() => {
       session.closed = true;
+      this.#down(session);
       if (this.#sessions.get(id) !== session) return;
       this.#sessions.delete(id);
       if (session.greeted) this.#d.onChange();
@@ -270,6 +295,7 @@ export class Friends {
         const nickname = cleanNickname(message.nickname) || row.nickname;
         if (nickname !== row.nickname) this.#store.put({ ...row, nickname });
         if (first || nickname !== row.nickname) this.#d.onChange();
+        if (first && row.state === 'friend') this.#up(session);
         return;
       }
       case 'friend.accept':
@@ -284,6 +310,13 @@ export class Friends {
       case 'ping':
         return this.#send(link, { t: 'pong' });
       case 'pong':
+        return;
+      case 'sync.have':
+      case 'sync.want':
+      case 'entry':
+      case 'typing':
+        // Conversations are between friends: from anyone else (someone we asked) these are dropped.
+        if (row.state === 'friend' && session.up) this.#d.traffic?.receive(link.remoteKey, message, session.peer);
         return;
       default:
         // inbox.hello and friend.request belong to an inbox connection.
@@ -308,6 +341,20 @@ export class Friends {
     link.send(encodeMessage(message));
   }
 
+  /** A friend's link is ready for conversations. */
+  #up(session: Session): void {
+    if (session.up || session.closed) return;
+    session.up = true;
+    this.#d.traffic?.up(session.link.remoteKey, session.peer);
+  }
+
+  /** That link is gone for conversations (closed, or the friendship ended). */
+  #down(session: Session): void {
+    if (!session.up) return;
+    session.up = false;
+    this.#d.traffic?.down(session.link.remoteKey, session.peer);
+  }
+
   /** A failure while handling one link (a bad frame, a database error) costs that link, never the app. */
   #safely(link: FriendLink, fn: () => void): void {
     try {
@@ -330,7 +377,10 @@ export class Friends {
     this.#network?.connectTo(row.key);
     // On a link that is already open the other side may still be waiting for the answer.
     const session = this.#sessions.get(hexOf(row.key));
-    if (session) this.#send(session.link, { t: 'friend.accept' });
+    if (session) {
+      this.#send(session.link, { t: 'friend.accept' });
+      if (session.greeted) this.#up(session);
+    }
     this.#d.log?.info(`[friends] ${shortCode(row.key)} is a friend now`);
     this.#d.onChange();
   }
@@ -343,6 +393,7 @@ export class Friends {
     const session = this.#sessions.get(id);
     if (!session) return;
     this.#sessions.delete(id);
+    this.#down(session);
     if (!farewell) return session.link.close();
     this.#send(session.link, { t: 'friend.remove' });
     if (session.closed) return;

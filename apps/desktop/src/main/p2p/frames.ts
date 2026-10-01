@@ -66,6 +66,9 @@ const messageSchema = z.discriminatedUnion('t', [
 
 export type P2pMessage = z.infer<typeof messageSchema>;
 
+/** The messages that belong to conversations (dm.ts), not to the friendship. */
+export type ConversationMessage = Extract<P2pMessage, { t: 'sync.have' | 'sync.want' | 'entry' | 'typing' }>;
+
 /** A frame this side refuses to read or to send. */
 export class FrameError extends Error {
   constructor(message: string) {
