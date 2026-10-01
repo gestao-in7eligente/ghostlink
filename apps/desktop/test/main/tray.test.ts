@@ -90,8 +90,8 @@ describe('trayMenuItems', () => {
     expect(labels(trayMenuItems('en', false))).toEqual(['Open GhostLink (open)', '—', 'Quit GhostLink (quit)']);
   });
 
-  it('adds the hosting entry between them while a server is hosted here', () => {
-    expect(labels(trayMenuItems('pt-BR', true))).toEqual(['Abrir GhostLink (open)', '—', 'Parar servidor e sair (quit)', '—', 'Sair do GhostLink (quit)']);
+  it('has a single quit entry while hosting too (quitting stops the hosted server first)', () => {
+    expect(labels(trayMenuItems('pt-BR', true))).toEqual(['Abrir GhostLink (open)', '—', 'Sair do GhostLink (quit)']);
   });
 });
 

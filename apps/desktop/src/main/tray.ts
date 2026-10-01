@@ -31,15 +31,12 @@ export type TrayAction = 'open' | 'quit';
 export type TrayMenuItem = { type: 'separator' } | { type: 'item'; action: TrayAction; label: string };
 
 /**
- * The right-click menu as data: "Abrir GhostLink", then the hosting entry while a server is hosted
- * here ("Parar servidor e sair"), then "Sair do GhostLink". Quitting always stops a hosted server first.
+ * The right-click menu as data: "Abrir GhostLink", then "Sair do GhostLink". Quitting always stops a
+ * hosted server first (spec §9), so hosting needs no second quit entry. `hosting` is kept for callers.
  */
-export function trayMenuItems(locale: Locale, hosting: boolean): TrayMenuItem[] {
+export function trayMenuItems(locale: Locale, _hosting: boolean): TrayMenuItem[] {
   return [
     { type: 'item', action: 'open', label: trayText(locale, 'tray.open') },
-    ...(hosting
-      ? ([{ type: 'separator' }, { type: 'item', action: 'quit', label: trayText(locale, 'host.tray.stopAndQuit') }] as const)
-      : []),
     { type: 'separator' },
     { type: 'item', action: 'quit', label: trayText(locale, 'tray.quit') },
   ];
