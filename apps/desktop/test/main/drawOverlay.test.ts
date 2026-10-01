@@ -446,7 +446,7 @@ describe('DrawOverlay over a shared window (Windows)', () => {
   });
 
   it('without the Win32 calls (macOS, Linux, koffi not loaded): no overlay over windows, logged once without details', async () => {
-    const failures = [async () => null, () => Promise.reject(new Error('Cannot find the native Koffi module at C:\Users\someone'))];
+    const failures = [async () => null, () => Promise.reject(new Error('Cannot find the native Koffi module at /home/someone/app'))];
     for (const windowApi of failures) {
       const { overlay, windows, logs } = setup({ windowApi });
       overlay.granted(SHARED);

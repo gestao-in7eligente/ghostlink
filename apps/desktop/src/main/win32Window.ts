@@ -4,6 +4,7 @@
 // shared windows (DrawOverlay logs it once). None of these calls sends a message to the window, so a
 // hung app can never block the main process.
 import type { Rectangle } from 'electron';
+import type * as KoffiModule from 'koffi';
 import type { WindowApi } from './windowTracker.js';
 
 /** dwmapi.h */
@@ -13,7 +14,7 @@ const RECT_SIZE = 16;
 const S_OK = 0;
 
 /** The part of koffi this module uses. */
-type Koffi = Pick<typeof import('koffi'), 'load' | 'struct' | 'out' | 'pointer'>;
+type Koffi = Pick<typeof KoffiModule, 'load' | 'struct' | 'out' | 'pointer'>;
 
 interface Win32Rect {
   left: number;
