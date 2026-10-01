@@ -39,6 +39,9 @@ describe('apps/desktop/electron-builder.yml', () => {
     expect(config.files).toEqual(['out/**', 'package.json']);
     expect(pkg.main.replace(/^\.\//, '')).toMatch(/^out\//);
     expect(config.asar).toBe(true);
+    // No asarUnpack: electron-builder's smart unpack already puts every package with a native binary
+    // (uiohook-napi, koffi's @koromix/koffi-<os>-<arch>) in app.asar.unpacked, where dlopen can read it.
+    expect(config).not.toHaveProperty('asarUnpack');
     expect(config.npmRebuild).toBe(false); // spec §15: @electron/rebuild would try MSVC
     // The build never uploads (release.yml does), but the feed config becomes app-update.yml (spec §15).
     expect(config.publish).toEqual({ provider: 'github', owner: 'gestao-in7eligente', repo: 'ghostlink', releaseType: 'release' });
@@ -109,8 +112,9 @@ describe('apps/desktop/package.json (packaging)', () => {
   // These are exactly the packages the main-process bundles import at run time (plan 1b's
   // build.test.ts checks that ws and zod stay external and that reflect-metadata loads before x509).
   // Add one only for a package that must stay external (a native module, electron-updater…).
-  // livekit-server-sdk: the hosted server's LiveKit client; uiohook-napi: native global push-to-talk hook.
-  const RUNTIME_DEPENDENCIES = ['@peculiar/x509', 'electron-updater', 'livekit-server-sdk', 'reflect-metadata', 'uiohook-napi', 'ws', 'zod'];
+  // livekit-server-sdk: the hosted server's LiveKit client; uiohook-napi: native global push-to-talk hook;
+  // koffi: the Win32 calls that place the pencil overlay over a shared window (prebuilt, nothing compiled).
+  const RUNTIME_DEPENDENCIES = ['@peculiar/x509', 'electron-updater', 'koffi', 'livekit-server-sdk', 'reflect-metadata', 'uiohook-napi', 'ws', 'zod'];
 
   it('ships only the packages the bundles load at run time', () => {
     expect(Object.keys(pkg.dependencies ?? {}).sort()).toEqual(RUNTIME_DEPENDENCIES);
