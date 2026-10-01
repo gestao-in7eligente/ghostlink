@@ -58,11 +58,11 @@ const FAILURE_LOG_LIMIT = 100;
 const FAILURE_LOG_LINES = 30;
 const HOSTNAME = /^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
 
-// research §8: DeploymentStatus.
-const IN_PROGRESS: ReadonlySet<string> = new Set(['QUEUED', 'WAITING', 'INITIALIZING', 'BUILDING', 'DEPLOYING']);
-const FAILED: ReadonlySet<string> = new Set(['FAILED', 'CRASHED']);
+// research §8: DeploymentStatus. Also read by serverUpdates.ts, which deploys new versions.
+export const IN_PROGRESS: ReadonlySet<string> = new Set(['QUEUED', 'WAITING', 'INITIALIZING', 'BUILDING', 'DEPLOYING']);
+export const FAILED: ReadonlySet<string> = new Set(['FAILED', 'CRASHED']);
 /** Ended without success or failure, e.g. superseded by a newer deployment. */
-const ENDED: ReadonlySet<string> = new Set(['REMOVED', 'REMOVING', 'SKIPPED', 'SLEEPING']);
+export const ENDED: ReadonlySet<string> = new Set(['REMOVED', 'REMOVING', 'SKIPPED', 'SLEEPING']);
 
 /** The Railway project's name: "ghostlink-" and a slug of the server name ("Casa do Zé" → ghostlink-casa-do-ze). */
 export function projectName(serverName: string): string {
@@ -104,6 +104,8 @@ function need<T>(value: T | undefined, what: string): T {
 export interface RailwayProvisionerDeps {
   userDataDir: string;
   safeStorage: SafeStorageLike;
+  /** railway.json, shared with the server updates (one copy in memory); loaded from userDataDir when absent. */
+  store?: RailwayStore;
   /** Electron's net.fetch in production. */
   fetch: FetchLike;
   /** railwayImage() for this app version. */
@@ -157,7 +159,7 @@ export class RailwayProvisioner {
   constructor(deps: RailwayProvisionerDeps) {
     this.#deps = deps;
     this.#tokens = new RailwayTokenStore(deps.userDataDir, deps.safeStorage);
-    this.#store = RailwayStore.load(deps.userDataDir);
+    this.#store = deps.store ?? RailwayStore.load(deps.userDataDir);
     this.#timing = { ...RAILWAY_TIMING, ...deps.timing };
     this.#log = deps.log ?? mainLog;
     this.#now = deps.now ?? Date.now;
@@ -237,7 +239,7 @@ export class RailwayProvisioner {
     });
   }
 
-  /** The servers this app created, for the later update and delete features. */
+  /** The servers this app created (serverUpdates.ts keeps them on the app's version). */
   managed(): ManagedServer[] {
     return this.#store.managed;
   }

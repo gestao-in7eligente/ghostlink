@@ -1,10 +1,8 @@
 // Profile photos over HTTPS to the connected server (spec 2026-10-01 §4, main spec §7):
 // upload.begin over the session, then POST /upload?u=<token>; the signed GET /avatars/<hash>.
 // Every request goes through pinnedTlsConnect with the session's pin, so a server with another
-// key never receives a byte. URLs, tokens, hashes and bytes are never logged nor put in errors.
+// key never receives a byte (pinnedHttp.ts). URLs, tokens, hashes and bytes are never logged nor put in errors.
 import { createHmac } from 'node:crypto';
-import { request as httpsRequest } from 'node:https';
-import type { ClientRequestArgs } from 'node:http';
 import { z } from 'zod';
 import {
   AVATAR_LIMITS,
@@ -14,12 +12,11 @@ import {
   fileSignatureInput,
   fileUrlExpiry,
   isErrorCode,
-  parseHostPort,
   type UploadBegin,
   type WelcomePayload,
 } from '@ghostlink/shared';
 import { AppError } from '../../shared/appErrors.js';
-import { pinnedTlsConnect } from '../connection.js';
+import { parseJson, pinnedRequest, type PinnedResponse } from '../pinnedHttp.js';
 import { sha256Hex } from './avatarBytes.js';
 
 /** What the HTTP side needs from the live session (the controller's ActiveSession has it). */
@@ -115,89 +112,6 @@ export async function uploadAvatar(server: AvatarServer, bytes: Uint8Array, opts
 /** Back to initials on the connected server. */
 export async function clearAvatar(server: Pick<AvatarServer, 'request'>): Promise<void> {
   await server.request('avatar.clear', {});
-}
-
-// ---- one pinned HTTPS request ----
-
-interface PinnedRequest {
-  method: 'GET' | 'POST';
-  path: string;
-  body?: Uint8Array;
-  maxResponseBytes: number;
-  timeoutMs: number;
-}
-
-interface PinnedResponse {
-  status: number;
-  body: Buffer;
-}
-
-function pinnedRequest(server: Pick<AvatarServer, 'address' | 'serverKeyId'>, r: PinnedRequest): Promise<PinnedResponse> {
-  const { host, port } = parseHostPort(server.address);
-  const pin = server.serverKeyId;
-  return new Promise<PinnedResponse>((resolve, reject) => {
-    let settled = false;
-    const finish = (error: Error | null, value?: PinnedResponse) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (error) {
-        req.destroy();
-        reject(error);
-      } else {
-        resolve(value!);
-      }
-    };
-    const headers: Record<string, string | number> = { Accept: '*/*' };
-    if (r.body) {
-      headers['Content-Type'] = 'application/octet-stream';
-      headers['Content-Length'] = r.body.byteLength;
-    }
-    // No agent: with createConnection, Node opens one socket for this request alone, and the
-    // pin check runs on 'secureConnect' before the request line is written (as for the WSS).
-    const req = httpsRequest(
-      {
-        host,
-        port,
-        method: r.method,
-        path: r.path,
-        headers,
-        createConnection: ((options: ClientRequestArgs) => pinnedTlsConnect(options, pin)) as unknown as ClientRequestArgs['createConnection'],
-      },
-      (res) => {
-        const declared = Number(res.headers['content-length']);
-        if (Number.isFinite(declared) && declared > r.maxResponseBytes) return finish(new AppError('BAD_REQUEST', 'response too large'));
-        const chunks: Buffer[] = [];
-        let size = 0;
-        res.on('data', (chunk: Buffer) => {
-          size += chunk.length;
-          if (size > r.maxResponseBytes) finish(new AppError('BAD_REQUEST', 'response too large'));
-          else chunks.push(chunk);
-        });
-        res.on('end', () => finish(null, { status: res.statusCode ?? 0, body: Buffer.concat(chunks) }));
-        res.on('error', (e) => finish(networkError(e)));
-        res.on('aborted', () => finish(new AppError('CONNECTION_LOST')));
-      },
-    );
-    req.on('error', (e) => finish(networkError(e)));
-    const timer = setTimeout(() => finish(new AppError('TIMEOUT')), r.timeoutMs);
-    req.end(r.body ? Buffer.from(r.body.buffer, r.body.byteOffset, r.body.byteLength) : undefined);
-  });
-}
-
-/** Never the original message: Node's can name the host, and nothing here may carry the URL. */
-function networkError(e: Error & { code?: unknown }): AppError {
-  if (e.code === 'PIN_MISMATCH') return new AppError('PIN_MISMATCH');
-  if (e.code === 'ECONNRESET') return new AppError('CONNECTION_LOST');
-  return new AppError('UNREACHABLE');
-}
-
-function parseJson(body: Buffer): unknown {
-  try {
-    return JSON.parse(body.toString('utf8'));
-  } catch {
-    return undefined;
-  }
 }
 
 function statusError(res: PinnedResponse): Error {

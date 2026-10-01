@@ -1,10 +1,11 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { toPlan } from '../../src/main/railway/account.js';
 import { RAILWAY_IMAGE_REPOSITORY, railwayImage } from '../../src/main/railway/image.js';
 import { normalizeFingerprint, parseServerStart, redactLogLine, stripAnsi } from '../../src/main/railway/logs.js';
 import { projectName, serverVariables } from '../../src/main/railway/provisioner.js';
+import { RAILWAY_FILE, RailwayStore } from '../../src/main/railway/store.js';
 import { RAILWAY_TOKEN_FILE, RailwayTokenStore, normalizeToken } from '../../src/main/railway/token.js';
 import { FakeSafeStorage } from '../helpers/fakeSafeStorage.js';
 import { useTempDir } from '../helpers/tempDir.js';
@@ -147,5 +148,44 @@ describe('RailwayTokenStore', () => {
     new RailwayTokenStore(dir.path, ok).save(TOKEN);
     ok.failDecrypt = true;
     expect(new RailwayTokenStore(dir.path, ok).read()).toBeNull();
+  });
+});
+
+describe('RailwayStore: outdatedSince (servers follow the app, spec 2026-10-01 §3)', () => {
+  const dir = useTempDir();
+  const KEY = 'A'.repeat(43);
+  const OTHER = 'B'.repeat(43);
+  const record = (serverKeyId: string) => ({
+    projectId: 'proj-1',
+    environmentId: 'env-1',
+    serviceId: 'svc-1',
+    volumeId: 'vol-1',
+    address: 'roundhouse.proxy.rlwy.net:15140',
+    serverKeyId,
+    region: 'us-east4-eqdc4a',
+    createdAt: 1_000,
+  });
+
+  it('loads a v0.2.0 file (no outdatedSince) as it is', () => {
+    writeFileSync(join(dir.path, RAILWAY_FILE), JSON.stringify({ version: 1, pending: null, managed: [record(KEY)] }));
+    expect(RailwayStore.load(dir.path).managed).toEqual([record(KEY)]);
+    expect(readdirSync(dir.path).some((f) => f.includes('.corrupt-'))).toBe(false);
+  });
+
+  it('records and clears it for one server only, and keeps it on disk', () => {
+    writeFileSync(join(dir.path, RAILWAY_FILE), JSON.stringify({ version: 1, pending: null, managed: [record(KEY), record(OTHER)] }));
+    const store = RailwayStore.load(dir.path);
+    expect(store.setOutdatedSince(KEY, 5_000)).toBe(true);
+    expect(RailwayStore.load(dir.path).managed).toEqual([{ ...record(KEY), outdatedSince: 5_000 }, record(OTHER)]);
+    expect(store.setOutdatedSince(KEY, null)).toBe(true);
+    const cleared = RailwayStore.load(dir.path).managed;
+    expect(cleared).toEqual([record(KEY), record(OTHER)]);
+    expect('outdatedSince' in cleared[0]!).toBe(false);
+  });
+
+  it('does nothing for a server it does not manage', () => {
+    const store = RailwayStore.load(dir.path);
+    expect(store.setOutdatedSince(KEY, 5_000)).toBe(false);
+    expect(existsSync(join(dir.path, RAILWAY_FILE))).toBe(false);
   });
 });
