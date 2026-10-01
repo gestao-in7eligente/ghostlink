@@ -93,6 +93,11 @@ export interface PinnedStreamRequest {
   onSent?(sent: number, total: number): void;
   /** No byte either way (connecting, sending, receiving) for this long: TIMEOUT. */
   idleMs: number;
+  /**
+   * false: no idle limit once the response head is in. For media the page plays: a paused video
+   * stops reading for as long as it likes, and that must not break its stream.
+   */
+  idleAfterHead?: boolean;
   /** Aborting destroys the request (CONNECTION_LOST). */
   signal?: AbortSignal;
 }
@@ -149,6 +154,7 @@ export function pinnedStream(server: PinnedTarget, r: PinnedStreamRequest): Prom
         // After the head, a stall or an abort ends the body stream with an error the reader sees.
         r.signal?.addEventListener('abort', () => res.destroy(new AppError('CONNECTION_LOST', 'cancelled')), { once: true });
         res.on('aborted', () => res.destroy(new AppError('CONNECTION_LOST')));
+        if (r.idleAfterHead === false) req.setTimeout(0);
         resolve({ status: res.statusCode ?? 0, headers: res.headers, body: res });
       },
     );

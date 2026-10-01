@@ -115,6 +115,8 @@ export async function openFile(
     path: signedFilePath(server, fileId, now()),
     headers: req.range ? { Range: req.range } : undefined,
     idleMs: opts.idleMs ?? DEFAULT_IDLE_MS,
+    // Range comes from the page's video and audio players, which may pause reading for long.
+    idleAfterHead: !req.range,
     signal: req.signal,
   });
   if (res.status === 200 || res.status === 206 || res.status === 416) return res;

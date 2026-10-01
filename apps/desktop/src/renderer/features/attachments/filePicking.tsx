@@ -185,10 +185,15 @@ export function DropOverlay({ target, maxFiles }: { target: string; maxFiles: nu
 
 /**
  * Files in a paste (Ctrl+V of a screenshot or a copied file); [] for plain text, which then
- * pastes as usual. A nameless image gets `fallbackName` and its type's extension.
+ * pastes as usual. Text copied from an office app also carries a picture of itself: with text
+ * there and only images besides, the text wins. A nameless image gets `fallbackName` and its
+ * type's extension.
  */
 export function pastedFiles(e: ClipboardEvent, fallbackName: string): File[] {
   const files = [...e.clipboardData.files];
+  if (files.length === 0) return [];
+  const text = e.clipboardData.getData('text/plain');
+  if (text.trim() !== '' && files.every((f) => f.type.startsWith('image/'))) return [];
   return files.map((file) => {
     if (file.name !== '') return file;
     const ext = file.type.split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'png';
