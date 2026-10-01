@@ -173,7 +173,7 @@ describe('sendMessage with files (anexos §1)', () => {
     // The second file is refused: the message stays, the first file keeps its id.
     const api = (globalThis as unknown as { window: { ghostlink: GhostlinkApi } }).window.ghostlink.attachments;
     const upload = api.upload as ReturnType<typeof vi.fn>;
-    const real = upload.getMockImplementation()!;
+    const real = upload.getMockImplementation() as (...args: unknown[]) => Promise<unknown>;
     upload.mockImplementationOnce(real).mockImplementationOnce(async (...args: unknown[]) => {
       failNext = 'QUOTA_EXCEEDED';
       return real(...args);

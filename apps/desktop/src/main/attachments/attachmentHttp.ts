@@ -51,7 +51,7 @@ export function fileSignature(fileToken: string, fileId: string, sessionId: stri
 }
 
 /** `/files/<fileId>?sid=&e=&s=`, valid until the end of the next 10-minute window of the server's clock. */
-export function signedFilePath(server: Pick<FileServer, 'welcome' | 'clockOffsetMs'>, fileId: string, nowMs: number = Date.now()): string {
+export function signedFilePath(server: Pick<AvatarServer, 'welcome' | 'clockOffsetMs'>, fileId: string, nowMs: number = Date.now()): string {
   const { sessionId, fileToken } = server.welcome;
   const e = fileUrlExpiry(nowMs + server.clockOffsetMs - CLOCK_MARGIN_MS);
   return `/files/${fileId}?sid=${encodeURIComponent(sessionId)}&e=${e}&s=${fileSignature(fileToken, fileId, sessionId, e)}`;
