@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { AppErrorCode } from '../../../shared/appErrors.js';
 import type { HostStartResult } from '../../../shared/hostTypes.js';
 import type { RendererWelcome } from '../../../shared/ipcTypes.js';
 import { ErrorLine } from '../../components/Screen.js';
 import ui from '../../components/ui.module.css';
 import { errorCodeOf, errorMessage, useT } from '../../i18n/index.js';
+import { Select } from '../../layout/primitives.js';
 import { HostDialog } from './HostDialog.js';
 import { HostNetworkCard } from './HostNetworkCard.js';
 import host from './host.module.css';
@@ -42,6 +43,7 @@ export function HostPanel({
   const [copied, setCopied] = useState<'link' | 'code' | null>(null);
   const [expiry, setExpiry] = useState<InviteExpiryChoice>('168');
   const [uses, setUses] = useState<InviteUsesChoice>('unlimited');
+  const ids = { expiry: useId(), uses: useId() };
   const logsRef = useRef<HTMLPreElement>(null);
   const api = window.ghostlink;
 
@@ -156,26 +158,28 @@ export function HostPanel({
             </>
           )}
           <div className={host.row}>
-            <label className={`${ui.field} ${host.grow}`}>
-              <span className={ui.label}>{t('host.panel.expires')}</span>
-              <select className={ui.input} value={expiry} onChange={(e) => setExpiry(e.target.value as InviteExpiryChoice)}>
-                {INVITE_EXPIRY_CHOICES.map((c) => (
-                  <option key={c} value={c}>
-                    {t(`host.panel.expires.${c}`)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={`${ui.field} ${host.grow}`}>
-              <span className={ui.label}>{t('host.panel.uses')}</span>
-              <select className={ui.input} value={uses} onChange={(e) => setUses(e.target.value as InviteUsesChoice)}>
-                {INVITE_USES_CHOICES.map((c) => (
-                  <option key={c} value={c}>
-                    {t(`host.panel.uses.${c}`)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className={`${ui.field} ${host.grow}`}>
+              <span id={ids.expiry} className={ui.label}>
+                {t('host.panel.expires')}
+              </span>
+              <Select<InviteExpiryChoice>
+                labelledBy={ids.expiry}
+                value={expiry}
+                options={INVITE_EXPIRY_CHOICES.map((c) => ({ value: c, label: t(`host.panel.expires.${c}`) }))}
+                onChange={setExpiry}
+              />
+            </div>
+            <div className={`${ui.field} ${host.grow}`}>
+              <span id={ids.uses} className={ui.label}>
+                {t('host.panel.uses')}
+              </span>
+              <Select<InviteUsesChoice>
+                labelledBy={ids.uses}
+                value={uses}
+                options={INVITE_USES_CHOICES.map((c) => ({ value: c, label: t(`host.panel.uses.${c}`) }))}
+                onChange={setUses}
+              />
+            </div>
             <button
               type="button"
               className={status.invite ? ui.button : `${ui.button} ${ui.primary}`}

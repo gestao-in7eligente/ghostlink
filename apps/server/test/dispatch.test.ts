@@ -18,7 +18,7 @@ const ctx: RequestContext = {
   limits: resolveLimits(),
   dataDir: '/data',
   serverKeyId: 'key',
-  sessions: { list: () => [], send: () => false, broadcast: () => 0, closeUser: () => false, isOnlineOrInGrace: () => false },
+  sessions: { list: () => [], send: () => false, broadcast: () => 0, closeUser: () => false, isOnlineOrInGrace: () => false, fileToken: () => null },
   getModule: () => {
     throw new Error('no modules');
   },

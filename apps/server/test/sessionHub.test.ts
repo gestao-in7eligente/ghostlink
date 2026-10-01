@@ -9,7 +9,7 @@ type Handle = SessionHandle & { sent: object[]; terminated: ErrorCode[] };
 function handle(userId: string, sessionId: string): Handle {
   const sent: object[] = [];
   const terminated: ErrorCode[] = [];
-  return { userId, sessionId, sent, terminated, send: (e) => sent.push(e), terminate: (c) => terminated.push(c) };
+  return { userId, sessionId, fileToken: `ft-${sessionId}`, sent, terminated, send: (e) => sent.push(e), terminate: (c) => terminated.push(c) };
 }
 
 function setup() {
@@ -55,7 +55,7 @@ describe('SessionHub: sessions API', () => {
   it('api exposes only the SessionsApi methods', () => {
     const { hub, open } = setup();
     open(handle('u1', 's1'));
-    expect(Object.keys(hub.api).sort()).toEqual(['broadcast', 'closeUser', 'isOnlineOrInGrace', 'list', 'send']);
+    expect(Object.keys(hub.api).sort()).toEqual(['broadcast', 'closeUser', 'fileToken', 'isOnlineOrInGrace', 'list', 'send']);
     expect(hub.api.list()).toEqual([{ userId: 'u1', sessionId: 's1' }]);
     expect(hub.api.isOnlineOrInGrace('u1')).toBe(true);
   });
@@ -70,6 +70,21 @@ describe('SessionHub: sessions API', () => {
       return false;
     });
     expect(seen).toEqual([{ userId: 'u1', sessionId: 's1' }, { userId: 'u2', sessionId: 's2' }]);
+  });
+
+  it('fileToken: the key of the signed file URLs of a current session (spec §7), null once it ended or was replaced', () => {
+    const { hub, open } = setup();
+    const a = handle('u1', 's1');
+    open(a);
+    open(handle('u2', 's2'));
+    expect(hub.api.fileToken('s1')).toBe('ft-s1');
+    expect(hub.api.fileToken('s2')).toBe('ft-s2');
+    expect(hub.api.fileToken('nope')).toBeNull();
+    open(handle('u2', 's3')); // replaces s2
+    expect(hub.api.fileToken('s2')).toBeNull();
+    expect(hub.api.fileToken('s3')).toBe('ft-s3');
+    hub.ended(a, 'disconnected');
+    expect(hub.api.fileToken('s1')).toBeNull(); // in grace, but its URLs stop working
   });
 
   it('a replaced session disappears at once and ends without grace', () => {

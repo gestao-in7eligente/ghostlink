@@ -1,20 +1,27 @@
-import { HeadphoneOff, MicOff } from 'lucide-react';
+import { HeadphoneOff, MicOff, Phone } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { VoiceParticipant } from '@ghostlink/shared';
 import { useT } from '../../i18n/index.js';
+import { Avatar } from '../../layout/primitives.js';
+import { useVoiceDirectory } from './runtime.js';
+import { useVoiceStore } from './state.js';
 import s from './voice.module.css';
 
-/** A generic silhouette on a gray circle (the reference's default avatar); a green ring while speaking. */
-export function VoiceAvatar({ size, speaking = false }: { size: number; speaking?: boolean }) {
+/** The person's avatar (photo or initials, the layout's Avatar); a green ring while speaking. */
+export function VoiceAvatar({ size, speaking = false, userId }: { size: number; speaking?: boolean; userId: string }) {
+  const directory = useVoiceDirectory();
+  const self = useVoiceStore((v) => v.selfUserId === userId);
   return (
     <span className={speaking ? `${s.avatar} ${s.avatarSpeaking}` : s.avatar} style={{ width: size, height: size }} aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="currentColor">
-        <circle cx="12" cy="8.2" r="4.4" />
-        <path d="M3.6 21.4c.7-4.6 4.1-7.4 8.4-7.4s7.7 2.8 8.4 7.4c.1.5-.3.9-.8.9H4.4c-.5 0-.9-.4-.8-.9z" />
-      </svg>
+      <Avatar size={size} name={directory.displayName(userId)} hash={directory.avatar(userId)} self={self} />
     </span>
   );
+}
+
+/** Discord's hang-up glyph: a filled handset lying on its back (a phone turned 135°). */
+export function HangUpIcon({ size }: { size: number }) {
+  return <Phone size={size} fill="currentColor" strokeWidth={1.5} className={s.hangUpIcon} aria-hidden="true" />;
 }
 
 /** Mute, deafen and server-mute marks for one participant. */

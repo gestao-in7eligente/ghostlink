@@ -160,6 +160,7 @@ export class Gateway {
     const handle: SessionHandle = {
       userId: session.userId,
       sessionId: session.sessionId,
+      fileToken: session.fileToken,
       send: (event) => conn.send(event),
       terminate: (code) => conn.close(code),
     };

@@ -35,7 +35,7 @@ export function channel(id: string, name: string, position: number, extra: Parti
 }
 
 export function member(userId: string, nickname: string, extra: Partial<Member> = {}): Member {
-  return { userId, nickname, roleIds: [], online: true, joinedAt: 1, ...extra };
+  return { userId, nickname, roleIds: [], online: true, joinedAt: 1, avatar: null, ...extra };
 }
 
 let nextClient = 0;

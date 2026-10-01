@@ -4,7 +4,10 @@
 import type { Envelope, ParsedJoinInput, WelcomePayload } from '@ghostlink/shared';
 import type { AppErrorCode } from './appErrors.js';
 import type { FirewallFixResult, FirewallStatus, HostApi, HostConfig, HostInvite, HostInviteOptions, HostStartResult, HostStatus } from './hostTypes.js';
+import type { AvatarInfo, ProfileApi } from './profileTypes.js';
 import type { RailwayAccount, RailwayCreateRequest, RailwayPending, RailwayProgress } from './railwayTypes.js';
+import type { ScreenApi, ScreenChoice, ScreenSource } from './screenTypes.js';
+import type { ManagedServerUpdate, ServerUpdatesApi } from './serverUpdateTypes.js';
 import type { UpdateState, UpdatesApi } from './updates.js';
 
 export type IdentityStatus = 'none' | 'ready' | 'locked';
@@ -151,6 +154,10 @@ export interface GhostlinkApi {
   ptt: { configure(config: PttConfig): Promise<PttStatus> };
   onPtt(cb: (e: PttEvent) => void): () => void;
   railway: RailwayApi;
+  profile: ProfileApi;
+  screen: ScreenApi;
+  /** Servers follow the app's version (spec 2026-10-01 §3, §5): the Railway servers this app created. */
+  serverUpdates: ServerUpdatesApi;
 }
 
 /**
@@ -218,6 +225,13 @@ export const IPC = {
   railwayPending: 'ghostlink:railway.pending',
   railwayResume: 'ghostlink:railway.resume',
   railwayDiscard: 'ghostlink:railway.discard',
+  profileAvatar: 'ghostlink:profile.avatar',
+  profileSetAvatar: 'ghostlink:profile.setAvatar',
+  profileClearAvatar: 'ghostlink:profile.clearAvatar',
+  screenSources: 'ghostlink:screen.sources',
+  screenChoose: 'ghostlink:screen.choose',
+  serverUpdatesState: 'ghostlink:serverUpdates.state',
+  serverUpdatesUpdateNow: 'ghostlink:serverUpdates.updateNow',
 } as const;
 
 /** Events pushed from main to the renderer. */
@@ -230,6 +244,7 @@ export const IPC_EVENTS = {
   updates: 'ghostlink:event.updates',
   ptt: 'ghostlink:event.ptt',
   railway: 'ghostlink:event.railway',
+  serverUpdates: 'ghostlink:event.serverUpdates',
 } as const;
 
 /** Arguments and result of every invoke channel; main's handlers and the preload are both typed from it. */
@@ -279,7 +294,20 @@ export interface IpcContract {
   [IPC.railwayPending]: { args: []; result: RailwayPending | null };
   [IPC.railwayResume]: { args: []; result: RendererWelcome };
   [IPC.railwayDiscard]: { args: []; result: void };
+  [IPC.profileAvatar]: { args: []; result: AvatarInfo | null };
+  [IPC.profileSetAvatar]: { args: [bytes: Uint8Array]; result: AvatarInfo };
+  [IPC.profileClearAvatar]: { args: []; result: null };
+  [IPC.screenSources]: { args: []; result: ScreenSource[] };
+  [IPC.screenChoose]: { args: [choice: ScreenChoice]; result: void };
+  [IPC.serverUpdatesState]: { args: [serverKeyId: string]; result: ManagedServerUpdate | null };
+  [IPC.serverUpdatesUpdateNow]: { args: [serverKeyId: string]; result: ManagedServerUpdate };
 }
+
+/** The profile photo channels (v0.2.2), handled by main/profileIpc.ts. */
+export type ProfileIpcChannel = Extract<IpcChannel, `ghostlink:profile.${string}`>;
+
+/** The update of the Railway servers this app created (v0.2.2), handled by main/serverUpdatesIpc.ts. */
+export type ServerUpdatesIpcChannel = Extract<IpcChannel, `ghostlink:serverUpdates.${string}`>;
 
 /** The Railway provisioning channels (v0.2), handled by main/railwayIpc.ts. */
 export type RailwayIpcChannel = Extract<IpcChannel, `ghostlink:railway.${string}`>;

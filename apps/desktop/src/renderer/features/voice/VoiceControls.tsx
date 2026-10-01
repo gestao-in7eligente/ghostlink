@@ -1,5 +1,5 @@
 import { Room } from 'livekit-client';
-import { Check, ChevronUp, HeadphoneOff, Headphones, Mic, MicOff, Settings } from 'lucide-react';
+import { Check, ChevronDown, HeadphoneOff, Headphones, Mic, MicOff, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useT } from '../../i18n/index.js';
 import { Menu, MenuItem } from './parts.js';
@@ -74,12 +74,18 @@ function DeviceMenu({ kind, onClose, onOpenSettings }: { kind: DeviceKind; onClo
   );
 }
 
+type Variant = 'panel' | 'call';
+
+const CLASSES = {
+  panel: { button: s.iconButton, danger: `${s.iconButton} ${s.iconDanger}`, chevron: `${s.iconButton} ${s.chevron}`, icon: 18, chevronIcon: 12 },
+  call: { button: s.callButton, danger: s.callButton, chevron: `${s.callButton} ${s.callChevron}`, icon: 20, chevronIcon: 16 },
+} as const;
+
 /**
- * The microphone and headphones buttons of the user panel, each with its ▴ device menu
- * (reference, bottom row). They work outside a call too: the choice applies on joining.
+ * Mute and deafen, each with its ⌄ device menu: in the user panel's bottom row, or in the
+ * call bar's first group (no test hooks there: the panel's buttons own data-voice-control).
  */
-export function VoiceControls({ onOpenSettings }: { onOpenSettings?: () => void }) {
-  useVoiceRuntime();
+function AudioButtons({ variant, onOpenSettings }: { variant: Variant; onOpenSettings?: () => void }) {
   const t = useT();
   const muted = useVoiceStore((v) => v.selfMuted || v.selfDeafened);
   const deafened = useVoiceStore((v) => v.selfDeafened);
@@ -87,60 +93,80 @@ export function VoiceControls({ onOpenSettings }: { onOpenSettings?: () => void 
   const [open, setOpen] = useState<DeviceKind | null>(null);
   const micLabel = serverMuted ? t('voice.serverMuted') : t(muted ? 'voice.unmute' : 'voice.mute');
   const soundLabel = t(deafened ? 'voice.undeafen' : 'voice.deafen');
+  const c = CLASSES[variant];
+  const panel = variant === 'panel';
 
   return (
-    <div className={s.controls}>
+    <>
       <div className={s.anchor}>
         <button
           type="button"
-          className={serverMuted ? `${s.iconButton} ${s.iconDanger}` : s.iconButton}
+          className={serverMuted ? c.danger : c.button}
           aria-pressed={muted || serverMuted}
           aria-label={micLabel}
           title={micLabel}
           disabled={serverMuted}
           onClick={() => void toggleMute()}
-          data-voice-control="mute"
+          data-voice-control={panel ? 'mute' : undefined}
         >
-          {muted || serverMuted ? <MicOff size={18} aria-hidden="true" /> : <Mic size={18} aria-hidden="true" />}
+          {muted || serverMuted ? <MicOff size={c.icon} aria-hidden="true" /> : <Mic size={c.icon} aria-hidden="true" />}
         </button>
         <button
           type="button"
-          className={`${s.iconButton} ${s.chevron}`}
+          className={c.chevron}
           aria-haspopup="menu"
           aria-expanded={open === 'audioinput'}
           aria-label={t('voice.inputOptions')}
           title={t('voice.inputOptions')}
           onClick={() => setOpen(open === 'audioinput' ? null : 'audioinput')}
         >
-          <ChevronUp size={12} aria-hidden="true" />
+          <ChevronDown size={c.chevronIcon} aria-hidden="true" />
         </button>
         {open === 'audioinput' && <DeviceMenu kind="audioinput" onClose={() => setOpen(null)} onOpenSettings={onOpenSettings} />}
       </div>
       <div className={s.anchor}>
         <button
           type="button"
-          className={s.iconButton}
+          className={c.button}
           aria-pressed={deafened}
           aria-label={soundLabel}
           title={soundLabel}
           onClick={() => void toggleDeafen()}
-          data-voice-control="deafen"
+          data-voice-control={panel ? 'deafen' : undefined}
         >
-          {deafened ? <HeadphoneOff size={18} aria-hidden="true" /> : <Headphones size={18} aria-hidden="true" />}
+          {deafened ? <HeadphoneOff size={c.icon} aria-hidden="true" /> : <Headphones size={c.icon} aria-hidden="true" />}
         </button>
         <button
           type="button"
-          className={`${s.iconButton} ${s.chevron}`}
+          className={c.chevron}
           aria-haspopup="menu"
           aria-expanded={open === 'audiooutput'}
           aria-label={t('voice.outputOptions')}
           title={t('voice.outputOptions')}
           onClick={() => setOpen(open === 'audiooutput' ? null : 'audiooutput')}
         >
-          <ChevronUp size={12} aria-hidden="true" />
+          <ChevronDown size={c.chevronIcon} aria-hidden="true" />
         </button>
         {open === 'audiooutput' && <DeviceMenu kind="audiooutput" onClose={() => setOpen(null)} onOpenSettings={onOpenSettings} />}
       </div>
+    </>
+  );
+}
+
+/**
+ * The microphone and headphones buttons of the user panel, each with its ⌄ device menu
+ * (reference, bottom row). They work outside a call too: the choice applies on joining.
+ */
+export function VoiceControls({ onOpenSettings }: { onOpenSettings?: () => void }) {
+  useVoiceRuntime();
+  return (
+    <div className={s.controls}>
+      <AudioButtons variant="panel" onOpenSettings={onOpenSettings} />
     </div>
   );
+}
+
+/** The call bar's first group (Discord: mic ⌄ and camera; here mic ⌄ and headphones ⌄). */
+export function CallAudioControls({ onOpenSettings }: { onOpenSettings?: () => void }) {
+  return <AudioButtons variant="call" onOpenSettings={onOpenSettings} />;
 }

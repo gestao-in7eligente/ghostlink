@@ -3,7 +3,7 @@ import { Check, Circle, ExternalLink, LoaderCircle, X } from 'lucide-react';
 import type { RendererWelcome } from '../../../shared/ipcTypes.js';
 import { RAILWAY_DEFAULT_REGION, RAILWAY_REGIONS, RAILWAY_STEPS, type RailwayRegion } from '../../../shared/railwayTypes.js';
 import { errorCodeOf, errorMessage, useT } from '../../i18n/index.js';
-import { ConfirmDialog, Modal, primitives as p } from '../../layout/primitives.js';
+import { ConfirmDialog, Modal, Select, primitives as p } from '../../layout/primitives.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import { normalizeServerName, normalizeToken, planWarning, type StepState } from './railwayModel.js';
 import { useRailwayStore, type RailwayRun } from './railwayStore.js';
@@ -137,31 +137,28 @@ function Configure({ onJoined }: { onJoined: (welcome: RendererWelcome) => void 
         </button>
       </div>
       {account.workspaces.length > 1 && (
-        <label className={r.field} htmlFor={ids.workspace}>
-          <span className={r.label}>{t('railway.config.workspace')}</span>
-          <select id={ids.workspace} className={r.input} value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)}>
-            {account.workspaces.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className={r.field}>
+          <span id={ids.workspace} className={r.label}>
+            {t('railway.config.workspace')}
+          </span>
+          <Select labelledBy={ids.workspace} value={workspaceId} options={account.workspaces.map((w) => ({ value: w.id, label: w.name }))} onChange={setWorkspaceId} />
+        </div>
       )}
       <label className={r.field} htmlFor={ids.name}>
         <span className={r.label}>{t('railway.config.name')}</span>
         <input id={ids.name} className={r.input} maxLength={64} value={name} onChange={(e) => setName(e.target.value)} />
       </label>
-      <label className={r.field} htmlFor={ids.region}>
-        <span className={r.label}>{t('railway.config.region')}</span>
-        <select id={ids.region} className={r.input} value={region} onChange={(e) => setRegion(e.target.value as RailwayRegion)}>
-          {RAILWAY_REGIONS.map((id) => (
-            <option key={id} value={id}>
-              {t(`railway.region.${id}`)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className={r.field}>
+        <span id={ids.region} className={r.label}>
+          {t('railway.config.region')}
+        </span>
+        <Select<RailwayRegion>
+          labelledBy={ids.region}
+          value={region}
+          options={RAILWAY_REGIONS.map((id) => ({ value: id, label: t(`railway.region.${id}`) }))}
+          onChange={setRegion}
+        />
+      </div>
       {warning && <p className={`${r.notice} ${r.warning}`}>{t(warning)}</p>}
       <p className={r.notice}>{t('railway.config.voice')}</p>
       <p className={r.muted}>{t('railway.config.cost')}</p>

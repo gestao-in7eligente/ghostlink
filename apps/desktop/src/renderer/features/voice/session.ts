@@ -4,8 +4,11 @@
 import {
   RoomEvent,
   Track,
+  TrackEvent,
   type AudioCaptureOptions,
   type LocalAudioTrack,
+  type LocalTrackPublication,
+  type LocalVideoTrack,
   type Participant,
   type RemoteParticipant,
   type RemoteTrack,
@@ -23,7 +26,9 @@ import {
 } from '@ghostlink/shared';
 import type { ConnState } from '../../../shared/ipcTypes.js';
 import { errorCodeOf } from '../../i18n/index.js';
-import { volumeOf, type VoiceSettings } from './settings.js';
+import { captureFor } from './noiseSuppression.js';
+import { startScreenShare, stopScreenShare, wantsSubscription, type LiveScreenShare, type ScreenShareDeps } from './screenShare.js';
+import { screenVolumeKey, volumeOf, type VoiceSettings } from './settings.js';
 import { selfVoice, type VoiceAction, type VoiceState } from './state.js';
 
 /** LiveKit protocol TrackSource.MICROPHONE (livekit-server-sdk's enum; the tests check the value). */
@@ -31,9 +36,20 @@ const PROTO_MICROPHONE = 2;
 
 /** Where remote audio plays: hidden media elements owned by the page. */
 export interface AudioOutlet {
-  attach(track: RemoteTrack, userId: string): void;
+  /** `source` tells a stream's sound ('screen') from a voice (the default). */
+  attach(track: RemoteTrack, userId: string, source?: 'voice' | 'screen'): void;
   detach(track: RemoteTrack): void;
   detachAll(): void;
+}
+
+/** Where screens show: the voice stage attaches them (track.attach, never a hand-made srcObject). */
+export interface VideoOutlet {
+  /** A watched person's screen arrived (a track) or went away (null). */
+  remote(userId: string, track: RemoteTrack | null): void;
+  /** My own share's picture, for the self-preview; null when it ends. */
+  local(track: LocalVideoTrack | null): void;
+  /** The call is over: no screens at all. */
+  clear(): void;
 }
 
 export interface VoiceSessionDeps {
@@ -44,9 +60,14 @@ export interface VoiceSessionDeps {
   getState(): VoiceState;
   settings(): VoiceSettings;
   outlet: AudioOutlet;
+  video: VideoOutlet;
+  /** The screen picker and window.ghostlink.screen (spec 2026-10-01 §2, §3). */
+  screen: ScreenShareDeps;
   /**
    * A new microphone track, already behind the voice-activity / push-to-talk gate, so
    * nothing ungated is ever sent (LiveKit's own capture would publish before a gate).
+   * `options` follow the chosen noise suppression; the app turns the browser's own back on
+   * when the chosen suppressor cannot load.
    */
   createMicrophone(options: AudioCaptureOptions): Promise<LocalAudioTrack>;
   /** Runs `cb` once, on the user's next click or key press (autoplay recovery). */
@@ -61,8 +82,6 @@ export function canPublishMicrophone(permissions: { canPublish: boolean; canPubl
   if (!permissions?.canPublish) return false;
   return permissions.canPublishSources.length === 0 || permissions.canPublishSources.includes(PROTO_MICROPHONE);
 }
-
-const CAPTURE: AudioCaptureOptions = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, voiceIsolation: false };
 
 function userIdOf(p: Pick<Participant, 'identity'>): string | null {
   return userIdFromIdentity(p.identity);
@@ -79,6 +98,10 @@ export class VoiceSession {
   #attempt = 0;
   #pingTimer: ReturnType<typeof setInterval> | null = null;
   #mic: Promise<void> = Promise.resolve();
+  /** My live screen share. */
+  #share: LiveScreenShare | null = null;
+  /** A share between "Transmitir tela" and live (the picker is open, or capturing). */
+  #shareStarting = false;
 
   constructor(deps: VoiceSessionDeps) {
     this.#deps = deps;
@@ -117,7 +140,7 @@ export class VoiceSession {
       adaptiveStream: true,
       dynacast: true,
       webAudioMix: true,
-      audioCaptureDefaults: { ...CAPTURE, ...(settings.inputDeviceId ? { deviceId: settings.inputDeviceId } : {}) },
+      audioCaptureDefaults: { ...captureFor(settings.noiseSuppression), ...(settings.inputDeviceId ? { deviceId: settings.inputDeviceId } : {}) },
       ...(settings.outputDeviceId ? { audioOutput: { deviceId: settings.outputDeviceId } } : {}),
     });
     this.#room = room;
@@ -140,7 +163,7 @@ export class VoiceSession {
     this.#deps.dispatch({ type: 'call', status: 'connected', channelId });
     this.#noteNames(room.remoteParticipants.values());
     // TrackPublished does not fire for tracks that existed before we joined (spec §8.4).
-    for (const p of room.remoteParticipants.values()) for (const pub of p.trackPublications.values()) this.#maybeSubscribe(pub);
+    for (const p of room.remoteParticipants.values()) for (const pub of p.trackPublications.values()) this.#maybeSubscribe(pub, p);
     this.#checkPlayback(room);
     this.#startPing(room);
     this.#sendSelfState();
@@ -182,6 +205,66 @@ export class VoiceSession {
     await this.#room?.switchActiveDevice(kind, deviceId).catch(() => false);
   }
 
+  /**
+   * "Assistir": subscribes that person's screen and its sound (spec §8.4). The watched set
+   * lives in the store and is re-applied on every TrackPublished, also after a reconnect.
+   */
+  watch(userId: string): void {
+    const state = this.#deps.getState();
+    if (!this.#room || state.call.status === 'idle' || userId === state.selfUserId) return;
+    this.#deps.dispatch({ type: 'watch', userId, watching: true });
+    for (const [pub, p] of this.#screenPublications(userId)) this.#maybeSubscribe(pub, p);
+  }
+
+  /** "Parar de assistir": unsubscribes both; the picture goes away at once. */
+  unwatch(userId: string): void {
+    this.#deps.dispatch({ type: 'watch', userId, watching: false });
+    this.#deps.video.remote(userId, null);
+    for (const [pub] of this.#screenPublications(userId)) pub.setSubscribed(false);
+  }
+
+  /** "Transmitir tela": the picker, then capture and publish (spec 2026-10-01 §2). One share at a time. */
+  async startScreenShare(): Promise<void> {
+    const room = this.#room;
+    if (!room || this.#deps.getState().call.status !== 'connected' || this.#share || this.#shareStarting) return;
+    this.#shareStarting = true;
+    let outcome;
+    try {
+      outcome = await startScreenShare(room.localParticipant, this.#deps.screen, () => this.#room === room);
+    } finally {
+      this.#shareStarting = false;
+    }
+    if (this.#room !== room) {
+      // The call ended just as the share went live: the room is gone, stop the capture.
+      if (outcome.kind === 'live') for (const track of [outcome.share.video, outcome.share.audio]) track?.stop();
+      return;
+    }
+    if (outcome.kind === 'failed') this.#deps.dispatch({ type: 'notice', notice: { kind: 'screenFailed' } });
+    if (outcome.kind !== 'live') return;
+    const { share } = outcome;
+    this.#share = share;
+    // The window closed or the screen went away: the share ends with it (spec §2).
+    share.video.once(TrackEvent.Ended, () => {
+      if (this.#share === share) void this.stopScreenShare();
+    });
+    this.#deps.video.local(share.video);
+    const { quality, content, name } = share.selection;
+    this.#deps.dispatch({ type: 'sharing', sharing: { quality, content, name, audio: share.audio !== null } });
+    if (outcome.audioDropped) this.#deps.dispatch({ type: 'notice', notice: { kind: 'screenAudio' } });
+  }
+
+  /** "Parar transmissão". */
+  async stopScreenShare(): Promise<void> {
+    const share = this.#share;
+    if (!share) return;
+    this.#share = null;
+    this.#deps.video.local(null);
+    this.#deps.dispatch({ type: 'sharing', sharing: null });
+    const room = this.#room;
+    if (room) await stopScreenShare(room.localParticipant, share);
+    else for (const track of [share.video, share.audio]) track?.stop();
+  }
+
   /** voice.forceMove, voice.forceDisconnect, and voice.state that may change my server mute. */
   async handleServerEvent(event: Envelope): Promise<void> {
     if (event.t === 'voice.forceMove') {
@@ -216,21 +299,48 @@ export class VoiceSession {
   #wire(room: Room): void {
     const mine = () => this.#room === room;
     room
-      .on(RoomEvent.TrackPublished, (pub: RemoteTrackPublication) => {
-        if (mine()) this.#maybeSubscribe(pub);
+      .on(RoomEvent.TrackPublished, (pub: RemoteTrackPublication, participant: RemoteParticipant) => {
+        if (mine()) this.#maybeSubscribe(pub, participant);
       })
       .on(RoomEvent.TrackSubscribed, (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
         const userId = userIdOf(participant);
-        if (!mine() || !userId || track.kind !== Track.Kind.Audio || pub.source !== Track.Source.Microphone) return;
-        this.#deps.outlet.attach(track, userId);
-        this.#applyVolume(participant);
-        this.#deps.dispatch({ type: 'subscribed', userId, subscribed: true });
+        if (!mine() || !userId) return;
+        if (pub.source === Track.Source.Microphone) {
+          if (track.kind !== Track.Kind.Audio) return;
+          this.#deps.outlet.attach(track, userId);
+          this.#applyVolume(participant);
+          this.#deps.dispatch({ type: 'subscribed', userId, subscribed: true });
+          return;
+        }
+        // A screen that arrives after "Parar de assistir" is on its way out: not shown.
+        if (!wantsSubscription(pub.source, track.kind, userId, this.#deps.getState().watching)) return;
+        if (track.kind === Track.Kind.Video) {
+          this.#deps.video.remote(userId, track);
+        } else {
+          this.#deps.outlet.attach(track, userId, 'screen');
+          this.#applyVolume(participant);
+        }
       })
       .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, pub: RemoteTrackPublication, participant: RemoteParticipant) => {
-        if (!mine() || track.kind !== Track.Kind.Audio) return;
-        this.#deps.outlet.detach(track);
+        if (!mine()) return;
         const userId = userIdOf(participant);
+        if (track.kind === Track.Kind.Video) {
+          if (userId && pub.source === Track.Source.ScreenShare) this.#deps.video.remote(userId, null);
+          return;
+        }
+        this.#deps.outlet.detach(track);
         if (userId && pub.source === Track.Source.Microphone) this.#deps.dispatch({ type: 'subscribed', userId, subscribed: false });
+      })
+      .on(RoomEvent.TrackUnpublished, (pub: RemoteTrackPublication, participant: RemoteParticipant) => {
+        // Stopped sharing while still in the room: no longer watched. Someone who left (or
+        // is coming back through a reconnect) was removed from the room first, and stays watched.
+        if (!mine() || pub.source !== Track.Source.ScreenShare || room.remoteParticipants.get(participant.identity) !== participant) return;
+        const userId = userIdOf(participant);
+        if (userId) this.#deps.dispatch({ type: 'watch', userId, watching: false });
+      })
+      .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
+        // LiveKit took my screen off the air (the capture ended, or VIDEO was taken away).
+        if (mine() && this.#share && pub.track === this.#share.video) void this.stopScreenShare();
       })
       .on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
         if (mine()) this.#noteNames([participant]);
@@ -263,17 +373,32 @@ export class VoiceSession {
       });
   }
 
-  #maybeSubscribe(pub: TrackPublication): void {
-    // Microphones only: camera and screen are v0.2 (screen is subscribed on "Watch" there).
-    if (pub.source === Track.Source.Microphone && pub.kind === Track.Kind.Audio) (pub as RemoteTrackPublication).setSubscribed(true);
+  /** Microphones always; a screen and its sound while watched (spec §8.4); no cameras yet. */
+  #maybeSubscribe(pub: TrackPublication, participant: Pick<Participant, 'identity'>): void {
+    if (wantsSubscription(pub.source, pub.kind, userIdOf(participant), this.#deps.getState().watching)) (pub as RemoteTrackPublication).setSubscribed(true);
   }
 
+  /** Someone's ScreenShare and ScreenShareAudio publications in my room. */
+  #screenPublications(userId: string): Array<[RemoteTrackPublication, RemoteParticipant]> {
+    const out: Array<[RemoteTrackPublication, RemoteParticipant]> = [];
+    for (const p of this.#room?.remoteParticipants.values() ?? []) {
+      if (userIdOf(p) !== userId) continue;
+      for (const pub of p.trackPublications.values()) {
+        if (pub.source === Track.Source.ScreenShare || pub.source === Track.Source.ScreenShareAudio) out.push([pub, p]);
+      }
+    }
+    return out;
+  }
+
+  /** Voice and stream sound, each with its own saved volume; deafen silences both. */
   #applyVolume(participant: RemoteParticipant): void {
     const userId = userIdOf(participant);
     if (!userId) return;
     const state = this.#deps.getState();
-    const percent = state.selfDeafened ? 0 : volumeOf(this.#deps.settings(), state.serverId, userId);
-    participant.setVolume(percent / 100);
+    const settings = this.#deps.settings();
+    const percent = (key: string) => (state.selfDeafened ? 0 : volumeOf(settings, state.serverId, key));
+    participant.setVolume(percent(userId) / 100);
+    participant.setVolume(percent(screenVolumeKey(userId)) / 100, Track.Source.ScreenShareAudio);
   }
 
   #noteNames(participants: Iterable<RemoteParticipant>): void {
@@ -335,7 +460,7 @@ export class VoiceSession {
     }
     let track: LocalAudioTrack;
     try {
-      track = await this.#deps.createMicrophone({ ...CAPTURE, ...this.#deviceConstraint() });
+      track = await this.#deps.createMicrophone({ ...captureFor(this.#deps.settings().noiseSuppression), ...this.#deviceConstraint() });
     } catch {
       if (this.#room === room) this.#deps.dispatch({ type: 'notice', notice: { kind: 'micUnavailable' } });
       return;
@@ -365,9 +490,16 @@ export class VoiceSession {
     const room = this.#room;
     this.#room = null;
     this.#stopPing();
+    const share = this.#share;
+    this.#share = null;
+    if (share) {
+      this.#deps.video.local(null);
+      for (const track of [share.video, share.audio]) track?.stop();
+    }
     if (room) {
       room.removeAllListeners();
       this.#deps.outlet.detachAll();
+      this.#deps.video.clear();
       await room.disconnect().catch(() => {});
     }
     if (this.#deps.getState().call.status !== 'idle') this.#deps.dispatch({ type: 'call', status: 'idle', channelId: null });

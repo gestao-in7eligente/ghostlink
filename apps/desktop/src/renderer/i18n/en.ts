@@ -3,9 +3,11 @@ import { identity } from './en/identity.js';
 import { chat } from './chat.en.js';
 import { integration } from './integration.en.js';
 import { owner } from './owner.en.js';
+import { profile } from './profile.en.js';
 import { railway } from './railway.en.js';
 import type { messages as ptBR } from './pt-BR.js';
 import { releaseEn } from './release.en.js';
+import { serverUpdate } from './serverUpdate.en.js';
 import { voice } from './voice.en.js';
 
 // Typed against pt-BR: a missing or extra key fails the typecheck (contract §5).
@@ -144,4 +146,6 @@ export const messages: Record<keyof typeof ptBR, string> = {
   ...owner,
   ...voice,
   ...railway,
+  ...profile,
+  ...serverUpdate,
 };

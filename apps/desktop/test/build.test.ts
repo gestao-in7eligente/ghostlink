@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -50,15 +50,33 @@ describe('electron-vite build', () => {
     for (const module of ['node:sqlite', '@peculiar/x509', 'reflect-metadata']) expect(main, module).not.toContain(module);
   });
 
-  it('emits the sandboxed preload as CommonJS that only requires electron', () => {
-    const preload = read('preload/index.cjs');
+  it.each(['index', 'splash'])('emits the sandboxed %s preload as CommonJS that only requires electron', (name) => {
+    const preload = read(`preload/${name}.cjs`);
     expect(preload).not.toMatch(/^\s*(import|export)\s/m);
     expect([...preload.matchAll(/require\("([^"]+)"\)/g)].map((m) => m[1])).toEqual(['electron']);
   });
 
-  it('emits a renderer that app:// can serve under the CSP: relative assets, no inline script', () => {
-    const html = read('renderer/index.html');
-    expect(html).toMatch(/<script type="module" crossorigin src="\.\/assets\/index-[\w-]+\.js"><\/script>/);
+  it.each(['index', 'splash'])('emits a renderer page (%s.html) that app:// can serve under the CSP: relative assets, no inline script', (name) => {
+    const html = read(`renderer/${name}.html`);
+    expect(html).toMatch(new RegExp(`<script type="module" crossorigin src="\\./assets/${name}-[\\w-]+\\.js"></script>`));
     expect(html).not.toMatch(/<script(?![^>]*\ssrc=)[^>]*>/);
+  });
+
+  it('keeps the update splash page apart from the main window bundle', () => {
+    const index = read('renderer/index.html');
+    expect(index).not.toMatch(/splash/);
+    expect(read('renderer/splash.html')).not.toMatch(/assets\/index-/);
+  });
+
+  it('ships the noise suppressors as files under app:// (script-src allows no data: URLs)', () => {
+    const assets = readdirSync(join(out, 'renderer', 'assets'));
+    for (const wasm of ['rnnoise', 'rnnoise_simd', 'speex', 'gtcrn']) {
+      expect(assets.filter((a) => new RegExp(`^${wasm}-[\\w-]+\\.wasm$`).test(a)), wasm).toHaveLength(1);
+    }
+    expect(assets.filter((a) => /^workletProcessor-[\w-]+\.js$/.test(a))).toHaveLength(3);
+    expect(assets.filter((a) => /^workletPorts-[\w-]+\.js$/.test(a))).toHaveLength(1);
+    const bundle = assets.filter((a) => /^index-[\w-]+\.js$/.test(a)).map((a) => read(`renderer/assets/${a}`)).join('\n');
+    expect(bundle).toContain('workletPorts-');
+    expect(bundle).not.toMatch(/data:(?:text|application)\/javascript|data:application\/wasm/);
   });
 });

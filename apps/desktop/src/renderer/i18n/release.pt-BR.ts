@@ -21,4 +21,10 @@ export const releasePtBR = {
   'updates.status.checking': 'Procurando atualizações…',
   'updates.status.downloading': 'Baixando a versão {version}… {percent}%',
   'updates.status.downloaded': 'A versão {version} está pronta. Reinicie para atualizar.',
+
+  // The splash when the app opens (main/updateSplash.ts reads these, like the tray reads host.tray.*).
+  'updates.splash.checking': 'Procurando atualizações…',
+  'updates.splash.downloading': 'Baixando atualização… {percent}%',
+  'updates.splash.installing': 'Instalando…',
+  'updates.splash.skip': 'Abrir sem atualizar',
 } as const;

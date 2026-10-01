@@ -3,6 +3,8 @@ import type { ErrorCode } from '@ghostlink/shared';
 export interface SessionHandle {
   readonly userId: string;
   readonly sessionId: string;
+  /** The welcome's fileToken (spec §7); see SessionsApi.fileToken. */
+  readonly fileToken?: string;
   send(event: object): void;
   terminate(code: ErrorCode): void;
 }

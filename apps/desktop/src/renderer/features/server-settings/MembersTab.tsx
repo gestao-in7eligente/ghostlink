@@ -16,6 +16,7 @@ export function MembersTab() {
   const members = useTextStore((st) => st.members.byId);
   const roles = useTextStore((st) => st.server.roles);
   const ownerId = useTextStore((st) => st.server.ownerId);
+  const selfId = useTextStore((st) => st.server.selfId);
   const [query, setQuery] = useState('');
   const [menu, setMenu] = useState<{ userId: string; anchor: MenuAnchor } | null>(null);
   const list = useMemo(() => {
@@ -34,7 +35,7 @@ export function MembersTab() {
       <ul className={s.list}>
         {list.map((m) => (
           <li key={m.userId} className={s.item}>
-            <Avatar size={32} online={m.online} />
+            <Avatar size={32} name={m.nickname} hash={m.avatar} self={m.userId === selfId} online={m.online} />
             <span className={s.itemMain}>
               <span className={s.itemTitle}>
                 {m.nickname}

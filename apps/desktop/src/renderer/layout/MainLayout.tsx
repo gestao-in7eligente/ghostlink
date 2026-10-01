@@ -5,6 +5,7 @@ import { MemberList } from '../features/members/MemberList.js';
 import { InviteDialog } from '../features/server-settings/InviteDialog.js';
 import { LeaveDialog } from '../features/server-settings/LeaveDialog.js';
 import { ServerSettings } from '../features/server-settings/ServerSettings.js';
+import { ServerUpdateNotice } from '../features/serverUpdate/ServerUpdateNotice.js';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 import { useConnectionStore } from '../stores/connection.js';
 import { useTextStore } from '../stores/text.js';
@@ -17,7 +18,8 @@ import { UserPanel } from './UserPanel.js';
 import { UserSettings } from './UserSettings.js';
 import { useTextSync } from './useTextSync.js';
 
-type Dialog = SidebarDialog | 'user' | null;
+/** 'voice': the user settings, opened on the voice section. */
+type Dialog = SidebarDialog | 'user' | 'voice' | null;
 
 /**
  * The main screen (spec §11.1 item 4, owner's UI reference): server rail, channel
@@ -52,16 +54,26 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
     <div ref={shellRef} className={l.shell}>
       <ServerRail currentId={welcome.serverId} onHome={() => void disconnect()} />
       <ChannelSidebar onOpen={setDialog} />
-      <main className={l.center}>{stageId !== null && VoiceStage ? <VoiceStage channelId={stageId} /> : <ChatView />}</main>
+      <main className={l.center}>
+        {stageId !== null && VoiceStage ? (
+          <VoiceStage channelId={stageId} onOpenSettings={() => setDialog('voice')} />
+        ) : (
+          <>
+            {/* Spec 2026-10-01 §5: only the owner sees it, when the server is behind the app. */}
+            <ServerUpdateNotice serverKeyId={welcome.server.serverKeyId} />
+            <ChatView />
+          </>
+        )}
+      </main>
       <aside className={l.members} aria-label={t('members.title')}>
         <MemberList />
       </aside>
-      <UserPanel ref={panelRef} onSettings={() => setDialog('user')} onDisconnect={() => void disconnect()} />
+      <UserPanel ref={panelRef} onSettings={() => setDialog('user')} onVoiceSettings={() => setDialog('voice')} onDisconnect={() => void disconnect()} />
 
       {dialog === 'invite' && <InviteDialog onClose={() => setDialog(null)} />}
       {dialog === 'settings' && <ServerSettings onClose={() => setDialog(null)} />}
       {dialog === 'leave' && <LeaveDialog serverId={welcome.serverId} onClose={() => setDialog(null)} onLeaving={setLeaving} onLeft={onLeave} />}
-      {dialog === 'user' && <UserSettings onClose={() => setDialog(null)} />}
+      {(dialog === 'user' || dialog === 'voice') && <UserSettings section={dialog === 'voice' ? 'voice' : undefined} onClose={() => setDialog(null)} />}
       {!leaving && <ConnectionLost serverId={welcome.serverId} onLeave={onLeave} />}
     </div>
   );

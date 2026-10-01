@@ -100,7 +100,7 @@ function MemberRow({
         onContextMenu={openAt}
         onKeyDown={onKeyDown}
       >
-        <Avatar size={32} online={member.online} />
+        <Avatar size={32} name={member.nickname} hash={member.avatar} self={isSelf} online={member.online} />
         <span className={m.text}>
           <span className={m.nameLine}>
             <span className={m.name}>{member.nickname}</span>

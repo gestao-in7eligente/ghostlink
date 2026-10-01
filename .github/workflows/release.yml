@@ -7,8 +7,10 @@
 #     scripts/verify-release.mjs refuses to publish a release they would reject;
 #   - the GitHub release is published as a normal, *latest* release (electron-updater and
 #     releases/latest ignore pre-releases and drafts; the "beta" label is in the title).
-#   - the server's Docker image goes to ghcr.io/<owner>/ghostlink-server:<version>, signed with cosign;
-#     the desktop app provisions Railway servers from exactly that tag, so the release waits for it.
+#   - the server's Docker image goes to ghcr.io/<owner>/ghostlink-server:<version> and :latest (one
+#     digest, signed with cosign); the desktop app provisions and updates Railway servers from
+#     exactly the version tag, so the release waits for it; :latest is for Docker hosts that
+#     follow releases by themselves (Watchtower).
 # Actions are pinned by commit SHA, every job has minimal permissions, untrusted values reach
 # scripts only through env. scripts/test/releaseWorkflow.test.ts enforces these rules.
 name: Release
@@ -248,10 +250,14 @@ jobs:
         run: |
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
           docker push "${IMAGE}:${VERSION}"
+          # The same image under the moving tag: Docker hosts that follow releases pull :latest.
+          docker tag "${IMAGE}:${VERSION}" "${IMAGE}:latest"
+          docker push "${IMAGE}:latest"
           echo "DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE}:${VERSION}")" >> "$GITHUB_ENV"
           docker logout ghcr.io
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      # One signature for both tags: cosign signs the digest that :<version> and :latest point to.
       - name: Sign the image with Sigstore
         env:
           GH_TOKEN: ${{ github.token }}

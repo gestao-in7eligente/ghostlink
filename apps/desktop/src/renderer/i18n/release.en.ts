@@ -23,4 +23,9 @@ export const releaseEn: Record<keyof typeof releasePtBR, string> = {
   'updates.status.checking': 'Checking for updates…',
   'updates.status.downloading': 'Downloading version {version}… {percent}%',
   'updates.status.downloaded': 'Version {version} is ready. Restart to update.',
+
+  'updates.splash.checking': 'Checking for updates…',
+  'updates.splash.downloading': 'Downloading update… {percent}%',
+  'updates.splash.installing': 'Installing…',
+  'updates.splash.skip': 'Open without updating',
 };

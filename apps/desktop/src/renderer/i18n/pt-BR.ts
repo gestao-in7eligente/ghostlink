@@ -6,7 +6,9 @@ import { releasePtBR } from './release.pt-BR.js';
 import { chat } from './chat.pt-BR.js';
 import { integration } from './integration.pt-BR.js';
 import { owner } from './owner.pt-BR.js';
+import { profile } from './profile.pt-BR.js';
 import { railway } from './railway.pt-BR.js';
+import { serverUpdate } from './serverUpdate.pt-BR.js';
 import { voice } from './voice.pt-BR.js';
 
 export const messages = {
@@ -144,4 +146,6 @@ export const messages = {
   ...owner,
   ...voice,
   ...railway,
+  ...profile,
+  ...serverUpdate,
 } as const;

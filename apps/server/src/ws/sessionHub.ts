@@ -40,6 +40,7 @@ export class SessionHub implements SessionsApi {
     broadcast: (event, filter) => this.broadcast(event, filter),
     closeUser: (userId, code) => this.closeUser(userId, code),
     isOnlineOrInGrace: (userId) => this.isOnlineOrInGrace(userId),
+    fileToken: (sessionId) => this.fileToken(sessionId),
   });
 
   constructor(opts: { graceMs: number; hooks: SessionHooks }) {
@@ -121,6 +122,10 @@ export class SessionHub implements SessionsApi {
 
   isOnlineOrInGrace(userId: string): boolean {
     return this.#registry.get(userId) !== undefined || this.#grace.has(userId);
+  }
+
+  fileToken(sessionId: string): string | null {
+    return this.#registry.getBySession(sessionId)?.fileToken ?? null;
   }
 
   // ---- internals ----

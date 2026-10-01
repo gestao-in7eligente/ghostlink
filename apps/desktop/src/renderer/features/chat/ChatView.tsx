@@ -121,6 +121,7 @@ function OpenChannel({ channel }: { channel: Channel }) {
       canReact,
       md,
       name: (id) => memberName({ members }, id, t('chat.formerMember')),
+      avatar: (id) => (id !== null && Object.hasOwn(members.byId, id) ? members.byId[id]!.avatar : null),
       plain: (content) => plainContent({ members, server }, content, t),
       pingsMe: (m) => m.authorId !== selfId && mentionsUser(m, selfId, myRoleIds),
       highlightId: highlight,

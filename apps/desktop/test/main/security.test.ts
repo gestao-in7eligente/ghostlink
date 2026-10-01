@@ -45,8 +45,15 @@ describe('permission policy (spec §12)', () => {
     }
   });
 
+  it('grants fullscreen (a watched stream\'s "Tela cheia") to the app page only', () => {
+    expect(allowPermissionRequest('fullscreen', 'app://ghostlink/index.html', APP)).toBe(true);
+    for (const url of ['https://evil.example/', 'app://ghostlink.evil/', 'file:///index.html', '']) {
+      expect(allowPermissionRequest('fullscreen', url, APP), url).toBe(false);
+    }
+  });
+
   it('denies every other permission, even to the app page', () => {
-    for (const p of ['notifications', 'geolocation', 'display-capture', 'clipboard-read', 'openExternal', 'fullscreen', 'unknown']) {
+    for (const p of ['notifications', 'geolocation', 'display-capture', 'clipboard-read', 'openExternal', 'pointerLock', 'unknown']) {
       expect(allowPermissionRequest(p, 'app://ghostlink/', APP), p).toBe(false);
     }
   });

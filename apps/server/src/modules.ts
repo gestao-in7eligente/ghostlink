@@ -56,6 +56,12 @@ export interface SessionsApi {
   closeUser(userId: string, code: ErrorCode): boolean;
   /** True while the user has a session or is within LIMITS.presenceGraceMs of losing it. */
   isOnlineOrInGrace(userId: string): boolean;
+  /**
+   * The welcome's `fileToken` of a current session: the HMAC key of its signed file URLs
+   * (spec §7). null once that session ended or was replaced, so its URLs stop working.
+   * A secret: never log it nor send it anywhere.
+   */
+  fileToken(sessionId: string): string | null;
 }
 
 /** The external endpoint of a TCP proxy in front of the server (spec §8.5 "Atrás de um proxy TCP"). */

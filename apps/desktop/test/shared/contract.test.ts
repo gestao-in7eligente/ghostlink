@@ -33,6 +33,9 @@ describe('IPC channel names (contract §5)', () => {
       'ghostlink:join.parse',
       'ghostlink:join.probe',
       'ghostlink:notifications.show',
+      'ghostlink:profile.avatar',
+      'ghostlink:profile.clearAvatar',
+      'ghostlink:profile.setAvatar',
       'ghostlink:ptt.configure',
       'ghostlink:railway.connect',
       'ghostlink:railway.create',
@@ -41,7 +44,11 @@ describe('IPC channel names (contract §5)', () => {
       'ghostlink:railway.pending',
       'ghostlink:railway.resume',
       'ghostlink:railway.status',
+      'ghostlink:screen.choose',
+      'ghostlink:screen.sources',
       'ghostlink:server.request',
+      'ghostlink:serverUpdates.state',
+      'ghostlink:serverUpdates.updateNow',
       'ghostlink:servers.connect',
       'ghostlink:servers.disconnect',
       'ghostlink:servers.list',
@@ -55,7 +62,7 @@ describe('IPC channel names (contract §5)', () => {
   });
 
   it('keeps the event channels apart from the invoke channels', () => {
-    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server', 'ghostlink:event.host', 'ghostlink:event.deepLink', 'ghostlink:event.openChannel', 'ghostlink:event.updates', 'ghostlink:event.ptt', 'ghostlink:event.railway']);
+    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server', 'ghostlink:event.host', 'ghostlink:event.deepLink', 'ghostlink:event.openChannel', 'ghostlink:event.updates', 'ghostlink:event.ptt', 'ghostlink:event.railway', 'ghostlink:event.serverUpdates']);
     for (const event of Object.values(IPC_EVENTS)) expect(Object.values(IPC)).not.toContain(event);
   });
 });

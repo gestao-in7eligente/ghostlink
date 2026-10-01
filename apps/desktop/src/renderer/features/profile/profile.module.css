@@ -1,0 +1,127 @@
+/* The profile photo: the Perfil tab's section and the crop modal (Discord's "Editar imagem"). Tokens only. */
+
+/* ---- Perfil tab ---- */
+
+.photo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.title {
+  margin: 0;
+}
+
+.photoRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.photoActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* Discord's "Remover avatar": a plain text button next to the blurple one. */
+.linkButton {
+  min-height: 36px;
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.linkButton:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.linkButton:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.divider {
+  width: 100%;
+  height: 1px;
+  margin: 0;
+  border: none;
+  background: var(--line);
+}
+
+/* ---- crop modal ---- */
+
+.crop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding-top: var(--space-1);
+}
+
+.frame {
+  position: relative;
+  flex: none;
+  width: 320px;
+  height: 320px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--bg-sidebar);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.frame:focus-visible {
+  outline-offset: 2px;
+}
+
+.dragging {
+  cursor: grabbing;
+}
+
+.cropImage {
+  position: absolute;
+  max-width: none;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* The circle: everything outside it is dimmed. */
+.mask {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 320px var(--overlay);
+  pointer-events: none;
+}
+
+.zoomRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 320px;
+  color: var(--text-soft);
+}
+
+.zoom {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.footerStart {
+  margin-right: auto;
+}

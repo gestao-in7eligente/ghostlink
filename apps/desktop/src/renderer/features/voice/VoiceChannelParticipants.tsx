@@ -4,12 +4,14 @@ import { useT } from '../../i18n/index.js';
 import { ParticipantMenu } from './ParticipantMenu.js';
 import { StateIcons, VoiceAvatar } from './parts.js';
 import { useVoiceDirectory, useVoiceRuntime } from './runtime.js';
+import { LiveBadge } from './screenParts.js';
 import { isSpeaking, participantsOf, useVoiceStore } from './state.js';
 import s from './voice.module.css';
 
 /**
  * Who is in a voice channel, under its row in the channel sidebar: avatar, name, a
- * green ring while speaking, and mute / deafen / server-mute marks. Other people open
+ * green ring while speaking, mute / deafen / server-mute marks, and "AO VIVO" while
+ * sharing a screen. Other people open
  * a menu (volume, moderation) with a click, Enter or the context-menu key.
  */
 export function VoiceChannelParticipants({ channelId }: { channelId: string }) {
@@ -18,12 +20,13 @@ export function VoiceChannelParticipants({ channelId }: { channelId: string }) {
   const participants = useVoiceStore((v) => participantsOf(v, channelId));
   const speakers = useVoiceStore(useShallow((v) => (v.call.channelId === channelId ? participantsOf(v, channelId).filter((p) => isSpeaking(v, p.userId)).map((p) => p.userId) : [])));
   const selfUserId = useVoiceStore((v) => v.selfUserId);
+  const here = useVoiceStore((v) => v.call.channelId === channelId && v.call.status === 'connected');
   const directory = useVoiceDirectory();
   const [menuFor, setMenuFor] = useState<string | null>(null);
   if (participants.length === 0) return null;
 
   return (
-    <ul className={s.participants} aria-label={directory.channelName(channelId) ?? undefined} data-voice-participants={channelId}>
+    <ul className={s.participants} aria-label={directory.channelName(channelId) ?? undefined} data-voice-participants={channelId} data-voice-here={here || undefined}>
       {participants.map((p) => {
         const isSelf = p.userId === selfUserId;
         const speaking = speakers.includes(p.userId);
@@ -31,12 +34,13 @@ export function VoiceChannelParticipants({ channelId }: { channelId: string }) {
         const rowClass = speaking ? `${s.participantRow} ${s.participantSpeaking}` : s.participantRow;
         const content = (
           <>
-            <VoiceAvatar size={24} speaking={speaking} />
+            <VoiceAvatar size={24} speaking={speaking} userId={p.userId} />
             <span className={s.participantName}>
               {name}
               {speaking && <span className={s.srOnly}>, {t('voice.speaking')}</span>}
             </span>
             <StateIcons p={p} />
+            {p.screen && <LiveBadge />}
           </>
         );
         return (

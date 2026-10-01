@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>GhostLink</title>
+  </head>
+  <body>
+    <!-- The update splash when the app opens (main/updateSplash.ts). The ghost is the one of
+         build/icon.svg; scripts/test/icon.test.ts keeps both drawings in sync. -->
+    <main class="splash">
+      <svg class="logo" width="88" height="88" viewBox="64 64 896 896" aria-hidden="true" focusable="false">
+        <rect x="64" y="64" width="896" height="896" rx="200" fill="#5865f2" />
+        <path d="M252 742V456A260 260 0 0 1 772 456V742A86.67 86.67 0 0 1 598.67 742A86.67 86.67 0 0 1 425.33 742A86.67 86.67 0 0 1 252 742Z" fill="#ffffff" />
+        <ellipse cx="406" cy="480" rx="46" ry="64" fill="#1e1f22" />
+        <ellipse cx="618" cy="480" rx="46" ry="64" fill="#1e1f22" />
+      </svg>
+      <h1 class="name">GhostLink</h1>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <progress id="progress" class="progress" max="100" value="0" hidden></progress>
+    </main>
+    <button id="skip" class="skip" type="button" hidden></button>
+    <script type="module" src="./splash/splash.ts"></script>
+  </body>
+</html>

@@ -1,7 +1,7 @@
 // Voice track namespace: voice panel, controls, participants, stage and settings.
 // Spread into pt-BR.ts; voice.en.ts must have exactly the same keys.
 export const voice = {
-  'voice.connected': 'Conectado à voz',
+  'voice.connected': 'Voz conectada',
   'voice.connecting': 'Conectando…',
   'voice.reconnecting': 'Reconectando…',
   'voice.latency': 'Latência',
@@ -20,7 +20,6 @@ export const voice = {
   'voice.openSettings': 'Configurações de voz',
   'voice.join': 'Entrar na voz',
   'voice.unavailable': 'A voz não está disponível neste servidor agora.',
-  'voice.channelType': 'Canal de voz',
   'voice.empty': 'Ninguém na sala ainda',
   'voice.emptyHint': 'Entre para começar a conversa.',
   'voice.speaking': 'falando',
@@ -40,6 +39,41 @@ export const voice = {
   'voice.notice.dismiss': 'Fechar aviso',
   'voice.playbackBlocked': 'Clique em qualquer lugar para ouvir a chamada.',
 
+  'voice.notice.screenFailed': 'Não foi possível capturar essa tela ou janela. Tente de novo.',
+  'voice.notice.screenAudio': 'O som do PC precisa do Windows 11. Transmitindo só a imagem.',
+
+  'voice.screen.share': 'Transmitir tela',
+  'voice.screen.noPermission': 'Você não tem permissão para transmitir a tela neste canal.',
+  'voice.screen.live': 'AO VIVO',
+  'voice.screen.stop': 'Parar transmissão',
+  'voice.screen.preview': 'O que você está transmitindo',
+  'voice.screen.soundOn': 'Com o som do PC',
+  'voice.screen.soundOff': 'Sem o som do PC',
+  'voice.screen.tabScreens': 'Telas',
+  'voice.screen.tabWindows': 'Janelas',
+  'voice.screen.loading': 'Procurando telas e janelas…',
+  'voice.screen.loadFailed': 'Não foi possível listar as telas e janelas.',
+  'voice.screen.noScreens': 'Nenhuma tela encontrada.',
+  'voice.screen.noWindows': 'Nenhuma janela aberta para transmitir.',
+  'voice.screen.quality': 'Qualidade',
+  'voice.screen.qualityOption': '{resolution} com {fps} FPS',
+  'voice.screen.content': 'Conteúdo',
+  'voice.screen.contentDetail': 'Texto e apresentações',
+  'voice.screen.contentMotion': 'Jogos e vídeo',
+  'voice.screen.audio': 'Transmitir o som do PC',
+  'voice.screen.audioHint': 'O som do GhostLink fica de fora: quem assiste não ouve a chamada de volta.',
+  'voice.screen.go': 'Transmitir',
+  'voice.screen.watch': 'Assistir',
+  'voice.screen.stopWatching': 'Parar de assistir',
+  'voice.screen.fullscreen': 'Tela cheia',
+  'voice.screen.exitFullscreen': 'Sair da tela cheia',
+  'voice.screen.volume': 'Volume da transmissão',
+  'voice.screen.streamOf': 'Transmissão de {name}',
+  'voice.screen.connecting': 'Conectando à transmissão…',
+  'voice.screen.focus': 'Ampliar a transmissão de {name}',
+  'voice.screen.showAll': 'Ver todas as transmissões',
+  'voice.screen.yours': 'Sua transmissão',
+
   'voice.settings.title': 'Voz',
   'voice.settings.micTest': 'Teste de microfone',
   'voice.settings.micTestStart': 'Testar microfone',
@@ -58,8 +92,20 @@ export const voice = {
   'voice.settings.globalOn': 'Funciona mesmo com outro programa em foco, como um jogo.',
   'voice.settings.globalOff': 'Funciona só com o GhostLink em foco.',
   'voice.settings.volumeHint': 'O volume de cada pessoa fica no menu dela, na lista da sala de voz.',
+  'voice.settings.noise': 'Supressão de ruído',
+  'voice.settings.noiseHint': 'Tira o barulho de fundo, como teclado e ventilador, antes de a sua voz sair.',
+  'voice.settings.noiseFailed': 'Não foi possível ativar {mode}. Usando WebRTC (nativo).',
+
+  'voice.noise.rnnoise': 'RNNoise — neural',
+  'voice.noise.speex': 'Speex — clássico',
+  'voice.noise.gtcrn': 'GTCRN — neural alternativo',
+  'voice.noise.webrtc': 'WebRTC (nativo)',
+  'voice.noise.off': 'Desativada',
 
   'voice.key.space': 'Espaço',
   'voice.key.left': '{key} esquerdo',
   'voice.key.right': '{key} direito',
 } as const;
+
+/** Names that read the same in every language (the i18n test allows them). */
+export const VOICE_SAME_IN_BOTH = ['voice.noise.rnnoise'] as const;

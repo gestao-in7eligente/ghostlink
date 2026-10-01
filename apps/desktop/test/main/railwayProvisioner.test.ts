@@ -1,15 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { formatWithOptions } from 'node:util';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { formatFingerprint, toBase64Url } from '@ghostlink/shared';
 import { AppError } from '../../src/shared/appErrors.js';
 import type { JoinConnectRequest, ProbeResult, RendererWelcome } from '../../src/shared/ipcTypes.js';
 import { RAILWAY_STEPS, type RailwayProgress } from '../../src/shared/railwayTypes.js';
-import type { FetchInit, FetchResponse } from '../../src/main/railway/api.js';
 import { RailwayProvisioner, type RailwayProvisionerDeps } from '../../src/main/railway/provisioner.js';
 import { RAILWAY_FILE } from '../../src/main/railway/store.js';
 import { RAILWAY_TOKEN_FILE } from '../../src/main/railway/token.js';
+import { FakeRailway, captureLog, data, gqlError } from '../helpers/fakeRailway.js';
 import { FakeSafeStorage } from '../helpers/fakeSafeStorage.js';
 import { useTempDir } from '../helpers/tempDir.js';
 
@@ -27,52 +26,6 @@ const START_LINES = [
   { timestamp: '2026-09-29T12:00:00.100Z', message: `Fingerprint: ${formatFingerprint(KEY_ID)}`, severity: 'info' },
   { timestamp: '2026-09-29T12:00:00.200Z', message: `Setup code (use it once to become the owner): ${SETUP}`, severity: 'info' },
 ];
-
-type Reply = { data: unknown } | { errors: { message: string }[] } | { status: number; headers?: Record<string, string> } | Error | Promise<never>;
-type Responder = Reply | ((variables: Record<string, unknown>) => Reply | Promise<Reply>);
-
-/**
- * Railway's API as far as the provisioner uses it: per operation, the replies given to the
- * latest on() in order (the last one repeats).
- */
-class FakeRailway {
-  readonly calls: { op: string; variables: Record<string, unknown>; auth: string | undefined }[] = [];
-  readonly #replies = new Map<string, Responder[]>();
-  readonly #served = new Map<string, number>();
-
-  on(op: string, ...replies: Responder[]): this {
-    this.#replies.set(op, replies);
-    this.#served.set(op, 0);
-    return this;
-  }
-
-  ops(): string[] {
-    return this.calls.map((c) => c.op);
-  }
-
-  variables(op: string): Record<string, unknown>[] {
-    return this.calls.filter((c) => c.op === op).map((c) => c.variables);
-  }
-
-  readonly fetch = async (_url: string, init: FetchInit): Promise<FetchResponse> => {
-    const body = JSON.parse(init.body) as { operationName: string; variables: Record<string, unknown> };
-    const op = body.operationName;
-    this.calls.push({ op, variables: body.variables, auth: init.headers.authorization });
-    const replies = this.#replies.get(op);
-    if (!replies) throw new Error(`unexpected ${op}`);
-    const served = this.#served.get(op) ?? 0;
-    this.#served.set(op, served + 1);
-    const responder = replies[Math.min(served, replies.length - 1)]!;
-    const reply = await (typeof responder === 'function' ? responder(body.variables) : responder);
-    if (reply instanceof Error) throw reply;
-    const status = 'status' in reply ? reply.status : 200;
-    const headers = new Map(Object.entries('headers' in reply ? (reply.headers ?? {}) : {}));
-    return { status, headers: { get: (n) => headers.get(n) ?? null }, text: async () => JSON.stringify('status' in reply ? {} : reply) };
-  };
-}
-
-const data = (d: unknown) => ({ data: d });
-const gqlError = (message: string) => ({ errors: [{ message }] });
 
 function happyRailway(): FakeRailway {
   return new FakeRailway()
@@ -103,12 +56,6 @@ function happyRailway(): FakeRailway {
     .on('ServiceInstanceDeployV2', data({ serviceInstanceDeployV2: 'dep-1' }))
     .on('Deployment', data({ deployment: { id: 'dep-1', status: 'BUILDING' } }), data({ deployment: { id: 'dep-1', status: 'SUCCESS' } }))
     .on('DeploymentLogs', data({ deploymentLogs: [START_LINES[0]] }), data({ deploymentLogs: START_LINES }));
-}
-
-function captureLog() {
-  const lines: string[] = [];
-  const write = (level: string) => (message: string, ...details: unknown[]) => void lines.push(`${level} ${formatWithOptions({ colors: false }, message, ...details)}`);
-  return { lines, info: write('info'), warn: write('warn'), error: write('error') };
 }
 
 const dir = useTempDir('ghostlink-railway-');

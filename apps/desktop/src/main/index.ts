@@ -1,12 +1,13 @@
 // Main-process bootstrap (contract §5). Everything testable lives in the modules it
 // wires together; this file is the thin glue that needs a real Electron.
-import { BrowserWindow, Menu, Notification, app, clipboard, dialog, net, safeStorage, session, shell } from 'electron';
+import { BrowserWindow, Menu, Notification, app, clipboard, desktopCapturer, dialog, net, safeStorage, session, shell } from 'electron';
 import { mkdtempSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { APP_ID, APP_NAME, DEFAULT_PORT } from '@ghostlink/shared';
-import { IPC_EVENTS, type Platform } from '../shared/ipcTypes.js';
+import { IPC_EVENTS, type Locale, type Platform } from '../shared/ipcTypes.js';
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges } from './appProtocol.js';
+import { createAvatars } from './avatars/index.js';
 import { ClientController } from './controller.js';
 import { GHOSTKEY_EXTENSION, IdentityBackup } from './backup.js';
 import { DeepLinks, extractDeepLink, registerProtocolClient } from './deeplink.js';
@@ -23,11 +24,16 @@ import { installRendererPinning, setRendererPin } from './pinning.js';
 import { PushToTalk, type PttHookModule } from './ptt.js';
 import { railwayImage } from './railway/image.js';
 import { RailwayProvisioner } from './railway/provisioner.js';
+import { ServerUpdates } from './railway/serverUpdates.js';
+import { RailwayStore } from './railway/store.js';
+import { RailwayTokenStore } from './railway/token.js';
 import { SavedServersStore } from './savedServers.js';
+import { ScreenPicker } from './screenPicker.js';
 import { installSecurity, originOf } from './security.js';
 import { SettingsStore } from './settings.js';
 import { runSmoke } from './smoke.js';
-import { Updater, createUpdaterBackend } from './updater.js';
+import { UpdateSplash } from './updateSplash.js';
+import { Updater, createUpdaterBackend, type StartupOutcome } from './updater.js';
 import { createReleaseFileFetcher } from './updaterSignature.js';
 import { applicationMenuTemplate, mainWindowOptions } from './window.js';
 
@@ -44,6 +50,8 @@ const appOrigin = (devRendererUrl && originOf(devRendererUrl)) || APP_ORIGIN;
 const hostBind = app.isPackaged ? undefined : process.env.GHOSTLINK_HOST_BIND || undefined;
 /** ghostlink:// links (spec §12), created with the single-instance lock. */
 let deepLinks: DeepLinks | null = null;
+/** The update splash while the app opens ("Atualizar ao abrir"), until the main window shows. */
+let openingSplash: UpdateSplash | null = null;
 
 // 1. Test hook (never honoured when packaged): one profile per instance.
 if (!app.isPackaged && process.env.GHOSTLINK_USER_DATA) {
@@ -76,6 +84,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.on('second-instance', (_event, argv) => {
     links.handle(extractDeepLink(argv));
+    if (!mainWindow) openingSplash?.focus(); // still checking for updates: the link waits in DeepLinks
     if (mainWindow?.isMinimized()) mainWindow.restore();
     mainWindow?.show(); // it may be hidden in the tray while hosting
     mainWindow?.focus();
@@ -85,8 +94,8 @@ if (!app.requestSingleInstanceLock()) {
   // 5. Everything that needs a ready app.
   app
     .whenReady()
-    .then(() => {
-      mainWindow = start();
+    .then(async () => {
+      mainWindow = await start();
     })
     .catch((e: unknown) => {
       mainLog.error('GhostLink failed to start:', e);
@@ -94,21 +103,43 @@ if (!app.requestSingleInstanceLock()) {
     });
 }
 
-function start(): BrowserWindow {
-  registerAppProtocol(fileURLToPath(new URL('../renderer/', import.meta.url)));
+/** The main window, or null when the app is about to quit (an update installs, or the splash was closed). */
+async function start(): Promise<BrowserWindow | null> {
+  const userData = app.getPath('userData');
+  // Profile photos (v0.2.2): served at app://ghostlink/_avatar/<hash>, also to the dev server's page.
+  const avatars = createAvatars({ userDataDir: userData, warn: (message) => mainLog.warn(message) });
+  registerAppProtocol(fileURLToPath(new URL('../renderer/', import.meta.url)), { avatar: avatars.route });
   if (!smoke) registerProtocolClient(app, { argv: process.argv, execPath: process.execPath, env: process.env });
   installSecurity({ appOrigin });
   installRendererPinning(session.defaultSession);
 
-  const userData = app.getPath('userData');
   const identity = IdentityStore.load(userData, safeStorage);
   const settings = SettingsStore.load(userData, app.getLocale());
   const servers = SavedServersStore.load(userData);
+  // Windows shows toasts (and routes their clicks) only for a known AppUserModelID. Set before the
+  // first window (the update splash), so it shares the taskbar button with the main window.
+  if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
+
+  // The update state reaches the page once the main window exists (the renderer also asks for it on load).
+  let target: BrowserWindow | null = null;
+  const send = (channel: string, payload: unknown) => {
+    if (target && !target.isDestroyed()) target.webContents.send(channel, payload);
+  };
+  // Spec §15: Windows installs only, never in development or smoke mode; the setting can turn it off.
+  const updater = Updater.load({
+    backend: createUpdaterBackend({ packaged: app.isPackaged, smoke, platform: process.platform, resourcesPath: process.resourcesPath }),
+    userDataDir: userData,
+    currentVersion: app.getVersion(),
+    fetchReleaseFile: createReleaseFileFetcher((url, init) => net.fetch(url, init)),
+    emit: (state) => send(IPC_EVENTS.updates, state),
+  });
+  // "Atualizar ao abrir": the first check runs behind the splash, before anything else exists.
+  const opening = await checkForUpdatesOnOpen(updater, settings.get().locale);
+  if (opening.outcome === 'installing' || opening.splash?.closedByUser) return null;
 
   const window = createMainWindow();
-  const send = (channel: string, payload: unknown) => {
-    if (!window.isDestroyed()) window.webContents.send(channel, payload);
-  };
+  target = window;
+  if (opening.splash) closeSplashWhenShown(opening.splash, window);
   const controller = new ClientController({
     identity,
     settings,
@@ -117,23 +148,14 @@ function start(): BrowserWindow {
     emitConnectionState: (event) => send(IPC_EVENTS.connectionState, event),
     emitServerEvent: (event) => send(IPC_EVENTS.server, event),
     clientName: `ghostlink/${app.getVersion()} (${process.platform})`,
+    onSession: (active) => avatars.onSession(active),
   });
   const host = startHostMode(window, controller, servers, settings, send);
-  // Windows shows toasts (and routes their clicks) only for a known AppUserModelID.
-  if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
   const notifier = new ChatNotifier({
     isSupported: () => Notification.isSupported(),
     create: (options) => new Notification(options),
     window: () => (window.isDestroyed() ? null : window),
     openChannel: (event) => send(IPC_EVENTS.openChannel, event),
-  });
-  // Spec §15: Windows installs only, never in development or smoke mode; the setting can turn it off.
-  const updater = Updater.load({
-    backend: createUpdaterBackend({ packaged: app.isPackaged, smoke, platform: process.platform, resourcesPath: process.resourcesPath }),
-    userDataDir: userData,
-    currentVersion: app.getVersion(),
-    fetchReleaseFile: createReleaseFileFetcher((url, init) => net.fetch(url, init)),
-    emit: (state) => send(IPC_EVENTS.updates, state),
   });
   // Global push-to-talk: the native hook is imported only once the user turns it on (spec §8.4).
   const ptt = new PushToTalk({
@@ -147,14 +169,39 @@ function start(): BrowserWindow {
   });
   app.on('before-quit', () => void ptt.dispose());
   // "Criar um servidor" on Railway (v0.2): the token stays encrypted here; only main talks to Railway.
+  const railwayStore = RailwayStore.load(userData); // one copy in memory, shared by both below
+  const serverImage = railwayImage({ version: app.getVersion(), packaged: app.isPackaged, env: process.env });
   const railway = new RailwayProvisioner({
     userDataDir: userData,
     safeStorage,
+    store: railwayStore,
     fetch: (url, init) => net.fetch(url, init),
-    image: railwayImage({ version: app.getVersion(), packaged: app.isPackaged, env: process.env }),
+    image: serverImage,
     probe: (address) => controller.probe(address),
     join: (req) => controller.join(req),
     emit: (progress) => send(IPC_EVENTS.railway, progress),
+  });
+  // Servers follow the app's version (v0.2.2): the Railway servers this app created get its version.
+  const railwayTokens = new RailwayTokenStore(userData, safeStorage);
+  const serverUpdates = new ServerUpdates({
+    store: railwayStore,
+    token: () => railwayTokens.read(),
+    fetch: (url, init) => net.fetch(url, init),
+    appVersion: app.getVersion(),
+    image: serverImage,
+    serverKey: (serverKeyId) => identity.serverKey(serverKeyId),
+    emit: (update) => send(IPC_EVENTS.serverUpdates, update),
+  });
+  // Screen sharing (screen sharing spec §3): the renderer's own picker lists the sources, and the
+  // capture request gets exactly the chosen one. Never the system picker (no useSystemPicker).
+  const screenPicker = new ScreenPicker({
+    getSources: (opts) => desktopCapturer.getSources(opts),
+    now: () => Date.now(),
+    appOrigin,
+    ownMediaSourceId: () => (window.isDestroyed() ? null : window.getMediaSourceId()),
+  });
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    screenPicker.handleRequest(request, callback).catch((e: unknown) => mainLog.error('[screen] the capture answer failed:', e));
   });
   registerIpc({
     appOrigin,
@@ -186,10 +233,18 @@ function start(): BrowserWindow {
     backup: identityBackup(window, identity, controller),
     deepLinks: deepLinks ?? undefined,
     railway,
+    profile: avatars.profile,
+    screen: screenPicker,
+    serverUpdates,
   });
-  updater.start();
+  updater.start(); // the 6 h checks; the first one already ran behind the splash when it showed
+  // After the update check at startup (the app runs its newest version by now), then every 30 min.
+  // Installed apps only: a development build must not redeploy real servers on its own (opt in with
+  // GHOSTLINK_SERVER_UPDATES=1); "Atualizar agora" works in both.
+  if (!smoke && (app.isPackaged || process.env.GHOSTLINK_SERVER_UPDATES === '1')) serverUpdates.start();
   app.on('before-quit', () => {
     updater.dispose();
+    serverUpdates.dispose();
     void controller.disconnect();
   });
 
@@ -197,6 +252,49 @@ function start(): BrowserWindow {
   if (smoke) startSmoke(window);
   void window.loadURL(devRendererUrl ?? `${APP_ORIGIN}/index.html`);
   return window;
+}
+
+/**
+ * "Atualizar ao abrir": the splash shows the steps of Updater.checkAtStartup. It opens on the first
+ * step, so it never appears when no check runs (turned off; development, smoke mode and anything but
+ * the installed Windows app are unsupported). Closing it (Alt+F4) quits the app, as for any last window.
+ */
+async function checkForUpdatesOnOpen(updater: Updater, locale: Locale): Promise<{ outcome: StartupOutcome; splash: UpdateSplash | null }> {
+  const skip = new AbortController();
+  const shown: { splash: UpdateSplash | null } = { splash: null };
+  const outcome = await updater.checkAtStartup({
+    signal: skip.signal,
+    onStep: (step) => {
+      shown.splash ??= openSplash(locale, () => skip.abort());
+      shown.splash.show(step);
+    },
+  });
+  return { outcome, splash: shown.splash };
+}
+
+function openSplash(locale: Locale, stopWaiting: () => void): UpdateSplash {
+  openingSplash = new UpdateSplash({
+    url: `${APP_ORIGIN}/splash.html`,
+    preload: fileURLToPath(new URL('../preload/splash.cjs', import.meta.url)),
+    packaged: app.isPackaged,
+    icon: ghostImage(32),
+    locale,
+    onSkip: stopWaiting,
+    onClosedByUser: stopWaiting,
+    log: (message) => mainLog.warn(message),
+  });
+  return openingSplash;
+}
+
+/** The splash stays until the main window appears (at most 10 s more), as Discord's does. */
+function closeSplashWhenShown(splash: UpdateSplash, window: BrowserWindow): void {
+  const close = () => {
+    clearTimeout(fallback);
+    splash.close();
+    if (openingSplash === splash) openingSplash = null;
+  };
+  const fallback = setTimeout(close, 10_000);
+  window.once('show', close);
 }
 
 /**
