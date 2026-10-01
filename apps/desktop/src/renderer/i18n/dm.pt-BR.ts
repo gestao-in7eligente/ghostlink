@@ -20,4 +20,9 @@ export const dm = {
   'dm.deleted': 'Mensagem apagada',
   'dm.tooLong': 'A mensagem passou de {max} caracteres.',
   'dm.replyUnknown': 'Uma mensagem anterior',
+  // Files (attachments spec §1, §3).
+  'dm.fileWaiting': 'Chega quando {name} estiver online',
+  'dm.fileLoading': 'Recebendo… {percent}%',
+  'dm.sendFailed': 'Os arquivos não foram enviados.',
+  'dm.discard': 'Descartar',
 } as const;

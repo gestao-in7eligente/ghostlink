@@ -1,7 +1,9 @@
 // Pure rules of the direct-message screen (friends spec §8): rows of a conversation,
 // the sidebar order, and how events from main change what is on screen.
 import { CHAT_LIMITS } from '@ghostlink/shared';
-import type { DmConversation, DmFileState, DmMessage } from '../../../shared/dmTypes.js';
+import { dmFileUrl } from '../../../shared/attachmentTypes.js';
+import { DM_AUTO_FETCH_MAX_BYTES, type DmAttachment, type DmConversation, type DmFileState, type DmMessage } from '../../../shared/dmTypes.js';
+import type { AttachmentView } from '../attachments/attachmentModel.js';
 import { dayKey } from '../chat/grouping.js';
 import { markdownToPlainText, parseMarkdown } from '../chat/markdown.js';
 
@@ -85,6 +87,41 @@ const NO_MENTIONS = { user: () => '', role: () => '', everyone: '@everyone' };
 /** A message as one line of plain text (reply previews): markup removed, whitespace folded. */
 export function plainDm(text: string): string {
   return markdownToPlainText(parseMarkdown(text), NO_MENTIONS).replace(/\s+/g, ' ').trim();
+}
+
+/** What a file's note says, in the person's language. */
+export interface DmFileNotes {
+  /** "Chega quando {nome} estiver online". */
+  waiting: string;
+  /** "Carregando…": an image on its way by itself. */
+  arriving: string;
+  /** "Recebendo… 40%". */
+  loading: (percent: number) => string;
+}
+
+/**
+ * A message's files as the shared pieces show them (attachments spec §1, §3). A file that is
+ * here shows as itself, served at app://ghostlink/_dmfile. One that is not:
+ * - while the friend is offline: its note says it arrives when they are online;
+ * - an image on its way (by itself up to 5 MB, or asked for): the image's place with its progress;
+ * - anything else (a bigger image, video, audio, a document, or one that failed): a card whose
+ *   "Baixar" asks the friend for it (a card's button works only with a `src`, so it gets one).
+ */
+export function dmAttachmentViews(files: readonly DmAttachment[], online: boolean, notes: DmFileNotes): AttachmentView[] {
+  return files.map((f) => {
+    const base: AttachmentView = { key: f.hash, name: f.name, size: f.size, kind: f.kind, mime: f.mime, width: f.width, height: f.height, src: null };
+    if (f.state === 'ready') return { ...base, src: dmFileUrl(f.hash) };
+    const percent = f.size > 0 ? Math.floor((100 * f.received) / f.size) : 0;
+    if (f.state === 'loading') return f.kind === 'image' ? { ...base, note: notes.loading(percent) } : { ...base, kind: 'file', note: notes.loading(percent) };
+    if (!online) return f.kind === 'image' ? { ...base, note: notes.waiting } : { ...base, kind: 'file', note: notes.waiting };
+    if (f.state === 'absent' && f.kind === 'image' && f.size <= DM_AUTO_FETCH_MAX_BYTES) return { ...base, note: notes.arriving };
+    return { ...base, kind: 'file', src: dmFileUrl(f.hash) };
+  });
+}
+
+/** A message of files alone has no text; the reply bar and the composer show their names. */
+export function dmSummary(message: Pick<DmMessage, 'text' | 'attachments'>): string {
+  return message.text !== '' ? plainDm(message.text) : message.attachments.map((f) => f.name).join(', ');
 }
 
 /** "Digitando…" lasts this long after the last signal. */
