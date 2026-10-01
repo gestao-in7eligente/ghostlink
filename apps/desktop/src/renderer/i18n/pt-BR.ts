@@ -10,6 +10,7 @@ import { integration } from './integration.pt-BR.js';
 import { owner } from './owner.pt-BR.js';
 import { profile } from './profile.pt-BR.js';
 import { railway } from './railway.pt-BR.js';
+import { serverUpdate } from './serverUpdate.pt-BR.js';
 import { voice } from './voice.pt-BR.js';
 
 export const messages = {
@@ -150,4 +151,5 @@ export const messages = {
   ...draw,
   ...railway,
   ...profile,
+  ...serverUpdate,
 } as const;

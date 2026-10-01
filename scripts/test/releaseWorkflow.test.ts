@@ -227,6 +227,22 @@ describe('release.yml server image (Railway provisioning, v0.2)', () => {
     expect(sign).toBeGreaterThan(push);
   });
 
+  it('also pushes the same image as :latest after the version tag, covered by the one signature of its digest', () => {
+    // Docker hosts that follow releases by themselves (Watchtower) pull :latest (servers follow the app, §1).
+    const push = image.steps.find((s) => s.run?.includes('docker push "${IMAGE}:${VERSION}"'))!;
+    const lines = push.run!.split('\n').map((l) => l.trim());
+    const at = (text: string) => lines.indexOf(text);
+    expect(at('docker tag "${IMAGE}:${VERSION}" "${IMAGE}:latest"')).toBeGreaterThan(at('docker push "${IMAGE}:${VERSION}"'));
+    expect(at('docker push "${IMAGE}:latest"')).toBeGreaterThan(at('docker tag "${IMAGE}:${VERSION}" "${IMAGE}:latest"'));
+    expect(at('docker logout ghcr.io')).toBeGreaterThan(at('docker push "${IMAGE}:latest"'));
+    // The signed digest is the version tag's, the one :latest points to: no unsigned image under either tag.
+    expect(push.run).toContain(`echo "DIGEST=$(docker inspect --format '{{index .RepoDigests 0}}' "\${IMAGE}:\${VERSION}")" >> "$GITHUB_ENV"`);
+    const sign = image.steps.findIndex((s) => s.run?.includes('cosign sign --yes "$DIGEST"'));
+    expect(sign).toBeGreaterThan(image.steps.indexOf(push));
+    // Only these two tags, both of this image.
+    expect(runOf(image).match(/"\$\{IMAGE\}:[^"]*"/g)!.every((t) => ['"${IMAGE}:${VERSION}"', '"${IMAGE}:latest"'].includes(t))).toBe(true);
+  });
+
   it('logs in to GHCR with the job token through stdin only', () => {
     for (const step of image.steps.filter((s) => s.run?.includes('login ghcr.io'))) {
       expect(step.env).toEqual({ GH_TOKEN: '${{ github.token }}', ACTOR: '${{ github.actor }}' });

@@ -92,6 +92,13 @@ export interface VoiceModule extends ServerModule {
    * are empty. Resolves once a restart it started is done. Runs on a timer as well.
    */
   refreshNodeIp(): Promise<void>;
+  /**
+   * Someone is in voice: in a LiveKit room, or holding a join (about to connect). A restart
+   * would drop them, so the server's updates wait for false (servers follow the app, §2).
+   */
+  readonly active: boolean;
+  /** Calls `listener` each time `active` changes; returns the unsubscribe. */
+  onActiveChange(listener: (active: boolean) => void): () => void;
   /** Test/diagnostic view of the in-memory state. */
   readonly registry: VoiceRegistry;
 }
@@ -169,6 +176,9 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
   let sweepAgain = false;
   /** Whether sessions were last told voice is available (welcome.features, then voice.availability). */
   let announced = false;
+  /** `active` as listeners last heard it. */
+  let wasActive = false;
+  const activeListeners = new Set<(active: boolean) => void>();
 
   const access = (): VoiceAccess => opts.access?.(ctx) ?? voiceAccessOf(text) ?? NO_CHANNELS;
   const log = (what: string) => (e: unknown) => ctx.logger.warn(`voice: ${what} failed`, { error: String(e) });
@@ -190,12 +200,27 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     return has(a.permissions(userId, channelId), VIEW_AND_CONNECT) && inGoodStanding(userId);
   };
 
+  /** Tells the listeners when `active` changed. Every change of rooms or joins ends in broadcast(), which calls this. */
+  const checkActive = (): void => {
+    const active = !idle();
+    if (active === wasActive) return;
+    wasActive = active;
+    for (const listener of activeListeners) {
+      try {
+        listener(active);
+      } catch (e) {
+        log('an activity listener')(e);
+      }
+    }
+  };
+
   /** voice.state goes only to sessions that can see the channel, decided per recipient now (spec §5.3). */
   const broadcast = (channelIds: Iterable<string>): void => {
     for (const channelId of new Set(channelIds)) {
       const event: ServerEvent = { t: 'voice.state', d: registry.state(channelId) };
       ctx.sessions.broadcast(event, (s) => has(access().permissions(s.userId, channelId), P.VIEW_CHANNEL));
     }
+    checkActive();
   };
 
   /** A user who just gained voice channels gets their voice.state with channel.created (spec §5.3). */
@@ -658,6 +683,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       if (info.graceExpired) {
         void removeUser(session.userId);
         registry.forget(session.userId);
+        checkActive();
       }
     },
     http: (req, res) => rtcProxy.http(req, res),
@@ -673,6 +699,13 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       return nodeIp;
     },
     refreshNodeIp,
+    get active() {
+      return !idle();
+    },
+    onActiveChange(listener) {
+      activeListeners.add(listener);
+      return () => void activeListeners.delete(listener);
+    },
   };
   return module;
 }

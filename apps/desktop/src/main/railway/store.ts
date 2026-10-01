@@ -28,7 +28,7 @@ const pendingSchema = z.object({
   createdAt: z.number().int().nonnegative(),
 });
 
-/** A server this app created and joined, kept for the later update and delete features. */
+/** A server this app created and joined: the app keeps it on its own version (spec 2026-10-01 §3). */
 const managedSchema = z.object({
   projectId: id,
   environmentId: id,
@@ -38,6 +38,11 @@ const managedSchema = z.object({
   serverKeyId: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
   region: z.enum(RAILWAY_REGIONS),
   createdAt: z.number().int().nonnegative(),
+  /**
+   * When the app first saw the server answer an older version than its own (ms). Optional, so
+   * files written before v0.2.2 still load; an older app ignores it (z.object drops unknown keys).
+   */
+  outdatedSince: z.number().int().nonnegative().optional(),
 });
 
 const fileSchema = z.object({ version: z.literal(1), pending: pendingSchema.nullable(), managed: z.array(managedSchema).max(1_000) });
@@ -80,6 +85,18 @@ export class RailwayStore {
   /** Success: the pending record becomes a managed server, in one write. */
   complete(server: ManagedServer): void {
     this.#write({ version: 1, pending: null, managed: [...this.#file.managed, managedSchema.parse(server)] });
+  }
+
+  /** Records (a time) or clears (null) when the server was first seen outdated; false when it is not managed. */
+  setOutdatedSince(serverKeyId: string, since: number | null): boolean {
+    if (!this.#file.managed.some((m) => m.serverKeyId === serverKeyId)) return false;
+    const managed = this.#file.managed.map((m) => {
+      if (m.serverKeyId !== serverKeyId) return m;
+      const { outdatedSince: _previous, ...rest } = m;
+      return since === null ? rest : managedSchema.parse({ ...rest, outdatedSince: since });
+    });
+    this.#write({ ...this.#file, managed });
+    return true;
   }
 
   #write(file: RailwayFile): void {

@@ -466,4 +466,269 @@ describe.skipIf(BASH === null)('install.sh', () => {
       expect(r.out).toContain('Package version 0.2.0 OK.');
     });
   });
+
+  describe('the automatic update units (servers follow the app, §4)', () => {
+    /** The content install.sh writes to `path` in a dry run (the lines up to the next "+ " action). */
+    function written(out: string, path: string): string {
+      const start = out.indexOf(`+ write ${path} (mode 0644):\n`);
+      expect(start, `no write of ${path}`).toBeGreaterThan(-1);
+      const body = out.slice(out.indexOf('\n', start) + 1);
+      const end = body.search(/^(\+ |Installing |Removing )/m);
+      return end < 0 ? body : body.slice(0, end);
+    }
+
+    it('copies itself, writes a hardened oneshot service run by root and an hourly randomized timer, and enables the timer', () => {
+      const r = dryRun([]);
+      expect(r.code, r.err).toBe(0);
+      expect(r.out).toMatch(/\+ copy \S*install\.sh to \/opt\/ghostlink\/install\.sh \(mode 0755\)/);
+      const service = written(r.out, '/etc/systemd/system/ghostlink-update.service');
+      for (const line of [
+        'Type=oneshot',
+        'User=root',
+        'ExecStart=/bin/bash /opt/ghostlink/install.sh --auto-update',
+        'TimeoutStartSec=30min',
+        'NoNewPrivileges=true',
+        'ProtectSystem=strict',
+        'ReadWritePaths=/opt/ghostlink',
+        'ProtectHome=true',
+        'PrivateTmp=true',
+        'After=network-online.target',
+      ]) {
+        expect(service.split('\n')).toContain(line);
+      }
+      const timer = written(r.out, '/etc/systemd/system/ghostlink-update.timer');
+      for (const line of ['OnCalendar=hourly', 'RandomizedDelaySec=30min', 'Persistent=true', 'WantedBy=timers.target']) {
+        expect(timer.split('\n')).toContain(line);
+      }
+      expect(r.out).toContain('+ systemctl enable --now ghostlink-update.timer');
+      // After the server is up, and remembered for the next runs.
+      expect(r.out.indexOf('+ systemctl enable --now ghostlink-update.timer')).toBeGreaterThan(r.out.indexOf('+ systemctl restart ghostlink.service'));
+      expect(written(r.out, '/etc/ghostlink/install.conf')).toContain('AUTO_UPDATE=1');
+    });
+
+    it('--no-auto-update leaves them out, removes ones already there, and remembers it', () => {
+      const r = dryRun(['--no-auto-update']);
+      expect(r.code, r.err).toBe(0);
+      expect(r.out).not.toContain('ghostlink-update.service (mode');
+      expect(r.out).not.toContain('enable --now ghostlink-update.timer');
+      expect(r.out).toContain('+ systemctl disable --now ghostlink-update.timer');
+      expect(r.out).toContain('+ rm -f /etc/systemd/system/ghostlink-update.timer /etc/systemd/system/ghostlink-update.service');
+      expect(written(r.out, '/etc/ghostlink/install.conf')).toContain('AUTO_UPDATE=0');
+    });
+
+    it('a later run keeps the choice saved in install.conf', () => {
+      const conf = join(temp(), 'install.conf');
+      writeFileSync(conf, 'NODE_IP=203.0.113.10\nPORT=7700\nNAME=\nAUTO_UPDATE=0\n');
+      const r = dryRun([], { GHOSTLINK_TEST_CONF: posix(conf) });
+      expect(r.code, r.err).toBe(0);
+      expect(r.out).not.toContain('enable --now ghostlink-update.timer');
+      expect(written(r.out, posix(conf))).toContain('AUTO_UPDATE=0');
+    });
+
+    it('--auto-update off removes them from an installed server, and nothing else', () => {
+      const conf = join(temp(), 'install.conf');
+      writeFileSync(conf, 'NODE_IP=198.51.100.4\nPORT=7710\nNAME=Casa do Ze\nAUTO_UPDATE=1\n');
+      const r = dryRun(['--auto-update', 'off'], { GHOSTLINK_TEST_CONF: posix(conf), GHOSTLINK_TEST_CURRENT: installed('0.2.2') });
+      expect(r.code, r.err).toBe(0);
+      expect(r.out).toContain('+ systemctl disable --now ghostlink-update.timer');
+      expect(r.out).toContain('+ rm -f /etc/systemd/system/ghostlink-update.timer /etc/systemd/system/ghostlink-update.service');
+      expect(r.out).toContain('+ systemctl daemon-reload');
+      // The other settings are kept as they were.
+      expect(written(r.out, posix(conf)).split('\n').slice(0, 5)).toEqual(['NODE_IP=198.51.100.4', 'PORT=7710', 'NAME=Casa do Ze', 'AUTO_UPDATE=0', 'The automatic update is off.']);
+      for (const step of ['apt-get', '+ download', 'ghostlink.service (mode', 'restart ghostlink.service', 'ufw']) expect(r.out).not.toContain(step);
+    });
+
+    it('--auto-update on puts them back on an installed server', () => {
+      const r = dryRun(['--auto-update', 'on'], { GHOSTLINK_TEST_CURRENT: installed('0.2.2') });
+      expect(r.code, r.err).toBe(0);
+      expect(written(r.out, '/etc/systemd/system/ghostlink-update.timer')).toContain('OnCalendar=hourly');
+      expect(r.out).toContain('+ systemctl enable --now ghostlink-update.timer');
+      expect(r.out).not.toContain('apt-get');
+      expect(dryRun(['--auto-update', 'on']).code).not.toBe(0); // nothing installed
+    });
+
+    it.each([
+      [['--auto-update', '--version', '0.3.0']],
+      [['--auto-update', 'off', '--no-auto-update']],
+      [['--auto-update', '--allow-downgrade']],
+      [['--auto-update', 'on', '--port', '7710']],
+    ])('refuses %j', (flags) => {
+      const r = dryRun(flags, { GHOSTLINK_TEST_CURRENT: installed('0.2.2') });
+      expect(r.code).not.toBe(0);
+      expect(r.err).toMatch(/--auto-update takes no other option/);
+    });
+  });
+
+  describe('--auto-update (servers follow the app, §4)', () => {
+    const NOW = 1_790_000_000;
+    const iso = (s: number) => new Date(s * 1000).toISOString();
+    const IDLE = { version: '0.2.2', voiceActive: false, updatedAt: iso(NOW - 30) };
+    const IN_CALL = { ...IDLE, voiceActive: true };
+    const SERVER_030 = 'https://github.com/gestao-in7eligente/ghostlink/releases/download/v0.3.0/ghostlink-server-0.3.0.tgz';
+
+    interface Run {
+      installed?: string;
+      latest?: string;
+      status?: object | string | null;
+      pending?: string;
+      env?: Record<string, string>;
+      /** Called with the releases/ directory before the run. */
+      prepare?: (releases: string) => void;
+    }
+
+    function autoUpdate(o: Run = {}) {
+      const current = installed(o.installed ?? '0.2.2');
+      o.prepare?.(current.replace(/current$/, 'releases'));
+      const d = temp();
+      const status = join(d, 'status.json');
+      if (o.status !== null) writeFileSync(status, typeof o.status === 'string' ? o.status : JSON.stringify(o.status ?? IDLE));
+      const pending = join(d, 'update-pending');
+      if (o.pending !== undefined) writeFileSync(pending, o.pending);
+      const r = bash([SCRIPT, '--dry-run', '--auto-update'], {
+        GHOSTLINK_TEST_ARCH: 'x86_64',
+        GHOSTLINK_TEST_LATEST_JSON: `{"tag_name":"v${o.latest ?? '0.3.0'}"}`,
+        GHOSTLINK_TEST_CURRENT: current,
+        GHOSTLINK_TEST_STATUS: posix(status),
+        GHOSTLINK_TEST_PENDING: posix(pending),
+        GHOSTLINK_TEST_NOW: String(NOW),
+        ...o.env,
+      });
+      return { ...r, pending: posix(pending) };
+    }
+
+    const switched = (out: string) => out.includes('+ switch /opt/ghostlink/current to /opt/ghostlink/releases/0.3.0');
+    const pendingWrite = (r: { out: string; pending: string }) => {
+      const at = r.out.indexOf(`+ write ${r.pending} (mode 0644):\n`);
+      return at < 0 ? null : r.out.slice(at).split('\n').slice(1, 3);
+    };
+
+    it('does nothing when no newer release is out (and never goes back)', () => {
+      for (const latest of ['0.2.2', '0.2.1']) {
+        const r = autoUpdate({ latest, pending: 'VERSION=0.2.2\nSINCE=1\n' });
+        expect(r.code, r.err).toBe(0);
+        expect(r.out).toContain('GhostLink 0.2.2 is up to date.');
+        expect(r.out).toContain(`+ rm -f ${r.pending}`); // a stale pending update goes away
+        for (const step of ['+ download', '+ stage', '+ switch', 'systemctl restart', '+ write']) expect(r.out).not.toContain(step);
+      }
+    });
+
+    it('prepares a newer release and switches to it at once when nobody is in a call', () => {
+      const r = autoUpdate();
+      expect(r.code, r.err).toBe(0);
+      expect(r.out).toContain('GhostLink 0.3.0 is out; this server runs 0.2.2.');
+      expect(r.out).toContain(`+ download ${SERVER_030}`);
+      expect(r.out).toContain('+ verify Ed25519 signature checksums-sha256.txt.ed25519');
+      const stage = r.out.indexOf('+ stage ghostlink-server-0.3.0.tgz into /opt/ghostlink/releases/0.3.0');
+      const swap = r.out.indexOf('+ switch /opt/ghostlink/current to /opt/ghostlink/releases/0.3.0');
+      const restart = r.out.indexOf('+ systemctl restart ghostlink.service');
+      expect(stage).toBeGreaterThan(-1);
+      expect(swap).toBeGreaterThan(stage);
+      expect(restart).toBeGreaterThan(swap);
+      expect(pendingWrite(r)).toEqual(['VERSION=0.3.0', `SINCE=${NOW}`]);
+      expect(r.out).toContain('Nobody is in a voice call: switching to GhostLink 0.3.0.');
+      expect(r.out.indexOf(`+ rm -f ${r.pending}`)).toBeGreaterThan(restart);
+      expect(r.out).not.toContain('+ install ghostlink-server'); // never the installer's stage-and-switch
+    });
+
+    it('only prepares while someone is in a call', () => {
+      const r = autoUpdate({ status: IN_CALL });
+      expect(r.code, r.err).toBe(0);
+      expect(r.out).toContain('+ stage ghostlink-server-0.3.0.tgz into /opt/ghostlink/releases/0.3.0');
+      expect(pendingWrite(r)).toEqual(['VERSION=0.3.0', `SINCE=${NOW}`]);
+      expect(r.out).toContain('Someone is in a voice call');
+      expect(switched(r.out)).toBe(false);
+      expect(r.out).not.toContain('systemctl restart');
+      expect(r.out).not.toContain(`+ rm -f ${r.pending}`);
+    });
+
+    it.each([
+      ['missing', null],
+      ['stale (the server stopped writing it)', { ...IDLE, updatedAt: iso(NOW - 600) }],
+      ['from the future', { ...IDLE, updatedAt: iso(NOW + 600) }],
+      ['malformed', '{"voiceActive":"false","updatedAt":"x"}'],
+      ['not JSON', 'voiceActive=false'],
+    ])('only prepares when status.json is %s', (_label, status) => {
+      const r = autoUpdate({ status });
+      expect(r.code, r.err).toBe(0);
+      expect(r.out).toContain('+ stage ghostlink-server-0.3.0.tgz');
+      expect(switched(r.out)).toBe(false);
+    });
+
+    it('switches during a call once the update has waited more than 24 h, keeping the first wait time', () => {
+      const r = autoUpdate({ status: IN_CALL, pending: `VERSION=0.3.0\nSINCE=${NOW - 86_400}\n` });
+      expect(r.code, r.err).toBe(0);
+      expect(r.out).toContain('has waited 24 h for a moment without calls: switching now');
+      expect(switched(r.out)).toBe(true);
+      expect(r.out).toContain('+ systemctl restart ghostlink.service');
+      expect(pendingWrite(r)).toBeNull(); // unchanged until it is removed after the switch
+      expect(r.out).toContain(`+ rm -f ${r.pending}`);
+
+      const almost = autoUpdate({ status: IN_CALL, pending: `VERSION=0.3.0\nSINCE=${NOW - 86_399}\n` });
+      expect(switched(almost.out)).toBe(false);
+    });
+
+    it('counts the 24 h from the first newer release, not from a later one', () => {
+      const r = autoUpdate({ status: IN_CALL, latest: '0.3.0', pending: `VERSION=0.2.5\nSINCE=${NOW - 3_600}\n` });
+      expect(pendingWrite(r)).toEqual(['VERSION=0.3.0', `SINCE=${NOW - 3_600}`]);
+      // A pending file for the installed (or an older) version, from the future, or malformed starts over.
+      for (const pending of [`VERSION=0.2.2\nSINCE=${NOW - 90_000}\n`, `VERSION=0.3.0\nSINCE=${NOW + 50}\n`, `VERSION=0.3\nSINCE=${NOW - 90_000}\n`, 'garbage']) {
+        const again = autoUpdate({ status: IN_CALL, pending });
+        expect(pendingWrite(again), pending).toEqual(['VERSION=0.3.0', `SINCE=${NOW}`]);
+        expect(switched(again.out)).toBe(false);
+      }
+    });
+
+    it('does not download a release it already prepared, and takes the LiveKit version that release pins', () => {
+      const r = autoUpdate({
+        prepare: (releases) => {
+          const dir = join(releases, '0.3.0');
+          mkdirSync(join(dir, 'dist'), { recursive: true });
+          writeFileSync(join(dir, 'dist', 'cli.js'), '');
+          writeFileSync(join(dir, 'package.json'), '{"name":"@ghostlink/server","version":"0.3.0"}');
+          writeFileSync(
+            join(dir, 'install.sh'),
+            `#!/usr/bin/env bash\nLIVEKIT_VERSION="1.14.0"\nLIVEKIT_SHA256_AMD64="${'a'.repeat(64)}"\nLIVEKIT_SHA256_ARM64="${'b'.repeat(64)}"\n`,
+          );
+        },
+      });
+      expect(r.code, r.err).toBe(0);
+      expect(r.out).toContain('GhostLink 0.3.0 is already prepared.');
+      expect(r.out).not.toContain(SERVER_030);
+      expect(r.out).not.toContain('+ stage');
+      expect(r.out).toContain('+ download https://github.com/livekit/livekit/releases/download/v1.14.0/livekit_1.14.0_linux_amd64.tar.gz');
+      expect(r.out).toContain(`+ verify sha256 ${'a'.repeat(64)}`);
+      expect(r.out).toMatch(/\+ copy \S*releases\/0\.3\.0\/install\.sh to \/opt\/ghostlink\/install\.sh \(mode 0755\)/);
+      // LiveKit and the updater come before the switch, the restart after.
+      expect(r.out.indexOf('livekit_1.14.0')).toBeLessThan(r.out.indexOf('+ switch'));
+      expect(r.out.indexOf('+ systemctl restart ghostlink.service')).toBeGreaterThan(r.out.indexOf('+ switch'));
+    });
+
+    it('refuses to run where GhostLink is not installed', () => {
+      const r = bash([SCRIPT, '--dry-run', '--auto-update'], {
+        GHOSTLINK_TEST_LATEST_JSON: '{"tag_name":"v0.3.0"}',
+        GHOSTLINK_TEST_CURRENT: posix(join(temp(), 'current')),
+      });
+      expect(r.code).not.toBe(0);
+      expect(r.err).toContain('GhostLink is not installed here');
+    });
+
+    describe.skipIf(!HAS_OPENSSL)('with local release files (real openssl)', () => {
+      it('checks the new release exactly like an install, then prepares it', () => {
+        const rel = release('0.3.0');
+        const r = autoUpdate({ status: IN_CALL, env: { GHOSTLINK_TEST_RELEASE_DIR: posix(rel.dir), GHOSTLINK_TEST_RELEASE_KEY: rel.key } });
+        expect(r.code, r.err).toBe(0);
+        expect(r.out).toContain('Signed checksums, checksum and Ed25519 signature OK.');
+        expect(r.out).toContain('Package version 0.3.0 OK.');
+        expect(r.out).toContain('+ stage ghostlink-server-0.3.0.tgz into /opt/ghostlink/releases/0.3.0');
+      });
+
+      it('refuses a forged release before preparing or switching anything', () => {
+        const rel = release('0.3.0', { forgeSums: true });
+        const r = autoUpdate({ env: { GHOSTLINK_TEST_RELEASE_DIR: posix(rel.dir), GHOSTLINK_TEST_RELEASE_KEY: rel.key } });
+        expect(r.code).not.toBe(0);
+        expect(r.err).toContain('invalid Ed25519 signature for checksums-sha256.txt: download refused');
+        for (const step of ['+ stage', '+ switch', '+ write', 'systemctl restart']) expect(r.out).not.toContain(step);
+      });
+    });
+  });
 });

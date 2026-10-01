@@ -16,6 +16,7 @@ import {
 } from '../shared/ipcTypes.js';
 import type { HostStatus } from '../shared/hostTypes.js';
 import type { RailwayProgress } from '../shared/railwayTypes.js';
+import type { ManagedServerUpdate } from '../shared/serverUpdateTypes.js';
 import type { UpdateState } from '../shared/updates.js';
 
 /** Invokes a channel and turns `{ ok: false, code }` into `Error(code)` (contract §5: the message is the code). */
@@ -120,6 +121,11 @@ export const api: GhostlinkApi = {
     overlayOpen: () => invoke(IPC.drawOverlayOpen),
     overlayStroke: (stroke) => invoke(IPC.drawOverlayStroke, stroke),
     overlayClose: () => invoke(IPC.drawOverlayClose),
+  },
+  serverUpdates: {
+    state: (serverKeyId) => invoke(IPC.serverUpdatesState, serverKeyId),
+    updateNow: (serverKeyId) => invoke(IPC.serverUpdatesUpdateNow, serverKeyId),
+    onState: (cb) => subscribe<ManagedServerUpdate>(IPC_EVENTS.serverUpdates, cb),
   },
 };
 

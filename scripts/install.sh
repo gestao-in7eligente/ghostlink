@@ -8,6 +8,12 @@
 # (/var/lib/ghostlink) and the settings of the first run (/etc/ghostlink/install.conf).
 # It never installs a version older than the installed one without --allow-downgrade.
 #
+# Automatic update (spec "servidores acompanham o app" §4): unless --no-auto-update, it copies
+# itself to /opt/ghostlink/install.sh and installs ghostlink-update.timer, which runs
+# `install.sh --auto-update` every hour: a newer release is downloaded and checked like below
+# and prepared in /opt/ghostlink/releases/<version>, and `current` switches to it only when
+# the server's status.json says nobody is in a voice call, or once it has waited 24 h.
+#
 # Every download is verified before use:
 #   - checksums-sha256.txt against its Ed25519 signature by the release key (below),
 #     before any of its lines is used; then the server package against its single line
@@ -42,6 +48,18 @@ UNIT_FILE="/etc/systemd/system/ghostlink.service"
 MEDIA_UDP_PORT=7882
 MEDIA_TCP_PORT=7881
 
+# Automatic update. The pending file lives in the root-owned install directory, not in the
+# data directory, which the server's user owns (it could plant a symlink there for root).
+UPDATER="${INSTALL_DIR}/install.sh"
+UPDATE_SERVICE_FILE="/etc/systemd/system/ghostlink-update.service"
+UPDATE_TIMER_FILE="/etc/systemd/system/ghostlink-update.timer"
+PENDING_FILE="${INSTALL_DIR}/update-pending"
+# Written by the server every 60 s and whenever someone joins or leaves voice.
+STATUS_FILE="${DATA_DIR}/status.json"
+STATUS_MAX_AGE_S=180
+# A prepared update waits at most this long for a moment without calls.
+UPDATE_MAX_WAIT_S=86400
+
 WORK=""
 DRY_RUN=0
 ASSUME_YES=0
@@ -50,6 +68,10 @@ OPT_NODE_IP=""
 OPT_PORT=""
 OPT_NAME=""
 OPT_VERSION=""
+# install | auto-update | auto-update-off | auto-update-on
+ACTION="install"
+# 1: install the automatic update, 0: leave it out; empty until the options or install.conf say.
+AUTO_UPDATE=""
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'Warning: %s\n' "$*" >&2; }
@@ -96,9 +118,17 @@ Options:
   --version <x.y.z>  Install this version instead of the latest release
   --allow-downgrade  Allow a version older than the installed one (the data in
                      /var/lib/ghostlink may not work with it); refused otherwise
+  --no-auto-update   Leave out the automatic update (remembered for later runs)
   --yes              Never ask; fail when a value is missing
   --dry-run          Print every action without changing anything
   -h, --help         Show this help
+
+Automatic update of an installed server (on by default, every hour):
+  --auto-update      Update now if a newer release is out: it is downloaded, checked
+                     and prepared, and the server switches to it only when nobody is
+                     in a voice call, or once it has waited 24 h
+  --auto-update off  Remove the automatic update
+  --auto-update on   Put it back
 EOF
 }
 
@@ -288,10 +318,22 @@ resolve_version() {
   say "GhostLink version: $VERSION"
 }
 
+# $INSTALL_DIR/current, the link to releases/<version> the service runs.
+current_link() {
+  local link="$INSTALL_DIR/current"
+  [ "$DRY_RUN" = 1 ] && [ -n "${GHOSTLINK_TEST_CURRENT:-}" ] && link="$GHOSTLINK_TEST_CURRENT"
+  printf '%s\n' "$link"
+}
+
+# The releases/ directory next to current_link.
+releases_dir() {
+  printf '%s/releases\n' "$(dirname "$(current_link)")"
+}
+
 # The version $INSTALL_DIR/current points to (releases/<version>), or nothing.
 installed_version() {
-  local link="$INSTALL_DIR/current" version
-  [ "$DRY_RUN" = 1 ] && [ -n "${GHOSTLINK_TEST_CURRENT:-}" ] && link="$GHOSTLINK_TEST_CURRENT"
+  local link version
+  link="$(current_link)"
   [ -e "$link" ] || return 0
   version="$(basename "$(readlink -f "$link")")"
   if is_version "$version"; then printf '%s\n' "$version"; fi
@@ -325,7 +367,11 @@ package_version() {
   node -e 'const p = JSON.parse(require("fs").readFileSync(0, "utf8")); process.stdout.write(typeof p.version === "string" ? p.version : "")' <"$1" 2>/dev/null || true
 }
 
-install_server() {
+# Downloads the server package of $VERSION and checks it, then sets SERVER_ROOT to the
+# unpacked package. With --dry-run it only prints the steps, unless the release files are
+# local (test hook): then the checks really run and SERVER_ROOT is set.
+fetch_server() {
+  SERVER_ROOT=""
   local base="https://github.com/${GHOSTLINK_REPO}/releases/download/v${VERSION}"
   local tgz="ghostlink-server-${VERSION}.tgz" sums="checksums-sha256.txt"
   local identity="https://github.com/${GHOSTLINK_REPO}/.github/workflows/release.yml@refs/tags/v${VERSION}"
@@ -344,7 +390,6 @@ install_server() {
     printf '+ if cosign is installed: cosign verify-blob --bundle %s.sigstore.json --certificate-identity %s --certificate-oidc-issuer %s %s\n' \
       "$sums" "$identity" "$SIGSTORE_OIDC_ISSUER" "$sums"
     printf '+ check that the package.json version is %s\n' "$VERSION"
-    printf '+ install %s into %s/releases/%s and switch %s/current\n' "$tgz" "$INSTALL_DIR" "$VERSION" "$INSTALL_DIR"
     # Test hook: with local release files, the checks below run too (nothing is installed).
     [ -n "${GHOSTLINK_TEST_RELEASE_DIR:-}" ] || return 0
   fi
@@ -374,18 +419,45 @@ install_server() {
   package="$(package_version "$root/package.json")"
   [ "$package" = "$VERSION" ] || die "the package is version '$package', not $VERSION: download refused"
   say "Package version $VERSION OK."
-  [ "$DRY_RUN" = 0 ] || return 0
+  SERVER_ROOT="$root"
+}
+
+# Copies the checked package (fetch_server) to releases/$VERSION. `current` is not touched.
+stage_server() {
   local target="$INSTALL_DIR/releases/$VERSION"
+  if [ "$DRY_RUN" = 1 ]; then
+    printf '+ stage ghostlink-server-%s.tgz into %s\n' "$VERSION" "$target"
+    return
+  fi
   rm -rf "$target.new"
   install -d -m 0755 "$INSTALL_DIR/releases"
-  cp -a "$root" "$target.new"
+  cp -a "$SERVER_ROOT" "$target.new"
   chown -R root:root "$target.new"
   chmod -R go-w "$target.new"
   rm -rf "$target"
   mv "$target.new" "$target"
+}
+
+# Points $INSTALL_DIR/current at releases/<version>, atomically (rename of a new link).
+switch_current() {
+  local target="$INSTALL_DIR/releases/$1"
+  if [ "$DRY_RUN" = 1 ]; then
+    printf '+ switch %s/current to %s\n' "$INSTALL_DIR" "$target"
+    return
+  fi
   ln -sfn "$target" "$INSTALL_DIR/current.new"
   mv -Tf "$INSTALL_DIR/current.new" "$INSTALL_DIR/current"
-  say "Installed GhostLink $VERSION in $target."
+}
+
+install_server() {
+  fetch_server
+  if [ "$DRY_RUN" = 1 ]; then
+    printf '+ install ghostlink-server-%s.tgz into %s/releases/%s and switch %s/current\n' "$VERSION" "$INSTALL_DIR" "$VERSION" "$INSTALL_DIR"
+    return
+  fi
+  stage_server
+  switch_current "$VERSION"
+  say "Installed GhostLink $VERSION in $INSTALL_DIR/releases/$VERSION."
 }
 
 install_livekit() {
@@ -425,8 +497,11 @@ load_conf() {
       NODE_IP) [ -z "$OPT_NODE_IP" ] && is_ipv4 "$value" && OPT_NODE_IP="$value" ;;
       PORT) [ -z "$OPT_PORT" ] && is_port "$value" && OPT_PORT="$value" ;;
       NAME) [ -z "$OPT_NAME" ] && is_name "$value" && OPT_NAME="$value" ;;
+      AUTO_UPDATE) [ -z "$AUTO_UPDATE" ] && [[ "$value" =~ ^[01]$ ]] && AUTO_UPDATE="$value" ;;
     esac
   done <"$CONF_FILE"
+  # The loop's status is its last line's: a key already set by an option is not an error.
+  return 0
 }
 
 save_conf() {
@@ -434,6 +509,7 @@ save_conf() {
 NODE_IP=$NODE_IP
 PORT=$PORT
 NAME=$OPT_NAME
+AUTO_UPDATE=$AUTO_UPDATE
 EOF
 }
 
@@ -508,6 +584,10 @@ start_service() {
   run systemctl daemon-reload
   run systemctl enable ghostlink.service
   run systemctl restart ghostlink.service
+  wait_healthy
+}
+
+wait_healthy() {
   [ "$DRY_RUN" = 1 ] && return
   say "Waiting for the server…"
   for _ in $(seq 1 30); do
@@ -515,6 +595,257 @@ start_service() {
     sleep 1
   done
   die "the server did not start; see: journalctl -u ghostlink -n 50"
+}
+
+# ---------- automatic update (spec "servidores acompanham o app" §4) ----------
+
+now_epoch() {
+  if [ "$DRY_RUN" = 1 ] && [ -n "${GHOSTLINK_TEST_NOW:-}" ]; then
+    printf '%s\n' "$GHOSTLINK_TEST_NOW"
+  else
+    date +%s
+  fi
+}
+
+# The update waiting for a moment without calls, from $PENDING_FILE ("VERSION=<x.y.z>" and
+# "SINCE=<unix seconds>", strict key=value parsing, never sourced): sets PENDING_VERSION and
+# PENDING_SINCE, both empty when there is none or the file is malformed.
+read_pending() {
+  local key value
+  PENDING_VERSION=""
+  PENDING_SINCE=""
+  [ -f "$PENDING_FILE" ] || return 0
+  while IFS='=' read -r key value; do
+    case "$key" in
+      VERSION) is_version "$value" && PENDING_VERSION="$value" ;;
+      SINCE) [[ "$value" =~ ^[0-9]{1,12}$ ]] && PENDING_SINCE="$value" ;;
+    esac
+  done <"$PENDING_FILE"
+  if [ -z "$PENDING_VERSION" ] || [ -z "$PENDING_SINCE" ]; then
+    PENDING_VERSION=""
+    PENDING_SINCE=""
+  fi
+}
+
+write_pending() {
+  write_file "$PENDING_FILE" 0644 <<EOF
+VERSION=$1
+SINCE=$2
+EOF
+}
+
+clear_pending() {
+  if [ "$DRY_RUN" = 1 ] || [ -e "$PENDING_FILE" ] || [ -L "$PENDING_FILE" ]; then run rm -f "$PENDING_FILE"; fi
+}
+
+# What the server's status.json says, as "<true|false> <updatedAt in unix seconds>", or
+# nothing when it is missing, not a regular file or malformed. The server's user writes it:
+# at most 4 KiB is read, and only these two fields come out.
+read_status() {
+  if [ ! -f "$STATUS_FILE" ] || [ -L "$STATUS_FILE" ]; then return 0; fi
+  head -c 4096 "$STATUS_FILE" >"$WORK/status.json" 2>/dev/null || return 0
+  node -e '
+    try {
+      const s = JSON.parse(require("fs").readFileSync(0, "utf8"));
+      const t = typeof s.updatedAt === "string" ? Date.parse(s.updatedAt) : NaN;
+      if (typeof s.voiceActive === "boolean" && Number.isFinite(t)) process.stdout.write(String(s.voiceActive) + " " + Math.floor(t / 1000));
+    } catch {}' <"$WORK/status.json" 2>/dev/null || true
+}
+
+# releases/<version> holds that version, installed by this script after its checks.
+is_staged() {
+  local dir
+  dir="$(releases_dir)/$1"
+  [ -f "$dir/dist/cli.js" ] && [ -f "$dir/package.json" ] && [ "$(package_version "$dir/package.json")" = "$1" ]
+}
+
+# The LiveKit pins of another install.sh (the one inside a checked release): LIVEKIT_VERSION
+# and its SHA-256 per CPU, read with strict patterns (never sourced). Unchanged when the file
+# is missing or has no valid pins.
+read_livekit_pins() {
+  local file="$1" version amd64 arm64
+  [ -f "$file" ] || return 0
+  version="$(sed -n 's/^LIVEKIT_VERSION="\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)"$/\1/p' "$file" | head -n 1)"
+  amd64="$(sed -n 's/^LIVEKIT_SHA256_AMD64="\([0-9a-f]\{64\}\)"$/\1/p' "$file" | head -n 1)"
+  arm64="$(sed -n 's/^LIVEKIT_SHA256_ARM64="\([0-9a-f]\{64\}\)"$/\1/p' "$file" | head -n 1)"
+  if [ -z "$version" ] || [ -z "$amd64" ] || [ -z "$arm64" ]; then
+    warn "$file pins no LiveKit version: keeping LiveKit $LIVEKIT_VERSION"
+    return 0
+  fi
+  LIVEKIT_VERSION="$version"
+  LIVEKIT_SHA256_AMD64="$amd64"
+  LIVEKIT_SHA256_ARM64="$arm64"
+}
+
+# Copies <source> to $UPDATER (what ghostlink-update.service runs), atomically: a running
+# copy keeps reading its old file.
+install_updater() {
+  local source="$1"
+  if [ "$DRY_RUN" = 1 ]; then
+    printf '+ copy %s to %s (mode 0755)\n' "$source" "$UPDATER"
+    return
+  fi
+  [ -f "$source" ] || die "cannot find install.sh to copy to $UPDATER"
+  [ "$(readlink -f "$source")" = "$(readlink -f "$UPDATER")" ] && return 0
+  install -d -m 0755 "$INSTALL_DIR"
+  cp "$source" "$UPDATER.new"
+  chown root:root "$UPDATER.new"
+  chmod 0755 "$UPDATER.new"
+  mv -f "$UPDATER.new" "$UPDATER"
+}
+
+write_update_units() {
+  write_file "$UPDATE_SERVICE_FILE" 0644 <<EOF
+[Unit]
+Description=GhostLink automatic update
+Documentation=https://gestao-in7eligente.github.io/ghostlink/hospedar-em-vps
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/bin/bash $UPDATER --auto-update
+TimeoutStartSec=30min
+Nice=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=$INSTALL_DIR
+ProtectHome=true
+PrivateTmp=true
+EOF
+  write_file "$UPDATE_TIMER_FILE" 0644 <<EOF
+[Unit]
+Description=GhostLink automatic update, every hour
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+}
+
+# The updater copy, ghostlink-update.service and its hourly timer, enabled.
+install_auto_update() {
+  local self
+  self="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || true)"
+  # Run from a pipe (bash <(curl …)): the copy inside the installed package is the same script.
+  [ -f "$self" ] || self="$INSTALL_DIR/current/install.sh"
+  say "Installing the automatic update (every hour, only when nobody is in a voice call)…"
+  install_updater "$self"
+  write_update_units
+  run systemctl daemon-reload
+  run systemctl enable --now ghostlink-update.timer
+}
+
+remove_auto_update() {
+  if [ "$DRY_RUN" = 0 ] && [ ! -e "$UPDATE_TIMER_FILE" ] && [ ! -e "$UPDATE_SERVICE_FILE" ]; then return 0; fi
+  say "Removing the automatic update…"
+  run systemctl disable --now ghostlink-update.timer || true
+  run rm -f "$UPDATE_TIMER_FILE" "$UPDATE_SERVICE_FILE"
+  run systemctl daemon-reload
+}
+
+# --auto-update on|off: the units, and the choice in install.conf for the next runs.
+set_auto_update() {
+  AUTO_UPDATE="$1"
+  if [ "$AUTO_UPDATE" = 1 ]; then install_auto_update; else remove_auto_update; fi
+  if [ -r "$CONF_FILE" ]; then
+    load_conf
+    NODE_IP="$OPT_NODE_IP"
+    PORT="$OPT_PORT"
+    save_conf
+  fi
+  if [ "$AUTO_UPDATE" = 1 ]; then say "The automatic update is on."; else say "The automatic update is off."; fi
+}
+
+# Switches to the prepared $VERSION: LiveKit first when the new release pins another one
+# (a failed download stops here, before anything switched), then `current` and the updater,
+# then the service restarts.
+apply_update() {
+  local staged
+  staged="$(releases_dir)/$VERSION"
+  detect_arch
+  read_livekit_pins "$staged/install.sh"
+  install_livekit
+  switch_current "$VERSION"
+  if [ -f "$staged/install.sh" ]; then install_updater "$staged/install.sh"; fi
+  run systemctl restart ghostlink.service
+  clear_pending
+  wait_healthy
+  say "GhostLink $VERSION is running."
+}
+
+# --auto-update (ghostlink-update.timer, every hour).
+auto_update() {
+  local installed now since status active updated idle=0
+  installed="$(installed_version)"
+  [ -n "$installed" ] || die "GhostLink is not installed here: run install.sh first"
+  load_conf
+  PORT="${OPT_PORT:-7700}"
+  resolve_version
+  if ! version_lt "$installed" "$VERSION"; then
+    say "GhostLink $installed is up to date."
+    clear_pending
+    return 0
+  fi
+  say "GhostLink $VERSION is out; this server runs $installed."
+  now="$(now_epoch)"
+  read_pending
+  # The 24 h count from the first newer version seen: a release while one waits does not reset it.
+  since="$now"
+  if [ -n "$PENDING_VERSION" ] && version_lt "$installed" "$PENDING_VERSION" && [ "$PENDING_SINCE" -le "$now" ]; then
+    since="$PENDING_SINCE"
+  fi
+  if is_staged "$VERSION"; then
+    say "GhostLink $VERSION is already prepared."
+  else
+    fetch_server
+    stage_server
+    say "GhostLink $VERSION is prepared; the server still runs $installed."
+  fi
+  if [ "$PENDING_VERSION" != "$VERSION" ] || [ "$PENDING_SINCE" != "$since" ]; then write_pending "$VERSION" "$since"; fi
+
+  status="$(read_status)"
+  if [ -n "$status" ]; then
+    active="${status%% *}"
+    updated="${status##* }"
+    # Fresh: written in the last 3 minutes (the server rewrites it every 60 s), and not from the future.
+    if [ "$active" = false ] && [ $((now - updated)) -lt "$STATUS_MAX_AGE_S" ] && [ $((updated - now)) -lt 60 ]; then idle=1; fi
+  fi
+  if [ "$idle" = 1 ]; then
+    say "Nobody is in a voice call: switching to GhostLink $VERSION."
+  elif [ $((now - since)) -ge "$UPDATE_MAX_WAIT_S" ]; then
+    say "GhostLink $VERSION has waited 24 h for a moment without calls: switching now (anyone in a call reconnects)."
+  else
+    say "Someone is in a voice call (or the server did not say otherwise): GhostLink $VERSION waits; the next run tries again."
+    return 0
+  fi
+  apply_update
+}
+
+# One install.sh at a time: the timer's update and one by hand would race on `current`.
+lock_install() {
+  [ "$DRY_RUN" = 1 ] && return 0
+  install -d -m 0755 "$INSTALL_DIR"
+  exec 9>"$INSTALL_DIR/.install.lock"
+  flock -n 9 && return 0
+  if [ "$ACTION" = auto-update ]; then
+    say "Another install.sh is running; the next run tries again."
+    exit 0
+  fi
+  die "another install.sh is running (the automatic update?); try again in a few minutes"
+}
+
+# Test hooks (GHOSTLINK_TEST_*), honoured only with --dry-run.
+apply_test_hooks() {
+  [ "$DRY_RUN" = 1 ] || return 0
+  if [ -n "${GHOSTLINK_TEST_CONF:-}" ]; then CONF_FILE="$GHOSTLINK_TEST_CONF"; fi
+  if [ -n "${GHOSTLINK_TEST_STATUS:-}" ]; then STATUS_FILE="$GHOSTLINK_TEST_STATUS"; fi
+  if [ -n "${GHOSTLINK_TEST_PENDING:-}" ]; then PENDING_FILE="$GHOSTLINK_TEST_PENDING"; fi
 }
 
 cli() {
@@ -542,6 +873,14 @@ main() {
       --name) OPT_NAME="${2:-}"; shift 2 || die "--name needs a value" ;;
       --version) OPT_VERSION="${2:-}"; shift 2 || die "--version needs a value" ;;
       --allow-downgrade) ALLOW_DOWNGRADE=1; shift ;;
+      --no-auto-update) AUTO_UPDATE=0; shift ;;
+      --auto-update)
+        case "${2:-}" in
+          off) ACTION=auto-update-off; shift 2 ;;
+          on) ACTION=auto-update-on; shift 2 ;;
+          *) ACTION=auto-update; shift ;;
+        esac
+        ;;
       --yes | -y) ASSUME_YES=1; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       -h | --help) usage; exit 0 ;;
@@ -552,6 +891,11 @@ main() {
   [ -z "$OPT_PORT" ] || is_port "$OPT_PORT" || die "--port must be between 1 and 65535"
   [ -z "$OPT_NAME" ] || is_name "$OPT_NAME" || die "--name may use letters, digits, spaces and . _ - (at most 64)"
   [ -z "$OPT_VERSION" ] || is_version "$OPT_VERSION" || die "--version must look like 1.2.3"
+  local install_options="${OPT_NODE_IP}${OPT_PORT}${OPT_NAME}${OPT_VERSION}${AUTO_UPDATE}"
+  [ "$ALLOW_DOWNGRADE" = 0 ] || install_options+="--allow-downgrade"
+  if [ "$ACTION" != install ] && [ -n "$install_options" ]; then
+    die "--auto-update takes no other option but --dry-run and --yes"
+  fi
   WORK="$(mktemp -d)"
   trap 'rm -rf "$WORK"' EXIT
   if [ "$DRY_RUN" = 0 ]; then
@@ -559,10 +903,29 @@ main() {
   else
     say "Dry run: nothing will be changed."
   fi
+  apply_test_hooks
+  lock_install
+
+  case "$ACTION" in
+    auto-update)
+      auto_update
+      return
+      ;;
+    auto-update-off)
+      set_auto_update 0
+      return
+      ;;
+    auto-update-on)
+      [ -n "$(installed_version)" ] || die "GhostLink is not installed here: run install.sh first"
+      set_auto_update 1
+      return
+      ;;
+  esac
 
   check_os
   detect_arch
   load_conf
+  AUTO_UPDATE="${AUTO_UPDATE:-1}"
   resolve_node_ip
   install_packages
   install_node
@@ -571,10 +934,13 @@ main() {
   check_downgrade
   install_livekit
   install_server
+  # Installed by hand: an update the timer prepared is no longer pending.
+  clear_pending
   save_conf
   write_unit
   open_firewall
   start_service
+  if [ "$AUTO_UPDATE" = 1 ]; then install_auto_update; else remove_auto_update; fi
   print_summary
 }
 

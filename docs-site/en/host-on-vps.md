@@ -43,7 +43,8 @@ The script:
    ```
 6. creates a `systemd` service that restarts by itself, with a protected file system and no access to home folders;
 7. opens the ports in `ufw`, if active;
-8. prints the **setup code**, the **fingerprint** and an **invite**.
+8. installs the **automatic update** (see [Update](#update));
+9. prints the **setup code**, the **fingerprint** and an **invite**.
 
 ## Become the owner
 
@@ -71,7 +72,42 @@ Invites can also be created and revoked in the app, under **Server settings → 
 
 ## Update
 
-Run the latest release's `install.sh` again. It is idempotent: it updates the server and keeps the data.
+The server follows the app's version by itself. Every hour, `ghostlink-update.timer` looks for a new release. When there is one, it:
+
+1. downloads and checks the new version the same way the installation does (signed checksums and the release Ed25519 signature) and gets it ready in `/opt/ghostlink/releases/<version>`, without touching the one running;
+2. switches versions and restarts the server **only when nobody is in a voice channel**. If no such moment comes within **24 hours**, it switches anyway: anyone in a call drops for a few seconds. People in the chat reconnect by themselves.
+
+LiveKit is updated too when the new version asks for another one. The data stays.
+
+To see when it runs and what it did:
+
+```bash
+systemctl list-timers ghostlink-update.timer
+journalctl -u ghostlink-update -n 50
+```
+
+To look for a new version now (the switch still waits for nobody to be in a call):
+
+```bash
+sudo bash /opt/ghostlink/install.sh --auto-update
+```
+
+To turn the automatic update off, and back on:
+
+```bash
+sudo bash /opt/ghostlink/install.sh --auto-update off
+sudo bash /opt/ghostlink/install.sh --auto-update on
+```
+
+To install without it from the start, use `sudo bash install.sh --no-auto-update`. The choice is kept: running `install.sh` again does not change it.
+
+Without the automatic update, update by hand: run the latest release's `install.sh` again. It is idempotent: it updates the server and keeps the data.
+
+A server in Docker, or one created by hand on Railway? See [Docker and servers created by hand](./host-on-railway#docker-and-servers-created-by-hand).
+
+::: tip Servers installed before 0.2.2
+The automatic update arrived in 0.2.2. On an older server, run the latest release's `install.sh` once, as in the installation. From then on it updates itself.
+:::
 
 ## Coming from the app
 

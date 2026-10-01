@@ -43,7 +43,8 @@ O script:
    ```
 6. cria um serviço `systemd` que reinicia sozinho, com o sistema de arquivos protegido e sem acesso às pastas pessoais;
 7. abre as portas no `ufw`, se estiver ativo;
-8. mostra o **código de setup**, a **impressão digital** e um **convite**.
+8. instala a **atualização automática** (veja [Atualizar](#atualizar));
+9. mostra o **código de setup**, a **impressão digital** e um **convite**.
 
 ## Virar o dono
 
@@ -71,7 +72,42 @@ Os convites também podem ser criados e revogados pelo app, em **Configurações
 
 ## Atualizar
 
-Rode o `install.sh` da release mais recente de novo. Ele é idempotente: atualiza o servidor e mantém os dados.
+O servidor acompanha a versão do app sozinho. A cada hora, o `ghostlink-update.timer` procura uma release nova. Quando encontra:
+
+1. baixa e confere a versão nova do mesmo jeito que a instalação (checksums assinados e a assinatura Ed25519 da release) e a deixa pronta em `/opt/ghostlink/releases/<versão>`, sem mexer na que está rodando;
+2. troca de versão e reinicia o servidor **só quando ninguém está em canal de voz**. Se em **24 horas** não houver um momento assim, troca mesmo assim: quem estiver em chamada cai por alguns segundos. Quem está no chat reconecta sozinho.
+
+O LiveKit também é atualizado quando a versão nova pede outro. Os dados ficam.
+
+Para ver quando roda e o que fez:
+
+```bash
+systemctl list-timers ghostlink-update.timer
+journalctl -u ghostlink-update -n 50
+```
+
+Para procurar uma versão nova agora (a troca continua esperando ninguém estar em chamada):
+
+```bash
+sudo bash /opt/ghostlink/install.sh --auto-update
+```
+
+Para desligar a atualização automática, e para ligar de novo:
+
+```bash
+sudo bash /opt/ghostlink/install.sh --auto-update off
+sudo bash /opt/ghostlink/install.sh --auto-update on
+```
+
+Para instalar já sem ela, use `sudo bash install.sh --no-auto-update`. A escolha fica guardada: rodar o `install.sh` de novo não muda.
+
+Sem a atualização automática, atualize à mão: rode o `install.sh` da release mais recente de novo. Ele é idempotente: atualiza o servidor e mantém os dados.
+
+Servidor em Docker, ou criado à mão no Railway? Veja [Docker e servidores criados à mão](./hospedar-no-railway#docker-e-servidores-criados-a-mao).
+
+::: tip Servidores instalados antes da 0.2.2
+A atualização automática chegou na 0.2.2. Num servidor mais antigo, rode uma vez o `install.sh` da release mais recente, como na instalação. Daí em diante ele se atualiza sozinho.
+:::
 
 ## Vindo do Hospedar
 
