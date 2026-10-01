@@ -23,6 +23,7 @@ import { IdentityStore } from './identity.js';
 import { registerIpc } from './ipc.js';
 import { FileLog, consoleMirror, guardStdio, installCrashHandlers, mainLog, safeWrite, setMainLog } from './log.js';
 import { ChatNotifier } from './notifications.js';
+import { createDmFileRoute } from './p2p/dmFileRoute.js';
 import { FriendsEngine, friendsEnv, watchIdentity } from './p2p/engine.js';
 import { installRendererPinning, setRendererPins } from './pinning.js';
 import { PushToTalk, type PttHookModule } from './ptt.js';
@@ -196,9 +197,13 @@ async function start(): Promise<BrowserWindow | null> {
     emit: (snapshot) => send(IPC_EVENTS.friends, snapshot),
     emitDm: (event) => send(IPC_EVENTS.dm, event),
     notifyDm: (notification) => void notifier.showDm(notification),
+    // "Baixar" on a DM file: the same save dialog (and e2e hook) as server attachments.
+    chooseSavePath: attachmentSavePath(window),
     log: mainLog,
     ...(smoke ? { network: false } : friendsEnv(process.env, app.isPackaged)),
   });
+  // DM files (v0.3.3): app://ghostlink/_dmfile/<hash>, only what a message here carries.
+  appRoutes.dmFile = createDmFileRoute((hash) => friends.dmFile(hash));
   // What IPC and the backup do to the identity (create, unlock, import, delete) reaches the engine.
   const watchedIdentity = watchIdentity(identity, () => void friends.sync());
   void friends.sync();
