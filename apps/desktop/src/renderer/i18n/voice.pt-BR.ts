@@ -111,4 +111,4 @@ export const voice = {
 } as const;
 
 /** Names that read the same in every language (the i18n test allows them). */
-export const VOICE_SAME_IN_BOTH = ['voice.noise.rnnoise'] as const;
+export const VOICE_SAME_IN_BOTH = ['voice.noise.rnnoise', 'voice.channelOnServer'] as const;

@@ -197,6 +197,8 @@ export interface Harness {
   session: VoiceSession;
   rooms: FakeRoom[];
   requests: Array<[string, unknown]>;
+  /** Each request's type and the saved server it went to (the runtime's rule: the store's server by default). */
+  routed: Array<[string, string | null]>;
   state(): VoiceState;
   dispatch(a: VoiceAction): void;
   settings: { value: VoiceSettings };
@@ -224,6 +226,7 @@ export function harness(): Harness {
   });
   const rooms: FakeRoom[] = [];
   const requests: Array<[string, unknown]> = [];
+  const routed: Array<[string, string | null]> = [];
   const attached: Harness['attached'] = [];
   const gestures: Array<() => void> = [];
   const settings = { value: defaultVoiceSettings };
@@ -264,8 +267,9 @@ export function harness(): Harness {
     state = voiceReducer(state, a);
   };
   const deps: Harness['deps'] = {
-    request: async <T,>(type: string, payload?: unknown): Promise<T> => {
+    request: async <T,>(type: string, payload?: unknown, serverId?: string | null): Promise<T> => {
       requests.push([type, payload]);
+      routed.push([type, serverId === undefined ? state.serverId : serverId]);
       const r = respond.get(type);
       return (r ? await r(payload) : {}) as T;
     },
@@ -303,7 +307,7 @@ export function harness(): Harness {
     pingIntervalMs: 1_000,
   };
   const session = new VoiceSession(deps);
-  return { session, rooms, requests, state: () => state, dispatch, settings, attached, gestures, respond, microphones, failMicrophone, address, picker, chosen, videos, cameras, deps };
+  return { session, rooms, requests, routed, state: () => state, dispatch, settings, attached, gestures, respond, microphones, failMicrophone, address, picker, chosen, videos, cameras, deps };
 }
 
 export const flush = () => new Promise((r) => setTimeout(r, 0));
