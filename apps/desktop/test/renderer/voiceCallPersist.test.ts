@@ -14,6 +14,8 @@ import {
   type VoiceAction,
   type VoiceState,
 } from '../../src/renderer/features/voice/state.js';
+import { lifetime } from '../../src/renderer/features/voice/lifetime.js';
+import { useVoiceStore } from '../../src/renderer/features/voice/state.js';
 import { connectionReducer, initialConnection } from '../../src/renderer/stores/connection.js';
 import { useCallTextStore, takeCallText } from '../../src/renderer/stores/callText.js';
 import { initialText } from '../../src/renderer/stores/text.js';
@@ -210,5 +212,32 @@ describe('the kept text state of the call\'s server', () => {
     expect(takeCallText('B')).toBeNull();
     expect(takeCallText('A')).toBe(text);
     expect(takeCallText('A')).toBeNull();
+  });
+});
+
+describe('the runtimes outlive their components while a call is on', () => {
+  afterEach(() => useVoiceStore.setState(initialVoiceState));
+
+  it('stops with the last user when no call is on; during one, once it ends; a new user cancels that', async () => {
+    let starts = 0;
+    let stops = 0;
+    const life = lifetime(() => {
+      starts++;
+      return () => void stops++;
+    });
+    life.retain();
+    life.release();
+    expect([starts, stops]).toEqual([1, 1]);
+
+    life.retain();
+    useVoiceStore.setState({ call: { status: 'connected', channelId: 'VC1' } });
+    life.release(); // the server's layout unmounts (the Home screen)
+    expect(stops).toBe(1);
+    life.retain(); // the Home screen's panel mounts
+    expect(starts).toBe(2); // the same run goes on
+    life.release();
+    useVoiceStore.setState({ call: { status: 'idle', channelId: null } });
+    await Promise.resolve();
+    expect([starts, stops]).toEqual([2, 2]);
   });
 });

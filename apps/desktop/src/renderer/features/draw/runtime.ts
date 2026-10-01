@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 import { screenDrawAllowEventSchemaClient, screenDrawEventSchemaClient, type DrawPoint } from '@ghostlink/shared';
 import { errorCodeOf } from '../../i18n/index.js';
 import { useConnectionStore } from '../../stores/connection.js';
+import { lifetime } from '../voice/lifetime.js';
 import { useCallDirectory } from '../voice/runtime.js';
 import { callServerId, useVoiceStore, type VoiceState } from '../voice/state.js';
 import { StrokeBatcher, newStrokeId } from './batcher.js';
@@ -169,23 +170,17 @@ function start(): () => void {
   };
 }
 
-let users = 0;
-let stopRuntime: (() => void) | null = null;
+const runtime = lifetime(start);
 
-/** Keeps the pencil's runtime alive while at least one pencil component is mounted. */
+/** Keeps the pencil's runtime alive while at least one pencil component is mounted, or a call is on. */
 export function useDrawRuntime(): void {
   const directory = useCallDirectory();
   useEffect(() => {
     nameOf = (userId) => directory.displayName(userId);
   }, [directory]);
   useEffect(() => {
-    if (users++ === 0) stopRuntime = start();
-    return () => {
-      if (--users === 0) {
-        stopRuntime?.();
-        stopRuntime = null;
-      }
-    };
+    runtime.retain();
+    return () => runtime.release();
   }, []);
 }
 
