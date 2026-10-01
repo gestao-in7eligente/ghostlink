@@ -107,6 +107,11 @@ export const api: GhostlinkApi = {
     discard: () => invoke(IPC.railwayDiscard),
     onProgress: (cb) => subscribe<RailwayProgress>(IPC_EVENTS.railway, cb),
   },
+  profile: {
+    avatar: () => invoke(IPC.profileAvatar),
+    setAvatar: (bytes) => invoke(IPC.profileSetAvatar, bytes),
+    clearAvatar: () => invoke(IPC.profileClearAvatar),
+  },
 };
 
 contextBridge.exposeInMainWorld('ghostlink', api);

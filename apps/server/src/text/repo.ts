@@ -183,17 +183,17 @@ export class TextRepo {
   }
 
   member(userId: string, online: boolean): Member | null {
-    const u = this.db.get<{ id: string; nickname: string; joined_at: number }>(
-      'SELECT id, nickname, joined_at FROM users WHERE id = ? AND removed_at IS NULL',
+    const u = this.db.get<{ id: string; nickname: string; joined_at: number; avatar_file_id: string | null }>(
+      'SELECT id, nickname, joined_at, avatar_file_id FROM users WHERE id = ? AND removed_at IS NULL',
       userId,
     );
     if (!u) return null;
-    return { userId: u.id, nickname: u.nickname, roleIds: this.roleIdsOf(u.id), online, joinedAt: Number(u.joined_at) };
+    return { userId: u.id, nickname: u.nickname, roleIds: this.roleIdsOf(u.id), online, joinedAt: Number(u.joined_at), avatar: u.avatar_file_id ?? null };
   }
 
   members(isOnline: (userId: string) => boolean): Member[] {
-    const users = this.db.all<{ id: string; nickname: string; joined_at: number }>(
-      'SELECT id, nickname, joined_at FROM users WHERE removed_at IS NULL ORDER BY nickname_norm',
+    const users = this.db.all<{ id: string; nickname: string; joined_at: number; avatar_file_id: string | null }>(
+      'SELECT id, nickname, joined_at, avatar_file_id FROM users WHERE removed_at IS NULL ORDER BY nickname_norm',
     );
     const roleRows = this.db.all<{ user_id: string; role_id: string }>(
       `SELECT ur.user_id, ur.role_id FROM user_roles ur JOIN roles r ON r.id = ur.role_id
@@ -211,6 +211,7 @@ export class TextRepo {
       roleIds: byUser.get(u.id) ?? [],
       online: isOnline(u.id),
       joinedAt: Number(u.joined_at),
+      avatar: u.avatar_file_id ?? null,
     }));
   }
 

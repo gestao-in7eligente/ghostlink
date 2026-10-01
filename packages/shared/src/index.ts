@@ -13,3 +13,4 @@ export * from './chat.js';
 export * from './roles.js';
 export * from './release.js';
 export * from './voice.js';
+export * from './avatar.js';

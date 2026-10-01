@@ -4,6 +4,7 @@
 import type { Envelope, ParsedJoinInput, WelcomePayload } from '@ghostlink/shared';
 import type { AppErrorCode } from './appErrors.js';
 import type { FirewallFixResult, FirewallStatus, HostApi, HostConfig, HostInvite, HostInviteOptions, HostStartResult, HostStatus } from './hostTypes.js';
+import type { AvatarInfo, ProfileApi } from './profileTypes.js';
 import type { RailwayAccount, RailwayCreateRequest, RailwayPending, RailwayProgress } from './railwayTypes.js';
 import type { UpdateState, UpdatesApi } from './updates.js';
 
@@ -151,6 +152,7 @@ export interface GhostlinkApi {
   ptt: { configure(config: PttConfig): Promise<PttStatus> };
   onPtt(cb: (e: PttEvent) => void): () => void;
   railway: RailwayApi;
+  profile: ProfileApi;
 }
 
 /**
@@ -218,6 +220,9 @@ export const IPC = {
   railwayPending: 'ghostlink:railway.pending',
   railwayResume: 'ghostlink:railway.resume',
   railwayDiscard: 'ghostlink:railway.discard',
+  profileAvatar: 'ghostlink:profile.avatar',
+  profileSetAvatar: 'ghostlink:profile.setAvatar',
+  profileClearAvatar: 'ghostlink:profile.clearAvatar',
 } as const;
 
 /** Events pushed from main to the renderer. */
@@ -279,7 +284,13 @@ export interface IpcContract {
   [IPC.railwayPending]: { args: []; result: RailwayPending | null };
   [IPC.railwayResume]: { args: []; result: RendererWelcome };
   [IPC.railwayDiscard]: { args: []; result: void };
+  [IPC.profileAvatar]: { args: []; result: AvatarInfo | null };
+  [IPC.profileSetAvatar]: { args: [bytes: Uint8Array]; result: AvatarInfo };
+  [IPC.profileClearAvatar]: { args: []; result: null };
 }
+
+/** The profile photo channels (v0.2.2), handled by main/profileIpc.ts. */
+export type ProfileIpcChannel = Extract<IpcChannel, `ghostlink:profile.${string}`>;
 
 /** The Railway provisioning channels (v0.2), handled by main/railwayIpc.ts. */
 export type RailwayIpcChannel = Extract<IpcChannel, `ghostlink:railway.${string}`>;
