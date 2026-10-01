@@ -6,6 +6,7 @@ import { provideVoiceDirectory, voiceSettingsSection, voiceSlots } from '../feat
 import { registerLayoutSlots, registerUserSettingsSection } from '../layout/slots.js';
 import { useTextStore } from '../stores/text.js';
 import { useAddServerUi } from './addServerUi.js';
+import { followCallServer } from './callServer.js';
 import { openCreateServer } from './createServerUi.js';
 import { shouldStartInsteadOfConnect } from './homeModel.js';
 import { HostRailButton } from './HostRailButton.js';
@@ -40,6 +41,8 @@ export function useLayoutWiring(): void {
     const offDirectory = useTextStore.subscribe((state) => provideVoiceDirectory(voiceDirectoryFromText(state)));
     // A moderator's move takes the call to another channel: the stage goes with it.
     const offStage = followCallOnStage();
+    // The call goes on while the screen shows the Home screen or another server.
+    const offCall = followCallServer();
 
     return () => {
       offSlots();
@@ -48,6 +51,7 @@ export function useLayoutWiring(): void {
       offUpdates();
       offDirectory();
       offStage();
+      offCall();
       provideVoiceDirectory(null);
     };
   }, []);

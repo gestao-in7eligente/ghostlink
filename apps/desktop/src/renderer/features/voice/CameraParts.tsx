@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import { PERMISSIONS, has } from '@ghostlink/shared';
 import { useT } from '../../i18n/index.js';
 import { FrameWatch } from './camera.js';
-import { toggleCamera, useVoiceDirectory } from './runtime.js';
+import { toggleCamera, useCallDirectory } from './runtime.js';
 import { useVoiceStore } from './state.js';
 import s from './voice.module.css';
 
@@ -16,7 +16,8 @@ import s from './voice.module.css';
  */
 export function useCameraButton(channelId: string) {
   const t = useT();
-  const directory = useVoiceDirectory();
+  // The call's channel: its server's permissions, also while another server is on screen.
+  const directory = useCallDirectory();
   const on = useVoiceStore((v) => v.camera);
   const connected = useVoiceStore((v) => v.call.status === 'connected' && v.call.channelId === channelId);
   const allowed = has(directory.myPermissions(channelId), PERMISSIONS.VIDEO);

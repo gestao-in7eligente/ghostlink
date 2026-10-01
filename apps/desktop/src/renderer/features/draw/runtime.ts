@@ -1,13 +1,14 @@
 // Wires the pencil to the app (spec 2026-10-01-lapis-na-tela-design.md): screen.draw and
 // screen.drawAllow from the server, my own strokes (shown at once, sent in batches), and, while I
 // share a whole screen, the overlay over the real monitor. Started by the first mounted pencil
-// component (the voice panel mounts one for the whole call), stopped by the last.
+// component (the voice panel mounts one for the whole call), stopped by the last. It belongs to
+// the call's server, also while the screen shows another one (chamada-continua §2).
 import { useEffect } from 'react';
 import { screenDrawAllowEventSchemaClient, screenDrawEventSchemaClient, type DrawPoint } from '@ghostlink/shared';
 import { errorCodeOf } from '../../i18n/index.js';
 import { useConnectionStore } from '../../stores/connection.js';
-import { useVoiceDirectory } from '../voice/runtime.js';
-import { useVoiceStore, type VoiceState } from '../voice/state.js';
+import { useCallDirectory } from '../voice/runtime.js';
+import { callServerId, useVoiceStore, type VoiceState } from '../voice/state.js';
 import { StrokeBatcher, newStrokeId } from './batcher.js';
 import { labelText, pencilColor } from './colors.js';
 import { useDrawStore, type VoiceView } from './state.js';
@@ -121,18 +122,31 @@ function voiceView(v: VoiceState): VoiceView {
 function start(): () => void {
   const draw = useDrawStore.getState().dispatch;
   const welcome = useConnectionStore.getState().welcome;
-  draw({ type: 'welcome', welcome });
+  if (callServerId(useVoiceStore.getState()) === null) draw({ type: 'welcome', welcome });
   const offConnection = useConnectionStore.subscribe((c, prev) => {
-    if (c.welcome === prev.welcome) return;
+    // During a call the screen moving elsewhere (or back) changes nothing here.
+    if (c.welcome === prev.welcome || callServerId(useVoiceStore.getState()) !== null) return;
     // A new welcome (a reconnect, another server) replaces the whole state (spec §13).
     draw({ type: 'welcome', welcome: c.welcome });
     clearBoards();
   });
-  const offEvents = window.ghostlink.onServerEvent((event) => {
-    if (event.t === 'screen.draw') onDraw(event.d);
+  const offEvents = window.ghostlink.onServerEvent((event, serverId) => {
+    const v = useVoiceStore.getState();
+    // Only the voice runtime's server: the call's, during one.
+    if (serverId !== v.serverId) return;
+    if (event.t === 'welcome' && callServerId(v) !== null) {
+      // The call's server reconnected (on screen or not).
+      draw({ type: 'welcome', welcome: event.d });
+      clearBoards();
+    } else if (event.t === 'screen.draw') onDraw(event.d);
     else if (event.t === 'screen.drawAllow') onAllow(event.d);
   });
   const offVoice = useVoiceStore.subscribe((v, prev) => {
+    // A call elsewhere ended: the pencil follows the screen again.
+    if (v.serverId !== prev.serverId && callServerId(prev) !== null) {
+      draw({ type: 'welcome', welcome: useConnectionStore.getState().welcome });
+      clearBoards();
+    }
     if ((v.sharing === null) !== (prev.sharing === null)) {
       if (v.sharing) shareStarted(v, true);
       else shareEnded(prev.selfUserId);
@@ -140,7 +154,7 @@ function start(): () => void {
     if (v.channels !== prev.channels || v.call !== prev.call || v.watching !== prev.watching || v.sharing !== prev.sharing) {
       draw({ type: 'voice', voice: voiceView(v) });
     }
-    if (v.call.status === 'idle' && prev.call.status !== 'idle') clearBoards();
+    if (v.call.channelId !== prev.call.channelId && prev.call.channelId !== null) clearBoards();
   });
   const v = useVoiceStore.getState();
   if (v.sharing) shareStarted(v, false);
@@ -160,7 +174,7 @@ let stopRuntime: (() => void) | null = null;
 
 /** Keeps the pencil's runtime alive while at least one pencil component is mounted. */
 export function useDrawRuntime(): void {
-  const directory = useVoiceDirectory();
+  const directory = useCallDirectory();
   useEffect(() => {
     nameOf = (userId) => directory.displayName(userId);
   }, [directory]);
@@ -191,7 +205,7 @@ export async function setAllowDrawing(allow: boolean): Promise<void> {
   const dispatch = useDrawStore.getState().dispatch;
   dispatch({ type: 'allow', channelId, sharerId, allow });
   try {
-    await window.ghostlink.server.request('screen.drawAllow', { channelId, allow });
+    await window.ghostlink.server.request('screen.drawAllow', { channelId, allow }, v.serverId ?? undefined);
   } catch {
     dispatch({ type: 'allow', channelId, sharerId, allow: !allow });
   }
@@ -209,11 +223,13 @@ export function createPen(sharerId: string): Pen | null {
   const channelId = v.call.channelId;
   const self = v.selfUserId;
   if (!channelId || !self) return null;
+  // The call's server, also while another one is on screen.
+  const server = v.serverId ?? undefined;
   let key = '';
   const batcher = new StrokeBatcher({
     send: (batch) => {
       const payload = { channelId, sharerId, strokeId: batch.strokeId, points: batch.points, end: batch.end };
-      window.ghostlink.server.request('screen.draw', payload).catch((e: unknown) => {
+      window.ghostlink.server.request('screen.draw', payload, server).catch((e: unknown) => {
         // Drawing was turned off, or the share ended: the pencil goes (a later event says why).
         const code = errorCodeOf(e);
         if ((code === 'FORBIDDEN' || code === 'NOT_FOUND') && useDrawStore.getState().pencil === sharerId) setPencil(null);

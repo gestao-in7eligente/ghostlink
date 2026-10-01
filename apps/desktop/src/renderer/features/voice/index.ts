@@ -37,13 +37,16 @@ export {
   joinVoice,
   leaveVoice,
   moderateVoice,
+  openCallServer,
+  provideCallDirectory,
   provideVoiceDirectory,
   setUserVolume,
   toggleDeafen,
   toggleMute,
+  useCallDirectory,
   useVoiceAvailable,
   useVoiceDirectory,
   useVoiceRuntime,
 } from './runtime.js';
 export { useVoiceSettings, type VoiceSettings as VoiceSettingsValues } from './settings.js';
-export { useVoiceStore, type VoiceState } from './state.js';
+export { callElsewhere, callServerId, useVoiceStore, type VoiceState } from './state.js';
