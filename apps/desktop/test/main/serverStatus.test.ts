@@ -6,11 +6,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createServer, type Server } from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ed25519SpkiDer, fromBase64Url } from '@ghostlink/shared';
+import { buildOwnerStatusMessage, ed25519SpkiDer, fromBase64Url } from '@ghostlink/shared';
 import { generateCertificate } from '../../../server/src/tls/certificate.js';
 import { serverKeyFromSeed } from '../../src/main/identity.js';
 import { serverKeyIdFromCertificate } from '../../src/main/pinning.js';
-import { buildOwnerStatusMessage, fetchHealth, fetchOwnerStatus } from '../../src/main/railway/serverStatus.js';
+import { fetchHealth, fetchOwnerStatus } from '../../src/main/railway/serverStatus.js';
 
 interface Seen {
   path: string;
@@ -100,16 +100,10 @@ async function failure(p: Promise<unknown>): Promise<Error & { code: string }> {
 
 const target = (x: Fake, pin = x.pin) => ({ address: `127.0.0.1:${x.port}`, serverKeyId: pin });
 
-describe('the owner-status text (spec §2)', () => {
+describe('the owner-status text (spec §2, built by @ghostlink/shared)', () => {
   it('is exactly "ghostlink-owner-status-v1\\n<serverKeyId>\\n<ts>" in UTF-8', () => {
     const keyId = Buffer.alloc(32, 7).toString('base64url');
     expect(Buffer.from(buildOwnerStatusMessage(keyId, 1_790_000_000)).toString('utf8')).toBe(`ghostlink-owner-status-v1\n${keyId}\n1790000000`);
-  });
-
-  it('refuses inputs that could shift the fields', () => {
-    expect(() => buildOwnerStatusMessage('short', 1)).toThrow();
-    expect(() => buildOwnerStatusMessage(`${'A'.repeat(42)}\n`, 1)).toThrow();
-    for (const ts of [-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1]) expect(() => buildOwnerStatusMessage('A'.repeat(43), ts)).toThrow();
   });
 });
 

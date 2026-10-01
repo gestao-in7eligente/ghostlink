@@ -3,7 +3,7 @@
 // only). Both go over TLS pinned to the managed record's serverKeyId (pinnedHttp.ts). The
 // signed URL is never logged nor put in an error.
 import { z } from 'zod';
-import { ProtocolError, toBase64Url, utf8 } from '@ghostlink/shared';
+import { ProtocolError, buildOwnerStatusMessage, ownerStatusPath, ownerStatusSchemaClient } from '@ghostlink/shared';
 import { AppError } from '../../shared/appErrors.js';
 import type { ServerKey } from '../identity.js';
 import { parseJson, pinnedRequest, type PinnedResponse, type PinnedTarget } from '../pinnedHttp.js';
@@ -11,7 +11,6 @@ import { parseJson, pinnedRequest, type PinnedResponse, type PinnedTarget } from
 export const STATUS_REQUEST_TIMEOUT_MS = 15_000;
 /** Both answers are a few dozen bytes. */
 const MAX_ANSWER_BYTES = 16 * 1024;
-const B64U_32_BYTES = /^[A-Za-z0-9_-]{43}$/;
 
 export interface ServerHealth {
   version: string;
@@ -24,17 +23,6 @@ export interface OwnerStatus {
 }
 
 const healthSchema = z.object({ version: z.string().min(1).max(64) });
-const ownerStatusSchema = z.object({ version: z.string().max(64), voiceActive: z.boolean() });
-
-/**
- * The exact bytes the owner signs for /owner/status: UTF-8 of
- * "ghostlink-owner-status-v1\n" + serverKeyId + "\n" + ts (unix seconds, decimal).
- */
-export function buildOwnerStatusMessage(serverKeyId: string, ts: number): Uint8Array {
-  if (!B64U_32_BYTES.test(serverKeyId)) throw new ProtocolError('BAD_REQUEST', 'serverKeyId must be base64url of 32 bytes');
-  if (!Number.isSafeInteger(ts) || ts < 0) throw new ProtocolError('BAD_REQUEST', 'ts must be a non-negative integer');
-  return utf8(`ghostlink-owner-status-v1\n${serverKeyId}\n${ts}`);
-}
 
 export interface StatusRequestOptions {
   timeoutMs?: number;
@@ -58,15 +46,16 @@ export async function fetchHealth(server: PinnedTarget, opts: StatusRequestOptio
  */
 export async function fetchOwnerStatus(server: PinnedTarget, key: Pick<ServerKey, 'sign'>, opts: StatusRequestOptions = {}): Promise<OwnerStatus> {
   const ts = Math.floor((opts.now ?? Date.now)() / 1000);
-  const sig = toBase64Url(key.sign(buildOwnerStatusMessage(server.serverKeyId, ts)));
+  // The signed text, shared with the server: "ghostlink-owner-status-v1", serverKeyId and ts on three lines.
+  const signature = key.sign(buildOwnerStatusMessage(server.serverKeyId, ts));
   const res = await pinnedRequest(server, {
     method: 'GET',
-    path: `/owner/status?ts=${ts}&sig=${sig}`,
+    path: ownerStatusPath(ts, signature),
     maxResponseBytes: MAX_ANSWER_BYTES,
     timeoutMs: opts.timeoutMs ?? STATUS_REQUEST_TIMEOUT_MS,
   });
   if (res.status !== 200) throw statusError(res);
-  const status = ownerStatusSchema.safeParse(parseJson(res.body));
+  const status = ownerStatusSchemaClient.safeParse(parseJson(res.body));
   if (!status.success) throw new ProtocolError('BAD_REQUEST', 'invalid /owner/status answer');
   return { version: status.data.version, voiceActive: status.data.voiceActive };
 }
