@@ -120,19 +120,6 @@ function start(): BrowserWindow {
     clientName: `ghostlink/${app.getVersion()} (${process.platform})`,
   });
   const host = startHostMode(window, controller, servers, settings, send);
-  // Friends over P2P (v0.3): the engine follows the identity; the smoke run has its own self-test on loopback.
-  const friends = new FriendsEngine({
-    identity,
-    settings,
-    userDataDir: userData,
-    emit: (snapshot) => send(IPC_EVENTS.friends, snapshot),
-    log: mainLog,
-    ...(smoke ? { network: false } : friendsEnv(process.env, app.isPackaged)),
-  });
-  // What IPC and the backup do to the identity (create, unlock, import, delete) reaches the engine.
-  const watchedIdentity = watchIdentity(identity, () => void friends.sync());
-  void friends.sync();
-  app.on('before-quit', () => void friends.dispose());
   // Windows shows toasts (and routes their clicks) only for a known AppUserModelID.
   if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
   const notifier = new ChatNotifier({
@@ -140,7 +127,25 @@ function start(): BrowserWindow {
     create: (options) => new Notification(options),
     window: () => (window.isDestroyed() ? null : window),
     openChannel: (event) => send(IPC_EVENTS.openChannel, event),
+    // A direct message's click takes the same path: a conversation id is 32 lowercase hex
+    // characters, never a channel id (26 base32 characters), so the renderer can tell them apart.
+    openConversation: (conv) => send(IPC_EVENTS.openChannel, { channelId: conv }),
   });
+  // Friends over P2P (v0.3): the engine follows the identity; the smoke run has its own self-test on loopback.
+  const friends = new FriendsEngine({
+    identity,
+    settings,
+    userDataDir: userData,
+    emit: (snapshot) => send(IPC_EVENTS.friends, snapshot),
+    emitDm: (event) => send(IPC_EVENTS.dm, event),
+    notifyDm: (notification) => void notifier.showDm(notification),
+    log: mainLog,
+    ...(smoke ? { network: false } : friendsEnv(process.env, app.isPackaged)),
+  });
+  // What IPC and the backup do to the identity (create, unlock, import, delete) reaches the engine.
+  const watchedIdentity = watchIdentity(identity, () => void friends.sync());
+  void friends.sync();
+  app.on('before-quit', () => void friends.dispose());
   // Spec §15: Windows installs only, never in development or smoke mode; the setting can turn it off.
   const updater = Updater.load({
     backend: createUpdaterBackend({ packaged: app.isPackaged, smoke, platform: process.platform, resourcesPath: process.resourcesPath }),
@@ -209,6 +214,7 @@ function start(): BrowserWindow {
     deepLinks: deepLinks ?? undefined,
     railway,
     friends,
+    dm: friends.dm,
   });
   updater.start();
   app.on('before-quit', () => {

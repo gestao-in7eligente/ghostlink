@@ -6,6 +6,7 @@ import { IPC, type AppInfo, type ChatNotification, type IpcArgs, type IpcChannel
 import type { ClientController } from './controller.js';
 import { BACKUP_IPC_ARG_SCHEMAS, createBackupIpcHandlers, type IdentityBackup } from './backup.js';
 import type { DeepLinks } from './deeplink.js';
+import { DM_IPC_ARG_SCHEMAS, createDmIpcHandlers, type DmIpcDeps } from './dmIpc.js';
 import { FRIENDS_IPC_ARG_SCHEMAS, createFriendsIpcHandlers, type FriendsIpcDeps } from './friendsIpc.js';
 import { HOST_IPC_ARG_SCHEMAS, createHostIpcHandlers, type HostIpcDeps } from './hostIpc.js';
 import type { IdentityStore } from './identity.js';
@@ -39,6 +40,8 @@ export interface IpcDeps {
   railway?: RailwayIpcDeps;
   /** Friends over P2P (v0.3). */
   friends?: FriendsIpcDeps;
+  /** Direct messages between friends (v0.3 phase 2). */
+  dm?: DmIpcDeps;
 }
 
 /** The handshake belongs to the main process alone: the renderer may never send it (release plan "Seams"). */
@@ -127,6 +130,7 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   ...BACKUP_IPC_ARG_SCHEMAS,
   ...RAILWAY_IPC_ARG_SCHEMAS,
   ...FRIENDS_IPC_ARG_SCHEMAS,
+  ...DM_IPC_ARG_SCHEMAS,
   [IPC.deepLinkTake]: z.tuple([]),
   [IPC.updatesState]: z.tuple([]),
   [IPC.updatesSetAutoCheck]: z.tuple([z.boolean()]),
@@ -162,6 +166,7 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     ...createBackupIpcHandlers(deps.backup),
     ...createRailwayIpcHandlers(deps.railway),
     ...createFriendsIpcHandlers(deps.friends),
+    ...createDmIpcHandlers(deps.dm),
     [IPC.deepLinkTake]: () => deps.deepLinks?.take() ?? null,
     [IPC.updatesState]: () => updates.state(),
     [IPC.updatesSetAutoCheck]: (enabled) => updates.setAutoCheck(enabled),
