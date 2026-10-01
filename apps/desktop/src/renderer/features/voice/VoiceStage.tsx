@@ -3,6 +3,8 @@ import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { VoiceParticipant } from '@ghostlink/shared';
 import { useT } from '../../i18n/index.js';
+import { CameraVideo } from './CameraParts.js';
+import { useCameraTrack } from './cameraStore.js';
 import { ParticipantMenu } from './ParticipantMenu.js';
 import { HangUpIcon, StateIcons, VoiceAvatar } from './parts.js';
 import { joinVoice, leaveVoice, useVoiceDirectory, useVoiceRuntime } from './runtime.js';
@@ -20,10 +22,13 @@ function Tile({ p, channelId, isSelf, speaking, receiving }: { p: VoiceParticipa
   const directory = useVoiceDirectory();
   const [menu, setMenu] = useState(false);
   const name = directory.displayName(p.userId);
-  const className = speaking ? `${s.tile} ${s.tileSpeaking}` : s.tile;
+  // Their camera over the photo (mine mirrored, on my screen only): spec 2026-10-01-camera §2.
+  const camera = useCameraTrack(p.userId, isSelf);
+  const className = [s.tile, speaking && s.tileSpeaking, camera && s.tileCamera].filter(Boolean).join(' ');
   const body = (
     <>
       <VoiceAvatar size={80} userId={p.userId} />
+      {camera && <CameraVideo track={camera} userId={p.userId} mirrored={isSelf} />}
       <span className={s.tileName}>
         {p.screen && <LiveBadge />}
         <span className={s.tileNameText}>
@@ -31,6 +36,7 @@ function Tile({ p, channelId, isSelf, speaking, receiving }: { p: VoiceParticipa
           {isSelf && ` (${t('voice.you')})`}
         </span>
         {speaking && <span className={s.srOnly}>, {t('voice.speaking')}</span>}
+        {p.camera && <span className={s.srOnly}>, {t('voice.camera.live')}</span>}
       </span>
       {(p.muted || p.deafened || p.serverMuted) && (
         <span className={s.tileIcons}>
@@ -111,8 +117,8 @@ function ShareButton({ channelId }: { channelId: string }) {
  * The center view of a voice channel, like Discord's call screen: a black stage with 16:9
  * tiles as large as it allows (a green ring while speaking), the screens (spec 2026-10-01
  * §5: a tile with "Assistir" per live person; what I watch large, or in a grid when
- * several, a click focusing one), and the call bar (join, or [mic ⌄ headphones ⌄]
- * [share] and the red hang-up while in this channel).
+ * several, a click focusing one), cameras filling their tiles, and the call bar (join, or
+ * [mic ⌄ camera ⌄ headphones ⌄] [share] and the red hang-up while in this channel).
  */
 export function VoiceStage({ channelId, onOpenSettings }: { channelId: string; onOpenSettings?: () => void }) {
   useVoiceRuntime();
@@ -197,7 +203,7 @@ export function VoiceStage({ channelId, onOpenSettings }: { channelId: string; o
         {here ? (
           <>
             <div className={s.callGroup}>
-              <CallAudioControls onOpenSettings={onOpenSettings} />
+              <CallAudioControls channelId={channelId} onOpenSettings={onOpenSettings} />
             </div>
             <div className={s.callGroup}>
               <ShareButton channelId={channelId} />

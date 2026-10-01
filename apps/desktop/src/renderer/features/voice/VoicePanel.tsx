@@ -1,5 +1,6 @@
 import { MonitorUp, MonitorX, Rss, SlidersHorizontal, Volume2, VolumeX, X } from 'lucide-react';
 import { errorMessage, useT } from '../../i18n/index.js';
+import { PanelCameraButton } from './CameraParts.js';
 import { HangUpIcon } from './parts.js';
 import { leaveVoice, useVoiceDirectory, useVoiceRuntime } from './runtime.js';
 import { LiveBadge, TrackVideo } from './screenParts.js';
@@ -25,6 +26,8 @@ function NoticeText({ notice }: { notice: VoiceNotice }) {
       return <>{t('voice.notice.screenFailed')}</>;
     case 'screenAudio':
       return <>{t('voice.notice.screenAudio')}</>;
+    case 'cameraUnavailable':
+      return <>{t('voice.notice.cameraUnavailable')}</>;
   }
 }
 
@@ -92,8 +95,8 @@ function ScreenShareButton({ channelId }: { channelId: string }) {
 /**
  * The top of the user panel, like Discord's: the connection square, "Voz conectada" over
  * the channel, the signal round trip and the hang-up; the preview while I share; then a
- * row of equal buttons (Discord: camera, screen, activities, soundboard; here the screen
- * and, when the layout offers it, the voice settings). Renders nothing outside a call,
+ * row of equal buttons (Discord: camera, screen, activities, soundboard; here the camera,
+ * the screen and, when the layout offers it, the voice settings). Renders nothing outside a call,
  * except a pending voice notice.
  */
 export function VoicePanel({ onOpenSettings }: { onOpenSettings?: () => void }) {
@@ -140,6 +143,7 @@ export function VoicePanel({ onOpenSettings }: { onOpenSettings?: () => void }) 
         </div>
         {sharing && <SharingPreview sharing={sharing} />}
         <div className={s.panelActions}>
+          <PanelCameraButton channelId={call.channelId} />
           <ScreenShareButton channelId={call.channelId} />
           {onOpenSettings && (
             <button type="button" className={s.panelAction} aria-label={t('voice.openSettings')} title={t('voice.openSettings')} onClick={onOpenSettings}>

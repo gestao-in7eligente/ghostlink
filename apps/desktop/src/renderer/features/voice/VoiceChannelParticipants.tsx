@@ -1,3 +1,4 @@
+import { Video } from 'lucide-react';
 import { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useT } from '../../i18n/index.js';
@@ -10,8 +11,8 @@ import s from './voice.module.css';
 
 /**
  * Who is in a voice channel, under its row in the channel sidebar: avatar, name, a
- * green ring while speaking, mute / deafen / server-mute marks, and "AO VIVO" while
- * sharing a screen. Other people open
+ * green ring while speaking, mute / deafen / server-mute marks, a camera while theirs is
+ * on, and "AO VIVO" while sharing a screen. Other people open
  * a menu (volume, moderation) with a click, Enter or the context-menu key.
  */
 export function VoiceChannelParticipants({ channelId }: { channelId: string }) {
@@ -40,6 +41,11 @@ export function VoiceChannelParticipants({ channelId }: { channelId: string }) {
               {speaking && <span className={s.srOnly}>, {t('voice.speaking')}</span>}
             </span>
             <StateIcons p={p} />
+            {p.camera && (
+              <span className={s.stateIcons}>
+                <Video size={14} aria-label={t('voice.camera.live')} role="img" data-camera-icon="" />
+              </span>
+            )}
             {p.screen && <LiveBadge />}
           </>
         );
