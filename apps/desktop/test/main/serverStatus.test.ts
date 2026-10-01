@@ -2,15 +2,21 @@
 // fake with a self-signed certificate and its pin, the way avatarHttp.test.ts does it. The fake
 // checks the signature on its own (Ed25519 over the exact text), not with the code under test.
 import { createPublicKey, randomBytes, verify } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createServer, type Server } from 'node:https';
 import type { AddressInfo } from 'node:net';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildOwnerStatusMessage, ed25519SpkiDer, fromBase64Url } from '@ghostlink/shared';
 import { generateCertificate } from '../../../server/src/tls/certificate.js';
 import { serverKeyFromSeed } from '../../src/main/identity.js';
 import { serverKeyIdFromCertificate } from '../../src/main/pinning.js';
 import { fetchHealth, fetchOwnerStatus } from '../../src/main/railway/serverStatus.js';
+import { ServerUpdates } from '../../src/main/railway/serverUpdates.js';
+import { RAILWAY_FILE, RailwayStore } from '../../src/main/railway/store.js';
+import { FakeRailway, captureLog } from '../helpers/fakeRailway.js';
+import { useTempDir } from '../helpers/tempDir.js';
 
 interface Seen {
   path: string;
@@ -178,5 +184,38 @@ describe('fetchOwnerStatus', () => {
   it('turns a malformed answer into BAD_REQUEST', async () => {
     f = await fake((_s, res) => json(res, 200, { version: '0.2.1', voiceActive: 'no' }));
     expect((await failure(fetchOwnerStatus(target(f), owner, { now: () => NOW }))).code).toBe('BAD_REQUEST');
+  });
+});
+
+describe('ServerUpdates over the real requests', () => {
+  const dir = useTempDir('ghostlink-server-status-');
+
+  it('asks the managed server itself, pinned and signed with my key for it', async () => {
+    f = await statusServer(true);
+    const record = { projectId: 'p', environmentId: 'e', serviceId: 's', volumeId: 'v', address: `127.0.0.1:${f.port}`, serverKeyId: f.pin, region: 'us-west2', createdAt: 1 };
+    writeFileSync(join(dir.path, RAILWAY_FILE), JSON.stringify({ version: 1, pending: null, managed: [record] }));
+    const railway = new FakeRailway(); // any Railway call would throw: in a call, nothing is updated
+    const keys: string[] = [];
+    const updates = new ServerUpdates({
+      store: RailwayStore.load(dir.path),
+      token: () => 'token',
+      fetch: railway.fetch,
+      appVersion: '0.2.2',
+      image: 'ghcr.io/gestao-in7eligente/ghostlink-server:0.2.2',
+      serverKey: (id) => {
+        keys.push(id);
+        return owner;
+      },
+      emit: () => {},
+      log: captureLog(),
+      now: () => NOW,
+      timers: { setTimeout: () => 0, clearTimeout: () => {} },
+    });
+    updates.start();
+    await updates.settled();
+    expect(f.seen.map((s) => s.path)).toEqual(['/health', '/owner/status']);
+    expect(keys).toEqual([f.pin]);
+    expect(updates.state(f.pin)).toEqual({ serverKeyId: f.pin, version: '0.2.1', target: '0.2.2', state: 'waiting' });
+    expect(railway.calls).toEqual([]);
   });
 });
