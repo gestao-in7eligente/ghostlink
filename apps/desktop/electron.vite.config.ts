@@ -52,6 +52,9 @@ export default defineConfig({
     plugins: [react()],
     build: {
       target: 'chrome152',
+      // `?url` scripts (the noise suppressors' AudioWorklets) and WebAssembly stay files under
+      // app://ghostlink: the CSP's script-src never allows data: URLs, however small the file.
+      assetsInlineLimit: (file) => (/\.(?:js|mjs|wasm)$/.test(file) ? false : undefined),
       rollupOptions: { input: { index: here('src/renderer/index.html') } },
     },
   },
