@@ -20,12 +20,13 @@ export function VoiceChannelParticipants({ channelId }: { channelId: string }) {
   const participants = useVoiceStore((v) => participantsOf(v, channelId));
   const speakers = useVoiceStore(useShallow((v) => (v.call.channelId === channelId ? participantsOf(v, channelId).filter((p) => isSpeaking(v, p.userId)).map((p) => p.userId) : [])));
   const selfUserId = useVoiceStore((v) => v.selfUserId);
+  const here = useVoiceStore((v) => v.call.channelId === channelId && v.call.status === 'connected');
   const directory = useVoiceDirectory();
   const [menuFor, setMenuFor] = useState<string | null>(null);
   if (participants.length === 0) return null;
 
   return (
-    <ul className={s.participants} aria-label={directory.channelName(channelId) ?? undefined} data-voice-participants={channelId}>
+    <ul className={s.participants} aria-label={directory.channelName(channelId) ?? undefined} data-voice-participants={channelId} data-voice-here={here || undefined}>
       {participants.map((p) => {
         const isSelf = p.userId === selfUserId;
         const speaking = speakers.includes(p.userId);

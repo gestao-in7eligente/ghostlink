@@ -316,7 +316,7 @@
 
 .channelActive,
 .channelActive:hover {
-  background: var(--bg-hover);
+  background: var(--bg-selected);
   color: var(--text-strong);
   font-weight: 600;
 }
@@ -373,6 +373,11 @@
 
 .voiceSlot {
   padding: 0 8px 4px 36px;
+}
+
+/* The voice channel I am connected to (Voice marks its list data-voice-here): Discord's green speaker. */
+.channelItem:has(> .voiceSlot [data-voice-here]) .channelIcon {
+  color: var(--text-positive);
 }
 
 .emptyHint {
