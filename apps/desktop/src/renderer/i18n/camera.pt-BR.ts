@@ -8,4 +8,15 @@ export const camera = {
   'voice.camera.device': 'Câmera',
   'voice.camera.live': 'Câmera ligada',
   'voice.notice.cameraUnavailable': 'Não foi possível usar a câmera. Confira a permissão e o dispositivo escolhido.',
+
+  'voice.settings.video': 'Vídeo',
+  'voice.settings.cameraPreview': 'Prévia da câmera',
+  'voice.settings.cameraPreviewOff': 'Sua câmera aparece aqui.',
+  'voice.settings.cameraTest': 'Testar câmera',
+  'voice.settings.cameraTestStop': 'Parar teste',
+  'voice.settings.cameraInCall': 'É a câmera que está ligada na chamada.',
+  'voice.settings.noCamera': 'Nenhuma câmera encontrada.',
+  'voice.settings.cameraQuality': 'Qualidade da câmera',
+  'voice.settings.cameraQualityDefault': 'Padrão',
+  'voice.settings.cameraQualityHint': 'Quem assiste recebe uma versão menor quando o quadro é pequeno ou a internet piora.',
 } as const;

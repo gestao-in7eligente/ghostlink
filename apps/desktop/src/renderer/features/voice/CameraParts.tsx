@@ -103,7 +103,7 @@ function useMovingPicture(ref: RefObject<HTMLVideoElement | null>, track: Remote
  * detach() on unmount (spec §8.4). It shows only while the picture moves; frozen, muted or
  * gone, the photo underneath is back (spec §2). My own is mirrored, on my screen only.
  */
-export function CameraVideo({ track, userId, mirrored = false }: { track: RemoteTrack | LocalVideoTrack; userId: string; mirrored?: boolean }) {
+export function CameraVideo({ track, userId, mirrored = false }: { track: RemoteTrack | LocalVideoTrack; userId?: string; mirrored?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
   const live = useMovingPicture(ref, track);
   const className = [s.cameraVideo, live && s.cameraVideoLive, mirrored && s.cameraVideoMirrored].filter(Boolean).join(' ');

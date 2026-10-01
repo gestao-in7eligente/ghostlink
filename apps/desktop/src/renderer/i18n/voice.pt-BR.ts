@@ -74,7 +74,7 @@ export const voice = {
   'voice.screen.showAll': 'Ver todas as transmissões',
   'voice.screen.yours': 'Sua transmissão',
 
-  'voice.settings.title': 'Voz',
+  'voice.settings.title': 'Voz e vídeo',
   'voice.settings.micTest': 'Teste de microfone',
   'voice.settings.micTestStart': 'Testar microfone',
   'voice.settings.micTestStop': 'Parar teste',
