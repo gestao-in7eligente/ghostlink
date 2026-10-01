@@ -8,10 +8,12 @@
 import type { BootstrapNode } from 'hyperdht';
 import { sanitizeLabel } from '@ghostlink/shared';
 import { AppError } from '../../shared/appErrors.js';
+import type { DmApi, DmEvent } from '../../shared/dmTypes.js';
 import { FRIEND_LOCAL_NAME_MAX, type FriendsSnapshot } from '../../shared/friendsTypes.js';
 import type { IdentityStore } from '../identity.js';
 import type { Log } from '../log.js';
 import type { SettingsStore } from '../settings.js';
+import { Dm, type DmNotification } from './dm.js';
 import { friendKeyFromSeed, keyFromText, sameKey, type FriendKey } from './friendKey.js';
 import { Friends, type FriendsNetwork } from './friends.js';
 import type { Timers } from './inbox.js';
@@ -28,6 +30,10 @@ export interface FriendsEngineDeps {
   userDataDir: string;
   /** IPC_EVENTS.friends: called with a new snapshot after every change. */
   emit(snapshot: FriendsSnapshot): void;
+  /** IPC_EVENTS.dm: a message or a conversation changed, or a friend is typing. */
+  emitDm?(event: DmEvent): void;
+  /** A message from a friend arrived: the desktop notification (notifications.ts decides whether it shows). */
+  notifyDm?(notification: DmNotification): void;
   /** Development only (friendsEnv): a private DHT and the bind address. Default: the public DHT, every interface. */
   bootstrap?: BootstrapNode[];
   bindHost?: string;
@@ -44,12 +50,16 @@ export interface FriendsEngineDeps {
 /** How long a start waits for the node stopped before it to leave the DHT. */
 const LEAVE_TIMEOUT_MS = 10_000;
 
+/** window.ghostlink.dm as main serves it (dmIpc.ts); the events go out through `emitDm`. */
+export type DmService = Omit<DmApi, 'onEvent'>;
+
 /** One identity at work: its key, its database, its rules and, while available, its node. */
 interface Session {
   seed: Uint8Array;
   key: FriendKey;
   store: FriendsStore;
   friends: Friends;
+  dm: Dm;
   node: FriendsNode | null;
 }
 
@@ -193,16 +203,48 @@ export class FriendsEngine {
     });
   }
 
+  /**
+   * window.ghostlink.dm (friends spec §4). Reading works on the database alone: conversations
+   * (none without an identity), history, the read mark and hiding. Whatever writes an entry or
+   * reaches the friend (open, send, edit, remove, typing) needs the node up: P2P_UNAVAILABLE.
+   */
+  readonly dm: DmService = {
+    conversations: () => this.#call(() => this.#session?.dm.conversations() ?? []),
+    open: (friendKey) => this.#call(() => this.#dmOnline().open(keyFromText(friendKey))),
+    hide: (conv) => this.#call(() => this.#dmLocal().hide(conv)),
+    history: (conv, before, limit) => this.#call(() => this.#dmLocal().history(conv, before, limit)),
+    send: (conv, text, replyTo) => this.#call(() => this.#dmOnline().send(conv, text, replyTo)),
+    edit: (conv, id, text) => this.#call(() => this.#dmOnline().edit(conv, id, text)),
+    remove: (conv, id) => this.#call(() => this.#dmOnline().remove(conv, id)),
+    read: (conv, ts) => this.#call(() => this.#dmLocal().read(conv, ts)),
+    typing: (conv) => this.#call(() => this.#dmOnline().typing(conv)),
+  };
+
   // Inside.
 
   /** Runs `step` after everything queued before it and answers with the snapshot that follows it. */
   #run(step: () => unknown): Promise<FriendsSnapshot> {
-    const result = this.#queue.then(async () => {
+    return this.#call(async () => {
       await step();
       return this.#snapshot();
     });
+  }
+
+  /** Runs `step` after everything queued before it and answers with what it returns. */
+  #call<T>(step: () => T | Promise<T>): Promise<T> {
+    const result = this.#queue.then(step);
     this.#queue = result.catch(() => {});
     return result;
+  }
+
+  #dmLocal(): Dm {
+    if (!this.#session) throw new AppError('P2P_UNAVAILABLE');
+    return this.#session.dm;
+  }
+
+  #dmOnline(): Dm {
+    if (!this.#session?.node) throw new AppError('P2P_UNAVAILABLE');
+    return this.#session.dm;
   }
 
   /** The rules, for what only touches this computer: needs the identity, not the network. */
@@ -263,6 +305,14 @@ export class FriendsEngine {
       const { FriendsStore } = await import('./store.js');
       const key = friendKeyFromSeed(seed);
       const store = FriendsStore.open(this.#d.userDataDir, key.publicKey);
+      const dm = new Dm({
+        store,
+        key,
+        emit: (event) => this.#d.emitDm?.(event),
+        notify: (notification) => this.#d.notifyDm?.(notification),
+        now: this.#d.now,
+        timers: this.#d.timers,
+      });
       const friends = new Friends({
         store,
         key,
@@ -272,8 +322,9 @@ export class FriendsEngine {
         now: this.#d.now,
         timers: this.#d.timers,
         retryDelayMs: this.#d.retryDelayMs,
+        traffic: dm,
       });
-      this.#session = { seed, key, store, friends, node: null };
+      this.#session = { seed, key, store, friends, dm, node: null };
     } catch (e) {
       this.#d.log?.error('[friends] the friends database could not be opened:', e);
     }
@@ -323,6 +374,8 @@ export class FriendsEngine {
     if (!session) return;
     this.#session = null;
     this.#stopNode(session);
+    // No timer of the conversations may touch the database once it is closed.
+    session.dm.dispose();
     session.store.close();
     session.seed.fill(0);
   }
