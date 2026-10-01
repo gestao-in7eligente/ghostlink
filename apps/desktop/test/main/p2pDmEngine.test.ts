@@ -67,7 +67,7 @@ function app(name: string, opts: { identity?: boolean; deps?: Partial<FriendsEng
   const boot = () => {
     const engine = new FriendsEngine({
       identity,
-      settings: { get: () => ({ locale: 'en' as const, nickname: name }) },
+      settings: { get: () => ({ locale: 'en' as const, nickname: name, closeToTray: true }) },
       userDataDir: dir,
       emit: () => {},
       emitDm: (event) => events.push(event),

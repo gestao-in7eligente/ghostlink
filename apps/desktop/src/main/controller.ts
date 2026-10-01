@@ -22,6 +22,7 @@ import type {
   SavedServer,
   ServerExitCheck,
 } from '../shared/ipcTypes.js';
+import { updatedServerIcon, welcomeServerIcon } from './avatars/serverIcon.js';
 import { ServerConnection, deletionDeadlineOf, probeServerKeyId, type ServerConnectionOptions } from './connection.js';
 import type { IdentityStore } from './identity.js';
 import type { RendererPin } from './pinning.js';
@@ -211,6 +212,11 @@ export class ClientController {
     return this.#session;
   }
 
+  /** The connected session of this saved server, on screen or the call's (after a welcome), or null. */
+  sessionOf(serverId: string): ActiveSession | null {
+    return this.#slotOf(serverId)?.session ?? null;
+  }
+
   /**
    * Relays a renderer request (`server.request` IPC). The IPC layer already allowed only
    * client request types; the server validates the rest. With `serverId` it goes to that
@@ -344,6 +350,7 @@ export class ClientController {
     try {
       const welcome = await conn.connect();
       const clockOffsetMs = welcome.serverTime - Date.now();
+      this.#noteIcon(saved.id, welcomeServerIcon(welcome));
       this.#observeWelcome(saved.serverKeyId, welcome, clockOffsetMs);
       return await work({ serverKeyId: saved.serverKeyId, welcome, clockOffsetMs, request: (type, payload) => conn.request(type, payload ?? {}) });
     } catch (e) {
@@ -363,8 +370,13 @@ export class ClientController {
     this.#deps.onDeletion?.(at === null ? { kind: 'restored', serverKeyId } : { kind: 'deleting', serverKeyId, at: at - clockOffsetMs });
   }
 
-  /** A connected server's `server.deleting` / `server.restored` (the owner's app records them). */
+  /**
+   * A connected server's `server.updated` (its icon goes into the saved list before the
+   * renderer hears of it) and `server.deleting` / `server.restored` (the owner's app records them).
+   */
   #observeEvent(slot: Slot, event: Envelope): void {
+    const icon = updatedServerIcon(event);
+    if (icon !== undefined && slot.serverId !== null) this.#noteIcon(slot.serverId, icon);
     if (event.t !== 'server.deleting' && event.t !== 'server.restored') return;
     const { session, serverKeyId } = slot;
     if (event.t === 'server.restored') {
@@ -376,6 +388,15 @@ export class ClientController {
     if (!parsed.success) return;
     slot.deletingAt = parsed.data.at;
     if (session?.welcome.self.isOwner) this.#deps.onDeletion?.({ kind: 'deleting', serverKeyId, at: parsed.data.at - session.clockOffsetMs });
+  }
+
+  /** The saved server's icon (spec 2026-10-01-icone-do-servidor). Cosmetic: a failed write waits for the next welcome. */
+  #noteIcon(serverId: string, icon: string | null): void {
+    try {
+      this.#deps.servers.setIcon(serverId, icon);
+    } catch {
+      // the rail keeps the previous icon (or the initials) meanwhile
+    }
   }
 
   /** SERVER_DELETED: the server is gone for good, so it leaves the saved list (leave/delete spec §3). */
@@ -460,6 +481,7 @@ export class ClientController {
       nickname: welcome.self.nickname,
     });
     slot.serverId = saved.id;
+    this.#noteIcon(saved.id, welcomeServerIcon(welcome));
     joined = true;
     this.#noteWelcome(slot, welcome, address);
     await this.#syncPins();
@@ -471,6 +493,7 @@ export class ClientController {
       // and the working address may have changed.
       const now = conn.connectedAddress ?? address;
       this.#noteWelcome(slot, again, now);
+      this.#noteIcon(saved.id, welcomeServerIcon(again));
       void this.#syncPins();
       this.#setSlotSession(slot, this.#activeSession(conn, saved.id, target.serverKeyId, again, at, now));
       this.#observeWelcome(target.serverKeyId, again, again.serverTime - at);

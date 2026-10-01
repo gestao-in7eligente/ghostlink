@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { AVATAR_HASH, AVATAR_LIMITS, avatarTarget, imageInfo, type AvatarUploadResult, type ImageInfo } from '@ghostlink/shared';
+import { AVATAR_HASH, AVATAR_LIMITS, avatarTarget, imageInfo, type AvatarUploadResult, type IconUploadResult, type ImageInfo } from '@ghostlink/shared';
 import type { Logger } from '../logger.js';
 import { discardStaged, type UploadAnswer } from '../uploads/hub.js';
 import { CORS, errnoOf, fail, preflight, queryOf, reply, type ReceivedBody } from '../uploads/http.js';
@@ -8,18 +8,24 @@ import { verifySignedQuery } from '../uploads/signedUrl.js';
 import type { UploadGrant } from '../uploads/tokens.js';
 import type { AvatarStore } from './store.js';
 
-/** What the photo upload and GET /avatars need from the module. */
+/** What the photo and icon uploads and GET /avatars need from the module. */
 export interface AvatarHttpDeps {
   now(): number;
   logger: Logger;
   store: AvatarStore;
   /** See SessionsApi.fileToken: non-null only for a current session. */
   fileToken(sessionId: string): string | null;
-  /** True while the grant may still change the photo: its session is current and its user a member. */
+  /**
+   * True while the grant may still change what it is for: its session is current and its user
+   * a member (with MANAGE_SERVER for the server icon).
+   */
   canApply(grant: UploadGrant): boolean;
-  /** Points the member at the stored photo, cleans up and tells everyone. Synchronous. */
-  apply(userId: string, hash: string): void;
-  /** True when a current member uses this photo. */
+  /**
+   * Points the member (or the server, for its icon) at the stored image, cleans up and tells
+   * everyone. Synchronous. Returns the body of the answer.
+   */
+  apply(grant: UploadGrant): AvatarUploadResult | IconUploadResult;
+  /** True when a current member's photo, or the server icon, is this image. */
   inUse(hash: string): boolean;
 }
 
@@ -35,10 +41,11 @@ function validImage(head: Buffer): ImageInfo | null {
 }
 
 /**
- * The end of a photo's `POST /upload` (spec 2026-10-01-foto-de-perfil §4): 200 `{ avatar }`,
- * 400 for anything but a PNG, JPEG, WebP or GIF of 16 to 512 px a side, 403 when the member
- * was removed or the session replaced while the body arrived. Synchronous from the check to
- * the database, so a sweep never sees a stored photo nobody references.
+ * The end of a photo's `POST /upload` (spec 2026-10-01-foto-de-perfil §4), and of the server
+ * icon's (spec 2026-10-01-icone-do-servidor): 200 `{ avatar }` (or `{ icon }`), 400 for anything
+ * but a PNG, JPEG, WebP or GIF of 16 to 512 px a side, 403 when the member was removed (or lost
+ * MANAGE_SERVER, for the icon) or the session replaced while the body arrived. Synchronous from
+ * the check to the database, so a sweep never sees a stored image nobody references.
  */
 export function finishAvatarUpload(deps: AvatarHttpDeps, grant: UploadGrant, body: ReceivedBody): UploadAnswer {
   const info = validImage(body.head);
@@ -51,15 +58,13 @@ export function finishAvatarUpload(deps: AvatarHttpDeps, grant: UploadGrant, bod
     return { ok: false, code: 'FORBIDDEN' };
   }
   deps.store.commit(body.staged, grant.sha256, info.mime);
-  deps.apply(grant.userId, grant.sha256);
-  const result: AvatarUploadResult = { avatar: grant.sha256 };
-  return { ok: true, body: result };
+  return { ok: true, body: deps.apply(grant) };
 }
 
 /**
  * `GET /avatars/<hash>?sid=…&e=…&s=…` (main spec §7, target `avatar:<hash>`): any current
- * session of this server may read any photo a member uses. 404 for a malformed hash or a
- * photo no one has, 403 for a bad, expired or foreign signature.
+ * session of this server may read any photo a member uses, and the server icon. 404 for a
+ * malformed hash or an image no one uses, 403 for a bad, expired or foreign signature.
  */
 export function serveAvatar(deps: AvatarHttpDeps, req: IncomingMessage, res: ServerResponse, hash: string): void {
   if (req.method === 'OPTIONS') return preflight(res, 'GET, HEAD, OPTIONS');

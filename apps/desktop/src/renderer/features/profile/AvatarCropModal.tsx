@@ -2,7 +2,6 @@ import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
 import { errorCodeOf, useT } from '../../i18n/index.js';
 import { ErrorText, Modal, primitives as p } from '../../layout/primitives.js';
-import { useProfileStore } from '../../stores/profile.js';
 import { browserCodecs } from './browserCodecs.js';
 import { CROP_FRAME, MAX_ZOOM, MIN_ZOOM, cropSquare, dragView, imageBox, zoomView, type CropView } from './cropMath.js';
 import { AvatarEncodeError, encodeAvatar, type PickedImage } from './encodeAvatar.js';
@@ -21,9 +20,10 @@ const KEY_STEP = 10;
 /**
  * "Editar imagem" (spec 2026-10-01-foto-de-perfil §2): the image in a 320×320 frame under a
  * circular mask; drag (or the arrow keys) to move it, the slider (or the wheel) to zoom from
- * 1× to 5×. Aplicar crops, encodes and stores the photo; a GIF over 2 MB is refused here.
+ * 1× to 5×. Aplicar crops and encodes it (a GIF over 2 MB is refused here) and hands the bytes
+ * to `onApply`: my photo, or the server icon (spec 2026-10-01-icone-do-servidor).
  */
-export function AvatarCropModal({ picked, onClose }: { picked: PickedFile; onClose: () => void }) {
+export function AvatarCropModal({ picked, onApply, onClose }: { picked: PickedFile; onApply: (bytes: Uint8Array) => Promise<unknown>; onClose: () => void }) {
   const t = useT();
   const [view, setView] = useState<CropView>(START);
   const [busy, setBusy] = useState(false);
@@ -42,7 +42,7 @@ export function AvatarCropModal({ picked, onClose }: { picked: PickedFile; onClo
     setError(null);
     try {
       const encoded = await encodeAvatar(picked, cropSquare(size, view), browserCodecs);
-      await useProfileStore.getState().set(encoded.bytes);
+      await onApply(encoded.bytes);
       onClose();
     } catch (e) {
       if (e instanceof AvatarEncodeError) setError({ text: t(e.code === 'TOO_LARGE' ? 'profile.crop.tooLarge' : 'profile.photo.unreadable') });

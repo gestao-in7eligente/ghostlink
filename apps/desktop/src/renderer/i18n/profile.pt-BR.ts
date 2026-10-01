@@ -14,4 +14,10 @@ export const profile = {
   'profile.crop.apply': 'Aplicar',
   'profile.crop.applying': 'Aplicando…',
   'profile.crop.tooLarge': 'GIF grande demais. Tente um mais curto ou com menos cores.',
+
+  // The server icon (v0.3.2, spec 2026-10-01-icone-do-servidor): the same picker and crop modal.
+  'serverIcon.title': 'Ícone do servidor',
+  'serverIcon.change': 'Alterar ícone',
+  'serverIcon.remove': 'Remover ícone',
+  'serverIcon.hint': 'Aparece para todos no trilho de servidores e no cabeçalho. PNG, JPEG, WebP ou GIF, até 10 MB; GIFs animados continuam animados. Sem ícone, as iniciais do nome.',
 } as const;

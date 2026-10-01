@@ -18,7 +18,6 @@ import { openExternalWithConfirm } from './externalLinks.js';
 import { HostFirewall, firewallPrograms } from './hostFirewall.js';
 import { HostManager } from './hostManager.js';
 import { forkServer, hostedServerLogging } from './hostProcess.js';
-import { HostTray, ghostImage, shouldHideOnClose } from './hostTray.js';
 import { IdentityStore } from './identity.js';
 import { registerIpc } from './ipc.js';
 import { FileLog, consoleMirror, guardStdio, installCrashHandlers, mainLog, safeWrite, setMainLog } from './log.js';
@@ -39,6 +38,7 @@ import { ScreenPicker } from './screenPicker.js';
 import { installSecurity, originOf } from './security.js';
 import { SettingsStore } from './settings.js';
 import { runSmoke } from './smoke.js';
+import { AppTray, ghostImage, shouldHideOnClose } from './tray.js';
 import { UpdateSplash } from './updateSplash.js';
 import { Updater, createUpdaterBackend, type StartupOutcome } from './updater.js';
 import { createReleaseFileFetcher } from './updaterSignature.js';
@@ -89,13 +89,12 @@ if (!app.requestSingleInstanceLock()) {
   app.on('open-url', (event, url) => {
     event.preventDefault();
     links.handle(url);
+    revealWindow(mainWindow); // the link's page shows, even when the window was in the tray
   });
   app.on('second-instance', (_event, argv) => {
     links.handle(extractDeepLink(argv));
     if (!mainWindow) openingSplash?.focus(); // still checking for updates: the link waits in DeepLinks
-    if (mainWindow?.isMinimized()) mainWindow.restore();
-    mainWindow?.show(); // it may be hidden in the tray while hosting
-    mainWindow?.focus();
+    revealWindow(mainWindow); // it may be hidden in the tray
   });
   app.on('window-all-closed', () => app.quit());
   mainLog.info(`${APP_NAME} ${app.getVersion()} starting (${process.platform}, ${app.isPackaged ? 'packaged' : 'development'}${smoke ? ', smoke' : ''})`);
@@ -115,7 +114,8 @@ if (!app.requestSingleInstanceLock()) {
 async function start(): Promise<BrowserWindow | null> {
   const userData = app.getPath('userData');
   // Profile photos (v0.2.2): served at app://ghostlink/_avatar/<hash>, also to the dev server's page.
-  const avatars = createAvatars({ userDataDir: userData, warn: (message) => mainLog.warn(message) });
+  // The server icon goes up over the connection of its server, which the controller (created below) holds.
+  const avatars = createAvatars({ userDataDir: userData, warn: (message) => mainLog.warn(message), sessionOf: (id) => controller.sessionOf(id) });
   // Attachments' _file route joins once the window exists (its "Baixar" needs the window's dialog).
   const appRoutes: AppRoutes = { avatar: avatars.route };
   const appRequests = registerAppProtocol(fileURLToPath(new URL('../renderer/', import.meta.url)), appRoutes);
@@ -179,7 +179,7 @@ async function start(): Promise<BrowserWindow | null> {
     },
     onDeletion: (update) => deletions?.observe(update),
   });
-  const host = startHostMode(window, controller, servers, settings, send);
+  const { host, tray } = startHostMode(window, controller, servers, settings, send);
   const notifier = new ChatNotifier({
     isSupported: () => Notification.isSupported(),
     create: (options) => new Notification(options),
@@ -296,6 +296,7 @@ async function start(): Promise<BrowserWindow | null> {
       set: (patch) => {
         const next = settings.set(patch);
         if (patch.nickname !== undefined) friends.nicknameChanged();
+        if (patch.locale !== undefined) tray.refresh(); // the tray menu speaks the new language
         return next;
       },
     },
@@ -399,9 +400,18 @@ function closeSplashWhenShown(splash: UpdateSplash, window: BrowserWindow): void
   window.once('show', close);
 }
 
+/** Brings the main window back: from the tray, minimized, or behind other windows. */
+function revealWindow(window: BrowserWindow | null): void {
+  if (!window || window.isDestroyed()) return;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+}
+
 /**
- * Host mode (spec §9): the hosted server's manager, the tray, and the window/quit
- * rules — closing the window while hosting hides it; quitting stops the server first.
+ * Host mode (spec §9), the tray and the window/quit rules (v0.3.2, as Discord): the tray icon
+ * stays while the app runs; closing the window hides it when "Ao fechar, manter na bandeja" is
+ * on, and always while hosting; "Sair" quits for real, stopping a hosted server first.
  */
 function startHostMode(
   window: BrowserWindow,
@@ -409,14 +419,10 @@ function startHostMode(
   servers: SavedServersStore,
   settings: SettingsStore,
   send: (channel: string, payload: unknown) => void,
-): HostManager {
-  const showWindow = () => {
-    if (window.isDestroyed()) return;
-    if (window.isMinimized()) window.restore();
-    window.show();
-    window.focus();
-  };
-  const tray = new HostTray({ locale: () => settings.get().locale, onOpen: showWindow, onStopAndQuit: () => app.quit() });
+): { host: HostManager; tray: AppTray } {
+  const showWindow = () => revealWindow(window);
+  const tray = new AppTray({ locale: () => settings.get().locale, onOpen: showWindow, onQuit: () => app.quit() });
+  tray.show();
   const host = new HostManager({
     userDataDir: app.getPath('userData'),
     // The Host panel keeps its own line buffer (opts.onLog); every line also goes to the main log file.
@@ -440,7 +446,7 @@ function startHostMode(
     nickname: () => settings.get().nickname,
     emit: (status) => {
       send(IPC_EVENTS.host, status);
-      tray.update(status);
+      tray.setHost(status);
     },
     bindHost: hostBind,
   });
@@ -448,12 +454,15 @@ function startHostMode(
   let quitting = false;
   let stoppedForQuit = false;
   window.on('close', (event) => {
-    if (!shouldHideOnClose({ hosting: host.isActive(), quitting })) return;
+    if (!shouldHideOnClose({ closeToTray: settings.get().closeToTray, hosting: host.isActive(), quitting })) return;
     event.preventDefault();
-    window.hide();
-    if (!host.trayNoticeShown()) {
-      tray.notifyKeptRunning();
-      host.markTrayNoticeShown();
+    window.hide(); // a call goes on: the page keeps running, hidden
+    if (settings.trayNoticeShown()) return;
+    tray.notifyKeptRunning(); // once ever
+    try {
+      settings.markTrayNoticeShown();
+    } catch (e) {
+      mainLog.warn('[tray] could not remember that the notice was shown:', e);
     }
   });
   app.on('activate', showWindow); // macOS: the Dock icon brings the hidden window back
@@ -471,7 +480,7 @@ function startHostMode(
         app.quit();
       });
   });
-  return host;
+  return { host, tray };
 }
 
 /**

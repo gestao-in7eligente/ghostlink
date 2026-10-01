@@ -2,7 +2,9 @@
 // app instances on the v0.1 harness. Ana hosts, Bia joins with her invite. Ana picks a PNG
 // in User Settings → Perfil and crops it; Bia sees it, 256×256, in the member list and on
 // Ana's message (main's app:// route downloads it with the server's signed URL). Ana removes
-// it and Bia sees her initials again. On the Home screen the Perfil tab has the photo too.
+// it and Bia sees her initials again. Then Ana gives the server an icon in Configurações do
+// servidor → Visão geral and Bia sees it in her rail (spec 2026-10-01-icone-do-servidor). On
+// the Home screen the Perfil tab has the photo too.
 // Run with `npm run test:e2e` (builds the app first). Skipped without the LiveKit binary.
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,6 +26,8 @@ const message = (page: Page, channel: string, text: string) =>
   page.getByRole('region', { name: `Mensagens em #${channel}` }).getByRole('article').filter({ hasText: text });
 const photo = (scope: Locator) => scope.locator('img[src*="_avatar/"]');
 const settings = (page: Page) => page.getByRole('dialog', { name: 'Configurações do usuário' });
+const serverSettings = (page: Page) => page.getByRole('dialog', { name: 'Configurações do servidor' });
+const rail = (page: Page) => page.getByRole('navigation', { name: 'Servidores' });
 
 /** The decoded width of an <img>, 0 until it has loaded (typed by shape: the tests have no DOM types). */
 const naturalWidth = (img: Locator) => img.evaluate((el: { complete: boolean; naturalWidth: number }) => (el.complete ? el.naturalWidth : 0));
@@ -167,6 +171,36 @@ describe.skipIf(!binary)('GhostLink profile photo: one person sets it, the other
     expect(await memberRow(bia.page, 'Ana').locator('[data-avatar="initials"]').textContent()).toBe('A');
     await photo(message(bia.page, 'geral', HELLO)).waitFor({ state: 'detached', timeout: 10_000 });
     expect(await message(bia.page, 'geral', HELLO).locator('[data-avatar="initials"]').textContent()).toBe('A');
+  });
+
+  step('icon: Ana gives the server an icon in Visão geral and Bia sees it in the rail', 90_000, async () => {
+    await ana.page.getByRole('button', { name: /Menu do servidor/ }).click();
+    await ana.page.getByRole('menuitem', { name: 'Configurações do servidor' }).click();
+    const dialog = serverSettings(ana.page);
+    await dialog.getByRole('tab', { name: 'Visão geral', selected: true }).waitFor();
+    const section = dialog.locator('[data-server-icon-section]');
+    // No icon yet: the name's initials, for both.
+    expect(await section.locator('[data-server-icon="initials"]').textContent()).toBe('SD');
+    expect(await rail(bia.page).getByRole('button', { name: SERVER }).locator('[data-server-icon="initials"]').textContent()).toBe('SD');
+    await section.locator('input[type="file"]').setInputFiles({ name: 'icone.png', mimeType: 'image/png', buffer: testPng(240, 240) });
+    const crop = ana.page.getByRole('dialog', { name: 'Editar imagem' });
+    await crop.waitFor();
+    await crop.getByRole('button', { name: 'Aplicar' }).click();
+    await crop.waitFor({ state: 'detached', timeout: 20_000 });
+    // The upload finished and server.updated came back: the 80 px preview shows the server's icon.
+    await expect.poll(() => naturalWidth(photo(section)), { timeout: 15_000 }).toBe(256);
+    await section.getByRole('button', { name: 'Remover ícone' }).waitFor();
+    await dialog.getByRole('button', { name: 'Fechar', exact: true }).click();
+
+    const inRail = photo(rail(bia.page).getByRole('button', { name: SERVER }));
+    await inRail.waitFor({ timeout: 30_000 });
+    await expect.poll(() => naturalWidth(inRail), { timeout: 30_000 }).toBe(256);
+    expect(await inRail.getAttribute('src')).toMatch(/^app:\/\/ghostlink\/_avatar\/[0-9a-f]{64}$/);
+    // Ana's rail and both headers too.
+    await photo(rail(ana.page).getByRole('button', { name: SERVER })).waitFor({ timeout: 10_000 });
+    await photo(bia.page.getByRole('button', { name: /Menu do servidor/ })).waitFor({ timeout: 10_000 });
+    await bia.page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-server-icon-bia.png') });
+    await rail(bia.page).screenshot({ path: join(tmpdir(), 'ghostlink-e2e-server-icon-rail.png') });
   });
 
   step('home: on the Home screen the Perfil tab has the photo section, and a photo set there shows at once', 60_000, async () => {

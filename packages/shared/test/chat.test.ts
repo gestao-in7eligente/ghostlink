@@ -207,7 +207,7 @@ describe('client schemas (lenient)', () => {
       roles: [],
       members: [],
       readStates: [],
-      serverSettings: { ownerId: null, maxMembers: 0, hasPassword: false, uploadLimitMb: 25, storageQuotaMb: 10_240 },
+      serverSettings: { ownerId: null, maxMembers: 0, hasPassword: false, uploadLimitMb: 25, storageQuotaMb: 10_240, icon: null },
     });
   });
 
@@ -217,12 +217,25 @@ describe('client schemas (lenient)', () => {
   });
 
   it('parses the server.updated payload (and the server.update answer)', () => {
-    const info = { name: 'Casa', joinMode: 'invite', ownerId: USER, maxMembers: 100, hasPassword: false, uploadLimitMb: 50, storageQuotaMb: 2048 };
+    const info = {
+      name: 'Casa',
+      joinMode: 'invite',
+      ownerId: USER,
+      maxMembers: 100,
+      hasPassword: false,
+      uploadLimitMb: 50,
+      storageQuotaMb: 2048,
+      icon: 'c'.repeat(64),
+    };
     expect(serverInfoSchemaClient.parse({ ...info, secret: 'x' })).toEqual(info);
     // A server before attachments sends no limits: its database defaults.
-    const { uploadLimitMb: _u, storageQuotaMb: _q, ...old } = info;
-    expect(serverInfoSchemaClient.parse(old)).toEqual({ ...old, uploadLimitMb: 25, storageQuotaMb: 10_240 });
+    const { uploadLimitMb: _u, storageQuotaMb: _q, ...noLimits } = info;
+    expect(serverInfoSchemaClient.parse(noLimits)).toEqual({ ...noLimits, uploadLimitMb: 25, storageQuotaMb: 10_240 });
     expect(serverInfoSchemaClient.safeParse({ ...info, joinMode: 'secret' }).success).toBe(false);
+    // A server before 0.3.2 sends no icon, and a malformed one is no icon: initials.
+    const { icon: _icon, ...old } = info;
+    expect(serverInfoSchemaClient.parse(old)).toEqual({ ...old, icon: null });
+    expect(serverInfoSchemaClient.parse({ ...info, icon: '../x' })).toEqual({ ...old, icon: null });
   });
 
   it('parses the invite.create answer', () => {

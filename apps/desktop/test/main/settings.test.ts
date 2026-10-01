@@ -1,7 +1,8 @@
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ProtocolError } from '@ghostlink/shared';
+import { HOSTED_DIR, HOST_FILE } from '../../src/main/hostManager.js';
 import { SETTINGS_FILE, SettingsStore, localeFromSystem } from '../../src/main/settings.js';
 import { useTempDir } from '../helpers/tempDir.js';
 
@@ -30,15 +31,15 @@ describe('localeFromSystem (spec §11)', () => {
 
 describe('SettingsStore', () => {
   it('starts from the system locale and an empty nickname, without writing a file', () => {
-    expect(SettingsStore.load(dir.path, 'pt-BR').get()).toEqual({ locale: 'pt-BR', nickname: '' });
-    expect(SettingsStore.load(dir.path, 'de-DE').get()).toEqual({ locale: 'en', nickname: '' });
+    expect(SettingsStore.load(dir.path, 'pt-BR').get()).toEqual({ locale: 'pt-BR', nickname: '', closeToTray: true });
+    expect(SettingsStore.load(dir.path, 'de-DE').get()).toEqual({ locale: 'en', nickname: '', closeToTray: true });
     expect(existsSync(file())).toBe(false);
   });
 
   it('persists a patch and reloads it, ignoring the system locale afterwards', () => {
     const store = SettingsStore.load(dir.path, 'pt-BR');
-    expect(store.set({ locale: 'en', nickname: 'Ana' })).toEqual({ locale: 'en', nickname: 'Ana' });
-    expect(SettingsStore.load(dir.path, 'pt-BR').get()).toEqual({ locale: 'en', nickname: 'Ana' });
+    expect(store.set({ locale: 'en', nickname: 'Ana', closeToTray: false })).toEqual({ locale: 'en', nickname: 'Ana', closeToTray: false });
+    expect(SettingsStore.load(dir.path, 'pt-BR').get()).toEqual({ locale: 'en', nickname: 'Ana', closeToTray: false });
   });
 
   it('stores the nickname normalized like the server does (spec §7)', () => {
@@ -53,7 +54,8 @@ describe('SettingsStore', () => {
     expectBadRequest(() => store.set({ nickname: '\u200B\u3164' }));
     expectBadRequest(() => store.set({ nickname: 'a'.repeat(33) }));
     expectBadRequest(() => store.set({ locale: 'fr' as 'en' }));
-    expect(store.get()).toEqual({ locale: 'en', nickname: 'Ana' });
+    expectBadRequest(() => store.set({ closeToTray: 'yes' as unknown as boolean }));
+    expect(store.get()).toEqual({ locale: 'en', nickname: 'Ana', closeToTray: true });
     expect(readFileSync(file(), 'utf8')).toBe(before);
   });
 
@@ -65,7 +67,51 @@ describe('SettingsStore', () => {
 
   it('recovers from a corrupt file with defaults and keeps the broken copy', () => {
     writeFileSync(file(), '{"version":1,"locale":"klingon"');
-    expect(SettingsStore.load(dir.path, 'pt-PT').get()).toEqual({ locale: 'pt-BR', nickname: '' });
+    expect(SettingsStore.load(dir.path, 'pt-PT').get()).toEqual({ locale: 'pt-BR', nickname: '', closeToTray: true });
     expect(readdirSync(dir.path).some((f) => f.startsWith(`${SETTINGS_FILE}.corrupt-`))).toBe(true);
+  });
+});
+
+describe('SettingsStore: the tray (v0.3.2)', () => {
+  const hostFile = () => join(dir.path, HOSTED_DIR, HOST_FILE);
+  const writeHostFile = (content: string) => {
+    mkdirSync(join(dir.path, HOSTED_DIR), { recursive: true });
+    writeFileSync(hostFile(), content);
+  };
+
+  it('keeps an older settings file: closing to the tray is on, the notice not shown yet', () => {
+    writeFileSync(file(), JSON.stringify({ version: 1, locale: 'en', nickname: 'Ana' }));
+    const store = SettingsStore.load(dir.path, 'pt-BR');
+    expect(store.get()).toEqual({ locale: 'en', nickname: 'Ana', closeToTray: true });
+    expect(store.trayNoticeShown()).toBe(false);
+  });
+
+  it('remembers the notice once ever, in settings.json, never in what the page gets', () => {
+    const store = SettingsStore.load(dir.path, 'en');
+    store.markTrayNoticeShown();
+    expect(store.trayNoticeShown()).toBe(true);
+    expect(store.get()).not.toHaveProperty('trayNoticeShown');
+    expect(JSON.parse(readFileSync(file(), 'utf8'))).toMatchObject({ trayNoticeShown: true, closeToTray: true });
+    store.set({ nickname: 'Ana' }); // a later change keeps it
+    expect(SettingsStore.load(dir.path, 'en').trayNoticeShown()).toBe(true);
+  });
+
+  it('migrates the flag hosted/host.json kept before, leaving that file alone', () => {
+    const legacy = JSON.stringify({ version: 1, last: null, trayNoticeShown: true });
+    writeHostFile(legacy);
+    expect(SettingsStore.load(dir.path, 'en').trayNoticeShown()).toBe(true);
+    SettingsStore.load(dir.path, 'en').set({ locale: 'pt-BR' });
+    writeHostFile(JSON.stringify({ version: 1, last: null, trayNoticeShown: false }));
+    expect(SettingsStore.load(dir.path, 'en').trayNoticeShown()).toBe(true); // settings.json has it now
+    expect(readdirSync(join(dir.path, HOSTED_DIR))).toEqual([HOST_FILE]);
+  });
+
+  it('ignores a missing, false or broken legacy flag, without renaming host.json', () => {
+    expect(SettingsStore.load(dir.path, 'en').trayNoticeShown()).toBe(false);
+    writeHostFile(JSON.stringify({ version: 1, last: null, trayNoticeShown: false }));
+    expect(SettingsStore.load(dir.path, 'en').trayNoticeShown()).toBe(false);
+    writeHostFile('{"version":1,');
+    expect(SettingsStore.load(dir.path, 'en').trayNoticeShown()).toBe(false);
+    expect(readFileSync(hostFile(), 'utf8')).toBe('{"version":1,');
   });
 });

@@ -1,4 +1,4 @@
-// Small building blocks of the main screen: avatar, dialog, menu and select. Dialogs trap
+// Small building blocks of the main screen: avatar, server icon, dialog, menu and select. Dialogs trap
 // focus and close on Esc; menus and selects move with the arrow keys (keyboard access, spec §11).
 import {
   useEffect,
@@ -50,6 +50,27 @@ export function Avatar({
     >
       {face.kind === 'image' ? <img className={p.avatarImage} src={face.src} alt="" draggable={false} onError={() => setFailed(shown)} /> : face.text}
       {online !== null && <span className={online ? `${p.dot} ${p.dotOn}` : p.dot} />}
+    </span>
+  );
+}
+
+/**
+ * A server's icon (spec 2026-10-01-icone-do-servidor): the image at app://ghostlink/_avatar/<hash>
+ * (main's cache, so it shows for servers that are not open too), or the name's initials when
+ * there is none or it fails to load. `className` restyles it in place (the rail's button
+ * gives its own size and shape); otherwise `size` sets a rounded square.
+ */
+export function ServerIcon({ name, hash = null, size = 48, className }: { name: string; hash?: string | null; size?: number; className?: string }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const face = avatarFace(hash, failed, name);
+  return (
+    <span
+      className={className ?? p.serverIcon}
+      style={className ? undefined : { width: size, height: size, fontSize: initialsFontSize(size) }}
+      aria-hidden="true"
+      data-server-icon={face.kind}
+    >
+      {face.kind === 'image' ? <img className={p.serverIconImage} src={face.src} alt="" draggable={false} onError={() => setFailed(hash)} /> : face.text}
     </span>
   );
 }

@@ -15,6 +15,7 @@ import { profile } from './profile.pt-BR.js';
 import { railway } from './railway.pt-BR.js';
 import { serverDelete } from './serverDelete.pt-BR.js';
 import { serverUpdate } from './serverUpdate.pt-BR.js';
+import { tray } from './tray.pt-BR.js';
 import { voice } from './voice.pt-BR.js';
 
 export const messages = {
@@ -160,4 +161,5 @@ export const messages = {
   ...serverUpdate,
   ...serverDelete,
   ...attachments,
+  ...tray,
 } as const;

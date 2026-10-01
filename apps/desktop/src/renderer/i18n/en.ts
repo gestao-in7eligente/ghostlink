@@ -14,6 +14,7 @@ import type { messages as ptBR } from './pt-BR.js';
 import { releaseEn } from './release.en.js';
 import { serverDelete } from './serverDelete.en.js';
 import { serverUpdate } from './serverUpdate.en.js';
+import { tray } from './tray.en.js';
 import { voice } from './voice.en.js';
 
 // Typed against pt-BR: a missing or extra key fails the typecheck (contract §5).
@@ -160,4 +161,5 @@ export const messages: Record<keyof typeof ptBR, string> = {
   ...serverUpdate,
   ...serverDelete,
   ...attachments,
+  ...tray,
 };

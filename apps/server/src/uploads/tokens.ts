@@ -12,6 +12,7 @@ export interface AttachmentGrant {
 
 /** An upload.begin answer waiting for its POST /upload (main spec §4, §7). */
 export interface UploadGrant {
+  /** My photo, the server's icon, or a message's file. */
   readonly purpose: UploadPurpose;
   readonly sessionId: string;
   readonly userId: string;

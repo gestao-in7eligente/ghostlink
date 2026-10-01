@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { LIMITS, ProtocolError, formatHostPort, parseHostPort, sanitizeLabel } from '@ghostlink/shared';
+import { LIMITS, ProtocolError, avatarHashSchema, formatHostPort, parseHostPort, sanitizeLabel } from '@ghostlink/shared';
 import type { SavedServer } from '../shared/ipcTypes.js';
 import { readJsonFile, writeJsonAtomic } from './files.js';
 
@@ -22,6 +22,8 @@ const savedServerSchema = z.object({
   serverKeyId: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
   nickname: z.string().max(256),
   addedAt: z.number().int().nonnegative(),
+  // A damaged hash is no icon, not a damaged file.
+  iconHash: avatarHashSchema.optional().catch(undefined),
 });
 
 const fileSchema = z.object({ version: z.literal(1), servers: z.array(savedServerSchema).max(1000) });
@@ -91,10 +93,24 @@ export class SavedServersStore {
       serverKeyId: input.serverKeyId,
       nickname: input.nickname,
       addedAt: existing?.addedAt ?? this.#now(),
+      ...(existing?.iconHash === undefined ? {} : { iconHash: existing.iconHash }),
     };
     const next = existing ? this.#servers.map((s) => (s === existing ? entry : s)) : [...this.#servers, entry];
     this.#save(next);
     return copy(entry);
+  }
+
+  /**
+   * The server icon this app last saw for the saved server `id` (welcome or server.updated);
+   * null: initials. Returns true when it changed (and was written).
+   */
+  setIcon(id: string, hash: string | null): boolean {
+    const existing = this.#servers.find((s) => s.id === id);
+    if (!existing || (existing.iconHash ?? null) === hash) return false;
+    const { iconHash: _previous, ...rest } = existing;
+    const entry: SavedServer = hash === null ? rest : { ...rest, iconHash: hash };
+    this.#save(this.#servers.map((s) => (s === existing ? entry : s)));
+    return true;
   }
 
   /** Returns false when no server has this id. */

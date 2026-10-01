@@ -124,6 +124,8 @@ export interface ServerSettings {
   uploadLimitMb: number;
   /** Every attachment together, in MB (QUOTA_EXCEEDED above it); `server.storage` tells the use. */
   storageQuotaMb: number;
+  /** The server icon's SHA-256 (hex), or null: initials (spec 2026-10-01-icone-do-servidor). */
+  icon: string | null;
 }
 
 /** The `server.updated` payload, also the answer to `server.update`. */
@@ -370,6 +372,8 @@ export const memberSchemaClient: z.ZodType<Member> = z.object({
 // Servers before attachments send no limits: the defaults they had in the database.
 const uploadLimitClient = z.number().int().min(0).catch(uploadLimitMb.default);
 const storageQuotaClient = z.number().int().min(0).catch(storageQuotaMb.default);
+// Servers before 0.3.2 send no icon: initials.
+const iconClient = z.string().regex(/^[0-9a-f]{64}$/).nullable().catch(null);
 
 export const serverSettingsSchemaClient: z.ZodType<ServerSettings> = z.object({
   ownerId: idClient.nullable(),
@@ -377,6 +381,7 @@ export const serverSettingsSchemaClient: z.ZodType<ServerSettings> = z.object({
   hasPassword: z.boolean(),
   uploadLimitMb: uploadLimitClient,
   storageQuotaMb: storageQuotaClient,
+  icon: iconClient,
 });
 
 export const serverInfoSchemaClient: z.ZodType<ServerInfo> = z.object({
@@ -387,6 +392,7 @@ export const serverInfoSchemaClient: z.ZodType<ServerInfo> = z.object({
   hasPassword: z.boolean(),
   uploadLimitMb: uploadLimitClient,
   storageQuotaMb: storageQuotaClient,
+  icon: iconClient,
 });
 
 export const inviteLinksSchemaClient: z.ZodType<InviteLinks> = z.object({
@@ -402,6 +408,7 @@ const DEFAULT_SETTINGS: ServerSettings = {
   hasPassword: false,
   uploadLimitMb: uploadLimitMb.default,
   storageQuotaMb: storageQuotaMb.default,
+  icon: null,
 };
 
 export const textWelcomeSchemaClient: z.ZodType<TextWelcome> = z.object({

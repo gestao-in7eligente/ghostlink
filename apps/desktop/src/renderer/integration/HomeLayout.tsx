@@ -14,8 +14,7 @@ import { openHostFlow, openHostPanel } from '../features/host/hostUi.js';
 import { deletionMessage } from '../features/serverDelete/serverDeleteModel.js';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 import l from '../layout/layout.module.css';
-import { serverInitials } from '../layout/names.js';
-import { Avatar } from '../layout/primitives.js';
+import { Avatar, ServerIcon } from '../layout/primitives.js';
 import { ServerRail } from '../layout/ServerRail.js';
 import { UserPanel } from '../layout/UserPanel.js';
 import { UserSettings } from '../layout/UserSettings.js';
@@ -162,7 +161,11 @@ export function HomeLayout({ nickname, onJoined }: { nickname: string; onJoined:
       <aside className={h.active} aria-label={t('home.active.title')}>
         <h2 className={h.activeTitle}>{t('home.active.title')}</h2>
         {activity ? (
-          <ActivityCard activity={activity} onOpen={hostedRow && activity.state === 'running' ? () => void openHosted(hostedRow) : null} />
+          <ActivityCard
+            activity={activity}
+            icon={servers.find((sv) => sv.id === hostedRow?.id)?.iconHash ?? null}
+            onOpen={hostedRow && activity.state === 'running' ? () => void openHosted(hostedRow) : null}
+          />
         ) : (
           <div className={h.activeEmpty}>
             <p className={h.activeEmptyTitle}>{t('home.active.emptyTitle')}</p>
@@ -224,16 +227,14 @@ function DmRow({
   );
 }
 
-/** "Ativo agora": the server hosted on this computer, its state and what to do with it. */
-function ActivityCard({ activity, onOpen }: { activity: HomeActivity; onOpen: (() => void) | null }) {
+/** "Ativo agora": the server hosted on this computer (its icon, or initials), its state and what to do with it. */
+function ActivityCard({ activity, icon, onOpen }: { activity: HomeActivity; icon: string | null; onOpen: (() => void) | null }) {
   const t = useT();
   const idle = activity.state === 'stopped' || activity.state === 'failed';
   return (
     <section className={h.card} aria-label={activity.name}>
       <div className={h.cardHead}>
-        <span className={h.avatar} aria-hidden="true">
-          {serverInitials(activity.name)}
-        </span>
+        <ServerIcon name={activity.name} hash={icon} className={h.avatar} />
         <span className={h.cardText}>
           <span className={h.cardName}>{activity.name}</span>
           <span className={h.cardSub}>{t('home.active.hostedHere')}</span>

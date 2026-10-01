@@ -63,6 +63,7 @@ describe('IPC channel names (contract §5)', () => {
       'ghostlink:profile.avatar',
       'ghostlink:profile.clearAvatar',
       'ghostlink:profile.setAvatar',
+      'ghostlink:profile.setServerIcon',
       'ghostlink:ptt.configure',
       'ghostlink:railway.connect',
       'ghostlink:railway.create',

@@ -10,7 +10,7 @@ import { MAX_OPEN_UPLOADS_PER_SESSION, UploadTokens, type AttachmentGrant, type 
 export type UploadAnswer = { ok: true; body: object } | { ok: false; code: ErrorCode };
 
 /**
- * One kind of upload (avatar, attachment; the server icon next). The hub does what every
+ * One kind of upload (avatar, icon, attachment). The hub does what every
  * purpose shares: the strict schema, the token, the size cut, the hash and the temp file.
  */
 export interface UploadPurposeHandler {

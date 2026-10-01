@@ -26,6 +26,28 @@
   object-fit: cover;
 }
 
+/* A server's icon: the rail's rounded square, initials on the raised gray when there is no image. */
+.serverIcon {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 30%;
+  background: var(--bg-input);
+  color: var(--text-strong);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  user-select: none;
+}
+
+.serverIconImage {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
 .dot {
   position: absolute;
   right: -1px;

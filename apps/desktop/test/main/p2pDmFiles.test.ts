@@ -50,7 +50,7 @@ function app(name: string) {
   const events: DmEvent[] = [];
   const engine = new FriendsEngine({
     identity,
-    settings: { get: () => ({ locale: 'en' as const, nickname: name }) },
+    settings: { get: () => ({ locale: 'en' as const, nickname: name, closeToTray: true }) },
     userDataDir: dir,
     emit: () => {},
     emitDm: (event) => events.push(event),

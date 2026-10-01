@@ -43,7 +43,11 @@ export function App() {
       // Leave/delete spec §3: main took an erased server out of the saved list.
       if (event.error === 'SERVER_DELETED') useSavedListStore.getState().changed();
     });
-    const offEvents = api.onServerEvent((event, serverId) => dispatch({ type: 'serverEvent', event, serverId }));
+    const offEvents = api.onServerEvent((event, serverId) => {
+      dispatch({ type: 'serverEvent', event, serverId });
+      // The server icon (spec 2026-10-01-icone-do-servidor): main stored it in the saved list before this event.
+      if (event.t === 'server.updated' || event.t === 'welcome') useSavedListStore.getState().changed();
+    });
     let alive = true;
     Promise.all([api.identity.status(), api.settings.get()]).then(
       ([status, loaded]) => {

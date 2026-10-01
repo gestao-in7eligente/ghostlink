@@ -1,5 +1,6 @@
 // Profile photos over HTTPS to the connected server (spec 2026-10-01 §4, main spec §7):
 // upload.begin over the session, then POST /upload?u=<token>; the signed GET /avatars/<hash>.
+// The server icon (spec 2026-10-01-icone-do-servidor) takes the same path with `purpose: 'icon'`.
 // Every request goes through pinnedTlsConnect with the session's pin, so a server with another
 // key never receives a byte (pinnedHttp.ts). URLs, tokens, hashes and bytes are never logged nor put in errors.
 import { createHmac } from 'node:crypto';
@@ -44,6 +45,7 @@ const MAX_JSON_BYTES = 64 * 1024;
 
 const uploadBeginResultSchema = z.object({ uploadToken: z.string().min(1).max(512).regex(/^[A-Za-z0-9_-]+$/) });
 const uploadResultSchema = z.object({ avatar: avatarHashSchema });
+const iconUploadResultSchema = z.object({ icon: avatarHashSchema });
 const errorBodySchema = z.object({ code: z.string().max(64) });
 
 /**
@@ -93,7 +95,21 @@ export async function downloadAvatar(server: AvatarServer, hash: string, opts: A
 
 /** upload.begin over the session, then the bytes to POST /upload. Resolves with the hash the server now holds for me. */
 export async function uploadAvatar(server: AvatarServer, bytes: Uint8Array, opts: AvatarHttpOptions = {}): Promise<string> {
-  const begin: UploadBegin = { purpose: 'avatar', size: bytes.byteLength, sha256: sha256Hex(bytes) };
+  const result = uploadResultSchema.safeParse(await uploadImage(server, bytes, 'avatar', opts));
+  if (!result.success) throw new ProtocolError('BAD_REQUEST', 'invalid upload answer');
+  return result.data.avatar;
+}
+
+/** The same path for the server's icon (MANAGE_SERVER). Resolves with the icon's hash as the server now holds it. */
+export async function uploadServerIcon(server: AvatarServer, bytes: Uint8Array, opts: AvatarHttpOptions = {}): Promise<string> {
+  const result = iconUploadResultSchema.safeParse(await uploadImage(server, bytes, 'icon', opts));
+  if (!result.success) throw new ProtocolError('BAD_REQUEST', 'invalid upload answer');
+  return result.data.icon;
+}
+
+/** upload.begin, then POST /upload; the JSON of a 200 answer. */
+async function uploadImage(server: AvatarServer, bytes: Uint8Array, purpose: 'avatar' | 'icon', opts: AvatarHttpOptions): Promise<unknown> {
+  const begin: UploadBegin = { purpose, size: bytes.byteLength, sha256: sha256Hex(bytes) };
   const answer = uploadBeginResultSchema.safeParse(await server.request('upload.begin', begin));
   if (!answer.success) throw new ProtocolError('BAD_REQUEST', 'invalid upload.begin answer');
   const res = await pinnedRequest(server, {
@@ -104,9 +120,7 @@ export async function uploadAvatar(server: AvatarServer, bytes: Uint8Array, opts
     timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   });
   if (res.status !== 200) throw statusError(res);
-  const result = uploadResultSchema.safeParse(parseJson(res.body));
-  if (!result.success) throw new ProtocolError('BAD_REQUEST', 'invalid upload answer');
-  return result.data.avatar;
+  return parseJson(res.body);
 }
 
 /** Back to initials on the connected server. */

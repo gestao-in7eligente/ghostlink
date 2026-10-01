@@ -77,6 +77,8 @@ export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
   'profile.update', 'role.create', 'role.update', 'role.delete', 'role.reorder',
   'member.setRoles', 'member.kick', 'member.ban', 'member.unban', 'bans.list',
   'invite.create', 'invite.list', 'invite.revoke', 'server.update', 'server.transferOwnership', 'server.leave',
+  // The server icon (v0.3.2): setting it goes through profile.setServerIcon, which uploads it.
+  'server.iconClear',
   // Deleting a server (v0.2.4): the owner's banner restores it; `server.delete` goes through servers.delete.
   'server.restore',
   // Attachments (v0.3.3): the space in use, for Server settings → Overview. upload.begin stays in main.
@@ -132,7 +134,9 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.identityRetry]: z.tuple([]),
   [IPC.identityReplaceKeepingBackup]: z.tuple([]),
   [IPC.settingsGet]: z.tuple([]),
-  [IPC.settingsSet]: z.tuple([z.strictObject({ locale: z.enum(LOCALES).optional(), nickname: z.string().max(256).optional() })]),
+  [IPC.settingsSet]: z.tuple([
+    z.strictObject({ locale: z.enum(LOCALES).optional(), nickname: z.string().max(256).optional(), closeToTray: z.boolean().optional() }),
+  ]),
   [IPC.joinParse]: z.tuple([z.string().max(2 * LIMITS.inviteMaxLength)]),
   [IPC.joinProbe]: z.tuple([address]),
   [IPC.joinConnect]: z.tuple([

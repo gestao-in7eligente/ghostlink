@@ -1,9 +1,10 @@
 // `upload.begin` → `POST /upload?u=<uploadToken>` (main spec §4, §5.2, §7): one single-use token
-// per file, valid for 60 s, for each purpose. A new purpose (the server icon: `icon`) adds its
-// schema to the union below and its answer to the server's upload hub.
+// per file, valid for 60 s, for each purpose: my profile photo (`avatar`), the server's icon
+// (`icon`, MANAGE_SERVER) and a message's file (`attachment`). A new purpose adds its schema to
+// the union below and registers itself in the server's upload hub.
 import { z } from 'zod';
 import { ATTACHMENT_LIMITS } from './attachments.js';
-import { avatarUploadBeginSchema } from './avatar.js';
+import { avatarUploadBeginSchema, iconUploadBeginSchema } from './avatar.js';
 import { entityIdSchema } from './chat.js';
 
 /** `upload.begin` for a channel attachment (spec 2026-10-01-anexos §2): ATTACH_FILES, VIEW_CHANNEL and SEND_MESSAGES there. */
@@ -17,7 +18,7 @@ export const attachmentUploadBeginSchema = z.strictObject({
 });
 export type AttachmentUploadBegin = z.infer<typeof attachmentUploadBeginSchema>;
 
-export const uploadBeginSchema = z.discriminatedUnion('purpose', [avatarUploadBeginSchema, attachmentUploadBeginSchema]);
+export const uploadBeginSchema = z.discriminatedUnion('purpose', [avatarUploadBeginSchema, iconUploadBeginSchema, attachmentUploadBeginSchema]);
 export type UploadBegin = z.infer<typeof uploadBeginSchema>;
 export type UploadPurpose = UploadBegin['purpose'];
 

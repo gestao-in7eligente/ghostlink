@@ -10,7 +10,7 @@ import { isUnread, readMark, sortedChannels } from '../stores/channels.js';
 import { myPermissions } from '../stores/server.js';
 import { dispatchText, useTextStore } from '../stores/text.js';
 import l from './layout.module.css';
-import { Menu, MenuItem, MenuSeparator } from './primitives.js';
+import { Menu, MenuItem, MenuSeparator, ServerIcon } from './primitives.js';
 import { useLayoutSlots } from './slots.js';
 
 export type SidebarDialog = 'invite' | 'settings' | 'leave' | 'delete';
@@ -19,6 +19,7 @@ export type SidebarDialog = 'invite' | 'settings' | 'leave' | 'delete';
 export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog) => void }) {
   const t = useT();
   const name = useTextStore((s) => s.server.name);
+  const icon = useTextStore((s) => s.server.icon);
   const server = useTextStore((s) => s.server);
   const members = useTextStore((s) => s.members);
   const byId = useTextStore((s) => s.channels.byId);
@@ -50,7 +51,7 @@ export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog) => 
         aria-expanded={menu !== null}
         onClick={() => setMenu(menu ? null : (headerRef.current?.getBoundingClientRect() ?? null))}
       >
-        <GhostMark size={22} />
+        {icon ? <ServerIcon name={name} hash={icon} size={22} /> : <GhostMark size={22} />}
         <span className={l.serverName}>{name}</span>
         <ChevronDown className={l.chevron} size={16} aria-hidden="true" />
         <span className={l.visuallyHidden}>{t('layout.serverMenu')}</span>

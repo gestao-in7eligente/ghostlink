@@ -1,4 +1,4 @@
-import { CHAT_LIMITS, ProtocolError, type MemberLeftReason, type ServerSettings } from '@ghostlink/shared';
+import { CHAT_LIMITS, ProtocolError, type MemberLeftReason, type ServerInfo, type ServerSettings } from '@ghostlink/shared';
 import { getMeta } from '../db/serverMeta.js';
 import type { ModuleContext, ServerEvent, SessionInfo } from '../modules.js';
 import { Access, type Subject } from './access.js';
@@ -107,7 +107,14 @@ export class TextCore {
       hasPassword: meta.passwordHash !== null,
       uploadLimitMb: meta.uploadLimitMb,
       storageQuotaMb: meta.storageQuotaMb,
+      icon: meta.icon,
     };
+  }
+
+  /** The `server.updated` payload, as stored now. */
+  serverInfo(): ServerInfo {
+    const meta = getMeta(this.db);
+    return { name: meta.name, joinMode: meta.joinMode, ...this.serverSettings() };
   }
 
   /**
