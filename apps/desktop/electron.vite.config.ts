@@ -41,9 +41,14 @@ export default defineConfig({
     build: {
       target: 'node24',
       rollupOptions: {
-        // index: the main window. splash: the update splash (main/updateSplash.ts); the two share no
-        // module, so each stays one file (a sandboxed preload cannot require a chunk).
-        input: { index: here('src/preload/index.ts'), splash: here('src/preload/splash.ts') },
+        // index: the main window. splash: the update splash (main/updateSplash.ts). drawOverlay: the
+        // pencil over the shared screen (main/drawOverlay.ts). They share no module, so each stays one
+        // file (a sandboxed preload cannot require a chunk).
+        input: {
+          index: here('src/preload/index.ts'),
+          splash: here('src/preload/splash.ts'),
+          drawOverlay: here('src/preload/drawOverlay.ts'),
+        },
         // A sandboxed preload cannot be an ES module; .cjs keeps Node from reading it as ESM.
         output: { format: 'cjs', entryFileNames: '[name].cjs' },
       },
@@ -55,7 +60,14 @@ export default defineConfig({
     build: {
       target: 'chrome152',
       // splash.html: the update splash shown while the app checks for updates (app://ghostlink/splash.html).
-      rollupOptions: { input: { index: here('src/renderer/index.html'), splash: here('src/renderer/splash.html') } },
+      // drawOverlay.html: the pencil's strokes over the shared monitor (app://ghostlink/drawOverlay.html).
+      rollupOptions: {
+        input: {
+          index: here('src/renderer/index.html'),
+          splash: here('src/renderer/splash.html'),
+          drawOverlay: here('src/renderer/drawOverlay.html'),
+        },
+      },
     },
   },
 });

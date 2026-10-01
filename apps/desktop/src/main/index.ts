@@ -1,7 +1,8 @@
 // Main-process bootstrap (contract §5). Everything testable lives in the modules it
 // wires together; this file is the thin glue that needs a real Electron.
-import { BrowserWindow, Menu, Notification, app, clipboard, desktopCapturer, dialog, net, safeStorage, session, shell } from 'electron';
+import { BrowserWindow, Menu, Notification, app, clipboard, desktopCapturer, dialog, net, safeStorage, screen, session, shell } from 'electron';
 import { mkdtempSync } from 'node:fs';
+import { release } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { APP_ID, APP_NAME, DEFAULT_PORT } from '@ghostlink/shared';
@@ -11,6 +12,7 @@ import { createAvatars } from './avatars/index.js';
 import { ClientController } from './controller.js';
 import { GHOSTKEY_EXTENSION, IdentityBackup } from './backup.js';
 import { DeepLinks, extractDeepLink, registerProtocolClient } from './deeplink.js';
+import { DrawOverlay, keepsOutOfCapture } from './drawOverlay.js';
 import { openExternalWithConfirm } from './externalLinks.js';
 import { HostFirewall, firewallPrograms } from './hostFirewall.js';
 import { HostManager } from './hostManager.js';
@@ -183,8 +185,27 @@ async function start(): Promise<BrowserWindow | null> {
     appOrigin,
     ownMediaSourceId: () => (window.isDestroyed() ? null : window.getMediaSourceId()),
   });
+  // The pencil over the shared monitor (pencil spec §4): it opens over the screen main handed over.
+  const drawOverlay = new DrawOverlay({
+    url: `${APP_ORIGIN}/drawOverlay.html`,
+    preload: fileURLToPath(new URL('../preload/drawOverlay.cjs', import.meta.url)),
+    packaged: app.isPackaged,
+    screenSources: () => desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } }),
+    displays: () => screen.getAllDisplays(),
+    createWindow: (options) => new BrowserWindow(options),
+    excludedFromCapture: keepsOutOfCapture(process.platform, release()),
+    log: (message) => mainLog.warn(message),
+  });
+  // A reload, a crash or the window closing ends the share, and the overlay with it.
+  window.on('closed', () => drawOverlay.close());
+  window.webContents.on('render-process-gone', () => drawOverlay.close());
+  window.webContents.on('did-start-loading', () => drawOverlay.close());
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    screenPicker.handleRequest(request, callback).catch((e: unknown) => mainLog.error('[screen] the capture answer failed:', e));
+    const answer = (streams: Parameters<typeof callback>[0]) => {
+      drawOverlay.granted(streams.video && 'id' in streams.video ? streams.video.id : null);
+      callback(streams);
+    };
+    screenPicker.handleRequest(request, answer).catch((e: unknown) => mainLog.error('[screen] the capture answer failed:', e));
   });
   registerIpc({
     appOrigin,
@@ -218,6 +239,7 @@ async function start(): Promise<BrowserWindow | null> {
     railway,
     profile: avatars.profile,
     screen: screenPicker,
+    draw: drawOverlay,
   });
   updater.start(); // the 6 h checks; the first one already ran behind the splash when it showed
   app.on('before-quit', () => {

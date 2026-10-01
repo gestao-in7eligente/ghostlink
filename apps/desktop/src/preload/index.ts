@@ -116,6 +116,11 @@ export const api: GhostlinkApi = {
     sources: () => invoke(IPC.screenSources),
     choose: (choice) => invoke(IPC.screenChoose, choice),
   },
+  draw: {
+    overlayOpen: () => invoke(IPC.drawOverlayOpen),
+    overlayStroke: (stroke) => invoke(IPC.drawOverlayStroke, stroke),
+    overlayClose: () => invoke(IPC.drawOverlayClose),
+  },
 };
 
 contextBridge.exposeInMainWorld('ghostlink', api);

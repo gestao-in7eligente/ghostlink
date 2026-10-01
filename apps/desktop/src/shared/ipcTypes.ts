@@ -3,6 +3,7 @@
 // dependencies, so the sandboxed preload bundle stays tiny.
 import type { Envelope, ParsedJoinInput, WelcomePayload } from '@ghostlink/shared';
 import type { AppErrorCode } from './appErrors.js';
+import type { DrawApi, OverlayStroke } from './drawOverlay.js';
 import type { FirewallFixResult, FirewallStatus, HostApi, HostConfig, HostInvite, HostInviteOptions, HostStartResult, HostStatus } from './hostTypes.js';
 import type { AvatarInfo, ProfileApi } from './profileTypes.js';
 import type { RailwayAccount, RailwayCreateRequest, RailwayPending, RailwayProgress } from './railwayTypes.js';
@@ -155,6 +156,8 @@ export interface GhostlinkApi {
   railway: RailwayApi;
   profile: ProfileApi;
   screen: ScreenApi;
+  /** The pencil's overlay over my shared monitor (pencil spec §4). */
+  draw: DrawApi;
 }
 
 /**
@@ -227,6 +230,9 @@ export const IPC = {
   profileClearAvatar: 'ghostlink:profile.clearAvatar',
   screenSources: 'ghostlink:screen.sources',
   screenChoose: 'ghostlink:screen.choose',
+  drawOverlayOpen: 'ghostlink:draw.overlayOpen',
+  drawOverlayStroke: 'ghostlink:draw.overlayStroke',
+  drawOverlayClose: 'ghostlink:draw.overlayClose',
 } as const;
 
 /** Events pushed from main to the renderer. */
@@ -293,6 +299,9 @@ export interface IpcContract {
   [IPC.profileClearAvatar]: { args: []; result: null };
   [IPC.screenSources]: { args: []; result: ScreenSource[] };
   [IPC.screenChoose]: { args: [choice: ScreenChoice]; result: void };
+  [IPC.drawOverlayOpen]: { args: []; result: boolean };
+  [IPC.drawOverlayStroke]: { args: [stroke: OverlayStroke]; result: void };
+  [IPC.drawOverlayClose]: { args: []; result: void };
 }
 
 /** The profile photo channels (v0.2.2), handled by main/profileIpc.ts. */

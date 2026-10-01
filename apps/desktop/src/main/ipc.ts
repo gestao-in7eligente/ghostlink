@@ -6,6 +6,7 @@ import { IPC, type AppInfo, type ChatNotification, type IpcArgs, type IpcChannel
 import type { ClientController } from './controller.js';
 import { BACKUP_IPC_ARG_SCHEMAS, createBackupIpcHandlers, type IdentityBackup } from './backup.js';
 import type { DeepLinks } from './deeplink.js';
+import { DRAW_IPC_ARG_SCHEMAS, createDrawIpcHandlers, type DrawIpcDeps } from './drawOverlayIpc.js';
 import { HOST_IPC_ARG_SCHEMAS, createHostIpcHandlers, type HostIpcDeps } from './hostIpc.js';
 import type { IdentityStore } from './identity.js';
 import { mainLog } from './log.js';
@@ -42,6 +43,8 @@ export interface IpcDeps {
   profile?: ProfileIpcDeps;
   /** Screen sharing: the sources and the choice (screen sharing spec §3). */
   screen?: ScreenIpcDeps;
+  /** The pencil's overlay over the shared monitor (pencil spec §4). */
+  draw?: DrawIpcDeps;
 }
 
 /** The handshake belongs to the main process alone: the renderer may never send it (release plan "Seams"). */
@@ -61,6 +64,8 @@ export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
   'invite.create', 'invite.list', 'invite.revoke', 'server.update', 'server.transferOwnership', 'server.leave',
   // Voice track
   'voice.join', 'voice.leave', 'voice.selfState', 'voice.moderate',
+  // The pencil on shared screens (v0.2.3)
+  'screen.draw', 'screen.drawAllow',
   'ping',
 ]);
 
@@ -131,6 +136,7 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   ...RAILWAY_IPC_ARG_SCHEMAS,
   ...PROFILE_IPC_ARG_SCHEMAS,
   ...SCREEN_IPC_ARG_SCHEMAS,
+  ...DRAW_IPC_ARG_SCHEMAS,
   [IPC.deepLinkTake]: z.tuple([]),
   [IPC.updatesState]: z.tuple([]),
   [IPC.updatesSetAutoCheck]: z.tuple([z.boolean()]),
@@ -167,6 +173,7 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     ...createRailwayIpcHandlers(deps.railway),
     ...createProfileIpcHandlers(deps.profile),
     ...createScreenIpcHandlers(deps.screen),
+    ...createDrawIpcHandlers(deps.draw),
     [IPC.deepLinkTake]: () => deps.deepLinks?.take() ?? null,
     [IPC.updatesState]: () => updates.state(),
     [IPC.updatesSetAutoCheck]: (enabled) => updates.setAutoCheck(enabled),
