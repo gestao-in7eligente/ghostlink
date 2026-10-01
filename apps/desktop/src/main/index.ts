@@ -5,7 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { APP_ID, APP_NAME, DEFAULT_PORT } from '@ghostlink/shared';
-import { IPC_EVENTS, type Platform } from '../shared/ipcTypes.js';
+import { IPC_EVENTS, type Locale, type Platform } from '../shared/ipcTypes.js';
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges } from './appProtocol.js';
 import { ClientController } from './controller.js';
 import { GHOSTKEY_EXTENSION, IdentityBackup } from './backup.js';
@@ -27,7 +27,8 @@ import { SavedServersStore } from './savedServers.js';
 import { installSecurity, originOf } from './security.js';
 import { SettingsStore } from './settings.js';
 import { runSmoke } from './smoke.js';
-import { Updater, createUpdaterBackend } from './updater.js';
+import { UpdateSplash } from './updateSplash.js';
+import { Updater, createUpdaterBackend, type StartupOutcome } from './updater.js';
 import { createReleaseFileFetcher } from './updaterSignature.js';
 import { applicationMenuTemplate, mainWindowOptions } from './window.js';
 
@@ -44,6 +45,8 @@ const appOrigin = (devRendererUrl && originOf(devRendererUrl)) || APP_ORIGIN;
 const hostBind = app.isPackaged ? undefined : process.env.GHOSTLINK_HOST_BIND || undefined;
 /** ghostlink:// links (spec §12), created with the single-instance lock. */
 let deepLinks: DeepLinks | null = null;
+/** The update splash while the app opens ("Atualizar ao abrir"), until the main window shows. */
+let openingSplash: UpdateSplash | null = null;
 
 // 1. Test hook (never honoured when packaged): one profile per instance.
 if (!app.isPackaged && process.env.GHOSTLINK_USER_DATA) {
@@ -76,6 +79,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.on('second-instance', (_event, argv) => {
     links.handle(extractDeepLink(argv));
+    if (!mainWindow) openingSplash?.focus(); // still checking for updates: the link waits in DeepLinks
     if (mainWindow?.isMinimized()) mainWindow.restore();
     mainWindow?.show(); // it may be hidden in the tray while hosting
     mainWindow?.focus();
@@ -85,8 +89,8 @@ if (!app.requestSingleInstanceLock()) {
   // 5. Everything that needs a ready app.
   app
     .whenReady()
-    .then(() => {
-      mainWindow = start();
+    .then(async () => {
+      mainWindow = await start();
     })
     .catch((e: unknown) => {
       mainLog.error('GhostLink failed to start:', e);
@@ -94,7 +98,8 @@ if (!app.requestSingleInstanceLock()) {
     });
 }
 
-function start(): BrowserWindow {
+/** The main window, or null when the app is about to quit (an update installs, or the splash was closed). */
+async function start(): Promise<BrowserWindow | null> {
   registerAppProtocol(fileURLToPath(new URL('../renderer/', import.meta.url)));
   if (!smoke) registerProtocolClient(app, { argv: process.argv, execPath: process.execPath, env: process.env });
   installSecurity({ appOrigin });
@@ -104,11 +109,30 @@ function start(): BrowserWindow {
   const identity = IdentityStore.load(userData, safeStorage);
   const settings = SettingsStore.load(userData, app.getLocale());
   const servers = SavedServersStore.load(userData);
+  // Windows shows toasts (and routes their clicks) only for a known AppUserModelID. Set before the
+  // first window (the update splash), so it shares the taskbar button with the main window.
+  if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
+
+  // The update state reaches the page once the main window exists (the renderer also asks for it on load).
+  let target: BrowserWindow | null = null;
+  const send = (channel: string, payload: unknown) => {
+    if (target && !target.isDestroyed()) target.webContents.send(channel, payload);
+  };
+  // Spec §15: Windows installs only, never in development or smoke mode; the setting can turn it off.
+  const updater = Updater.load({
+    backend: createUpdaterBackend({ packaged: app.isPackaged, smoke, platform: process.platform, resourcesPath: process.resourcesPath }),
+    userDataDir: userData,
+    currentVersion: app.getVersion(),
+    fetchReleaseFile: createReleaseFileFetcher((url, init) => net.fetch(url, init)),
+    emit: (state) => send(IPC_EVENTS.updates, state),
+  });
+  // "Atualizar ao abrir": the first check runs behind the splash, before anything else exists.
+  const opening = await checkForUpdatesOnOpen(updater, settings.get().locale);
+  if (opening.outcome === 'installing' || opening.splash?.closedByUser) return null;
 
   const window = createMainWindow();
-  const send = (channel: string, payload: unknown) => {
-    if (!window.isDestroyed()) window.webContents.send(channel, payload);
-  };
+  target = window;
+  if (opening.splash) closeSplashWhenShown(opening.splash, window);
   const controller = new ClientController({
     identity,
     settings,
@@ -119,21 +143,11 @@ function start(): BrowserWindow {
     clientName: `ghostlink/${app.getVersion()} (${process.platform})`,
   });
   const host = startHostMode(window, controller, servers, settings, send);
-  // Windows shows toasts (and routes their clicks) only for a known AppUserModelID.
-  if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
   const notifier = new ChatNotifier({
     isSupported: () => Notification.isSupported(),
     create: (options) => new Notification(options),
     window: () => (window.isDestroyed() ? null : window),
     openChannel: (event) => send(IPC_EVENTS.openChannel, event),
-  });
-  // Spec §15: Windows installs only, never in development or smoke mode; the setting can turn it off.
-  const updater = Updater.load({
-    backend: createUpdaterBackend({ packaged: app.isPackaged, smoke, platform: process.platform, resourcesPath: process.resourcesPath }),
-    userDataDir: userData,
-    currentVersion: app.getVersion(),
-    fetchReleaseFile: createReleaseFileFetcher((url, init) => net.fetch(url, init)),
-    emit: (state) => send(IPC_EVENTS.updates, state),
   });
   // Global push-to-talk: the native hook is imported only once the user turns it on (spec §8.4).
   const ptt = new PushToTalk({
@@ -187,7 +201,7 @@ function start(): BrowserWindow {
     deepLinks: deepLinks ?? undefined,
     railway,
   });
-  updater.start();
+  updater.start(); // the 6 h checks; the first one already ran behind the splash when it showed
   app.on('before-quit', () => {
     updater.dispose();
     void controller.disconnect();
@@ -197,6 +211,49 @@ function start(): BrowserWindow {
   if (smoke) startSmoke(window);
   void window.loadURL(devRendererUrl ?? `${APP_ORIGIN}/index.html`);
   return window;
+}
+
+/**
+ * "Atualizar ao abrir": the splash shows the steps of Updater.checkAtStartup. It opens on the first
+ * step, so it never appears when no check runs (turned off; development, smoke mode and anything but
+ * the installed Windows app are unsupported). Closing it (Alt+F4) quits the app, as for any last window.
+ */
+async function checkForUpdatesOnOpen(updater: Updater, locale: Locale): Promise<{ outcome: StartupOutcome; splash: UpdateSplash | null }> {
+  const skip = new AbortController();
+  const shown: { splash: UpdateSplash | null } = { splash: null };
+  const outcome = await updater.checkAtStartup({
+    signal: skip.signal,
+    onStep: (step) => {
+      shown.splash ??= openSplash(locale, () => skip.abort());
+      shown.splash.show(step);
+    },
+  });
+  return { outcome, splash: shown.splash };
+}
+
+function openSplash(locale: Locale, stopWaiting: () => void): UpdateSplash {
+  openingSplash = new UpdateSplash({
+    url: `${APP_ORIGIN}/splash.html`,
+    preload: fileURLToPath(new URL('../preload/splash.cjs', import.meta.url)),
+    packaged: app.isPackaged,
+    icon: ghostImage(32),
+    locale,
+    onSkip: stopWaiting,
+    onClosedByUser: stopWaiting,
+    log: (message) => mainLog.warn(message),
+  });
+  return openingSplash;
+}
+
+/** The splash stays until the main window appears (at most 10 s more), as Discord's does. */
+function closeSplashWhenShown(splash: UpdateSplash, window: BrowserWindow): void {
+  const close = () => {
+    clearTimeout(fallback);
+    splash.close();
+    if (openingSplash === splash) openingSplash = null;
+  };
+  const fallback = setTimeout(close, 10_000);
+  window.once('show', close);
 }
 
 /**
