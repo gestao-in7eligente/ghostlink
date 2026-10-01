@@ -1,9 +1,22 @@
 // Local voice settings (spec §8.4, §11.1 item 7): devices, input mode and key, the
-// voice-activity threshold, mute/deafen and per-user volume per server. They live in
-// this app's localStorage (per userData profile); what is read back is never trusted.
+// voice-activity threshold, noise suppression, mute/deafen and per-user volume per server.
+// They live in this app's localStorage (per userData profile); what is read back is never trusted.
 import { create } from 'zustand';
 
 export type InputMode = 'vad' | 'ptt';
+
+/**
+ * Noise suppression (noise suppression spec 2026-10-01 §1): a WebAssembly suppressor in the
+ * gate's graph (RNNoise, Speex, GTCRN), the browser's own (WebRTC), or none.
+ */
+export type NoiseSuppression = 'rnnoise' | 'speex' | 'gtcrn' | 'webrtc' | 'off';
+
+/** In the order the settings list them. */
+export const NOISE_SUPPRESSIONS: readonly NoiseSuppression[] = ['rnnoise', 'speex', 'gtcrn', 'webrtc', 'off'];
+
+export function isNoiseSuppression(v: unknown): v is NoiseSuppression {
+  return typeof v === 'string' && (NOISE_SUPPRESSIONS as readonly string[]).includes(v);
+}
 
 export interface VoiceSettings {
   /** null = the system default device. */
@@ -15,6 +28,8 @@ export interface VoiceSettings {
   pttCode: string | null;
   /** Voice activity opens the microphone above this level (dBFS, -100..0). */
   thresholdDb: number;
+  /** RNNoise by default, also for settings saved before the choice existed. */
+  noiseSuppression: NoiseSuppression;
   muted: boolean;
   deafened: boolean;
   /** serverId → userId (or screenVolumeKey(userId) for their stream) → volume in percent (0–200); absent means 100. */
@@ -27,6 +42,7 @@ export const defaultVoiceSettings: VoiceSettings = {
   mode: 'vad',
   pttCode: null,
   thresholdDb: -50,
+  noiseSuppression: 'rnnoise',
   muted: false,
   deafened: false,
   volumes: {},
@@ -89,6 +105,7 @@ export function parseVoiceSettings(raw: unknown): VoiceSettings {
   const muted = own(raw, 'muted');
   const deafened = own(raw, 'deafened');
   const pttCode = own(raw, 'pttCode');
+  const noise = own(raw, 'noiseSuppression');
   return {
     inputDeviceId: deviceId(own(raw, 'inputDeviceId')),
     outputDeviceId: deviceId(own(raw, 'outputDeviceId')),
@@ -98,6 +115,7 @@ export function parseVoiceSettings(raw: unknown): VoiceSettings {
       typeof threshold === 'number' && Number.isFinite(threshold)
         ? Math.min(0, Math.max(MIN_THRESHOLD_DB, Math.round(threshold)))
         : defaultVoiceSettings.thresholdDb,
+    noiseSuppression: isNoiseSuppression(noise) ? noise : defaultVoiceSettings.noiseSuppression,
     muted: typeof muted === 'boolean' ? muted : false,
     deafened: typeof deafened === 'boolean' ? deafened : false,
     volumes: parseVolumes(own(raw, 'volumes')),
