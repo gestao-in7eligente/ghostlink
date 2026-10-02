@@ -3,6 +3,7 @@
 // produces HTML. Every scan is linear: closing delimiters are found with memoized
 // forward searches (each text region is scanned at most once per delimiter), and
 // nesting is capped, so hostile input cannot cause catastrophic backtracking.
+import { parseChannelLink } from '../../../shared/channelLink.js';
 
 export type Inline =
   | { k: 'text'; text: string }
@@ -13,6 +14,8 @@ export type Inline =
   | { k: 'strike'; children: Inline[] }
   | { k: 'code'; text: string }
   | { k: 'link'; url: string }
+  /** A ghostlink://channel/<serverKeyId>/<channelId> link (the channel menu's "Copiar link"), kept as typed in `raw`. */
+  | { k: 'channel'; serverKeyId: string; channelId: string; raw: string }
   | { k: 'user'; id: string }
   | { k: 'role'; id: string }
   | { k: 'everyone' };
@@ -38,6 +41,8 @@ const USER_TOKEN = /<@([0-9a-f]{32})>/y;
 const ROLE_TOKEN = /<@&([A-Z2-7]{26})>/y;
 const LANG_LINE = /^([A-Za-z0-9_+#.-]{1,32})\n/;
 const EVERYONE = '@everyone';
+/** The one custom scheme that becomes something: a channel link, strictly parsed (shared/channelLink.ts). */
+const CHANNEL_LINK_PREFIX = 'ghostlink://channel/';
 
 function isSpace(c: string | undefined): boolean {
   return c === undefined || c === ' ' || c === '\n' || c === '\t' || c === '\r' || c === ' ';
@@ -207,6 +212,21 @@ function parseInline(text: string, depth: number, opts: MarkdownOptions): Inline
       i = end;
       continue;
     }
+    if ((c === 'g' || c === 'G') && !isWordChar(text[i - 1]) && text.slice(i, i + CHANNEL_LINK_PREFIX.length).toLowerCase() === CHANNEL_LINK_PREFIX) {
+      // Anything but an exact channel link (another ghostlink:// link included) stays text.
+      const end = urlEnd(text, i);
+      const stop = end < 0 ? -end - 1 : end;
+      const raw = text.slice(i, stop);
+      const link = end < 0 ? null : parseChannelLink(raw);
+      if (link !== null) {
+        flush();
+        out.push({ k: 'channel', serverKeyId: link.serverKeyId, channelId: link.channelId, raw });
+      } else {
+        buf += raw;
+      }
+      i = stop;
+      continue;
+    }
     if (c === '<' && next === '@') {
       USER_TOKEN.lastIndex = i;
       const user = USER_TOKEN.exec(text);
@@ -316,6 +336,9 @@ function inlineText(nodes: readonly Inline[], names: PlainTextNames): string {
         break;
       case 'link':
         out += node.url;
+        break;
+      case 'channel':
+        out += node.raw;
         break;
       case 'user':
         out += `@${names.user(node.id)}`;

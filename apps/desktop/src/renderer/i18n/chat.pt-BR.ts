@@ -277,6 +277,8 @@ export const chat = {
   'channelLink.unknownTitle': 'Você não está nesse servidor',
   'channelLink.unknownBody': 'Esse link é de um canal de um servidor que não está na sua lista. Peça um convite a alguém de lá.',
   'channelLink.ok': 'Entendi',
+  'channelLink.channel': 'canal',
+  'channelLink.unknownChannel': 'canal desconhecido',
 } as const;
 
 /** Keys that read the same in both languages on purpose ("Online" is used as is in Portuguese). */

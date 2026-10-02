@@ -1,6 +1,7 @@
 // Markdown AST → React elements. Text only ever becomes React text children, so
 // React escapes it; no HTML string is built and nothing is injected (spec §11.1).
-import { createElement as h, type MouseEvent, type ReactNode } from 'react';
+import { createElement as h, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import type { ChannelChip } from '../channelMenu/channelChip.js';
 import type { Block, Inline } from './markdown.js';
 
 /** CSS-module class names (a missing one is simply left out). */
@@ -13,6 +14,18 @@ export interface MarkdownClasses {
   mention: string | undefined;
   /** Added to a mention of the current user (or @everyone / one of their roles). */
   mentionMe: string | undefined;
+  /** Added to a channel link that opens a channel, and to one that names no channel I can see. */
+  channel?: string | undefined;
+  channelUnknown?: string | undefined;
+}
+
+/** Channel links (ghostlink://channel/…, the channel menu's "Copiar link"); without it they stay plain text. */
+export interface MarkdownChannels {
+  chip(serverKeyId: string, channelId: string): ChannelChip;
+  /** The deep link's path: selects the channel, or opens that saved server on it. */
+  open(serverKeyId: string, channelId: string): void;
+  /** "canal" (another server's channel, its name unknown here) and "canal desconhecido". */
+  labels: { channel: string; unknown: string };
 }
 
 function cx(...names: (string | undefined | false)[]): string | undefined {
@@ -30,6 +43,37 @@ export interface MarkdownContext {
   labels: { everyone: string; formerMember: string; deletedRole: string };
   /** Opens a link through the main process, which asks for confirmation (spec §12). */
   openLink(url: string): void;
+  channels?: MarkdownChannels;
+}
+
+function channelLink(node: Extract<Inline, { k: 'channel' }>, key: number, ctx: MarkdownContext): ReactNode {
+  const channels = ctx.channels;
+  if (!channels) return node.raw;
+  const chip = channels.chip(node.serverKeyId, node.channelId);
+  if (chip.kind === 'unknown') {
+    return h('span', { key, className: cx(ctx.classes.mention, ctx.classes.channelUnknown), title: node.raw }, `#${channels.labels.unknown}`);
+  }
+  const open = () => channels.open(node.serverKeyId, node.channelId);
+  return h(
+    'span',
+    {
+      key,
+      role: 'link',
+      tabIndex: 0,
+      className: cx(ctx.classes.mention, ctx.classes.channel),
+      title: node.raw,
+      onClick: (e: MouseEvent) => {
+        e.preventDefault();
+        open();
+      },
+      onKeyDown: (e: KeyboardEvent) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        open();
+      },
+    },
+    chip.kind === 'here' ? `#${chip.name}` : `${chip.server} › #${channels.labels.channel}`,
+  );
 }
 
 function inline(nodes: readonly Inline[], ctx: MarkdownContext): ReactNode[] {
@@ -65,6 +109,8 @@ function inline(nodes: readonly Inline[], ctx: MarkdownContext): ReactNode[] {
           },
           node.url,
         );
+      case 'channel':
+        return channelLink(node, key, ctx);
       case 'user': {
         const name = ctx.userName(node.id);
         const me = ctx.pingsMe('user', node.id);

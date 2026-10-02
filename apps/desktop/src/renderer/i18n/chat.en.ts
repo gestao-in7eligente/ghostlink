@@ -276,4 +276,6 @@ export const chat: Record<keyof typeof ptBR, string> = {
   'channelLink.unknownTitle': "You're not in that server",
   'channelLink.unknownBody': 'This link is for a channel of a server that is not in your list. Ask someone there for an invite.',
   'channelLink.ok': 'Got it',
+  'channelLink.channel': 'channel',
+  'channelLink.unknownChannel': 'unknown channel',
 };

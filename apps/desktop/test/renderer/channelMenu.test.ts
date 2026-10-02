@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { formatInviteLink, formatPasteCode, formatWebLink, parseJoinInput, toBase64Url, type InviteLinks } from '@ghostlink/shared';
+import { formatInviteLink, formatPasteCode, formatWebLink, parseJoinInput, toBase64Url, type Channel, type InviteLinks } from '@ghostlink/shared';
 import { formatChannelLink, parseChannelLink } from '../../src/shared/channelLink.js';
 import type { SavedServer } from '../../src/shared/ipcTypes.js';
+import { channelChip } from '../../src/renderer/features/channelMenu/channelChip.js';
 import { channelMenuEntries, duplicateName, inviteLinksWithChannel, muteEnd, type ChannelMenuFacts } from '../../src/renderer/features/channelMenu/channelMenuModel.js';
 import { effectiveNotifyMode, isChannelMuted, nextMuteEnd, pinnedFirst } from '../../src/renderer/features/channelMenu/channelPrefs.js';
 import { cancelChannelRequest, channelLinkPlan, requestChannel, takeChannelRequest } from '../../src/renderer/features/channelMenu/channelRequest.js';
@@ -121,6 +122,25 @@ describe('the channel link ghostlink://channel/<serverKeyId>/<channelId>', () =>
     requestChannel(KEY, C2, 1_000);
     cancelChannelRequest();
     expect(takeChannelRequest(KEY, 1_000)).toBeNull();
+  });
+});
+
+describe('a channel link in a message', () => {
+  const geral = { id: C1, name: 'geral', type: 'text' } as Channel;
+  const voz = { id: C2, name: 'voz', type: 'voice' } as Channel;
+  const onScreen = { serverKeyId: KEY, channels: { [C1]: geral, [C2]: voz } };
+  const other = saved({ id: 's2', name: 'Outro', serverKeyId: toBase64Url(new Uint8Array(32).fill(5)) });
+
+  it('names a channel of the server on screen that I see; one I cannot see (or a voice one) is unknown', () => {
+    expect(channelChip(KEY, C1, { onScreen, saved: [saved()] })).toEqual({ kind: 'here', name: 'geral' });
+    expect(channelChip(KEY, C2, { onScreen, saved: [saved()] })).toEqual({ kind: 'unknown' });
+    expect(channelChip(KEY, C3, { onScreen, saved: [saved()] })).toEqual({ kind: 'unknown' });
+  });
+
+  it('names another server of my list by its name; a server not in it is unknown', () => {
+    expect(channelChip(other.serverKeyId, C1, { onScreen, saved: [saved(), other] })).toEqual({ kind: 'elsewhere', server: 'Outro' });
+    expect(channelChip(KEY, C1, { onScreen: null, saved: [saved()] })).toEqual({ kind: 'elsewhere', server: 'A' });
+    expect(channelChip(other.serverKeyId, C1, { onScreen, saved: [saved()] })).toEqual({ kind: 'unknown' });
   });
 });
 
