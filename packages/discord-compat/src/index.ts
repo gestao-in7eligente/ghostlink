@@ -12,7 +12,7 @@ export type { FetchMessageOptions, FetchMessagesOptions } from './structures.js'
 export { ChatInputCommandInteraction, CommandInteractionOptionResolver, InteractionResponse } from './interactions.js';
 export type { CommandInteractionOption } from './interactions.js';
 export { ApplicationCommand, ApplicationCommandManager, ClientApplication } from './application.js';
-export type { ApplicationCommandOption } from './application.js';
+export type { ApplicationCommandOption, ClientApplicationEditOptions } from './application.js';
 export {
   SlashCommandBuilder,
   SlashCommandBooleanOption,

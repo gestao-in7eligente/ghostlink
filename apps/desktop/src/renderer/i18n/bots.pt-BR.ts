@@ -53,7 +53,7 @@ export const bots = {
   'bots.page.type.user': 'Pessoa',
   'bots.page.type.channel': 'Canal',
 
-  // The bot's settings (the menu's "Configurações"): a mockup for now, actions disabled.
+  // The bot's settings (the menu's "Configurações").
   'bots.settings': 'Configurações',
   'bots.settings.title': 'Configurações de {name}',
   'bots.settings.tab.overview': 'Visão geral',
@@ -62,25 +62,18 @@ export const bots = {
   'bots.settings.tab.permissions': 'Permissões',
   'bots.settings.tab.code': 'Código de conexão',
   'bots.settings.tab.delete': 'Excluir bot',
-  'bots.preview': 'Prévia',
-  'bots.preview.note': 'Dados de exemplo. As ações chegam em breve.',
-  'bots.settings.createdSample': 'Criado por Ana em 2 de outubro de 2026',
   'bots.settings.description': 'Descrição',
-  'bots.settings.descriptionSample': 'Responde a /ping com "Pong!". Serve para testar comandos, respostas que só você vê e respostas que demoram um pouco.',
   'bots.settings.descriptionHint': 'Até 1000 caracteres, com a formatação do chat. Aparece na página do bot.',
-  'bots.settings.menuHint': 'Por enquanto, use o menu do bot na barra lateral (botão direito ou ⋮).',
   'bots.activity.uses': 'Usos por comando',
   'bots.activity.usesTitle': '{command}: {count} usos',
   'bots.activity.recent': 'Interações recentes',
   'bots.activity.answered': 'Respondeu',
-  'bots.activity.unanswered': 'Não respondeu',
-  'bots.activity.messagesToday': 'Mensagens hoje',
+  'bots.activity.unanswered': 'Sem resposta',
   'bots.permissions.intro': 'O bot vê e fala nos canais que os cargos dele permitem, como qualquer membro.',
   'bots.permissions.channel': 'Canal',
   'bots.permissions.sees': 'Vê',
   'bots.permissions.speaks': 'Fala',
-  'bots.permissions.roles': 'Abrir Cargos',
-  'bots.permissions.rolesHint': 'Para mudar onde o bot vê e fala, edite os cargos dele.',
+  'bots.permissions.rolesHint': 'Marque os cargos do bot: são eles que decidem onde ele vê e fala.',
   'bots.code.about': 'O código conecta o bot a este servidor e só aparece quando é gerado. Gerar um novo invalida o atual e desconecta o bot na hora: ele só volta com o código novo em GHOSTLINK_BOT.',
 
   // The "/" in the composer.
@@ -115,6 +108,28 @@ export const bots = {
   // Error codes of bots (shared/errors.ts).
   'errors.BAD_BOT_TOKEN': 'Código de conexão inválido ou substituído.',
   'errors.BOT_OFFLINE': 'O bot está offline agora.',
+
+  // The bot's settings and page with the server's data (v0.4.2, bot page spec).
+  'bots.settings.outdated': 'Atualize o servidor para editar.',
+  'bots.settings.created': 'Criado por {name} em {date}',
+  'bots.settings.createdOn': 'Criado em {date}',
+  'bots.settings.lastSeen': 'Visto por último {ago}',
+  'bots.settings.neverConnected': 'Nunca conectou',
+  'bots.settings.photoHint': 'O bot também pode enviar a própria foto quando se conectar.',
+  'bots.activity.messages24h': 'Mensagens nas últimas 24 h',
+  'bots.activity.noUses': 'Nenhum comando foi usado nos últimos 7 dias.',
+  'bots.activity.noRecent': 'Nenhuma interação nos últimos 7 dias nos canais que você vê.',
+  'bots.activity.deletedChannel': 'canal excluído',
+  'bots.permissions.rolesTitle': 'Cargos do bot',
+  'bots.permissions.rolesReadOnly': 'Para mudar os cargos do bot, você precisa de Gerenciar cargos e de um cargo acima dos dele.',
+  'bots.permissions.onlyEveryone': 'O bot tem só o cargo {role}.',
+  'bots.code.state': 'Conexão',
+  'bots.code.online': 'Online agora',
+  'bots.code.steps': 'Como conectar',
+  'bots.code.step1': 'Gere um código de conexão: ele aparece uma única vez.',
+  'bots.code.step2': 'Cole o código na variável de ambiente {env} do bot.',
+  'bots.code.step3': 'No código do bot, troque {from} por {to} e inicie o bot.',
+  'bots.page.about': 'Sobre',
 } as const;
 
 /** Keys whose English text is the same on purpose (i18n.test.ts). */

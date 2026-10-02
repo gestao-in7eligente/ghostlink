@@ -1,12 +1,16 @@
 // Requests about bots (bots spec §2, §3) through the generic server.request IPC, with the lenient
-// client schemas: creating, a new connection code, deleting (MANAGE_SERVER), the bot's photo, and
-// using a slash command.
+// client schemas: creating, a new connection code, deleting, the bot's settings (MANAGE_SERVER),
+// the bot's photo, and using a slash command.
 import { z } from 'zod';
 import {
   botCreateResultSchemaClient,
+  botGetResultSchemaClient,
   botRegenerateResultSchemaClient,
+  botUpdateResultSchemaClient,
   interactionInvokeResultSchemaClient,
   type BotCreateResult,
+  type BotDetails,
+  type BotGetResult,
   type InteractionOptionInput,
 } from '@ghostlink/shared';
 import type { GhostlinkApi } from '../../../shared/ipcTypes.js';
@@ -30,6 +34,16 @@ export async function regenerateBotCode(botId: string): Promise<string> {
 /** The bot leaves (member.left); its messages stay. */
 export async function deleteBot(botId: string): Promise<void> {
   await request('bot.delete', { botId }, z.object({}));
+}
+
+/** Everything the bot's settings show: its state, activity and channel access (servers with `botSettings`). */
+export function getBot(botId: string): Promise<BotGetResult> {
+  return request('bot.get', { botId }, botGetResultSchemaClient);
+}
+
+/** A new name and/or description; a rename comes back as member.updated, any change as bot.updated. */
+export async function updateBot(botId: string, patch: { name?: string; description?: string }): Promise<BotDetails> {
+  return (await request('bot.update', { botId, ...patch }, botUpdateResultSchemaClient)).bot;
 }
 
 /** The bot's photo, already cropped and encoded like a profile photo; resolves once the server holds it. */

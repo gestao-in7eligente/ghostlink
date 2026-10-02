@@ -123,6 +123,21 @@
   background: var(--success);
 }
 
+/* Under the state: "visto por último há…", "Criado por … em …". */
+.meta {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+/* The description ("Sobre"), with the chat's markdown (chat.module.css .content). */
+.about {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sidebar);
+  overflow-wrap: anywhere;
+}
+
 .sectionTitle {
   margin: 0 0 var(--space-2);
   color: var(--text-faint);
@@ -280,28 +295,7 @@
   margin: 0;
 }
 
-/* ---- settings: the "Prévia" label of sample blocks ---- */
-
-.preview {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--text-faint);
-  font-size: 13px;
-}
-
-.previewTag {
-  flex-shrink: 0;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--warning-bg);
-  color: var(--warning);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
+/* ---- settings: blocks of a tab ---- */
 
 .block {
   display: flex;
@@ -354,11 +348,19 @@
   font-size: 13px;
 }
 
-/* A field that cannot be edited yet ("Em breve"). */
-.locked:disabled {
-  color: var(--text-soft);
-  cursor: default;
-  opacity: 0.75;
+/* Under the description: the hint, and how many characters are used of 1000. */
+.fieldFoot {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.counter {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- settings: Atividade ---- */
@@ -553,4 +555,47 @@
 .no {
   color: var(--text-ghost);
   vertical-align: middle;
+}
+
+/* The bot's roles, each a checkbox with its color. */
+.roles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roleName {
+  color: var(--text-strong);
+  font-size: 14px;
+  line-height: 18px;
+}
+
+/* Next to settings.module.css .roleSwatch: level with the checkbox and the name. */
+.roleSwatch {
+  margin-top: 3px;
+}
+
+/* ---- settings: Código de conexão ---- */
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 22px;
+  color: var(--text-soft);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.inlineCode {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: 13px;
 }

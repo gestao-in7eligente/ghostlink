@@ -10,7 +10,12 @@ Desenho aprovado pelo dono em 2026-10-02 ("Ao clicar no bot, deve abrir uma pág
 - **Botão direito / ⋮:** **Configurações** (primeiro item), depois **Gerar novo código** e **Excluir bot** (estes dois funcionam).
 - **Configurações** abre a tela grande no estilo das Configurações do servidor, com as abas Visão geral, Comandos (real), Atividade (7 dias), Permissões, Código de conexão e Excluir bot. Tudo que não é a lista de comandos é **mockup** com a etiqueta "Prévia", e todos os botões ficam desativados com "Em breve".
 
-O restante deste documento descreve a versão funcional futura.
+**Versão funcional (v0.4.2, dono: "Já crie todos os endpoints do modal de Configurações"):** as abas das Configurações funcionam, com a flag `botSettings` no servidor; um servidor sem ela (0.4.1) mostra o que o app já sabe e "Atualize o servidor para editar" onde faltam os dados. O servidor ficou assim:
+- `006_bot_settings.sql`: `bots.description` (até 1000), `bots.last_seen_at` (quando a sessão do bot abre e fecha) e `bot_command_uses (id = id da interação, bot_id, command, channel_id, user_id, at, answered)`, guardados 7 dias (limpos a cada uso novo e de hora em hora; somem com o bot).
+- `bot.get { botId }` (MANAGE_SERVER) → `{ bot: { …, description, lastSeenAt, online }, usage, recent (20, só canais que quem pede vê), messagesLast24h, channels: [{ channelId, view, send }] (os canais de texto que quem pede vê, pelas regras reais de acesso do bot) }`.
+- `bot.update { botId, name?, description? }` (MANAGE_SERVER) e `bot.setDescription { description }` (o próprio bot; `client.application.edit({ description })` no pacote): `bot.updated { botId, description }` para todos; renomear manda `member.updated`. O welcome traz `botProfiles` (descrição, quem criou, visto por último) para a página do bot.
+
+O restante deste documento descreve a versão funcional como foi pensada.
 
 ## Comportamento (versão funcional futura)
 

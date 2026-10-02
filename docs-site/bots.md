@@ -106,7 +106,7 @@ client.login(process.env.GHOSTLINK_BOT);
 
 | Parte | O que o pacote tem, com os mesmos nomes do discord.js v14 |
 |---|---|
-| Cliente | `new Client({ intents })` (os intents são aceitos e ignorados), `client.login(código)`, `client.user`, `client.application`, `client.channels.cache` e `.fetch(id)`, `client.users.cache` e `.fetch(id)`, `client.guilds.cache` (o servidor), `client.ws.ping`, `client.isReady()`, `client.destroy()` |
+| Cliente | `new Client({ intents })` (os intents são aceitos e ignorados), `client.login(código)`, `client.user`, `client.application` (e `client.application.edit({ description })`, a descrição que aparece na página do bot), `client.channels.cache` e `.fetch(id)`, `client.users.cache` e `.fetch(id)`, `client.guilds.cache` (o servidor), `client.ws.ping`, `client.isReady()`, `client.destroy()` |
 | Eventos | `Events.ClientReady` (`'ready'` também), `Events.MessageCreate`, `Events.InteractionCreate`, `'error'`, `'warn'`, `'debug'` |
 | Mensagens | `content`, `author` (`id`, `username`, `bot`, `tag`, `displayName`), `channel`, `channelId`, `guild`, `mentions.users`, `mentions.everyone`, `mentions.has(usuário)`, `createdTimestamp`, `createdAt`, `reply(texto \| { content })`, `edit()` e `delete()` |
 | Canais de texto | `id`, `name`, `topic`, `send(texto \| { content })`, `sendTyping()`, `messages.fetch({ limit, before })` (até 100, as mais novas primeiro) e `messages.fetch(id)` |

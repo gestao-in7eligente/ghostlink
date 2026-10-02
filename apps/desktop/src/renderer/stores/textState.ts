@@ -112,11 +112,27 @@ export type BotLocal =
     }
   | { kind: 'failed'; id: string; channelId: string; botId: string; userId: string; command: string; afterId: number };
 
+/**
+ * What everyone sees of a bot besides its member (bot page spec): the welcome's `botProfiles`,
+ * then `bot.updated`; a bot created meanwhile starts with what its member.joined tells.
+ */
+export interface BotProfileView {
+  description: string;
+  /** null: not known (a bot created after the welcome, or its creator was not kept). */
+  createdBy: string | null;
+  /** null: not known (a description that arrived for a bot this app never saw join). */
+  createdAt: number | null;
+  /** When it last connected or left (the server's clock, then this app's at each presence change); null: never. */
+  lastSeenAt: number | null;
+}
+
 export interface BotsState {
   /** botId → its slash commands. */
   commands: Readonly<Record<string, readonly BotCommand[]>>;
   /** channelId → its interaction lines, oldest first. */
   locals: Readonly<Record<string, readonly BotLocal[]>>;
+  /** botId → its profile; null on a server without the bot's settings (before 0.4.2). */
+  profiles: Readonly<Record<string, BotProfileView>> | null;
 }
 
 export interface TextState {
