@@ -77,6 +77,10 @@ The app only updates the servers it created. On a server in Docker, or one creat
 docker run -d --name watchtower --restart unless-stopped   -v /var/run/docker.sock:/var/run/docker.sock   containrrr/watchtower --schedule "0 0 5 * * *" ghostlink   # checks every day at 5 AM
 ```
 
+## Ghost DJ and the YouTube block
+
+The image already has ffmpeg: with voice on, the **Ghost DJ** (the music bot, `/play`) works without any setup. YouTube often blocks cloud IPs such as Railway's ("Sign in to confirm you're not a bot"), and `/play` says so when it happens. To fix it, export the YouTube cookies of a logged-in browser in Netscape format (`cookies.txt`), preferably from a separate account, and put the file at `/data/ghost-dj/cookies.txt` (for example through `railway ssh`, pasting the content into `cat > /data/ghost-dj/cookies.txt`). No restart needed.
+
 ## Restarting and deleting
 
 On Railway's dashboard:

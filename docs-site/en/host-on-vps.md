@@ -33,7 +33,7 @@ sudo bash install.sh
 
 The script:
 
-1. installs Node.js 24 (NodeSource);
+1. installs Node.js 24 (NodeSource) and ffmpeg (for the [Ghost DJ](#ghost-dj-music-bot));
 2. creates the `ghostlink` system user;
 3. downloads `ghostlink-server-<version>.tgz` from the latest release and checks its **checksum** and the **release Ed25519 signature** (and the Sigstore bundle, if `cosign` is installed);
 4. installs it in `/opt/ghostlink` and downloads the voice server (LiveKit), checking its SHA-256; data lives in `/var/lib/ghostlink`;
@@ -66,9 +66,27 @@ sudo -u ghostlink node /opt/ghostlink/current/dist/cli.js invite --data /var/lib
 | `status` | Version, fingerprint and member summary |
 | `setup-code` | Shows the setup code, if there is no owner yet |
 | `reset-owner` | Recovers ownership: creates a new setup code |
+| `ghost-dj` | Checks what the Ghost DJ needs (ffmpeg, LiveKit audio, yt-dlp, cookies) |
 | `version` | Server version |
 
 Invites can also be created and revoked in the app, under **Server settings → Invites**, by anyone allowed to.
+
+## Ghost DJ (music bot)
+
+Every server has the **Ghost DJ**, which plays YouTube music in voice channels with `/play`. It needs **ffmpeg**, which `install.sh` installs; the server itself downloads the official `yt-dlp` and checks its SHA-256. To check that everything is in place:
+
+```bash
+sudo -u ghostlink node /opt/ghostlink/current/dist/cli.js ghost-dj --data /var/lib/ghostlink
+```
+
+On a server installed before 0.5.0, the automatic update does not install system packages: run `sudo apt install ffmpeg` once (or `install.sh` again), then `sudo systemctl restart ghostlink`.
+
+If `/play` says **YouTube blocked the server** ("Sign in to confirm you're not a bot", common on cloud IPs), export the YouTube cookies of a logged-in browser in Netscape format (`cookies.txt`), preferably from a separate account, and put the file in the DJ's folder. No restart needed:
+
+```bash
+sudo -u ghostlink mkdir -p /var/lib/ghostlink/ghost-dj
+sudo install -o ghostlink -g ghostlink -m 600 cookies.txt /var/lib/ghostlink/ghost-dj/cookies.txt
+```
 
 ## Update
 
