@@ -65,6 +65,8 @@ describe('voice request schemas are strict (spec §5.1, §5.2)', () => {
 
   it('voice.moderate: move needs a target channel, the other actions refuse one', () => {
     expect(voiceModerateSchema.parse({ userId: USER, action: 'mute' })).toEqual({ userId: USER, action: 'mute' });
+    expect(voiceModerateSchema.parse({ userId: USER, action: 'deafen' })).toEqual({ userId: USER, action: 'deafen' });
+    expect(() => voiceModerateSchema.parse({ userId: USER, action: 'undeafen', toChannelId: 'c2' })).toThrow();
     expect(voiceModerateSchema.parse({ userId: USER, action: 'move', toChannelId: 'c2' })).toEqual({ userId: USER, action: 'move', toChannelId: 'c2' });
     expect(() => voiceModerateSchema.parse({ userId: USER, action: 'move' })).toThrow();
     expect(() => voiceModerateSchema.parse({ userId: USER, action: 'mute', toChannelId: 'c2' })).toThrow();
@@ -75,11 +77,16 @@ describe('voice request schemas are strict (spec §5.1, §5.2)', () => {
 });
 
 describe('voice client schemas are lenient (spec §5.1)', () => {
-  const participant = { userId: USER, muted: false, deafened: true, camera: false, screen: false, serverMuted: true };
+  const participant = { userId: USER, muted: false, deafened: true, camera: false, screen: false, serverMuted: true, serverDeafened: true };
 
   it('keeps known fields and drops unknown ones', () => {
     const parsed = voiceStateSchemaClient.parse({ channelId: 'c1', participants: [{ ...participant, future: 1 }], extra: true });
     expect(parsed).toEqual({ channelId: 'c1', participants: [participant] });
+  });
+
+  it('reads a participant from a server without server deafen as not deafened', () => {
+    const { serverDeafened: _, ...older } = participant;
+    expect(voiceStateSchemaClient.parse({ channelId: 'c1', participants: [older] }).participants[0]!.serverDeafened).toBe(false);
   });
 
   it('parses the welcome field and the join response', () => {

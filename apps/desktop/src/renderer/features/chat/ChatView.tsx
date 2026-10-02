@@ -15,6 +15,8 @@ import { MAX_ATTACHMENTS, type TrayLimits } from '../attachments/attachmentModel
 import a from '../attachments/attachments.module.css';
 import { DropOverlay, useFileDrop, useTray } from '../attachments/filePicking.js';
 import { useProfileCardStore } from '../profileCard/profileCardStore.js';
+import type { UserMenuRequest } from '../userMenu/triggers.js';
+import { UserMenuFor } from '../userMenu/UserMenu.js';
 import { deleteMessage, dropMessage, loadHistory, markRead, retryMessage, toggleReaction } from './actions.js';
 import c from './chat.module.css';
 import { Composer } from './Composer.js';
@@ -67,6 +69,7 @@ function OpenChannel({ channel }: { channel: Channel }) {
   const [highlight, setHighlight] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<Message | null>(null);
   const [picker, setPicker] = useState<{ message: Message; anchor: DOMRect } | null>(null);
+  const [userMenu, setUserMenu] = useState<UserMenuRequest | null>(null);
   const listHandle = useRef<MessageListHandle | null>(null);
 
   // First visit, or after a reconnect dropped the loaded messages: load the newest page.
@@ -158,6 +161,7 @@ function OpenChannel({ channel }: { channel: Channel }) {
       onDismiss: (local) => dispatchText({ type: 'bots.dismiss', channelId: local.channelId, kind: local.kind, id: local.id }),
       // The card opens to the right of the name or picture (spec 2026-10-02-cartao-de-perfil §1).
       onProfile: (userId, opener) => useProfileCardStore.getState().open(userId, opener.getBoundingClientRect(), 'right', opener),
+      onUserMenu: (userId, anchor, opener) => setUserMenu({ userId, anchor, opener }),
     }),
     [t, locale, selfId, canManageMessages, canReact, md, members, server, myRoleIds, highlight],
   );
@@ -199,6 +203,8 @@ function OpenChannel({ channel }: { channel: Channel }) {
           onClose={() => setDeleting(null)}
         />
       )}
+      {/* The person's menu (spec 2026-10-02-menu-do-usuario); "Perfil" opens the card where a click does. */}
+      {userMenu && <UserMenuFor request={userMenu} side="right" onClose={() => setUserMenu(null)} />}
       {picker && (
         <EmojiPicker
           anchor={picker.anchor}

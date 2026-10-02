@@ -29,7 +29,7 @@ import { errorCodeOf } from '../../i18n/index.js';
 import { cameraCaptureOptions, cameraPublishOptions, canPublishCamera } from './camera.js';
 import { captureFor } from './noiseSuppression.js';
 import { startScreenShare, stopScreenShare, wantsSubscription, type LiveScreenShare, type ScreenShareDeps } from './screenShare.js';
-import { screenVolumeKey, volumeOf, type VoiceSettings } from './settings.js';
+import { isLocallyMuted, screenVolumeKey, volumeOf, type VoiceSettings } from './settings.js';
 import { selfVoice, type VoiceAction, type VoiceState } from './state.js';
 
 /** LiveKit protocol TrackSource.MICROPHONE (livekit-server-sdk's enum; the tests check the value). */
@@ -114,6 +114,8 @@ export class VoiceSession {
   #cameraWanted = false;
   /** Camera changes, one at a time (opening a camera takes a while). */
   #cameraOps: Promise<void> = Promise.resolve();
+  /** A moderator's deafen, as the last voice.state said: everything I receive plays silent. */
+  #serverDeafened = false;
 
   constructor(deps: VoiceSessionDeps) {
     this.#deps = deps;
@@ -348,7 +350,14 @@ export class VoiceSession {
       this.#deps.dispatch({ type: 'notice', notice: { kind: 'forceDisconnect' } });
       return;
     }
-    if (event.t === 'voice.state' && this.#room) await this.#applyMic();
+    if (event.t !== 'voice.state' || !this.#room) return;
+    // LiveKit itself stops what I receive (canSubscribe); here the volumes follow, for the UI's sake too.
+    const deafened = selfVoice(this.#deps.getState())?.serverDeafened === true;
+    if (deafened !== this.#serverDeafened) {
+      this.#serverDeafened = deafened;
+      this.applyVolumes();
+    }
+    await this.#applyMic();
   }
 
   /** The GhostLink connection changed: within the grace the call goes on (spec §8.4). */
@@ -434,11 +443,13 @@ export class VoiceSession {
       .on(RoomEvent.AudioPlaybackStatusChanged, () => {
         if (mine()) this.#checkPlayback(room);
       })
-      .on(RoomEvent.ParticipantPermissionsChanged, (_previous: unknown, participant: Participant) => {
+      .on(RoomEvent.ParticipantPermissionsChanged, (previous: { canSubscribe?: boolean } | undefined, participant: Participant) => {
         // A server mute or unmute arrives as new LiveKit permissions (spec §8.3); so does VIDEO.
         if (!mine() || participant !== (room.localParticipant as Participant)) return;
         void this.#applyMic();
         void this.#applyCamera();
+        // A server undeafen: LiveKit lets me subscribe again, but only what I ask for (autoSubscribe off).
+        if (previous?.canSubscribe === false && participant.permissions?.canSubscribe) this.#subscribeAll(room);
       })
       .on(RoomEvent.MediaDevicesError, (_error: unknown, kind?: string) => {
         // A camera failure has its own notice (#applyCameraNow).
@@ -463,6 +474,11 @@ export class VoiceSession {
     if (wantsSubscription(pub.source, pub.kind, userIdOf(participant), this.#deps.getState().watching)) (pub as RemoteTrackPublication).setSubscribed(true);
   }
 
+  /** Everything I take in my room again (after a server deafen ends). */
+  #subscribeAll(room: Room): void {
+    for (const p of room.remoteParticipants.values()) for (const pub of p.trackPublications.values()) this.#maybeSubscribe(pub, p);
+  }
+
   /** Someone's ScreenShare and ScreenShareAudio publications in my room. */
   #screenPublications(userId: string): Array<[RemoteTrackPublication, RemoteParticipant]> {
     const out: Array<[RemoteTrackPublication, RemoteParticipant]> = [];
@@ -475,14 +491,18 @@ export class VoiceSession {
     return out;
   }
 
-  /** Voice and stream sound, each with its own saved volume; deafen silences both. */
+  /**
+   * Voice and stream sound, each with its own saved volume; deafen (mine or a moderator's)
+   * silences both, and muting someone for myself their voice (their volume is kept).
+   */
   #applyVolume(participant: RemoteParticipant): void {
     const userId = userIdOf(participant);
     if (!userId) return;
     const state = this.#deps.getState();
     const settings = this.#deps.settings();
-    const percent = (key: string) => (state.selfDeafened ? 0 : volumeOf(settings, state.serverId, key));
-    participant.setVolume(percent(userId) / 100);
+    const silent = state.selfDeafened || selfVoice(state)?.serverDeafened === true;
+    const percent = (key: string) => (silent ? 0 : volumeOf(settings, state.serverId, key));
+    participant.setVolume((isLocallyMuted(settings, state.serverId, userId) ? 0 : percent(userId)) / 100);
     participant.setVolume(percent(screenVolumeKey(userId)) / 100, Track.Source.ScreenShareAudio);
   }
 
@@ -629,6 +649,7 @@ export class VoiceSession {
   async #teardown(endCall = true): Promise<void> {
     const room = this.#room;
     this.#room = null;
+    this.#serverDeafened = false;
     this.#stopPing();
     const share = this.#share;
     this.#share = null;

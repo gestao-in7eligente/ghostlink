@@ -126,6 +126,8 @@ describe('livekitPermission (spec §6)', () => {
     expect(livekitPermission(P.VIDEO | P.SPEAK, { serverMuted: true }).canPublishSources).not.toContain(TrackSource.MICROPHONE);
     expect(livekitPermission(0, { serverMuted: false })).toMatchObject({ canSubscribe: true, canPublish: false, canPublishData: false, hidden: false });
     expect(livekitPermission(ALL_PERMISSIONS, { serverMuted: false }).canPublishData).toBe(false);
+    // A server deafen takes the subscriptions away and leaves publishing alone.
+    expect(livekitPermission(P.SPEAK, { serverMuted: false, serverDeafened: true })).toMatchObject({ canSubscribe: false, canPublish: true, canPublishSources: [TrackSource.MICROPHONE] });
   });
 });
 

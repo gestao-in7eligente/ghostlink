@@ -11,6 +11,7 @@ const p = (userId: string, extra: Partial<VoiceParticipant> = {}): VoiceParticip
   camera: false,
   screen: false,
   serverMuted: false,
+  serverDeafened: false,
   ...extra,
 });
 const welcome = (voice: unknown, serverId = 's1', userId = ANA) => ({ serverId, self: { userId, nickname: 'Ana', isOwner: false }, voice });

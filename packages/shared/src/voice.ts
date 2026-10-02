@@ -18,6 +18,11 @@ export interface VoiceParticipant {
   screen: boolean;
   /** Muted by a moderator: LiveKit refuses the microphone (spec §8.3). */
   serverMuted: boolean;
+  /**
+   * Deafened by a moderator (spec 2026-10-02-menu-do-usuario §3): LiveKit refuses them every
+   * subscription until a moderator undoes it. Absent from older servers (read as false).
+   */
+  serverDeafened: boolean;
 }
 
 /** `voice.state` event, and one entry of the welcome's `voice` field. */
@@ -54,8 +59,14 @@ export interface VoiceAvailabilityEvent {
   available: boolean;
 }
 
-export const VOICE_MODERATE_ACTIONS = ['mute', 'unmute', 'disconnect', 'move'] as const;
+export const VOICE_MODERATE_ACTIONS = ['mute', 'unmute', 'deafen', 'undeafen', 'disconnect', 'move'] as const;
 export type VoiceModerateAction = (typeof VOICE_MODERATE_ACTIONS)[number];
+
+/**
+ * welcome.features: this server takes voice.moderate `deafen` / `undeafen` (v0.4.3). Listed
+ * whether or not LiveKit runs right now; the app offers "Desativar áudio no servidor" only then.
+ */
+export const FEATURE_VOICE_SERVER_DEAFEN = 'voiceServerDeafen';
 
 export interface VoiceModeratePayload {
   userId: string;
@@ -130,6 +141,8 @@ const participantSchemaClient = z.object({
   camera: z.boolean(),
   screen: z.boolean(),
   serverMuted: z.boolean(),
+  // Older servers do not send it.
+  serverDeafened: z.boolean().default(false),
 });
 
 export const voiceStateSchemaClient: z.ZodType<VoiceChannelState> = z.object({

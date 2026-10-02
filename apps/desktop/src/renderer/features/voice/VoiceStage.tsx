@@ -3,10 +3,12 @@ import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { VoiceParticipant } from '@ghostlink/shared';
 import { useT } from '../../i18n/index.js';
+import { useProfileCardStore } from '../profileCard/profileCardStore.js';
+import { userMenuTriggers, type UserMenuRequest } from '../userMenu/triggers.js';
+import { UserMenuFor } from '../userMenu/UserMenu.js';
 import { CameraVideo } from './CameraParts.js';
 import { useCameraTrack } from './cameraStore.js';
-import { ParticipantMenu } from './ParticipantMenu.js';
-import { HangUpIcon, StateIcons, VoiceAvatar } from './parts.js';
+import { HangUpIcon, StateIcons, VoiceAvatar, hasStateIcons } from './parts.js';
 import { joinVoice, leaveVoice, useVoiceDirectory, useVoiceRuntime } from './runtime.js';
 import { LiveBadge } from './screenParts.js';
 import { OwnStreamTile, StreamTile, StreamView, useScreenShareButton } from './ScreenStage.js';
@@ -17,10 +19,11 @@ import s from './voice.module.css';
 
 const NONE: string[] = [];
 
-function Tile({ p, channelId, isSelf, speaking, receiving }: { p: VoiceParticipant; channelId: string; isSelf: boolean; speaking: boolean; receiving: boolean }) {
+/** A person's tile: a click opens their profile card, the right click (menu key, Shift+F10) their menu. */
+function Tile({ p, isSelf, speaking, receiving }: { p: VoiceParticipant; isSelf: boolean; speaking: boolean; receiving: boolean }) {
   const t = useT();
   const directory = useVoiceDirectory();
-  const [menu, setMenu] = useState(false);
+  const [menu, setMenu] = useState<UserMenuRequest | null>(null);
   const name = directory.displayName(p.userId);
   // Their camera over the photo (mine mirrored, on my screen only): spec 2026-10-01-camera §2.
   const camera = useCameraTrack(p.userId, isSelf);
@@ -38,7 +41,7 @@ function Tile({ p, channelId, isSelf, speaking, receiving }: { p: VoiceParticipa
         {speaking && <span className={s.srOnly}>, {t('voice.speaking')}</span>}
         {p.camera && <span className={s.srOnly}>, {t('voice.camera.live')}</span>}
       </span>
-      {(p.muted || p.deafened || p.serverMuted) && (
+      {hasStateIcons(p) && (
         <span className={s.tileIcons}>
           <StateIcons p={p} size={16} />
         </span>
@@ -46,30 +49,20 @@ function Tile({ p, channelId, isSelf, speaking, receiving }: { p: VoiceParticipa
     </>
   );
   const data = { 'data-user': p.userId, 'data-speaking': speaking || undefined, 'data-receiving': receiving || undefined };
-  if (isSelf) {
-    return (
-      <div className={className} role="group" aria-label={name} {...data}>
-        {body}
-      </div>
-    );
-  }
   return (
     <div className={s.anchor} {...data}>
       <button
         type="button"
         className={className}
         style={{ width: '100%' }}
-        aria-haspopup="menu"
-        aria-expanded={menu}
-        onClick={() => setMenu(!menu)}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setMenu(true);
-        }}
+        aria-haspopup="dialog"
+        data-profile-trigger
+        onClick={(e) => useProfileCardStore.getState().open(p.userId, e.currentTarget.getBoundingClientRect(), 'right', e.currentTarget)}
+        {...userMenuTriggers((anchor, opener) => setMenu({ userId: p.userId, anchor, opener }))}
       >
         {body}
       </button>
-      {menu && <ParticipantMenu participant={p} channelId={channelId} placement="down" onClose={() => setMenu(false)} />}
+      {menu && <UserMenuFor request={menu} side="right" onClose={() => setMenu(null)} />}
     </div>
   );
 }
@@ -152,7 +145,6 @@ export function VoiceStage({ channelId, onOpenSettings }: { channelId: string; o
         <Tile
           key={p.userId}
           p={p}
-          channelId={channelId}
           isSelf={p.userId === selfUserId}
           speaking={here && speakers.includes(p.userId)}
           receiving={here && receiving.includes(p.userId)}

@@ -24,10 +24,15 @@ export function HangUpIcon({ size }: { size: number }) {
   return <Phone size={size} fill="currentColor" strokeWidth={1.5} className={s.hangUpIcon} aria-hidden="true" />;
 }
 
-/** Mute, deafen and server-mute marks for one participant. */
+/** Whether a participant shows any mute or deafen mark. */
+export function hasStateIcons(p: VoiceParticipant): boolean {
+  return p.muted || p.deafened || p.serverMuted || p.serverDeafened;
+}
+
+/** Mute and deafen marks for one participant; a moderator's in red. */
 export function StateIcons({ p, size = 14 }: { p: VoiceParticipant; size?: number }) {
   const t = useT();
-  if (!p.muted && !p.deafened && !p.serverMuted) return null;
+  if (!hasStateIcons(p)) return null;
   return (
     <span className={s.stateIcons}>
       {p.serverMuted ? (
@@ -35,7 +40,11 @@ export function StateIcons({ p, size = 14 }: { p: VoiceParticipant; size?: numbe
       ) : p.muted ? (
         <MicOff size={size} aria-label={t('voice.micOff')} role="img" />
       ) : null}
-      {p.deafened && <HeadphoneOff size={size} aria-label={t('voice.soundOff')} role="img" />}
+      {p.serverDeafened ? (
+        <HeadphoneOff size={size} className={s.stateIconServer} aria-label={t('voice.serverDeafened')} role="img" />
+      ) : p.deafened ? (
+        <HeadphoneOff size={size} aria-label={t('voice.soundOff')} role="img" />
+      ) : null}
     </span>
   );
 }

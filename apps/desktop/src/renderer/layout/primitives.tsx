@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { avatarFace, initialsFontSize } from '../features/profile/avatarModel.js';
 import { errorMessage, useT } from '../i18n/index.js';
 import { avatarHashFor, useMyAvatar } from '../stores/profile.js';
@@ -248,7 +248,19 @@ export interface MenuProps {
   width?: number;
 }
 
-/** A floating menu: arrow keys, Home/End, Esc and Tab; a click outside closes it. */
+/** What the arrow keys move between in one menu level: its items, and a slider (a person's volume). */
+const MENU_STOPS = '[role^="menuitem"]:not([aria-disabled="true"]), input[type="range"]';
+
+/** The stops of the menu level `panel` itself, not those of a submenu open inside it. */
+function menuStops(panel: HTMLElement): HTMLElement[] {
+  return [...panel.querySelectorAll<HTMLElement>(MENU_STOPS)].filter((el) => el.closest('[role="menu"]') === panel);
+}
+
+/**
+ * A floating menu: arrow keys, Home/End, Esc and Tab; a click outside closes it. The keys act on
+ * the level that has the focus (a MenuSub's submenu is a level of its own, inside this one). On a
+ * slider, up and down move on and left and right change its value.
+ */
 export function Menu({ anchor, label, onClose, children, align = 'start', width = 220 }: MenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
@@ -295,9 +307,12 @@ export function Menu({ anchor, label, onClose, children, align = 'start', width 
   const onKeyDown = (e: ReactKeyboardEvent) => {
     const el = ref.current;
     if (!el) return;
-    const items = [...el.querySelectorAll<HTMLElement>('[role^="menuitem"]:not([aria-disabled="true"])')];
-    const index = items.indexOf(document.activeElement as HTMLElement);
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const panel = active?.closest<HTMLElement>('[role="menu"]') ?? el;
+    const items = menuStops(el.contains(panel) ? panel : el);
+    const index = active ? items.indexOf(active) : -1;
     const move = (i: number) => items[(i + items.length) % items.length]?.focus();
+    const onSlider = active instanceof HTMLInputElement && active.type === 'range';
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
@@ -308,10 +323,12 @@ export function Menu({ anchor, label, onClose, children, align = 'start', width 
         move(index - 1);
         break;
       case 'Home':
+        if (onSlider) break;
         e.preventDefault();
         move(0);
         break;
       case 'End':
+        if (onSlider) break;
         e.preventDefault();
         move(items.length - 1);
         break;
@@ -369,13 +386,28 @@ export function MenuItem({
   );
 }
 
-export function MenuCheckbox({ children, checked, onToggle, disabled = false, color }: { children: ReactNode; checked: boolean; onToggle: () => void; disabled?: boolean; color?: string | null }) {
+/** A checkbox item (role="menuitemcheckbox"): the box sits on the right of the label, like Discord's. `danger`: a moderator's action, in red. */
+export function MenuCheckbox({
+  children,
+  checked,
+  onToggle,
+  disabled = false,
+  color,
+  danger = false,
+}: {
+  children: ReactNode;
+  checked: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+  color?: string | null;
+  danger?: boolean;
+}) {
   return (
     <button
       type="button"
       role="menuitemcheckbox"
       aria-checked={checked}
-      className={p.menuItem}
+      className={danger ? `${p.menuItem} ${p.menuDanger}` : p.menuItem}
       aria-disabled={disabled || undefined}
       tabIndex={-1}
       onClick={() => !disabled && onToggle()}
@@ -388,6 +420,127 @@ export function MenuCheckbox({ children, checked, onToggle, disabled = false, co
         {checked && <Check size={12} strokeWidth={3} />}
       </span>
     </button>
+  );
+}
+
+/** How long the pointer may be off a submenu's item (crossing the gap to the submenu) before it closes. */
+const SUBMENU_CLOSE_MS = 250;
+
+/**
+ * An item that opens a submenu beside it (Discord's "Cargos ›"): on hover, or with Enter, Space or
+ * the right arrow, which also put the focus on its first item; the left arrow or Esc close it and
+ * give the focus back to the item. It lives inside the parent menu's element (position: fixed), so
+ * a click in it is a click in the menu, and the parent's arrow keys work in it too.
+ */
+export function MenuSub({ label, children, menuLabel, icon, width = 220 }: { label: ReactNode; children: ReactNode; menuLabel: string; icon?: ReactNode; width?: number }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const focusFirst = useRef(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const menuId = useId();
+
+  const cancelClose = () => {
+    if (closeTimer.current !== null) clearTimeout(closeTimer.current);
+    closeTimer.current = null;
+  };
+  useEffect(() => cancelClose, []);
+
+  const show = (focus: boolean) => {
+    cancelClose();
+    if (open) {
+      if (focus) panelRef.current?.querySelector<HTMLElement>(MENU_STOPS)?.focus();
+      return;
+    }
+    focusFirst.current = focus;
+    setOpen(true);
+  };
+  const hide = (refocus: boolean) => {
+    cancelClose();
+    setOpen(false);
+    if (refocus) triggerRef.current?.focus();
+  };
+
+  // Beside the parent menu, on the right (on the left when there is no room), its first item level with the item.
+  useLayoutEffect(() => {
+    const trigger = triggerRef.current;
+    const panel = panelRef.current;
+    if (!open || !trigger || !panel) {
+      setPos(null);
+      return;
+    }
+    const t = trigger.getBoundingClientRect();
+    const r = panel.getBoundingClientRect();
+    const margin = 8;
+    const parent = trigger.parentElement?.closest('[role="menu"]')?.getBoundingClientRect() ?? t;
+    let left = parent.right + 2;
+    if (left + r.width > window.innerWidth - margin) left = Math.max(margin, parent.left - r.width - 2);
+    const top = Math.max(margin, Math.min(t.top - 7, window.innerHeight - r.height - margin));
+    setPos({ left, top });
+    if (focusFirst.current) {
+      focusFirst.current = false;
+      panel.querySelector<HTMLElement>(MENU_STOPS)?.focus();
+    }
+  }, [open]);
+
+  const onKeyDown = (e: ReactKeyboardEvent) => {
+    const inPanel = panelRef.current?.contains(e.target as Node) === true;
+    if (!inPanel && e.target === triggerRef.current && (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      e.stopPropagation();
+      show(true);
+    } else if (inPanel && (e.key === 'ArrowLeft' || e.key === 'Escape')) {
+      e.preventDefault();
+      e.stopPropagation();
+      hide(true);
+    }
+  };
+
+  return (
+    <div
+      ref={wrapRef}
+      className={p.menuSub}
+      onMouseEnter={() => show(false)}
+      onMouseLeave={() => {
+        cancelClose();
+        closeTimer.current = setTimeout(() => setOpen(false), SUBMENU_CLOSE_MS);
+      }}
+      onBlur={(e) => {
+        // The focus went to another item of the parent menu, or out of the menu.
+        if (e.relatedTarget !== null && !wrapRef.current?.contains(e.relatedTarget as Node)) hide(false);
+      }}
+      onKeyDown={onKeyDown}
+    >
+      <button
+        ref={triggerRef}
+        type="button"
+        role="menuitem"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        className={open ? `${p.menuItem} ${p.menuItemOpen}` : p.menuItem}
+        tabIndex={-1}
+        onClick={() => show(true)}
+      >
+        <span className={p.menuLabel}>{label}</span>
+        {icon && <span className={p.menuIcon}>{icon}</span>}
+        <ChevronRight size={16} className={p.menuChevron} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          ref={panelRef}
+          id={menuId}
+          className={p.menu}
+          role="menu"
+          aria-label={menuLabel}
+          style={{ width, left: pos?.left ?? -9999, top: pos?.top ?? -9999 }}
+        >
+          {children}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -208,7 +208,7 @@ describe.skipIf(!binary)('voice: node_ip with the real LiveKit (spec §8.1)', ()
     const yaml = () => readFileSync(join(t.dataDir, 'livekit.yaml'), 'utf8');
     expect(await voice.whenReady(), `LiveKit did not start: ${logs.join(' / ')}`).toBe(true);
     expect(yaml()).toContain('node_ip: "198.51.100.23"');
-    expect(voice.features).toEqual(['voice']);
+    expect(voice.features).toContain('voice');
 
     const ana = await connectTestClient(t.server, { nickname: 'ana' });
     clients.push(ana);
@@ -217,7 +217,7 @@ describe.skipIf(!binary)('voice: node_ip with the real LiveKit (spec §8.1)', ()
     expect(yaml()).toContain('node_ip: "198.51.100.24"');
     expect((await ana.waitEvent('voice.availability', 20_000)).d).toEqual({ available: false });
     expect((await ana.waitEvent('voice.availability', 20_000)).d).toEqual({ available: true });
-    expect(voice.features, logs.join(' / ')).toEqual(['voice']);
+    expect(voice.features, logs.join(' / ')).toContain('voice');
     expect(ok<{ token: string }>(await ana.request('voice.join', { channelId: 'VC1' })).token).toBeTruthy();
   }, 60_000);
 });

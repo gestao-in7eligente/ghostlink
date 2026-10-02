@@ -184,20 +184,23 @@ describe.skipIf(!binary)('GhostLink v0.1: host in one app, join from another by 
     // After muting and deafening, her voice is back on the air.
     await expect.poll(() => tile(bia.page, 'Ana').getAttribute('data-speaking'), { timeout: 30_000 }).toBe('true');
 
-    // Server mute from Ana (owner): Bia's microphone goes off the air until unmuted.
-    await voiceRow(ana.page, sala, 'Bia').click();
-    await ana.page.getByRole('menuitem', { name: 'Silenciar no servidor' }).click();
+    // Server mute from Ana (owner), in Bia's menu: Bia's microphone goes off the air until unmuted.
+    await voiceRow(ana.page, sala, 'Bia').click({ button: 'right' });
+    await ana.page.getByRole('menuitemcheckbox', { name: 'Silenciar voz no servidor' }).click();
+    await ana.page.keyboard.press('Escape');
     await bia.page.locator('[data-voice-control="mute"][aria-label="Silenciado pelo servidor"]').waitFor({ timeout: 15_000 });
     await voiceRow(ana.page, sala, 'Bia').getByRole('img', { name: 'Silenciado pelo servidor' }).waitFor({ timeout: 15_000 });
     await expect.poll(() => tile(ana.page, 'Bia').getAttribute('data-receiving'), { timeout: 15_000 }).toBeNull();
-    await voiceRow(ana.page, sala, 'Bia').click();
-    await ana.page.getByRole('menuitem', { name: 'Reativar no servidor' }).click();
+    await voiceRow(ana.page, sala, 'Bia').click({ button: 'right' });
+    await ana.page.getByRole('menuitemcheckbox', { name: 'Silenciar voz no servidor', checked: true }).click();
+    await ana.page.keyboard.press('Escape');
     await bia.page.locator('[data-voice-control="mute"][aria-label="Silenciar"]').waitFor({ timeout: 15_000 });
     await expect.poll(() => tile(ana.page, 'Bia').getAttribute('data-receiving'), { timeout: 30_000 }).toBe('true');
 
     // Move: Bia's app joins the other channel by itself, and her screen follows the call.
-    await voiceRow(ana.page, sala, 'Bia').click();
-    await ana.page.getByRole('menuitem', { name: 'Mover para Sala 2' }).click();
+    await voiceRow(ana.page, sala, 'Bia').click({ button: 'right' });
+    await ana.page.getByRole('menuitem', { name: 'Mover para' }).click();
+    await ana.page.getByRole('menu', { name: 'Mover para' }).getByRole('menuitem', { name: 'Sala 2' }).click();
     await voiceRow(bia.page, sala2, 'Bia').waitFor({ timeout: 20_000 });
     await expect.poll(() => bia.page.locator('[data-voice-panel="connected"]').textContent(), { timeout: 20_000 }).toContain('Sala 2');
     await voiceRow(ana.page, sala2, 'Bia').waitFor({ timeout: 20_000 });
@@ -274,7 +277,7 @@ describe.skipIf(!binary)('GhostLink v0.1: host in one app, join from another by 
     await bia.page.locator('[data-voice-panel="connected"]').waitFor({ timeout: 30_000 });
     await voiceRow(ana.page, sala, 'Bia').waitFor({ timeout: 20_000 });
 
-    await members(ana.page).getByRole('button', { name: /^Bia,/ }).click();
+    await members(ana.page).getByRole('button', { name: /^Bia,/ }).click({ button: 'right' });
     await ana.page.getByRole('menuitem', { name: 'Expulsar Bia' }).click();
     const confirm = ana.page.getByRole('dialog', { name: 'Expulsar' });
     // Invite-only server: she will need a new invite (the confirmation says so).

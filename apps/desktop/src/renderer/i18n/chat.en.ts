@@ -93,6 +93,14 @@ export const chat: Record<keyof typeof ptBR, string> = {
   'members.banConfirm': 'Ban {name}? They cannot come back until unbanned.',
   'members.banReason': 'Reason (optional)',
   'members.banIp': 'Also ban their IP address',
+  // A person's menu (spec 2026-10-02-menu-do-usuario §2).
+  'userMenu.profile': 'Profile',
+  'userMenu.editServerProfile': 'Edit server profile',
+  'userMenu.rolesOf': 'Roles of {name}',
+  'userMenu.serverMute': 'Server mute',
+  'userMenu.serverDeafen': 'Server deafen',
+  'userMenu.moveTo': 'Move to',
+  'userMenu.disconnect': 'Disconnect',
 
   'userSettings.profile': 'Profile',
   'userSettings.nickname': 'Nickname on this server',

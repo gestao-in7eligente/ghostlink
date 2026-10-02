@@ -118,7 +118,7 @@ describe('voice behind a TCP proxy (spec §8.6)', () => {
     expect(s.logs.join('\n')).toMatch(/announces 66\.33\.22\.220 to clients \(the TCP proxy's IPv4 \(altaria\.proxy\.rlwy\.net\)\)/);
     // Signaling goes through the same public address the client used: the proxy's.
     const ana = await s.client('ana');
-    expect(s.voice.features).toEqual(['voice']);
+    expect(s.voice.features).toContain('voice');
     expect(ok<{ token: string }>(await ana.request('voice.join', { channelId: 'VC1' })).token).toBeTruthy();
   });
 
@@ -194,7 +194,7 @@ describe('voice behind a TCP proxy (spec §8.6)', () => {
     const s = await setup({ proxy: { host: 'proxy.example.net', port }, port });
     expect(await s.voice.whenReady()).toBe(false);
     expect(s.backend.nodeIps).toEqual([]);
-    expect(s.voice.features).toEqual([]);
+    expect(s.voice.features).not.toContain('voice');
     expect(s.logs.join('\n')).toMatch(new RegExp(`voice is unavailable: the TCP proxy's external port ${port} is also this server's port`));
   });
 });

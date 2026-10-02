@@ -23,6 +23,7 @@ import { ServerRail } from './ServerRail.js';
 import { useLayoutSlots } from './slots.js';
 import { UserPanel } from './UserPanel.js';
 import { UserSettings } from './UserSettings.js';
+import { provideUserSettingsOpener } from './userSettingsOpener.js';
 import { useTextSync } from './useTextSync.js';
 
 /** 'voice': the user settings, opened on the voice section. */
@@ -44,6 +45,9 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
   const VoiceStage = useLayoutSlots((s) => s.VoiceStage);
   const shellRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
+
+  // A person's menu on myself: "Editar perfil por servidor" opens the user settings on Perfil.
+  useEffect(() => provideUserSettingsOpener(() => setDialog('user')), []);
 
   // The channel list and the rail leave room for the user panel, whose height changes with voice.
   useEffect(() => {

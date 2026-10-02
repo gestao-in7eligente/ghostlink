@@ -1,4 +1,5 @@
 import {
+  FEATURE_VOICE_SERVER_DEAFEN,
   PERMISSIONS,
   ProtocolError,
   VOICE_LIMITS,
@@ -136,7 +137,12 @@ async function waitAtMost(p: Promise<unknown>, ms: number): Promise<void> {
 }
 
 function permissionKey(p: LivekitPermission): string {
-  return `${p.canPublish}:${[...p.canPublishSources].sort().join(',')}`;
+  return `${p.canSubscribe}:${p.canPublish}:${[...p.canPublishSources].sort().join(',')}`;
+}
+
+/** What a moderator's mute or deafen leaves of the user's LiveKit permissions. */
+function moderation(registry: VoiceRegistry, userId: string): { serverMuted: boolean; serverDeafened: boolean } {
+  return { serverMuted: registry.isServerMuted(userId), serverDeafened: registry.isServerDeafened(userId) };
 }
 
 /**
@@ -251,7 +257,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
   };
 
   const permissionFor = (userId: string, channelId: string): LivekitPermission =>
-    livekitPermission(access().permissions(userId, channelId), { serverMuted: registry.isServerMuted(userId) });
+    livekitPermission(access().permissions(userId, channelId), moderation(registry, userId));
 
   const removeUser = async (userId: string, o: { notify?: boolean } = {}): Promise<void> => {
     const channels = new Set([registry.assignedChannel(userId), registry.channelOf(userId)].filter((c): c is string => c !== null));
@@ -490,7 +496,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       throw new ProtocolError('INTERNAL');
     };
     if (!backend?.available || restarting) return unavailable();
-    const permission = livekitPermission(bits, { serverMuted: registry.isServerMuted(rc.userId) });
+    const permission = livekitPermission(bits, moderation(registry, rc.userId));
     const nickname = ctx.db.get<{ nickname: string }>('SELECT nickname FROM users WHERE id = ?', rc.userId)?.nickname ?? rc.userId.slice(0, 8);
     const token = await createJoinToken({ ...backend.keys, userId: rc.userId, channelId, nickname, permission });
     if (!rc.isCurrent()) return {};
@@ -513,8 +519,8 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     const actorBits = current ? a.permissions(rc.userId, current) : 0;
     // Someone in a channel the moderator cannot see is "not in voice" for them (spec §5.3).
     if (!current || !has(actorBits, P.VIEW_CHANNEL)) throw new ProtocolError('NOT_FOUND');
-    const needed = p.action === 'mute' || p.action === 'unmute' ? P.MUTE_MEMBERS : P.MOVE_MEMBERS;
-    if (!has(actorBits, needed)) throw new ProtocolError('FORBIDDEN');
+    const silencing = p.action === 'mute' || p.action === 'unmute' || p.action === 'deafen' || p.action === 'undeafen';
+    if (!has(actorBits, silencing ? P.MUTE_MEMBERS : P.MOVE_MEMBERS)) throw new ProtocolError('FORBIDDEN');
     const subject = (userId: string) => ({ isOwner: a.isOwner(userId), roles: [{ position: a.topPosition(userId) }] });
     if (!canActOn(subject(rc.userId), subject(p.userId))) throw new ProtocolError('HIERARCHY');
 
@@ -522,6 +528,13 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       broadcast(registry.setServerMuted(p.userId, p.action === 'mute'));
       // Enforced by LiveKit: the microphone leaves canPublishSources (never mutePublishedTrack, spec §8.3).
       // Not in LiveKit yet: the block goes out when they arrive (participant_joined).
+      await syncPermission(p.userId);
+      return {};
+    }
+    if (p.action === 'deafen' || p.action === 'undeafen') {
+      broadcast(registry.setServerDeafened(p.userId, p.action === 'deafen'));
+      // Enforced by LiveKit: canSubscribe false stops what they receive at once and refuses new
+      // subscriptions until it is true again (their client subscribes again by itself then).
       await syncPermission(p.userId);
       return {};
     }
@@ -549,7 +562,8 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     name: 'voice',
     registry,
     get features(): readonly string[] {
-      return backend?.available ? ['voice'] : [];
+      // `voice` only while LiveKit runs; what voice.moderate takes, always.
+      return backend?.available ? ['voice', FEATURE_VOICE_SERVER_DEAFEN] : [FEATURE_VOICE_SERVER_DEAFEN];
     },
     handlers: {
       'voice.join': join,

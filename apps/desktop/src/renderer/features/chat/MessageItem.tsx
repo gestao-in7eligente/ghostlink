@@ -8,6 +8,7 @@ import type { AttachmentView, UploadView } from '../attachments/attachmentModel.
 import { AttachmentList } from '../attachments/AttachmentList.js';
 import { UploadProgress } from '../attachments/UploadProgress.js';
 import { BotLocalRow, BotTag, UsedCommand } from '../bots/BotParts.js';
+import { userMenuTriggers } from '../userMenu/triggers.js';
 import c from './chat.module.css';
 import { formatDay, formatFull, formatStamp, formatTime, type Row } from './grouping.js';
 import { parseMarkdown } from './markdown.js';
@@ -49,7 +50,12 @@ export interface MessageEnv {
   onDismiss(local: BotLocal): void;
   /** A click on an author's name or picture: their profile card, beside `opener` (spec 2026-10-02-cartao-de-perfil). */
   onProfile(userId: string, opener: HTMLElement): void;
+  /** A right click (or the menu key, Shift+F10) on an author's name or picture: their menu (spec 2026-10-02-menu-do-usuario). */
+  onUserMenu(userId: string, anchor: { x: number; y: number } | DOMRect, opener: HTMLElement): void;
 }
+
+/** The right click, the menu key and Shift+F10 on an author's name or picture open their menu. */
+const userMenuHandlers = (userId: string, env: MessageEnv) => userMenuTriggers((anchor, opener) => env.onUserMenu(userId, anchor, opener));
 
 function Content({ content, everyone, md }: { content: string; everyone: boolean; md: MarkdownContext }) {
   const nodes = useMemo(() => renderMarkdown(parseMarkdown(content, { everyone }), md), [content, everyone, md]);
@@ -72,7 +78,14 @@ function Header({ name, at, env, bot = false, userId }: { name: string; at: numb
       {userId === null ? (
         <span className={c.author}>{name}</span>
       ) : (
-        <button type="button" className={`${c.author} ${c.authorButton}`} aria-haspopup="dialog" data-profile-trigger onClick={(e) => env.onProfile(userId, e.currentTarget)}>
+        <button
+          type="button"
+          className={`${c.author} ${c.authorButton}`}
+          aria-haspopup="dialog"
+          data-profile-trigger
+          onClick={(e) => env.onProfile(userId, e.currentTarget)}
+          {...userMenuHandlers(userId, env)}
+        >
           {name}
         </button>
       )}
@@ -97,6 +110,7 @@ function AuthorAvatar({ authorId, name, member, env }: { authorId: string; name:
       aria-label={env.t('profileCard.label', { name })}
       data-profile-trigger
       onClick={(e) => env.onProfile(authorId, e.currentTarget)}
+      {...userMenuHandlers(authorId, env)}
     >
       {avatar}
     </button>
