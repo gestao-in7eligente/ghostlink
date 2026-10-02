@@ -178,7 +178,7 @@ describe('proxy mode: ICE-TCP on the shared public port', () => {
     ice.sockets[0]!.resume();
     await until(() => ice.bytes().length === frame.length + bulk.length, 30_000);
     expect(sha(ice.bytes())).toBe(sha(Buffer.concat([frame, bulk])));
-  });
+  }, 60_000); // megabytes through a slow reader: slow under a full parallel test run
 
   it('a close on either side closes the other', async () => {
     const ice = await new FakeIce().listen();
