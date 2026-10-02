@@ -354,6 +354,13 @@
   font-size: 13px;
 }
 
+/* A field that cannot be edited yet ("Em breve"). */
+.locked:disabled {
+  color: var(--text-soft);
+  cursor: default;
+  opacity: 0.75;
+}
+
 /* ---- settings: Atividade ---- */
 
 .bars {

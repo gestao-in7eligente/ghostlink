@@ -1,5 +1,5 @@
-import { useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
-import { EllipsisVertical, KeyRound, Plus, Trash2 } from 'lucide-react';
+import { useCallback, useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { EllipsisVertical, KeyRound, Plus, Settings, Trash2 } from 'lucide-react';
 import { FEATURE_BOTS, PERMISSIONS, has, type Member } from '@ghostlink/shared';
 import { useT } from '../../i18n/index.js';
 import l from '../../layout/layout.module.css';
@@ -10,20 +10,22 @@ import { myPermissions } from '../../stores/server.js';
 import { dispatchText, useTextStore } from '../../stores/text.js';
 import { deleteBot, regenerateBotCode } from './botActions.js';
 import { AddBotDialog, BotCodeDialog } from './BotDialogs.js';
+import { BotSettings } from './BotSettings.js';
 import { serverBots, showBotsSection } from './botsModel.js';
 import b from './bots.module.css';
 
 type Dialog =
   | { kind: 'create' }
+  | { kind: 'settings'; botId: string }
   | { kind: 'regenerate' | 'delete'; bot: Member }
   | { kind: 'code'; name: string; code: string };
 
 /**
  * BOTS in the server's sidebar, above "CANAIS DE TEXTO" (bots spec §3): each bot with its photo
  * and online dot; a click opens its page in the center, selected like a channel (bot page spec).
- * Whoever has MANAGE_SERVER sees "Adicionar bot" and each bot's menu (right click or ⋮): "Gerar
- * novo código" and "Excluir bot", both confirmed. Hidden when the server has no bots and the
- * person cannot create one.
+ * Whoever has MANAGE_SERVER sees "Adicionar bot" and each bot's menu (right click or ⋮):
+ * "Configurações" (the bot's settings, a mockup for now), then "Gerar novo código" and "Excluir
+ * bot", both confirmed. Hidden when the server has no bots and the person cannot create one.
  */
 export function BotsSection() {
   const t = useT();
@@ -35,12 +37,13 @@ export function BotsSection() {
   const canManage = useMemo(() => has(myPermissions({ server, members }), PERMISSIONS.MANAGE_SERVER), [server, members]);
   const [menu, setMenu] = useState<{ botId: string; anchor: MenuAnchor } | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const closeDialog = useCallback(() => setDialog(null), []);
 
   if (!showBotsSection({ bots: bots.length, canManage, supported })) return null;
   const canAdd = canManage && supported;
   const menuBot = menu && Object.hasOwn(members.byId, menu.botId) ? members.byId[menu.botId]! : null;
-  const pick = (kind: 'regenerate' | 'delete') => {
-    if (menuBot) setDialog({ kind, bot: menuBot });
+  const pick = (kind: 'settings' | 'regenerate' | 'delete') => {
+    if (menuBot) setDialog(kind === 'settings' ? { kind, botId: menuBot.userId } : { kind, bot: menuBot });
     setMenu(null);
   };
 
@@ -81,6 +84,9 @@ export function BotsSection() {
 
       {menu && menuBot && (
         <Menu anchor={menu.anchor} label={t('bots.menu', { name: menuBot.nickname })} onClose={() => setMenu(null)} width={220}>
+          <MenuItem onSelect={() => pick('settings')} icon={<Settings size={16} aria-hidden="true" />}>
+            {t('bots.settings')}
+          </MenuItem>
           <MenuItem onSelect={() => pick('regenerate')} icon={<KeyRound size={16} aria-hidden="true" />}>
             {t('bots.regenerate')}
           </MenuItem>
@@ -92,6 +98,7 @@ export function BotsSection() {
       )}
 
       {dialog?.kind === 'create' && <AddBotDialog onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'settings' && <BotSettings botId={dialog.botId} onClose={closeDialog} />}
       {dialog?.kind === 'code' && <BotCodeDialog name={dialog.name} code={dialog.code} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'regenerate' && (
         <ConfirmDialog
