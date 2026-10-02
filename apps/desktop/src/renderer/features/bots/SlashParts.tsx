@@ -243,8 +243,20 @@ export function SlashDraftBox({
     if (kind === 'select') {
       const choices = chipChoices(option, { yes: t('slash.yes'), no: t('slash.no') });
       return (
-        // The Select handles its own Enter, arrows and Esc while open (and prevents them); the rest is the draft's.
-        <span ref={register(option.name)} onKeyDown={(e) => !e.defaultPrevented && onKeyDown(e, chip)} className={b.chipSelectWrap}>
+        // The Select handles its own keys while open (and prevents them); closed, Enter sends the command
+        // as in a text chip (the arrows and Space still open the list), and the rest is the draft's.
+        <span
+          ref={register(option.name)}
+          onKeyDownCapture={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && (e.target as HTMLElement).getAttribute('aria-expanded') === 'false') {
+              e.preventDefault();
+              e.stopPropagation();
+              onSubmit();
+            }
+          }}
+          onKeyDown={(e) => !e.defaultPrevented && onKeyDown(e, chip)}
+          className={b.chipSelectWrap}
+        >
           <Select
             value={chip.value}
             label={label}
