@@ -19,7 +19,7 @@ export function BotTag({ t }: { t: Translate }) {
 }
 
 /** Fills a template's `{name}` slots with nodes, so parts of a translated line can be styled. */
-function fill(template: string, slots: Readonly<Record<string, ReactNode>>): ReactNode[] {
+export function fill(template: string, slots: Readonly<Record<string, ReactNode>>): ReactNode[] {
   return template.split(/(\{\w+\})/).map((part, i) => {
     const slot = /^\{(\w+)\}$/.exec(part)?.[1];
     return <Fragment key={i}>{slot !== undefined && Object.hasOwn(slots, slot) ? slots[slot] : part}</Fragment>;

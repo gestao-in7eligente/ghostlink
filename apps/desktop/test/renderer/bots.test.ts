@@ -18,7 +18,8 @@ import {
 } from '../../src/renderer/features/bots/slashModel.js';
 import { buildRows } from '../../src/renderer/features/chat/grouping.js';
 import { channelLocals } from '../../src/renderer/stores/bots.js';
-import { ADMIN_ROLE, BOB, GERAL, ME, SECRET, channel, ev, member, message, run, snapshot, start } from './textFixtures.js';
+import { centerView } from '../../src/renderer/stores/channels.js';
+import { ADMIN_ROLE, BOB, GERAL, ME, SECRET, VOICE, channel, ev, member, message, run, snapshot, start } from './textFixtures.js';
 
 const BOT = 'e'.repeat(32);
 const OTHER_BOT = 'f'.repeat(32);
@@ -139,6 +140,22 @@ describe('the BOTS section and the commands of a channel', () => {
     const names = (id: string) => channelCommands(state, commands, state.channels.byId[id]!).map((e) => `${e.command.name}@${e.botName}`);
     expect(names(GERAL)).toEqual(['ping@Zeca', 'echo@Ana Bot']);
     expect(names(SECRET)).toEqual(['echo@Ana Bot']);
+  });
+
+  it("opens a bot's page in the center like a channel; a channel, the stage or the bot leaving brings the chat back", () => {
+    const state = start(snapshot({ members: [member(ME, 'Eu'), member(BOB, 'Bob'), member(BOT, 'Zeca', { bot: true })] }));
+    expect(centerView(state.channels)).toBe('chat');
+    expect(run(state, { type: 'bot.open', botId: BOB })).toBe(state); // people have no page
+    const open = run(state, { type: 'bot.open', botId: BOT });
+    expect(open.channels).toMatchObject({ botPageId: BOT, activeId: GERAL });
+    expect(centerView(open.channels)).toBe('bot');
+    expect(centerView(run(open, { type: 'select', channelId: GERAL }).channels)).toBe('chat');
+    expect(centerView(run(open, { type: 'stage', channelId: VOICE }).channels)).toBe('stage');
+    expect(centerView(run(open, { type: 'stage', channelId: VOICE }, { type: 'stage', channelId: null }).channels)).toBe('chat');
+    expect(centerView(run(open, ev({ t: 'member.left', userId: BOT, reason: 'kicked' })).channels)).toBe('chat');
+    // A reconnect keeps it; another server's welcome does not.
+    expect(run(open, { type: 'reset', snapshot: snapshot({ members: [member(ME, 'Eu'), member(BOT, 'Zeca', { bot: true })] }) }).channels.botPageId).toBe(BOT);
+    expect(run(open, { type: 'reset', snapshot: snapshot({ members: [member(ME, 'Eu'), member(BOT, 'Zeca', { bot: true })] }, 'srv-2') }).channels.botPageId).toBeNull();
   });
 });
 

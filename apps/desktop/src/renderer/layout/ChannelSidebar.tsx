@@ -7,7 +7,7 @@ import { canOpenServerSettings } from '../features/server-settings/access.js';
 import { CreateChannelDialog } from '../features/server-settings/CreateChannelDialog.js';
 import { useOpenServerExit } from '../features/serverDelete/DeletionBanner.js';
 import { useT } from '../i18n/index.js';
-import { isUnread, readMark, sortedChannels } from '../stores/channels.js';
+import { centerView, isUnread, readMark, sortedChannels } from '../stores/channels.js';
 import { myPermissions } from '../stores/server.js';
 import { dispatchText, useTextStore } from '../stores/text.js';
 import l from './layout.module.css';
@@ -130,7 +130,7 @@ function ChannelSection({
 
 function TextChannelRow({ channel }: { channel: Channel }) {
   const t = useT();
-  const active = useTextStore((s) => s.channels.activeId === channel.id && s.channels.stageId === null);
+  const active = useTextStore((s) => s.channels.activeId === channel.id && centerView(s.channels) === 'chat');
   const mark = useTextStore((s) => readMark(s.channels, channel.id));
   const unread = !active && isUnread(channel, mark);
   const mentions = mark.mentionCount;

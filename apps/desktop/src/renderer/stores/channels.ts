@@ -2,7 +2,7 @@
 import type { Channel, ChannelType, Message } from '@ghostlink/shared';
 import { mentionsUser, type ChannelsState, type ReadMark, type TextAction, type TextState } from './textState.js';
 
-export const initialChannels: ChannelsState = { byId: {}, reads: {}, activeId: null, stageId: null, attentive: false };
+export const initialChannels: ChannelsState = { byId: {}, reads: {}, activeId: null, stageId: null, botPageId: null, attentive: false };
 
 const NO_READS: ReadMark = { lastReadMessageId: 0, mentionCount: 0 };
 
@@ -20,6 +20,12 @@ export function firstTextChannelId(byId: Readonly<Record<string, Channel>>): str
 
 export function readMark(s: ChannelsState, channelId: string): ReadMark {
   return Object.hasOwn(s.reads, channelId) ? s.reads[channelId]! : NO_READS;
+}
+
+/** What the center shows: the voice stage, a bot's page, or the open text channel's chat. */
+export function centerView(s: Pick<ChannelsState, 'stageId' | 'botPageId'>): 'stage' | 'bot' | 'chat' {
+  if (s.stageId !== null) return 'stage';
+  return s.botPageId !== null ? 'bot' : 'chat';
 }
 
 /** Unread = the newest message is past the read mark (spec §7). */
@@ -70,21 +76,28 @@ export function channelsSlice(s: ChannelsState, a: TextAction, root: TextState):
       const sameServer = root.server.serverId === snapshot.serverId;
       const keepActive = sameServer && has(byId, s.activeId) && byId[s.activeId]!.type === 'text';
       const keepStage = sameServer && has(byId, s.stageId) && byId[s.stageId]!.type === 'voice';
+      const keepBot = sameServer && snapshot.text.members.some((m) => m.userId === s.botPageId && m.bot);
       return {
         byId,
         reads,
         activeId: keepActive ? s.activeId : firstTextChannelId(byId),
         stageId: keepStage ? s.stageId : null,
+        botPageId: keepBot ? s.botPageId : null,
         attentive: s.attentive,
       };
     }
     case 'select':
       if (!has(s.byId, a.channelId) || s.byId[a.channelId]!.type !== 'text') return s;
-      return { ...s, activeId: a.channelId, stageId: null };
+      return { ...s, activeId: a.channelId, stageId: null, botPageId: null };
     case 'stage':
       if (a.channelId === null) return s.stageId === null ? s : { ...s, stageId: null };
       if (!has(s.byId, a.channelId) || s.byId[a.channelId]!.type !== 'voice') return s;
-      return { ...s, stageId: a.channelId };
+      return { ...s, stageId: a.channelId, botPageId: null };
+    case 'bot.open': {
+      const bot = Object.hasOwn(root.members.byId, a.botId) ? root.members.byId[a.botId] : undefined;
+      if (bot?.bot !== true) return s;
+      return s.botPageId === a.botId && s.stageId === null ? s : { ...s, botPageId: a.botId, stageId: null };
+    }
     case 'attention':
       return s.attentive === a.attentive ? s : { ...s, attentive: a.attentive };
     case 'read': {
@@ -133,6 +146,9 @@ export function channelsSlice(s: ChannelsState, a: TextAction, root: TextState):
         stageId: s.stageId === e.id ? null : s.stageId,
       };
     }
+    case 'member.left':
+      // A deleted bot's page closes: the chat comes back.
+      return s.botPageId === e.userId ? { ...s, botPageId: null } : s;
     case 'msg.new':
       return onMessage(s, e.message, root);
     case 'msg.updated': {

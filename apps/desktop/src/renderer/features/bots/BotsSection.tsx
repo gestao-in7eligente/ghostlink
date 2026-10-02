@@ -1,27 +1,31 @@
-import { useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
-import { EllipsisVertical, KeyRound, Plus, Trash2 } from 'lucide-react';
+import { useCallback, useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { EllipsisVertical, KeyRound, Plus, Settings, Trash2 } from 'lucide-react';
 import { FEATURE_BOTS, PERMISSIONS, has, type Member } from '@ghostlink/shared';
 import { useT } from '../../i18n/index.js';
 import l from '../../layout/layout.module.css';
 import { Avatar, ConfirmDialog, Menu, MenuItem, MenuSeparator, type MenuAnchor } from '../../layout/primitives.js';
 import { useConnectionStore } from '../../stores/connection.js';
+import { centerView } from '../../stores/channels.js';
 import { myPermissions } from '../../stores/server.js';
-import { useTextStore } from '../../stores/text.js';
+import { dispatchText, useTextStore } from '../../stores/text.js';
 import { deleteBot, regenerateBotCode } from './botActions.js';
 import { AddBotDialog, BotCodeDialog } from './BotDialogs.js';
+import { BotSettings } from './BotSettings.js';
 import { serverBots, showBotsSection } from './botsModel.js';
 import b from './bots.module.css';
 
 type Dialog =
   | { kind: 'create' }
+  | { kind: 'settings'; botId: string }
   | { kind: 'regenerate' | 'delete'; bot: Member }
   | { kind: 'code'; name: string; code: string };
 
 /**
  * BOTS in the server's sidebar, above "CANAIS DE TEXTO" (bots spec §3): each bot with its photo
- * and online dot. Whoever has MANAGE_SERVER sees "Adicionar bot" and each bot's menu (right click
- * or ⋮): "Gerar novo código" and "Excluir bot", both confirmed. Hidden when the server has no bots
- * and the person cannot create one.
+ * and online dot; a click opens its page in the center, selected like a channel (bot page spec).
+ * Whoever has MANAGE_SERVER sees "Adicionar bot" and each bot's menu (right click or ⋮):
+ * "Configurações" (the bot's settings, a mockup for now), then "Gerar novo código" and "Excluir
+ * bot", both confirmed. Hidden when the server has no bots and the person cannot create one.
  */
 export function BotsSection() {
   const t = useT();
@@ -29,15 +33,17 @@ export function BotsSection() {
   const members = useTextStore((s) => s.members);
   const supported = useConnectionStore((s) => s.welcome?.serverId === server.serverId && s.welcome.features.includes(FEATURE_BOTS));
   const bots = useMemo(() => serverBots(members.byId), [members]);
+  const selectedId = useTextStore((s) => (centerView(s.channels) === 'bot' ? s.channels.botPageId : null));
   const canManage = useMemo(() => has(myPermissions({ server, members }), PERMISSIONS.MANAGE_SERVER), [server, members]);
   const [menu, setMenu] = useState<{ botId: string; anchor: MenuAnchor } | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const closeDialog = useCallback(() => setDialog(null), []);
 
   if (!showBotsSection({ bots: bots.length, canManage, supported })) return null;
   const canAdd = canManage && supported;
   const menuBot = menu && Object.hasOwn(members.byId, menu.botId) ? members.byId[menu.botId]! : null;
-  const pick = (kind: 'regenerate' | 'delete') => {
-    if (menuBot) setDialog({ kind, bot: menuBot });
+  const pick = (kind: 'settings' | 'regenerate' | 'delete') => {
+    if (menuBot) setDialog(kind === 'settings' ? { kind, botId: menuBot.userId } : { kind, bot: menuBot });
     setMenu(null);
   };
 
@@ -55,7 +61,14 @@ export function BotsSection() {
       </div>
       <ul className={l.channelList}>
         {bots.map((bot) => (
-          <BotRow key={bot.userId} bot={bot} canManage={canManage} open={menu?.botId === bot.userId} onMenu={(anchor) => setMenu({ botId: bot.userId, anchor })} />
+          <BotRow
+            key={bot.userId}
+            bot={bot}
+            selected={selectedId === bot.userId}
+            canManage={canManage}
+            open={menu?.botId === bot.userId}
+            onMenu={(anchor) => setMenu({ botId: bot.userId, anchor })}
+          />
         ))}
         {canAdd && bots.length === 0 && (
           <li>
@@ -71,6 +84,9 @@ export function BotsSection() {
 
       {menu && menuBot && (
         <Menu anchor={menu.anchor} label={t('bots.menu', { name: menuBot.nickname })} onClose={() => setMenu(null)} width={220}>
+          <MenuItem onSelect={() => pick('settings')} icon={<Settings size={16} aria-hidden="true" />}>
+            {t('bots.settings')}
+          </MenuItem>
           <MenuItem onSelect={() => pick('regenerate')} icon={<KeyRound size={16} aria-hidden="true" />}>
             {t('bots.regenerate')}
           </MenuItem>
@@ -82,6 +98,7 @@ export function BotsSection() {
       )}
 
       {dialog?.kind === 'create' && <AddBotDialog onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'settings' && <BotSettings botId={dialog.botId} onClose={closeDialog} />}
       {dialog?.kind === 'code' && <BotCodeDialog name={dialog.name} code={dialog.code} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'regenerate' && (
         <ConfirmDialog
@@ -109,7 +126,19 @@ export function BotsSection() {
   );
 }
 
-function BotRow({ bot, canManage, open, onMenu }: { bot: Member; canManage: boolean; open: boolean; onMenu: (anchor: MenuAnchor) => void }) {
+function BotRow({
+  bot,
+  selected,
+  canManage,
+  open,
+  onMenu,
+}: {
+  bot: Member;
+  selected: boolean;
+  canManage: boolean;
+  open: boolean;
+  onMenu: (anchor: MenuAnchor) => void;
+}) {
   const t = useT();
   const status = bot.online ? t('layout.online') : t('members.statusOffline');
   const onContextMenu = (e: MouseEvent<HTMLLIElement>) => {
@@ -118,19 +147,27 @@ function BotRow({ bot, canManage, open, onMenu }: { bot: Member; canManage: bool
     onMenu({ x: e.clientX, y: e.clientY });
   };
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+    if (canManage && (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) {
       e.preventDefault();
       onMenu(e.currentTarget.getBoundingClientRect());
     }
   };
   return (
-    <li className={bot.online ? b.row : `${b.row} ${b.offline}`} onContextMenu={onContextMenu} data-bot={bot.userId}>
-      <span className={b.rowMain} aria-label={t('bots.rowLabel', { name: bot.nickname, status })} role="img">
+    <li className={[b.row, bot.online ? '' : b.offline, selected ? b.rowSelected : ''].filter(Boolean).join(' ')} onContextMenu={onContextMenu} data-bot={bot.userId}>
+      <button
+        type="button"
+        className={b.rowMain}
+        aria-label={t('bots.rowLabel', { name: bot.nickname, status })}
+        aria-current={selected ? 'page' : undefined}
+        onClick={() => dispatchText({ type: 'bot.open', botId: bot.userId })}
+        onKeyDown={onKeyDown}
+        data-bot-open
+      >
         <Avatar size={24} name={bot.nickname} hash={bot.avatar} online={bot.online} />
         <span className={b.rowName} aria-hidden="true">
           {bot.nickname}
         </span>
-      </span>
+      </button>
       {canManage && (
         <button
           type="button"

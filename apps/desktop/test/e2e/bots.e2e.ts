@@ -1,10 +1,12 @@
 // Bots end to end (spec 2026-10-02-bots-design.md §3, §5): Ana hosts a server and adds a bot in the
 // sidebar's BOTS section (name and photo); the test starts @ghostlink/discord-compat's example
 // bot (examples/ping-bot, a discord.js-style bot) with the one-time connection code; Ana types "/",
-// picks /ping and sees "Pong!" under "Ana usou /ping"; with the `private` chip set to Sim the
-// answer is only hers ("Só você pode ver isto · Dispensar"); with `slow` it comes after thinking.
-// Then "Gerar novo código" disconnects the bot and "Excluir bot" removes it. Run with
-// `npm run test:e2e` (builds the app first; the package is built here when its dist/ is missing).
+// picks /ping and sees "Pong!" under "Ana usou /ping". Clicking the bot opens its page with /ping
+// (bot page spec), its menu's "Configurações" the settings tabs, and #geral brings the chat back.
+// With the `private` chip set to Sim the answer is only hers ("Só você pode ver isto ·
+// Dispensar"); with `slow` it comes after thinking. Then "Gerar novo código" disconnects the bot
+// and "Excluir bot" removes it. Run with `npm run test:e2e` (builds the app first; the package is
+// built here when its dist/ is missing).
 // Skipped without the LiveKit binary.
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -183,6 +185,46 @@ describe.skipIf(!binary)('GhostLink bots: Ana adds a bot, the example bot connec
     await answer.locator('[data-bot-tag]').waitFor();
     await ana.page.waitForTimeout(200);
     await ana.page.screenshot({ path: shot('reply') });
+  });
+
+  step('page: the bot opens its page like a channel; "Configurações" opens its settings; #geral brings the chat back', 60_000, async () => {
+    const open = botRow(ana.page, 'Hermes').getByRole('button', { name: 'Hermes, bot, Online' });
+    await open.click();
+    const page = ana.page.getByRole('region', { name: 'Página de Hermes' });
+    await page.locator('[data-bot-status]').getByText('Online').waitFor({ timeout: 10_000 });
+    const ping = page.locator('[data-bot-command="ping"]');
+    await ping.getByText('Replies with Pong!').waitFor();
+    await ping.locator('[data-bot-option="private"]').getByText('Sim ou não').waitFor();
+    expect(await open.getAttribute('aria-current')).toBe('page');
+    expect(await composer(ana.page).count()).toBe(0);
+    await ana.page.waitForTimeout(200);
+    await ana.page.screenshot({ path: shot('page') });
+
+    // Right click: "Configurações" first, then the two working items.
+    await botRow(ana.page, 'Hermes').click({ button: 'right' });
+    expect(await ana.page.getByRole('menuitem').allTextContents()).toEqual(['Configurações', 'Gerar novo código', 'Excluir bot']);
+    await ana.page.getByRole('menuitem', { name: 'Configurações' }).click();
+    const settings = ana.page.getByRole('dialog', { name: 'Configurações de Hermes' });
+    await settings.waitFor();
+    expect(await settings.getByRole('tab').allTextContents()).toEqual(['Visão geral', 'Comandos', 'Atividade (7 dias)', 'Permissões', 'Código de conexão', 'Excluir bot']);
+    await settings.locator('[data-preview]').waitFor();
+    await ana.page.waitForTimeout(150);
+    await ana.page.screenshot({ path: shot('settings-overview') });
+    await settings.getByRole('tab', { name: 'Comandos' }).click();
+    await settings.locator('[data-bot-command="ping"]').waitFor();
+    await settings.getByRole('tab', { name: 'Atividade (7 dias)' }).click();
+    await settings.getByText('Mensagens hoje: 12').waitFor();
+    await ana.page.waitForTimeout(150);
+    await ana.page.screenshot({ path: shot('settings-activity') });
+    await settings.getByRole('tab', { name: 'Excluir bot' }).click();
+    expect(await settings.getByRole('button', { name: 'Excluir bot' }).isDisabled()).toBe(true);
+    await ana.page.keyboard.press('Escape');
+    await settings.waitFor({ state: 'detached' });
+
+    await textChannel(ana.page, 'geral').click();
+    await composer(ana.page).waitFor();
+    await page.waitFor({ state: 'detached' });
+    expect(await open.getAttribute('aria-current')).toBeNull();
   });
 
   step('private: the yes/no chip set to Sim makes the answer only Ana\'s; "Dispensar" removes it', 60_000, async () => {

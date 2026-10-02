@@ -43,6 +43,19 @@
   --dot-ring: var(--bg-hover);
 }
 
+/* The bot whose page is open: the selected channel's look. */
+.rowSelected,
+.rowSelected:hover,
+.rowSelected:focus-within {
+  background: var(--bg-selected);
+  color: var(--text-bright);
+  --dot-ring: var(--bg-selected);
+}
+
+.rowSelected .rowMain {
+  font-weight: 600;
+}
+
 .rowMain {
   display: flex;
   flex: 1;
