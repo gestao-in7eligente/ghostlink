@@ -20,3 +20,4 @@ export * from './serverDelete.js';
 export * from './attachments.js';
 export * from './upload.js';
 export * from './bots.js';
+export * from './ghostDj.js';

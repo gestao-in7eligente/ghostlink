@@ -50,7 +50,7 @@ Put a feature's payload and event types, its server-side strict schemas and its 
 
 Migrations are numbered SQL files in `src/db/migrations/NNN_name.sql`, one transaction each. `loadMigrations()` refuses gaps.
 
-- The Text track owns `002_*.sql`; `003_server_delete.sql` adds `server_meta.deleting_at` and `deleted_at` (the `serverDelete` module, `src/deletion/`); `004_files.sql` adds the `files` table (attachments); `005_bots.sql` adds `users.is_bot`, the `bots` table and the `messages.interaction_*` columns (the `bots` module); `006_bot_settings.sql` adds `bots.description`, `bots.last_seen_at` and the `bot_command_uses` table (the bot's settings, same module).
+- The Text track owns `002_*.sql`; `003_server_delete.sql` adds `server_meta.deleting_at` and `deleted_at` (the `serverDelete` module, `src/deletion/`); `004_files.sql` adds the `files` table (attachments); `005_bots.sql` adds `users.is_bot`, the `bots` table and the `messages.interaction_*` columns (the `bots` module); `006_bot_settings.sql` adds `bots.description`, `bots.last_seen_at` and the `bot_command_uses` table (the bot's settings, same module); `007_system_bots.sql` adds `bots.system` (the Ghost DJ, a bot the server creates itself).
 - Any other track that needs tables takes the next free number when it merges, and renumbers its file if another track merged first, so the numbering stays contiguous.
 - Never edit a migration that has already been merged. Use `STRICT` tables, as `001_init.sql` does.
 
@@ -73,6 +73,19 @@ Put tests next to the existing ones in `apps/server/test` (and `test/integration
 - Bot messages and edits use the text module's bot buckets (twice the member limit). The bots module reaches members, channels and messages only through `TextModule.bots` (`src/text/bots.ts`).
 - `commands.set` (bots only) stores JSON in `bots.commands` and sends `commands.updated`; the welcome carries `botCommands`. Interactions live in memory (`src/bots/interactions.ts`): `interaction.create` to the bot alone, 3 s for the first answer, then 15 min for edits and follow-ups. Ephemeral answers go to the invoker's sessions only and are never stored.
 - The bot's settings (bot page spec, the `botSettings` flag): `bot.get` (MANAGE_SERVER) answers the description, the last connection (`bots.last_seen_at`, set when a bot session opens and when it closes), the uses per command and the last 20 uses (`bot_command_uses`: one row per `interaction.invoke` that reached the bot, `answered` once its first `interaction.respond` arrived, kept 7 days; the list leaves out channels the requester cannot see), its messages of the last 24 h, and what it may do in each text channel the requester sees. `bot.update` (MANAGE_SERVER: name and description) and `bot.setDescription` (the bot itself) send `bot.updated` to everyone, a rename `member.updated` too; the welcome carries `botProfiles`.
+
+- System bots (`bots.system`, Ghost DJ spec §2): `ensureSystemBot(spec)` creates the member on the first run (no connection code: its token hash is of a secret nobody sees), brings it back after a kick (not a ban), stores its commands at every start and marks it online. Its interactions skip the WebSocket: `Interactions.setLocalHandler()` hands `interaction.create` to the module right after `interaction.invoke` answered, and the module answers through the returned `SystemBot` (respond/edit/followup with the same deadlines, plain post/edit for its own messages). `bot.regenerate` / `bot.delete` refuse it with FORBIDDEN; it does not count toward `maxBots`. `BotInfo.system` and `BotProfile.system` tell the app.
+
+## Ghost DJ
+
+`src/ghostDj/` (spec 2026-10-02-ghost-dj-design.md), registered after text, voice, avatars and bots (`defaultModules({ ghostDj: false })` leaves it out: the desktop Hosting mode):
+
+- `index.ts`: the module. Its member is the system bot `ghost-dj` (default photo through `AvatarsModule.setServerPhoto()`), its commands are in `commands.ts`, the `ghostDj` flag is on while ffmpeg exists and LiveKit runs. `ghostlink-server ghost-dj` checks the machine.
+- `dj.ts`: the queue, the control rules (only people in its voice channel; `/play` needs a voice channel), the "Tocando agora" panel (one message, edited, debounced) and leaving after 5 min idle or 15 s alone.
+- `ytdlp.ts`: the official yt-dlp binary from GitHub releases, checked against the release's SHA2-256SUMS before it runs, kept in `data/ghost-dj/` with its hash (checked at every start), updated daily; runs are argument arrays with `--ignore-config`, the target last after `--`, and `data/ghost-dj/cookies.txt` when it exists. `youtube.ts` turns `/play busca` into a YouTube id or a `ytsearch1:` search; anything else is refused.
+- `ffmpeg.ts`: yt-dlp piped into ffmpeg (s16le 48 kHz stereo); the volume is applied to the PCM in `dj.ts`.
+- `livekitOutput.ts`: the DJ as a LiveKit participant (@livekit/rtc-node, imported only when it first plays). Voice's `joinLocal()` checks the channel like `voice.join` plus SPEAK, assigns the DJ and mints a loopback-port token that may publish its microphone only; the sweeps, moderation and `voice.state` treat it as a member. The esbuild bundle keeps rtc-node's native packages external and copies them to `dist/node_modules/` (`scripts/build.mjs`); the VPS package ships the Linux x64 and arm64 ones (`scripts/lib/rtcNative.mjs`).
+- Server deletion erases `data/ghost-dj/cookies.txt`.
 
 ## Deleting the server
 

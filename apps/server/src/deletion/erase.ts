@@ -52,7 +52,8 @@ export function eraseDatabase(db: Db, now: number): void {
 
 /**
  * Deletes the files with data: the profile photos (and half-written uploads) in avatars/, the
- * attachments in files/, the database backups in backups/ (copies of the whole database) and setup-code.txt. The TLS
+ * attachments in files/, the database backups in backups/ (copies of the whole database), setup-code.txt and the
+ * Ghost DJ's ghost-dj/cookies.txt (the owner's YouTube login; yt-dlp itself stays). The TLS
  * certificate stays, so the pin (serverKeyId) stays the same, and so do the LiveKit keys and
  * status.json, which hold nothing about the members. Returns how many entries could not be
  * deleted (e.g. a file still open); never throws. Paths contain hashes: never log them.
@@ -77,5 +78,7 @@ export function eraseFiles(dataDir: string): number {
     for (const name of names) remove(join(dataDir, dir, name));
   }
   remove(dataPaths(dataDir).setupCodeFile);
+  // The owner's YouTube cookies for the Ghost DJ: a login, not the server's.
+  remove(join(dataDir, 'ghost-dj', 'cookies.txt'));
   return failed;
 }

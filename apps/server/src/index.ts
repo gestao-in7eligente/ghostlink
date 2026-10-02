@@ -37,7 +37,7 @@ export type {
   SessionInfo,
   SessionsApi,
 } from './modules.js';
-export { defaultModules } from './defaultModules.js';
+export { defaultModules, type DefaultModulesOptions } from './defaultModules.js';
 export { consoleLogger, silentLogger } from './logger.js';
 export { SERVER_VERSION, WEB_SITE_BASE } from './version.js';
 export * from './net/addresses.js';

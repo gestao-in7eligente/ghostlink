@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { request } from 'node:https';
 import { tmpdir } from 'node:os';
@@ -35,6 +35,12 @@ describe('bundled CLI (dist/cli.js)', () => {
   it('runs "version" without node_modules-only tricks', () => {
     const out = execFileSync(process.execPath, [...nodeFlags, cli, 'version'], { encoding: 'utf8' });
     expect(out.trim()).toBe(SERVER_VERSION);
+  });
+
+  it("loads the Ghost DJ's LiveKit audio from the bundle and its native add-on in dist/node_modules", () => {
+    // Exit code 1 when ffmpeg is missing on this machine: only the add-on line matters here.
+    const r = spawnSync(process.execPath, [...nodeFlags, cli, 'ghost-dj'], { encoding: 'utf8', timeout: 30_000 });
+    expect(r.stdout.split(/\r?\n/)).toContain('LiveKit audio (@livekit/rtc-node): ok');
   });
 
   it('"start" serves /health on the printed port', async () => {
