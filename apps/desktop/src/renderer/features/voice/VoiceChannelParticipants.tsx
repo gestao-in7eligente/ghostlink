@@ -2,7 +2,9 @@ import { Video } from 'lucide-react';
 import { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useT } from '../../i18n/index.js';
-import { ParticipantMenu } from './ParticipantMenu.js';
+import { useProfileCardStore } from '../profileCard/profileCardStore.js';
+import { userMenuTriggers, type UserMenuRequest } from '../userMenu/triggers.js';
+import { UserMenuFor } from '../userMenu/UserMenu.js';
 import { StateIcons, VoiceAvatar } from './parts.js';
 import { useVoiceDirectory, useVoiceRuntime } from './runtime.js';
 import { LiveBadge } from './screenParts.js';
@@ -12,8 +14,8 @@ import s from './voice.module.css';
 /**
  * Who is in a voice channel, under its row in the channel sidebar: avatar, name, a
  * green ring while speaking, mute / deafen / server-mute marks, a camera while theirs is
- * on, and "AO VIVO" while sharing a screen. Other people open
- * a menu (volume, moderation) with a click, Enter or the context-menu key.
+ * on, and "AO VIVO" while sharing a screen. A click (or Enter) opens the person's profile
+ * card, the right click, the menu key or Shift+F10 their menu (spec 2026-10-02-menu-do-usuario).
  */
 export function VoiceChannelParticipants({ channelId }: { channelId: string }) {
   useVoiceRuntime();
@@ -21,16 +23,14 @@ export function VoiceChannelParticipants({ channelId }: { channelId: string }) {
   // A channel of the server on screen; the call may run on another one (chamada-continua §2).
   const participants = useVoiceStore((v) => participantsOf(viewVoice(v), channelId));
   const speakers = useVoiceStore(useShallow((v) => (v.call.channelId === channelId ? participantsOf(v, channelId).filter((p) => isSpeaking(v, p.userId)).map((p) => p.userId) : [])));
-  const selfUserId = useVoiceStore((v) => viewVoice(v).selfUserId);
   const here = useVoiceStore((v) => v.call.channelId === channelId && v.call.status === 'connected');
   const directory = useVoiceDirectory();
-  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [menu, setMenu] = useState<UserMenuRequest | null>(null);
   if (participants.length === 0) return null;
 
   return (
     <ul className={s.participants} aria-label={directory.channelName(channelId) ?? undefined} data-voice-participants={channelId} data-voice-here={here || undefined}>
       {participants.map((p) => {
-        const isSelf = p.userId === selfUserId;
         const speaking = speakers.includes(p.userId);
         const name = directory.displayName(p.userId);
         const rowClass = speaking ? `${s.participantRow} ${s.participantSpeaking}` : s.participantRow;
@@ -52,27 +52,20 @@ export function VoiceChannelParticipants({ channelId }: { channelId: string }) {
         );
         return (
           <li key={p.userId} className={s.anchor} data-user={p.userId} data-speaking={speaking || undefined}>
-            {isSelf ? (
-              <div className={rowClass}>{content}</div>
-            ) : (
-              <button
-                type="button"
-                className={rowClass}
-                aria-haspopup="menu"
-                aria-expanded={menuFor === p.userId}
-                onClick={() => setMenuFor(menuFor === p.userId ? null : p.userId)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setMenuFor(p.userId);
-                }}
-              >
-                {content}
-              </button>
-            )}
-            {menuFor === p.userId && <ParticipantMenu participant={p} channelId={channelId} placement="down" onClose={() => setMenuFor(null)} />}
+            <button
+              type="button"
+              className={rowClass}
+              aria-haspopup="dialog"
+              data-profile-trigger
+              onClick={(e) => useProfileCardStore.getState().open(p.userId, e.currentTarget.getBoundingClientRect(), 'right', e.currentTarget)}
+              {...userMenuTriggers((anchor, opener) => setMenu({ userId: p.userId, anchor, opener }))}
+            >
+              {content}
+            </button>
           </li>
         );
       })}
+      {menu && <UserMenuFor request={menu} side="right" onClose={() => setMenu(null)} />}
     </ul>
   );
 }

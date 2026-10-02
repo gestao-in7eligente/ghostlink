@@ -26,8 +26,6 @@ export interface LayoutSlots {
   VoiceStage: ComponentType<{ channelId: string; onOpenSettings?: () => void }> | null;
   /** Called when the user opens a voice channel (Voice's joinVoice). */
   onJoinVoice: ((channelId: string) => void) | null;
-  /** Extra items in a member's context menu, e.g. per-user volume (Voice). */
-  MemberMenuExtras: ComponentType<{ userId: string; close: () => void }> | null;
   /**
    * "Criar um servidor" in the rail's "+" chooser (Hosting's `openHostFlow`).
    * Default: back to the server list, which offers hosting too.
@@ -57,7 +55,6 @@ const EMPTY: LayoutSlots = {
   VoiceControls: null,
   VoiceStage: null,
   onJoinVoice: null,
-  MemberMenuExtras: null,
   onCreateServer: null,
   onJoinServer: null,
   RailExtras: null,

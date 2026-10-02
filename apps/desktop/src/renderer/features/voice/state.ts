@@ -296,6 +296,15 @@ export function participantsOf(s: Pick<ServerVoice, 'channels'>, channelId: stri
   return s.channels[channelId] ?? NOBODY;
 }
 
+/** Where `userId` is in a call of this server (only channels this user can see are reported), or null. */
+export function participantIn(s: Pick<ServerVoice, 'channels'>, userId: string): { channelId: string; participant: VoiceParticipant } | null {
+  for (const [channelId, list] of Object.entries(s.channels)) {
+    const participant = list.find((p) => p.userId === userId);
+    if (participant) return { channelId, participant };
+  }
+  return null;
+}
+
 /** The voice of the server on screen: its own during a call on another server, else the runtime's. */
 export function viewVoice(s: VoiceState): ServerVoice {
   return s.view ?? s;

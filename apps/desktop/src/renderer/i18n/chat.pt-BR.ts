@@ -92,6 +92,14 @@ export const chat = {
   'members.banConfirm': 'Banir {name}? A pessoa não volta até ser desbanida.',
   'members.banReason': 'Motivo (opcional)',
   'members.banIp': 'Banir também o endereço IP',
+  // A person's menu (spec 2026-10-02-menu-do-usuario §2).
+  'userMenu.profile': 'Perfil',
+  'userMenu.editServerProfile': 'Editar perfil por servidor',
+  'userMenu.rolesOf': 'Cargos de {name}',
+  'userMenu.serverMute': 'Silenciar voz no servidor',
+  'userMenu.serverDeafen': 'Desativar áudio no servidor',
+  'userMenu.moveTo': 'Mover para',
+  'userMenu.disconnect': 'Desconectar',
 
   'userSettings.profile': 'Perfil',
   'userSettings.nickname': 'Apelido neste servidor',

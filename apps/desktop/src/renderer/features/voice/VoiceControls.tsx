@@ -136,9 +136,11 @@ function AudioButtons({ variant, onOpenSettings, camera }: { variant: Variant; o
   const muted = useVoiceStore((v) => v.selfMuted || v.selfDeafened);
   const deafened = useVoiceStore((v) => v.selfDeafened);
   const serverMuted = useVoiceStore((v) => selfVoice(v)?.serverMuted ?? false);
+  // A moderator's deafen: the crossed headphones in red, and only a moderator undoes it.
+  const serverDeafened = useVoiceStore((v) => selfVoice(v)?.serverDeafened ?? false);
   const [open, setOpen] = useState<DeviceKind | null>(null);
   const micLabel = serverMuted ? t('voice.serverMuted') : t(muted ? 'voice.unmute' : 'voice.mute');
-  const soundLabel = t(deafened ? 'voice.undeafen' : 'voice.deafen');
+  const soundLabel = serverDeafened ? t('voice.serverDeafened') : t(deafened ? 'voice.undeafen' : 'voice.deafen');
   const c = CLASSES[variant];
   const panel = variant === 'panel';
 
@@ -174,14 +176,15 @@ function AudioButtons({ variant, onOpenSettings, camera }: { variant: Variant; o
       <div className={s.anchor}>
         <button
           type="button"
-          className={c.button}
-          aria-pressed={deafened}
+          className={serverDeafened ? c.danger : c.button}
+          aria-pressed={deafened || serverDeafened}
           aria-label={soundLabel}
           title={soundLabel}
+          disabled={serverDeafened}
           onClick={() => void toggleDeafen()}
           data-voice-control={panel ? 'deafen' : undefined}
         >
-          {deafened ? <HeadphoneOff size={c.icon} aria-hidden="true" /> : <Headphones size={c.icon} aria-hidden="true" />}
+          {deafened || serverDeafened ? <HeadphoneOff size={c.icon} aria-hidden="true" /> : <Headphones size={c.icon} aria-hidden="true" />}
         </button>
         <button
           type="button"

@@ -3,9 +3,8 @@
 //   - VoicePanel() as the top row of the user panel card, VoiceControls() in its bottom row;
 //   - VoiceStage({ channelId }) in the center when a voice channel is open;
 //   - joinVoice(channelId) as the layout's onJoinVoice handler;
-//   - VoiceSettings() inside the user settings screen, MemberVolume in a member's menu;
+//   - VoiceSettings() inside the user settings screen (a person's volume lives in their menu, features/userMenu);
 //   - provideVoiceDirectory(...) to feed names, channels and permissions from live stores.
-import { MemberVolume } from './ParticipantMenu.js';
 import { joinVoice } from './runtime.js';
 import { VoiceChannelParticipants } from './VoiceChannelParticipants.js';
 import { VoiceControls } from './VoiceControls.js';
@@ -13,7 +12,7 @@ import { VoicePanel } from './VoicePanel.js';
 import { VoiceSettings } from './VoiceSettings.js';
 import { VoiceStage } from './VoiceStage.js';
 
-export { MemberVolume, ParticipantMenu, UserVolume } from './ParticipantMenu.js';
+export { UserVolume } from './UserVolume.js';
 export { VoiceChannelParticipants } from './VoiceChannelParticipants.js';
 export { VoiceControls } from './VoiceControls.js';
 export { VoiceNoticeBar, VoicePanel } from './VoicePanel.js';
@@ -27,7 +26,6 @@ export const voiceSlots = {
   VoiceControls,
   VoiceStage,
   onJoinVoice: (channelId: string): void => void joinVoice(channelId),
-  MemberMenuExtras: MemberVolume,
 };
 
 /** The user-settings section: `registerUserSettingsSection(voiceSettingsSection)`. */
@@ -40,6 +38,7 @@ export {
   openCallServer,
   provideCallDirectory,
   provideVoiceDirectory,
+  setLocalMute,
   setUserVolume,
   toggleDeafen,
   toggleMute,

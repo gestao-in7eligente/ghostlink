@@ -8,7 +8,7 @@ import { byNickname } from '../../stores/members.js';
 import { memberRoles } from '../../stores/server.js';
 import { useTextStore } from '../../stores/text.js';
 import { fold } from '../chat/mentions.js';
-import { MemberMenu } from '../members/MemberMenu.js';
+import { UserMenu } from '../userMenu/UserMenu.js';
 
 /** Every member with their roles; the menu gives roles, kick and ban (per permission and hierarchy). */
 export function MembersTab() {
@@ -67,7 +67,8 @@ export function MembersTab() {
           </li>
         ))}
       </ul>
-      {menu && Object.hasOwn(members, menu.userId) && <MemberMenu member={members[menu.userId]!} anchor={menu.anchor} onClose={() => setMenu(null)} />}
+      {/* The person's menu, without "Perfil": the card cannot show over the settings. */}
+      {menu && Object.hasOwn(members, menu.userId) && <UserMenu member={members[menu.userId]!} anchor={menu.anchor} onClose={() => setMenu(null)} />}
     </div>
   );
 }

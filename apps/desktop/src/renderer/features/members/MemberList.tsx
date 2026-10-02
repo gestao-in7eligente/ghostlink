@@ -7,7 +7,7 @@ import { memberRoles } from '../../stores/server.js';
 import { useTextStore } from '../../stores/text.js';
 import { BotTag } from '../bots/BotParts.js';
 import { useProfileCardStore } from '../profileCard/profileCardStore.js';
-import { MemberMenu } from './MemberMenu.js';
+import { UserMenu } from '../userMenu/UserMenu.js';
 import m from './members.module.css';
 
 /** Role badges shown next to a name; the rest is summarized as "+N". */
@@ -22,7 +22,7 @@ export function MemberList() {
   const selfId = useTextStore((s) => s.server.selfId);
   const groups = useMemo(() => groupMembers(members, roles), [members, roles]);
   const count = Object.keys(members).length;
-  const [menu, setMenu] = useState<{ userId: string; anchor: MenuAnchor } | null>(null);
+  const [menu, setMenu] = useState<{ userId: string; anchor: MenuAnchor; row: HTMLElement } | null>(null);
 
   const label = (g: MemberGroup) => {
     if (g.kind === 'online') return t('members.online', { count: g.members.length });
@@ -52,17 +52,17 @@ export function MemberList() {
                     setMenu(null);
                     useProfileCardStore.getState().open(member.userId, row.getBoundingClientRect(), 'left', row);
                   }}
-                  onMenu={(anchor) => {
-                    useProfileCardStore.getState().close();
-                    setMenu({ userId: member.userId, anchor });
-                  }}
+                  onMenu={(anchor, row) => setMenu({ userId: member.userId, anchor, row })}
                 />
               ))}
             </ul>
           </section>
         ))}
       </div>
-      {menu && Object.hasOwn(members, menu.userId) && <MemberMenu member={members[menu.userId]!} anchor={menu.anchor} onClose={() => setMenu(null)} />}
+      {menu && Object.hasOwn(members, menu.userId) && (
+        // The person's menu (spec 2026-10-02-menu-do-usuario); its "Perfil" opens the card where the click does.
+        <UserMenu member={members[menu.userId]!} anchor={menu.anchor} onClose={() => setMenu(null)} profile={{ opener: menu.row, side: 'left' }} />
+      )}
     </div>
   );
 }
@@ -81,7 +81,7 @@ function MemberRow({
   isSelf: boolean;
   isOwner: boolean;
   onCard: (row: HTMLElement) => void;
-  onMenu: (anchor: MenuAnchor) => void;
+  onMenu: (anchor: MenuAnchor, row: HTMLElement) => void;
 }) {
   const t = useT();
   const shown = roles.slice(0, MAX_BADGES);
@@ -93,12 +93,12 @@ function MemberRow({
 
   const onContextMenu = (e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    onMenu({ x: e.clientX, y: e.clientY });
+    onMenu({ x: e.clientX, y: e.clientY }, e.currentTarget);
   };
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
     if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
       e.preventDefault();
-      onMenu(e.currentTarget.getBoundingClientRect());
+      onMenu(e.currentTarget.getBoundingClientRect(), e.currentTarget);
     }
   };
 

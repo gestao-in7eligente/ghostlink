@@ -28,7 +28,7 @@ export function useLayoutWiring(): void {
         openHostFlow();
         return true;
       },
-      // Voice: participants under voice channels, the panel/controls in the user card, the stage, volume in member menus.
+      // Voice: participants under voice channels, the panel/controls in the user card, the stage.
       ...voiceSlots,
     });
     const offIdentity = registerUserSettingsSection({ id: 'identity', title: 'identity.settings.title', Component: IdentitySection });
