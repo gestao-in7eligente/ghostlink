@@ -22,4 +22,9 @@ export const dm: Record<keyof typeof dmPt, string> = {
   'dm.deleted': 'Message deleted',
   'dm.tooLong': 'The message is over {max} characters.',
   'dm.replyUnknown': 'An earlier message',
+  // Files (attachments spec §1, §3).
+  'dm.fileWaiting': 'Arrives when {name} is online',
+  'dm.fileLoading': 'Receiving… {percent}%',
+  'dm.sendFailed': 'The files were not sent.',
+  'dm.discard': 'Discard',
 };

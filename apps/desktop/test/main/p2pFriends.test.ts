@@ -155,7 +155,7 @@ describe('adding by code (friends spec §5.1)', () => {
     expect(ana.sees(cleo)).toBeUndefined();
     // Asking again for someone already asked is not one more.
     expect(codeOf(() => ana.friends.add(bia.code()))).toBeUndefined();
-  });
+  }, 120_000); // 500 friends on a slow Windows CI runner took over 20 s
 
   it('knocks on the new inbox when a pending person is added again with a new code', async () => {
     const { person } = setup();
@@ -707,7 +707,7 @@ describe('accept, decline, cancel, remove, block, rename (friends spec §5.1, §
     }
     expect(codeOf(() => bia.friends.accept(ana.key))).toBe('FRIEND_LIMIT');
     expect(bia.sees(ana)).toBe('pending_in');
-  });
+  }, 120_000); // 500 friends on a slow Windows CI runner took over 20 s
 
   it('dismiss declines a request; the person may ask again', async () => {
     const { person } = setup();

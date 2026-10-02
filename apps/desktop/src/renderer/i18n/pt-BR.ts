@@ -3,6 +3,7 @@ import { identity } from './pt-BR/identity.js';
 import { releasePtBR } from './release.pt-BR.js';
 
 // Source catalog: every key exists here first; en.ts must have exactly the same keys.
+import { attachments } from './attachments.pt-BR.js';
 import { camera } from './camera.pt-BR.js';
 import { chat } from './chat.pt-BR.js';
 import { dm } from './dm.pt-BR.js';
@@ -131,10 +132,10 @@ export const messages = {
   'errors.SERVER_DELETING': 'O dono desligou este servidor, e ele será excluído em breve.',
   'errors.SERVER_DELETED': 'Este servidor foi excluído pelo dono.',
   'errors.CHANNEL_FULL': 'O canal está cheio.',
-  'errors.FILE_TOO_LARGE': 'O arquivo é grande demais.',
-  'errors.IMAGE_TOO_LARGE': 'A imagem é grande demais.',
-  'errors.QUOTA_EXCEEDED': 'O servidor ficou sem espaço para arquivos.',
-  'errors.BAD_ATTACHMENT': 'Anexo inválido.',
+  'errors.FILE_TOO_LARGE': 'O arquivo passa do limite de tamanho deste servidor.',
+  'errors.IMAGE_TOO_LARGE': 'A imagem é grande demais: até 8192 px de lado e 40 megapixels.',
+  'errors.QUOTA_EXCEEDED': 'O servidor ficou sem espaço para arquivos. Avise o dono.',
+  'errors.BAD_ATTACHMENT': 'O anexo não vale mais. Tente de novo para enviá-lo outra vez.',
   'errors.OWNER_MUST_TRANSFER': 'Transfira a posse do servidor antes de sair.',
   'errors.PIN_MISMATCH': 'A identidade deste servidor não confere. Pode ser um servidor falso, então a conexão foi bloqueada.',
   'errors.UNREACHABLE': 'Não foi possível alcançar o servidor. Confira o endereço e a sua conexão.',
@@ -159,5 +160,6 @@ export const messages = {
   ...profile,
   ...serverUpdate,
   ...serverDelete,
+  ...attachments,
   ...tray,
 } as const;

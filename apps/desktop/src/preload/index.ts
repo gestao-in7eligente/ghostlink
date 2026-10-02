@@ -15,6 +15,7 @@ import {
   type PttEvent,
   type ServerEventMessage,
 } from '../shared/ipcTypes.js';
+import type { UploadProgressEvent } from '../shared/attachmentTypes.js';
 import type { DmEvent } from '../shared/dmTypes.js';
 import type { FriendsSnapshot } from '../shared/friendsTypes.js';
 import type { HostStatus } from '../shared/hostTypes.js';
@@ -135,11 +136,14 @@ export const api: GhostlinkApi = {
     open: (friendKey) => invoke(IPC.dmOpen, friendKey),
     hide: (conv) => invoke(IPC.dmHide, conv),
     history: (conv, before, limit) => invoke(IPC.dmHistory, conv, before, limit),
-    send: (conv, text, replyTo) => invoke(IPC.dmSend, conv, text, replyTo),
+    send: (conv, text, replyTo, files = []) => invoke(IPC.dmSend, conv, text, replyTo, files),
     edit: (conv, id, text) => invoke(IPC.dmEdit, conv, id, text),
     remove: (conv, id) => invoke(IPC.dmRemove, conv, id),
     read: (conv, ts) => invoke(IPC.dmRead, conv, ts),
     typing: (conv) => invoke(IPC.dmTyping, conv),
+    attach: (conv, name, bytes) => invoke(IPC.dmAttach, conv, name, bytes),
+    fetchFile: (conv, hash) => invoke(IPC.dmFetchFile, conv, hash),
+    saveFile: (conv, hash) => invoke(IPC.dmSaveFile, conv, hash),
     onEvent: (cb) => subscribe<DmEvent>(IPC_EVENTS.dm, cb),
   },
   profile: {
@@ -147,6 +151,11 @@ export const api: GhostlinkApi = {
     setAvatar: (bytes) => invoke(IPC.profileSetAvatar, bytes),
     clearAvatar: () => invoke(IPC.profileClearAvatar),
     setServerIcon: (serverId, bytes) => invoke(IPC.profileSetServerIcon, serverId, bytes),
+  },
+  attachments: {
+    upload: (uploadId, serverId, channelId, name, bytes) => invoke(IPC.attachmentsUpload, uploadId, serverId, channelId, name, bytes),
+    save: (src, name) => invoke(IPC.attachmentsSave, src, name),
+    onProgress: (cb) => subscribe<UploadProgressEvent>(IPC_EVENTS.attachmentProgress, cb),
   },
   screen: {
     sources: () => invoke(IPC.screenSources),

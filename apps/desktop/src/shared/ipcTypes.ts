@@ -3,9 +3,10 @@
 // dependencies, so the sandboxed preload bundle stays tiny.
 import type { Envelope, ParsedJoinInput, WelcomePayload } from '@ghostlink/shared';
 import type { AppErrorCode } from './appErrors.js';
+import type { AttachmentsApi, SaveResult, UploadResult } from './attachmentTypes.js';
 import type { DrawApi, OverlayStroke } from './drawOverlay.js';
 import type { FirewallFixResult, FirewallStatus, HostApi, HostConfig, HostInvite, HostInviteOptions, HostStartResult, HostStatus } from './hostTypes.js';
-import type { DmApi, DmConversation, DmMessage } from './dmTypes.js';
+import type { DmApi, DmConversation, DmFileInfo, DmFileRef, DmMessage } from './dmTypes.js';
 import type { FriendsApi, FriendsSnapshot } from './friendsTypes.js';
 import type { AvatarInfo, ProfileApi } from './profileTypes.js';
 import type { RailwayAccount, RailwayCreateRequest, RailwayPending, RailwayProgress } from './railwayTypes.js';
@@ -203,6 +204,8 @@ export interface GhostlinkApi {
   friends: FriendsApi;
   dm: DmApi;
   profile: ProfileApi;
+  /** Files in server channels (spec 2026-10-01-anexos §4): upload to the server on screen, and "Baixar". */
+  attachments: AttachmentsApi;
   screen: ScreenApi;
   /** The pencil's overlay over my shared monitor (pencil spec §4). */
   draw: DrawApi;
@@ -300,10 +303,15 @@ export const IPC = {
   dmRemove: 'ghostlink:dm.remove',
   dmRead: 'ghostlink:dm.read',
   dmTyping: 'ghostlink:dm.typing',
+  dmAttach: 'ghostlink:dm.attach',
+  dmFetchFile: 'ghostlink:dm.fetchFile',
+  dmSaveFile: 'ghostlink:dm.saveFile',
   profileAvatar: 'ghostlink:profile.avatar',
   profileSetAvatar: 'ghostlink:profile.setAvatar',
   profileClearAvatar: 'ghostlink:profile.clearAvatar',
   profileSetServerIcon: 'ghostlink:profile.setServerIcon',
+  attachmentsUpload: 'ghostlink:attachments.upload',
+  attachmentsSave: 'ghostlink:attachments.save',
   screenSources: 'ghostlink:screen.sources',
   screenChoose: 'ghostlink:screen.choose',
   drawOverlayOpen: 'ghostlink:draw.overlayOpen',
@@ -326,6 +334,7 @@ export const IPC_EVENTS = {
   friends: 'ghostlink:event.friends',
   dm: 'ghostlink:event.dm',
   serverUpdates: 'ghostlink:event.serverUpdates',
+  attachmentProgress: 'ghostlink:event.attachmentProgress',
 } as const;
 
 /** Arguments and result of every invoke channel; main's handlers and the preload are both typed from it. */
@@ -395,15 +404,20 @@ export interface IpcContract {
   [IPC.dmOpen]: { args: [friendKey: string]; result: DmConversation };
   [IPC.dmHide]: { args: [conv: string]; result: void };
   [IPC.dmHistory]: { args: [conv: string, before: number | null, limit: number]; result: DmMessage[] };
-  [IPC.dmSend]: { args: [conv: string, text: string, replyTo: string | null]; result: DmMessage };
+  [IPC.dmSend]: { args: [conv: string, text: string, replyTo: string | null, files: DmFileRef[]]; result: DmMessage };
   [IPC.dmEdit]: { args: [conv: string, id: string, text: string]; result: DmMessage };
   [IPC.dmRemove]: { args: [conv: string, id: string]; result: DmMessage };
   [IPC.dmRead]: { args: [conv: string, ts: number]; result: void };
   [IPC.dmTyping]: { args: [conv: string]; result: void };
+  [IPC.dmAttach]: { args: [conv: string, name: string, bytes: Uint8Array]; result: DmFileInfo };
+  [IPC.dmFetchFile]: { args: [conv: string, hash: string]; result: void };
+  [IPC.dmSaveFile]: { args: [conv: string, hash: string]; result: boolean };
   [IPC.profileAvatar]: { args: []; result: AvatarInfo | null };
   [IPC.profileSetAvatar]: { args: [bytes: Uint8Array]; result: AvatarInfo };
   [IPC.profileClearAvatar]: { args: []; result: null };
   [IPC.profileSetServerIcon]: { args: [serverId: string, bytes: Uint8Array]; result: AvatarInfo };
+  [IPC.attachmentsUpload]: { args: [uploadId: string, serverId: string, channelId: string, name: string, bytes: Uint8Array]; result: UploadResult };
+  [IPC.attachmentsSave]: { args: [src: string, name: string]; result: SaveResult };
   [IPC.screenSources]: { args: []; result: ScreenSource[] };
   [IPC.screenChoose]: { args: [choice: ScreenChoice]; result: void };
   [IPC.drawOverlayOpen]: { args: []; result: boolean };
@@ -412,6 +426,9 @@ export interface IpcContract {
   [IPC.serverUpdatesState]: { args: [serverKeyId: string]; result: ManagedServerUpdate | null };
   [IPC.serverUpdatesUpdateNow]: { args: [serverKeyId: string]; result: ManagedServerUpdate };
 }
+
+/** The attachment channels (v0.3.3), handled by main/attachments/attachmentsIpc.ts. */
+export type AttachmentsIpcChannel = Extract<IpcChannel, `ghostlink:attachments.${string}`>;
 
 /** The profile photo channels (v0.2.2), handled by main/profileIpc.ts. */
 export type ProfileIpcChannel = Extract<IpcChannel, `ghostlink:profile.${string}`>;

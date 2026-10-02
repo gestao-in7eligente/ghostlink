@@ -5,6 +5,7 @@
 //
 // The database (node:sqlite) and the node (Hyperswarm's native modules) are loaded on first use,
 // so neither costs anything, nor can break the start, for someone without an identity.
+import { join } from 'node:path';
 import type { BootstrapNode } from 'hyperdht';
 import { sanitizeLabel } from '@ghostlink/shared';
 import { AppError } from '../../shared/appErrors.js';
@@ -14,6 +15,7 @@ import type { IdentityStore } from '../identity.js';
 import type { Log } from '../log.js';
 import type { SettingsStore } from '../settings.js';
 import { Dm, type DmNotification } from './dm.js';
+import { DM_FILES_DIR, DmFiles } from './dmFiles.js';
 import { friendKeyFromSeed, keyFromText, sameKey, type FriendKey } from './friendKey.js';
 import { Friends, type FriendsNetwork } from './friends.js';
 import type { Timers } from './inbox.js';
@@ -34,6 +36,8 @@ export interface FriendsEngineDeps {
   emitDm?(event: DmEvent): void;
   /** A message from a friend arrived: the desktop notification (notifications.ts decides whether it shows). */
   notifyDm?(notification: DmNotification): void;
+  /** "Baixar" on a file of a conversation: the system's save dialog, with that name offered; null when cancelled. */
+  chooseSavePath?(name: string): Promise<string | null>;
   /** Development only (friendsEnv): a private DHT and the bind address. Default: the public DHT, every interface. */
   bootstrap?: BootstrapNode[];
   bindHost?: string;
@@ -213,12 +217,27 @@ export class FriendsEngine {
     open: (friendKey) => this.#call(() => this.#dmOnline().open(keyFromText(friendKey))),
     hide: (conv) => this.#call(() => this.#dmLocal().hide(conv)),
     history: (conv, before, limit) => this.#call(() => this.#dmLocal().history(conv, before, limit)),
-    send: (conv, text, replyTo) => this.#call(() => this.#dmOnline().send(conv, text, replyTo)),
+    send: (conv, text, replyTo, files) => this.#call(() => this.#dmOnline().send(conv, text, replyTo, files)),
     edit: (conv, id, text) => this.#call(() => this.#dmOnline().edit(conv, id, text)),
     remove: (conv, id) => this.#call(() => this.#dmOnline().remove(conv, id)),
     read: (conv, ts) => this.#call(() => this.#dmLocal().read(conv, ts)),
     typing: (conv) => this.#call(() => this.#dmOnline().typing(conv)),
+    attach: (conv, name, bytes) => this.#call(() => this.#dmOnline().attach(conv, name, bytes)),
+    fetchFile: (conv, hash) => this.#call(() => this.#dmOnline().fetchFile(conv, hash)),
+    // The dialog waits outside the queue: other calls go on while the person picks a folder.
+    saveFile: async (conv, hash) => {
+      const name = await this.#call(() => this.#dmLocal().savable(conv, hash));
+      const destination = await this.#d.chooseSavePath?.(name);
+      if (!destination) return false;
+      await this.#call(() => this.#dmLocal().saveTo(conv, hash, destination));
+      return true;
+    },
   };
+
+  /** app://ghostlink/_dmfile/<hash>: where that file is, when a message here carries it and it is here. */
+  dmFile(hash: string): string | null {
+    return this.#session?.dm.servable(hash) ?? null;
+  }
 
   // Inside.
 
@@ -308,6 +327,7 @@ export class FriendsEngine {
       const dm = new Dm({
         store,
         key,
+        files: new DmFiles(join(this.#d.userDataDir, DM_FILES_DIR)),
         emit: (event) => this.#d.emitDm?.(event),
         notify: (notification) => this.#d.notifyDm?.(notification),
         now: this.#d.now,

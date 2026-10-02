@@ -7,7 +7,7 @@ import type { Db } from '../db/database.js';
 export const ERASED_SERVER_NAME = 'GhostLink';
 
 /** The folders whose content is erased (the folders themselves stay: modules keep their paths). */
-const ERASED_DIRS = ['avatars', 'backups'] as const;
+const ERASED_DIRS = ['avatars', 'files', 'backups'] as const;
 
 function quoteIdentifier(name: string): string {
   return `"${name.replaceAll('"', '""')}"`;
@@ -52,7 +52,7 @@ export function eraseDatabase(db: Db, now: number): void {
 
 /**
  * Deletes the files with data: the profile photos (and half-written uploads) in avatars/, the
- * database backups in backups/ (copies of the whole database) and setup-code.txt. The TLS
+ * attachments in files/, the database backups in backups/ (copies of the whole database) and setup-code.txt. The TLS
  * certificate stays, so the pin (serverKeyId) stays the same, and so do the LiveKit keys and
  * status.json, which hold nothing about the members. Returns how many entries could not be
  * deleted (e.g. a file still open); never throws. Paths contain hashes: never log them.

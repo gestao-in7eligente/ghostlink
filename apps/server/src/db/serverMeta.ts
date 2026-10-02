@@ -11,6 +11,10 @@ export interface ServerMeta {
   setupCodeHash: string | null;
   publicAddresses: string[];
   maxMembers: number;
+  /** Per attachment, in MB (spec 2026-10-01-anexos §2). */
+  uploadLimitMb: number;
+  /** Every attachment together, in MB. */
+  storageQuotaMb: number;
   createdAt: number;
   /** The deletion deadline while the server is being deleted (spec "sair e excluir servidor" §3), else null. */
   deletingAt: number | null;
@@ -27,6 +31,8 @@ interface MetaRow {
   setup_code_hash: string | null;
   public_addresses: string;
   max_members: number;
+  upload_limit_mb: number;
+  storage_quota_mb: number;
   created_at: number;
   deleting_at: number | null;
   deleted_at: number | null;
@@ -53,6 +59,8 @@ export function getMeta(db: Db): ServerMeta {
     setupCodeHash: row.setup_code_hash,
     publicAddresses: parseAddresses(row.public_addresses),
     maxMembers: Number(row.max_members),
+    uploadLimitMb: Number(row.upload_limit_mb),
+    storageQuotaMb: Number(row.storage_quota_mb),
     createdAt: Number(row.created_at),
     deletingAt: row.deleting_at === null ? null : Number(row.deleting_at),
     deletedAt: row.deleted_at === null ? null : Number(row.deleted_at),

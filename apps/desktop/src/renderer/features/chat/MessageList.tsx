@@ -6,6 +6,7 @@ import { useT } from '../../i18n/index.js';
 import { channelLog } from '../../stores/messages.js';
 import { useTextStore } from '../../stores/text.js';
 import type { ChannelLog } from '../../stores/textState.js';
+import { attachmentsHeight } from '../attachments/attachmentModel.js';
 import { loadHistory } from './actions.js';
 import c from './chat.module.css';
 import { buildRows, type Row } from './grouping.js';
@@ -24,7 +25,10 @@ function estimate(row: Row | undefined): number {
   if (row.kind === 'date') return 44;
   const content = row.kind === 'message' ? row.message.content : row.pending.content;
   const lines = Math.max(1, Math.ceil(content.length / 90)) + (content.match(/\n/g)?.length ?? 0);
-  const extra = row.kind === 'message' ? (row.message.replyTo ? 22 : 0) + (row.message.reactions.length > 0 ? 34 : 0) : 0;
+  const extra =
+    row.kind === 'message'
+      ? (row.message.replyTo ? 22 : 0) + (row.message.reactions.length > 0 ? 34 : 0) + attachmentsHeight(row.message.attachments)
+      : (row.pending.files?.length ?? 0) * 58;
   return (row.head ? 34 : 4) + lines * 22 + extra;
 }
 

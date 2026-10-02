@@ -315,7 +315,10 @@ export class Friends {
       case 'sync.want':
       case 'entry':
       case 'typing':
-        // Conversations are between friends: from anyone else (someone we asked) these are dropped.
+      case 'blob.want':
+      case 'blob.part':
+      case 'blob.missing':
+        // Conversations and their files are between friends: from anyone else (someone we asked) these are dropped.
         if (row.state === 'friend' && session.up) this.#d.traffic?.receive(link.remoteKey, message, session.peer);
         return;
       default:

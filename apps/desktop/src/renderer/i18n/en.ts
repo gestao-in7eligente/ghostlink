@@ -1,5 +1,6 @@
 import { host } from './en/host.js';
 import { identity } from './en/identity.js';
+import { attachments } from './attachments.en.js';
 import { camera } from './camera.en.js';
 import { chat } from './chat.en.js';
 import { dm } from './dm.en.js';
@@ -131,10 +132,10 @@ export const messages: Record<keyof typeof ptBR, string> = {
   'errors.SERVER_DELETING': 'The owner shut this server down, and it will be deleted soon.',
   'errors.SERVER_DELETED': 'This server was deleted by its owner.',
   'errors.CHANNEL_FULL': 'The channel is full.',
-  'errors.FILE_TOO_LARGE': 'The file is too large.',
-  'errors.IMAGE_TOO_LARGE': 'The image is too large.',
-  'errors.QUOTA_EXCEEDED': 'The server is out of file storage.',
-  'errors.BAD_ATTACHMENT': 'Invalid attachment.',
+  'errors.FILE_TOO_LARGE': 'The file is over this server’s size limit.',
+  'errors.IMAGE_TOO_LARGE': 'The image is too large: up to 8192 px a side and 40 megapixels.',
+  'errors.QUOTA_EXCEEDED': 'The server is out of space for files. Tell the owner.',
+  'errors.BAD_ATTACHMENT': 'The attachment is no longer valid. Try again to send it once more.',
   'errors.OWNER_MUST_TRANSFER': 'Transfer ownership of the server before leaving.',
   'errors.PIN_MISMATCH': 'This server’s identity does not match. It may be a fake server, so the connection was blocked.',
   'errors.UNREACHABLE': 'Could not reach the server. Check the address and your connection.',
@@ -159,5 +160,6 @@ export const messages: Record<keyof typeof ptBR, string> = {
   ...profile,
   ...serverUpdate,
   ...serverDelete,
+  ...attachments,
   ...tray,
 };

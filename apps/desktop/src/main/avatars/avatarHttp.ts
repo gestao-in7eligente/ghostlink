@@ -14,7 +14,6 @@ import {
   fileUrlExpiry,
   isErrorCode,
   type UploadBegin,
-  type UploadPurpose,
   type WelcomePayload,
 } from '@ghostlink/shared';
 import { AppError } from '../../shared/appErrors.js';
@@ -109,7 +108,7 @@ export async function uploadServerIcon(server: AvatarServer, bytes: Uint8Array, 
 }
 
 /** upload.begin, then POST /upload; the JSON of a 200 answer. */
-async function uploadImage(server: AvatarServer, bytes: Uint8Array, purpose: UploadPurpose, opts: AvatarHttpOptions): Promise<unknown> {
+async function uploadImage(server: AvatarServer, bytes: Uint8Array, purpose: 'avatar' | 'icon', opts: AvatarHttpOptions): Promise<unknown> {
   const begin: UploadBegin = { purpose, size: bytes.byteLength, sha256: sha256Hex(bytes) };
   const answer = uploadBeginResultSchema.safeParse(await server.request('upload.begin', begin));
   if (!answer.success) throw new ProtocolError('BAD_REQUEST', 'invalid upload.begin answer');

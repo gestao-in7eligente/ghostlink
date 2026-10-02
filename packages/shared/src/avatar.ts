@@ -29,24 +29,21 @@ export const FEATURE_SERVER_ICON = 'serverIcon';
 export const AVATAR_HASH = /^[0-9a-f]{64}$/;
 export const avatarHashSchema = z.string().regex(AVATAR_HASH);
 
-/**
- * What an upload is for: my profile photo, or the server's icon (MANAGE_SERVER). Both are
- * images with the same limits. Attachments add purposes later.
- */
-export const UPLOAD_PURPOSES = ['avatar', 'icon'] as const;
-export type UploadPurpose = (typeof UPLOAD_PURPOSES)[number];
-
-/** `upload.begin` (spec §4). */
-export const uploadBeginSchema = z.strictObject({
-  purpose: z.enum(UPLOAD_PURPOSES),
+/** `upload.begin` for a profile photo (spec §4); upload.ts joins every purpose in `uploadBeginSchema`. */
+export const avatarUploadBeginSchema = z.strictObject({
+  purpose: z.literal('avatar'),
   size: z.number().int().min(1).max(AVATAR_LIMITS.maxBytes),
   sha256: avatarHashSchema,
 });
-export type UploadBegin = z.infer<typeof uploadBeginSchema>;
-export interface UploadBeginResult {
-  /** Single use, valid for 60 s: `POST /upload?u=<uploadToken>`. */
-  uploadToken: string;
-}
+/**
+ * `upload.begin` for the server's icon (MANAGE_SERVER, spec 2026-10-01-icone-do-servidor): an
+ * image with the same limits as a photo.
+ */
+export const iconUploadBeginSchema = z.strictObject({
+  purpose: z.literal('icon'),
+  size: z.number().int().min(1).max(AVATAR_LIMITS.maxBytes),
+  sha256: avatarHashSchema,
+});
 /** The body of a successful avatar `POST /upload`. */
 export interface AvatarUploadResult {
   avatar: string;

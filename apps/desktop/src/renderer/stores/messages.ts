@@ -135,7 +135,16 @@ export function messagesSlice(s: MessagesState, a: TextAction, root: TextState):
     case 'pending.fail':
       return mapPending(s, a.channelId, a.clientMsgId, (p) => ({ ...p, error: a.error }));
     case 'pending.retry':
-      return mapPending(s, a.channelId, a.clientMsgId, (p) => ({ ...p, error: null }));
+      return mapPending(s, a.channelId, a.clientMsgId, (p) => ({
+        ...p,
+        error: null,
+        ...(a.resetFiles && p.files ? { files: p.files.map((f) => ({ ...f, fileId: null, progress: 0 })) } : {}),
+      }));
+    case 'pending.file':
+      return mapPending(s, a.channelId, a.clientMsgId, (p) => ({
+        ...p,
+        files: p.files?.map((f) => (f.id === a.fileLocalId ? { ...f, progress: a.progress, fileId: a.fileId ?? f.fileId } : f)),
+      }));
     case 'pending.drop':
       return mapPending(s, a.channelId, a.clientMsgId, () => null);
     case 'message.upsert':

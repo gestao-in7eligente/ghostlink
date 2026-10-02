@@ -1,6 +1,6 @@
 // State and actions of the text stores (spec §11.2): server, channels, messages and
 // members. Each store has a pure slice reducer; stores/text.ts combines them.
-import type { Channel, JoinMode, Member, Message, ReadState, Role } from '@ghostlink/shared';
+import type { AttachmentKind, Channel, JoinMode, Member, Message, ReadState, Role } from '@ghostlink/shared';
 import type { AppErrorCode } from '../../shared/appErrors.js';
 import type { TextEvent, TextSnapshot } from '../features/chat/events.js';
 
@@ -16,6 +16,9 @@ export interface ServerState {
   ownerId: string | null;
   maxMembers: number;
   hasPassword: boolean;
+  /** Attachments (anexos §2): the largest file, and all files together, in MB. */
+  uploadLimitMb: number;
+  storageQuotaMb: number;
   roles: Readonly<Record<string, Role>>;
 }
 
@@ -35,6 +38,22 @@ export interface ChannelsState {
   attentive: boolean;
 }
 
+/** A file of a message still being sent (anexos §1): uploaded first, then named in msg.send. */
+export interface PendingFile {
+  /** Local id (the progress bar's key). */
+  id: string;
+  name: string;
+  size: number;
+  /** The tray's guess; the server decides from the bytes. */
+  kind: AttachmentKind;
+  /** Kept so a retry can send it again. */
+  file: Blob;
+  /** The server's id once uploaded; a retry skips it. */
+  fileId: string | null;
+  /** 0 to 1 while uploading. */
+  progress: number;
+}
+
 export interface PendingMessage {
   clientMsgId: string;
   channelId: string;
@@ -43,6 +62,8 @@ export interface PendingMessage {
   createdAt: number;
   /** Set when the send failed; the message stays so it can be retried or dropped. */
   error: AppErrorCode | null;
+  /** Its files, uploaded before the message goes (none: text only). */
+  files?: readonly PendingFile[];
 }
 
 export interface ChannelLog {
@@ -86,7 +107,10 @@ export type TextAction =
   | { type: 'history.fail'; channelId: string; older: boolean }
   | { type: 'pending.add'; pending: PendingMessage }
   | { type: 'pending.fail'; channelId: string; clientMsgId: string; error: AppErrorCode }
-  | { type: 'pending.retry'; channelId: string; clientMsgId: string }
+  /** `resetFiles`: the server no longer takes the uploaded ids (BAD_ATTACHMENT), so every file goes again. */
+  | { type: 'pending.retry'; channelId: string; clientMsgId: string; resetFiles?: boolean }
+  /** An upload moved on (`progress` 0–1), or finished with the server's `fileId`. */
+  | { type: 'pending.file'; channelId: string; clientMsgId: string; fileLocalId: string; progress: number; fileId?: string }
   | { type: 'pending.drop'; channelId: string; clientMsgId: string }
   /** A message returned by msg.send or msg.edit (its event may already have arrived). */
   | { type: 'message.upsert'; message: Message }

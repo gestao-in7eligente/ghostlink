@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { DmConversation, DmMessage } from '../../src/shared/dmTypes.js';
+import type { DmAttachment, DmConversation, DmMessage } from '../../src/shared/dmTypes.js';
 import {
   applyConversation,
+  applyFile,
   applyMessage,
   buildDmRows,
+  dmAttachmentViews,
+  dmSummary,
   DM_CONV_ID,
   isTyping,
   mergeHistory,
@@ -40,6 +43,7 @@ const msg = (id: string, author: string, ts: number, over: Partial<DmMessage> = 
   editedAt: null,
   deleted: false,
   delivered: true,
+  attachments: [],
   ...over,
 });
 
@@ -106,5 +110,42 @@ describe('typing', () => {
     expect(isTyping(1_000, 5_999)).toBe(true);
     expect(isTyping(1_000, 6_000)).toBe(false);
     expect(isTyping(undefined, 6_000)).toBe(false);
+  });
+});
+
+describe('files of a message (attachments spec §1, §3)', () => {
+  const HASH = 'ab'.repeat(32);
+  const URL_OF = `app://ghostlink/_dmfile/${HASH}`;
+  const file = (over: Partial<DmAttachment> = {}): DmAttachment => ({ hash: HASH, name: 'foto.png', size: 1000, kind: 'image', mime: 'image/png', width: 4, height: 3, state: 'absent', received: 0, ...over });
+  const notes = { waiting: 'Chega quando Bia estiver online', arriving: 'Carregando…', loading: (p: number) => `Recebendo… ${p}%` };
+  const view = (f: DmAttachment, online = true) => dmAttachmentViews([f], online, notes)[0]!;
+
+  it('shows a file that is here from app://ghostlink/_dmfile', () => {
+    expect(view(file({ state: 'ready', received: 1000 }))).toEqual({ key: HASH, name: 'foto.png', size: 1000, kind: 'image', mime: 'image/png', width: 4, height: 3, src: URL_OF });
+  });
+
+  it('says when a file that is not here will come', () => {
+    expect(view(file(), false)).toMatchObject({ kind: 'image', src: null, note: 'Chega quando Bia estiver online' });
+    expect(view(file({ kind: 'file', mime: 'application/pdf' }), false)).toMatchObject({ kind: 'file', src: null, note: 'Chega quando Bia estiver online' });
+    expect(view(file())).toMatchObject({ kind: 'image', src: null, note: 'Carregando…' });
+    expect(view(file({ state: 'loading', received: 400 }))).toMatchObject({ kind: 'image', src: null, note: 'Recebendo… 40%' });
+  });
+
+  it('turns what needs a click into a card whose Baixar works', () => {
+    for (const f of [file({ size: 6 * 1024 * 1024 }), file({ kind: 'video', mime: 'video/mp4' }), file({ state: 'failed' })]) {
+      expect(view(f)).toMatchObject({ kind: 'file', src: URL_OF });
+      expect(view(f).note).toBeUndefined();
+    }
+  });
+
+  it('moves a file in every loaded message that carries it, and nothing else', () => {
+    const one = msg('a', 'me', 1, { attachments: [file()] });
+    const two = msg('b', 'peer', 2, { attachments: [file({ hash: 'cd'.repeat(32) })] });
+    const list = [one, two];
+    const next = applyFile(list, HASH, 'ready', 1000);
+    expect(next[0]!.attachments[0]).toMatchObject({ state: 'ready', received: 1000 });
+    expect(next[1]).toBe(two);
+    expect(applyFile(list, 'ef'.repeat(32), 'ready', 1)).toBe(list);
+    expect(dmSummary({ text: '', attachments: [file(), file({ name: 'nota.pdf' })] })).toBe('foto.png, nota.pdf');
   });
 });

@@ -168,3 +168,10 @@
 .close:hover {
   color: var(--text-strong);
 }
+
+/* ---- files ---- */
+
+/* A message with files on its way, above the box. */
+.sending {
+  margin-bottom: 8px;
+}

@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Hash } from 'lucide-react';
-import { PERMISSIONS, has, roleColorHex, type Channel, type Message } from '@ghostlink/shared';
+import { FEATURE_ATTACHMENTS, MB, PERMISSIONS, has, roleColorHex, type Channel, type Message } from '@ghostlink/shared';
+import { ATTACHMENT_IPC_MAX_BYTES, serverFileUrl } from '../../../shared/attachmentTypes.js';
 import { useT } from '../../i18n/index.js';
 import { ConfirmDialog } from '../../layout/primitives.js';
 import { readMark } from '../../stores/channels.js';
+import { useConnectionStore } from '../../stores/connection.js';
 import { channelLog, typingUserIds } from '../../stores/messages.js';
 import { myPermissions } from '../../stores/server.js';
 import { dispatchText, useTextStore } from '../../stores/text.js';
 import { mentionsUser } from '../../stores/textState.js';
 import { useSettingsStore } from '../../stores/settings.js';
+import { MAX_ATTACHMENTS, type TrayLimits } from '../attachments/attachmentModel.js';
+import a from '../attachments/attachments.module.css';
+import { DropOverlay, useFileDrop, useTray } from '../attachments/filePicking.js';
 import { deleteMessage, dropMessage, loadHistory, markRead, retryMessage, toggleReaction } from './actions.js';
 import c from './chat.module.css';
 import { Composer } from './Composer.js';
@@ -74,6 +79,16 @@ function OpenChannel({ channel }: { channel: Channel }) {
   const canSend = has(bits, PERMISSIONS.SEND_MESSAGES);
   const canReact = has(bits, PERMISSIONS.ADD_REACTIONS);
   const canManageMessages = has(bits, PERMISSIONS.MANAGE_MESSAGES);
+  // Files (anexos §1, §2): a server with the feature, and ATTACH_FILES here besides SEND_MESSAGES.
+  const takesFiles = useConnectionStore((s) => s.welcome?.serverId === server.serverId && s.welcome.features.includes(FEATURE_ATTACHMENTS));
+  const canAttach = canSend && takesFiles && has(bits, PERMISSIONS.ATTACH_FILES);
+  const attachHint = canAttach ? null : !takesFiles ? t('attachments.noFeature') : canSend ? t('attachments.noPermission') : t('chat.readOnly');
+  const limits: TrayLimits = useMemo(
+    () => ({ maxFiles: MAX_ATTACHMENTS, maxBytes: Math.min(server.uploadLimitMb * MB, ATTACHMENT_IPC_MAX_BYTES) }),
+    [server.uploadLimitMb],
+  );
+  const tray = useTray(limits);
+  const drop = useFileDrop(tray.add, canAttach);
 
   // The chat is "on screen" when the window is focused and the list shows the newest message.
   const attentive = focused && atBottom;
@@ -123,6 +138,7 @@ function OpenChannel({ channel }: { channel: Channel }) {
       name: (id) => memberName({ members }, id, t('chat.formerMember')),
       avatar: (id) => (id !== null && Object.hasOwn(members.byId, id) ? members.byId[id]!.avatar : null),
       plain: (content) => plainContent({ members, server }, content, t),
+      fileUrl: (fileId) => (server.serverId === null ? null : serverFileUrl(server.serverId, fileId)),
       pingsMe: (m) => m.authorId !== selfId && mentionsUser(m, selfId, myRoleIds),
       highlightId: highlight,
       onReply: (m) => useComposerStore.getState().startReply({ channelId: m.channelId, messageId: m.id }),
@@ -143,7 +159,7 @@ function OpenChannel({ channel }: { channel: Channel }) {
   }, []);
 
   return (
-    <>
+    <div className={a.dropArea} {...drop.handlers} data-chat>
       <header className={c.header}>
         <Hash className={c.headerHash} size={20} aria-hidden="true" />
         <h1 className={c.headerName}>{channel.name}</h1>
@@ -154,8 +170,17 @@ function OpenChannel({ channel }: { channel: Channel }) {
       <MessageList channel={channel} env={env} highlight={highlight} onAttention={onAttention} registerHandle={registerHandle} />
       <div className={c.composerBand}>
         <TypingLine channelId={channel.id} />
-        <Composer channel={channel} canSend={canSend} onSent={() => listHandle.current?.scrollToBottom()} />
+        <Composer
+          channel={channel}
+          canSend={canSend}
+          files={tray}
+          limits={limits}
+          canAttach={canAttach}
+          attachHint={attachHint}
+          onSent={() => listHandle.current?.scrollToBottom()}
+        />
       </div>
+      {drop.dragging && <DropOverlay target={`#${channel.name}`} maxFiles={MAX_ATTACHMENTS} />}
       {deleting && (
         <ConfirmDialog
           title={t('chat.delete')}
@@ -175,7 +200,7 @@ function OpenChannel({ channel }: { channel: Channel }) {
           }}
         />
       )}
-    </>
+    </div>
   );
 }
 

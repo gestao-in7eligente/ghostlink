@@ -1,5 +1,6 @@
 // The `server` store (spec §11.2): name, join mode, owner, limits and roles.
 import {
+  ATTACHMENT_LIMITS,
   canActOn,
   canManageRole,
   permissionsFor,
@@ -20,6 +21,8 @@ export const initialServer: ServerState = {
   ownerId: null,
   maxMembers: 0,
   hasPassword: false,
+  uploadLimitMb: ATTACHMENT_LIMITS.uploadLimitMb.default,
+  storageQuotaMb: ATTACHMENT_LIMITS.storageQuotaMb.default,
   roles: {},
 };
 
@@ -44,6 +47,8 @@ export function serverSlice(s: ServerState, a: TextAction): ServerState {
       ownerId: settings.ownerId ?? (snapshot.self.isOwner ? snapshot.self.userId : null),
       maxMembers: settings.maxMembers,
       hasPassword: settings.hasPassword,
+      uploadLimitMb: settings.uploadLimitMb,
+      storageQuotaMb: settings.storageQuotaMb,
       roles: Object.fromEntries(snapshot.text.roles.map((r) => [r.id, r])),
     };
   }

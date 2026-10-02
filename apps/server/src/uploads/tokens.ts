@@ -1,15 +1,26 @@
 import { randomBytes } from 'node:crypto';
 import type { UploadPurpose } from '@ghostlink/shared';
 
-/** An upload.begin answer waiting for its POST /upload (spec 2026-10-01 §4). */
+/** What an attachment's upload.begin fixed (spec 2026-10-01-anexos §2). */
+export interface AttachmentGrant {
+  readonly channelId: string;
+  /** Already cleaned (cleanFileName). */
+  readonly name: string;
+  /** Chosen at upload.begin and answered right away, so msg.send can name it. */
+  readonly fileId: string;
+}
+
+/** An upload.begin answer waiting for its POST /upload (main spec §4, §7). */
 export interface UploadGrant {
-  /** My photo, or the server's icon. */
+  /** My photo, the server's icon, or a message's file. */
   readonly purpose: UploadPurpose;
   readonly sessionId: string;
   readonly userId: string;
   readonly size: number;
   readonly sha256: string;
   readonly expiresAt: number;
+  /** Purpose 'attachment' only. */
+  readonly attachment?: AttachmentGrant;
 }
 
 /** A token is valid this long after upload.begin. */

@@ -1,19 +1,33 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { CirclePlus, Code, SendHorizontal, Smile, X } from 'lucide-react';
-import { DM_TEXT_MAX, type DmMessage } from '../../../shared/dmTypes.js';
+import { DM_TEXT_MAX, type DmFileRef, type DmMessage } from '../../../shared/dmTypes.js';
 import { errorCodeOf, errorMessage, useT } from '../../i18n/index.js';
 import { applyOwn, useDmStore } from '../../stores/dm.js';
+import { AttachmentTray, TrayNotice, UploadProgress, pastedFiles, useFilePicker, type PickedFile, type TrayLimits, type useTray } from '../attachments/index.js';
 import c from '../chat/chat.module.css';
 import { EmojiPicker } from '../chat/EmojiPicker.js';
-import { plainDm } from './dmModel.js';
+import d from './dm.module.css';
+import { dmSummary } from './dmModel.js';
 
 export type ComposerMode = { kind: 'reply' | 'edit'; message: DmMessage } | null;
 
 const MAX_HEIGHT_RATIO = 0.4;
 
+/** A message with files on its way: each file is handed to main, then the message goes. */
+interface Sending {
+  files: PickedFile[];
+  text: string;
+  replyTo: string | null;
+  /** Files main already keeps (in order). */
+  done: number;
+  error: string | null;
+}
+
 /**
  * The message box of a conversation, the server chat's look without mentions: Enter sends,
  * Shift+Enter breaks the line, ↑ on an empty box edits my last message, Esc leaves reply or edit.
+ * Files (attachments spec §1): "+" picks, Ctrl+V pastes an image, the tray shows them; the text
+ * is optional when files go. They stay on this computer until the friend's computer asks.
  */
 export function DmComposer({
   conv,
@@ -22,6 +36,8 @@ export function DmComposer({
   canWrite,
   mode,
   messages,
+  tray,
+  limits,
   onMode,
   onSent,
 }: {
@@ -31,6 +47,8 @@ export function DmComposer({
   canWrite: boolean;
   mode: ComposerMode;
   messages: readonly DmMessage[];
+  tray: ReturnType<typeof useTray>;
+  limits: TrayLimits;
   onMode: (mode: ComposerMode) => void;
   onSent: () => void;
 }) {
@@ -39,6 +57,8 @@ export function DmComposer({
   const [emoji, setEmoji] = useState<DOMRect | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sending, setSending] = useState<Sending | null>(null);
+  const picker = useFilePicker(tray.add);
   const area = useRef<HTMLTextAreaElement>(null);
   const savedDraft = useRef('');
   const editing = mode?.kind === 'edit' ? mode.message : null;
@@ -87,6 +107,8 @@ export function DmComposer({
 
   const content = text.trim();
   const tooLong = text.length > DM_TEXT_MAX;
+  const files = editing ? [] : tray.items;
+  const empty = content === '' && files.length === 0;
 
   const insert = (snippet: string, caretOffset = snippet.length) => {
     const el = area.current;
@@ -112,8 +134,31 @@ export function DmComposer({
     setError(null);
   };
 
+  /** Hands each file to main, then sends the message; a failure keeps everything for "Tentar de novo". */
+  const sendFiles = async (job: Omit<Sending, 'done' | 'error'>) => {
+    setSending({ ...job, done: 0, error: null });
+    try {
+      const refs: DmFileRef[] = [];
+      for (const picked of job.files) {
+        const info = await window.ghostlink.dm.attach(conv, picked.name, new Uint8Array(await picked.file.arrayBuffer()));
+        refs.push({ hash: info.hash, name: info.name });
+        setSending((s) => s && { ...s, done: refs.length });
+      }
+      applyOwn(await window.ghostlink.dm.send(conv, job.text, job.replyTo, refs));
+      setSending(null);
+    } catch (e) {
+      setSending((s) => s && { ...s, error: errorCodeOf(e) });
+    }
+  };
+
+  /** "Descartar" on a message that did not go: its text comes back to an empty box. */
+  const discard = () => {
+    if (sending && area.current?.value === '') setText(sending.text);
+    setSending(null);
+  };
+
   const submit = async () => {
-    if (!canWrite || busy || tooLong || content === '') return;
+    if (!canWrite || busy || sending || tooLong || empty || (editing && content === '')) return;
     setBusy(true);
     setError(null);
     try {
@@ -122,9 +167,14 @@ export function DmComposer({
         cancelMode();
       } else {
         const replyTo = mode?.kind === 'reply' ? mode.message.id : null;
+        const picked = files.length > 0 ? tray.take() : [];
         setText('');
         onMode(null);
         onSent();
+        if (picked.length > 0) {
+          await sendFiles({ files: picked, text: content, replyTo });
+          return;
+        }
         try {
           applyOwn(await window.ghostlink.dm.send(conv, content, replyTo));
         } catch (e) {
@@ -139,6 +189,14 @@ export function DmComposer({
       setBusy(false);
       requestAnimationFrame(() => area.current?.focus());
     }
+  };
+
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!canWrite || editing) return;
+    const pasted = pastedFiles(e, t('attachments.pastedImage'));
+    if (pasted.length === 0) return;
+    e.preventDefault();
+    tray.add(pasted);
   };
 
   const editLastOwn = () => {
@@ -166,13 +224,31 @@ export function DmComposer({
 
   const placeholder = canWrite ? t('dm.placeholder', { name: peerName }) : t('dm.notFriend');
 
+  const uploads = sending?.files.map((f, i) => ({ id: f.id, name: f.name, size: f.size, kind: f.kind, progress: i < sending.done ? 1 : 0, done: i < sending.done })) ?? [];
+
   return (
     <div className={c.composerWrap}>
+      {sending && (
+        <div className={d.sending} role="group" aria-label={t('attachments.uploading')}>
+          <UploadProgress files={uploads} failed={sending.error !== null} />
+          {sending.error !== null && (
+            <p className={c.composerError} role="alert">
+              {t('dm.sendFailed')} {errorMessage(t, sending.error)}{' '}
+              <button type="button" className={c.linkButton} onClick={() => void sendFiles(sending)}>
+                {t('common.tryAgain')}
+              </button>{' '}
+              <button type="button" className={c.linkButton} onClick={discard}>
+                {t('dm.discard')}
+              </button>
+            </p>
+          )}
+        </div>
+      )}
       {mode && (
         <div className={c.modeBar}>
           <span className={c.modeText}>
             {mode.kind === 'edit' ? t('chat.editing') : t('chat.replyingTo', { name: mode.message.mine ? myName : peerName })}
-            {mode.kind === 'reply' && <span className={c.modeQuote}> — {plainDm(mode.message.text).slice(0, 80)}</span>}
+            {mode.kind === 'reply' && <span className={c.modeQuote}> — {dmSummary(mode.message).slice(0, 80)}</span>}
           </span>
           <button
             type="button"
@@ -185,11 +261,20 @@ export function DmComposer({
           </button>
         </div>
       )}
+      {!editing && <AttachmentTray items={tray.items} onRemove={tray.remove} />}
       <div className={canWrite ? c.composer : `${c.composer} ${c.composerDisabled}`}>
         <div className={c.tools}>
-          <button type="button" className={c.tool} disabled aria-label={t('chat.attachSoon')} title={t('chat.attachSoon')}>
+          <button
+            type="button"
+            className={c.tool}
+            disabled={!canWrite || editing !== null}
+            aria-label={t('attachments.add')}
+            title={t('attachments.add')}
+            onClick={picker.open}
+          >
             <CirclePlus size={20} aria-hidden="true" />
           </button>
+          {picker.input}
           <button
             type="button"
             className={c.tool}
@@ -220,15 +305,16 @@ export function DmComposer({
             if (e.target.value.trim() !== '' && !editing) void window.ghostlink.dm.typing(conv).catch(() => undefined);
           }}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
         />
         <span className={tooLong ? `${c.counter} ${c.counterOver}` : c.counter} aria-live="polite" title={tooLong ? t('dm.tooLong', { max: DM_TEXT_MAX }) : undefined}>
           {content.length}/{DM_TEXT_MAX}
         </span>
         <button
           type="button"
-          className={content === '' ? `${c.send} ${c.sendIdle}` : c.send}
-          disabled={!canWrite || busy || tooLong}
-          aria-disabled={content === '' || undefined}
+          className={empty ? `${c.send} ${c.sendIdle}` : c.send}
+          disabled={!canWrite || busy || sending !== null || tooLong}
+          aria-disabled={empty || undefined}
           onClick={() => void submit()}
         >
           <SendHorizontal size={16} aria-hidden="true" />
@@ -240,6 +326,7 @@ export function DmComposer({
           {errorMessage(t, error)}
         </p>
       )}
+      <TrayNotice rejected={tray.rejected} limits={limits} />
       {emoji && <EmojiPicker anchor={emoji} onClose={() => setEmoji(null)} onPick={(e) => insert(e)} />}
     </div>
   );

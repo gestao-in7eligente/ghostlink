@@ -173,6 +173,7 @@ const leave: Handler = (core, ctx, payload) => {
     const to = target(id);
     if (to) core.broadcastChannel(to.channel, { t: 'msg.reactions', d: { id, channelId: to.channel.id, reactions: core.repo.reactions(id) } }, undefined, to.audience);
   }
+  if (mine.length > 0) core.events.emit('messages.deleted', { ids: mine });
   finishRemoval(core, userId, 'left', null);
   // The response goes out first; then the (now non-member) session ends.
   const timer = setTimeout(() => core.ctx.sessions.closeUser(userId, 'KICKED'), 0);

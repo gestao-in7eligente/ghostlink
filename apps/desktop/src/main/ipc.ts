@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { LIMITS, isReleaseVersion } from '@ghostlink/shared';
 import { toAppErrorCode } from '../shared/appErrors.js';
 import { IPC, type AppInfo, type ChatNotification, type IpcArgs, type IpcChannel, type IpcResult, type IpcReturn } from '../shared/ipcTypes.js';
+import { ATTACHMENTS_IPC_ARG_SCHEMAS, createAttachmentsIpcHandlers, type AttachmentsIpcDeps } from './attachments/attachmentsIpc.js';
 import type { ClientController } from './controller.js';
 import { BACKUP_IPC_ARG_SCHEMAS, createBackupIpcHandlers, type IdentityBackup } from './backup.js';
 import type { DeepLinks } from './deeplink.js';
@@ -51,6 +52,8 @@ export interface IpcDeps {
   dm?: DmIpcDeps;
   /** The profile photo (v0.2.2). */
   profile?: ProfileIpcDeps;
+  /** Files in server channels (v0.3.3): upload and "Baixar". */
+  attachments?: AttachmentsIpcDeps;
   /** Screen sharing: the sources and the choice (screen sharing spec §3). */
   screen?: ScreenIpcDeps;
   /** The pencil's overlay over the shared monitor (pencil spec §4). */
@@ -78,6 +81,8 @@ export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
   'server.iconClear',
   // Deleting a server (v0.2.4): the owner's banner restores it; `server.delete` goes through servers.delete.
   'server.restore',
+  // Attachments (v0.3.3): the space in use, for Server settings → Overview. upload.begin stays in main.
+  'server.storage',
   // Voice track
   'voice.join', 'voice.leave', 'voice.selfState', 'voice.moderate',
   // The pencil on shared screens (v0.2.3)
@@ -159,6 +164,7 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   ...FRIENDS_IPC_ARG_SCHEMAS,
   ...DM_IPC_ARG_SCHEMAS,
   ...PROFILE_IPC_ARG_SCHEMAS,
+  ...ATTACHMENTS_IPC_ARG_SCHEMAS,
   ...SCREEN_IPC_ARG_SCHEMAS,
   ...DRAW_IPC_ARG_SCHEMAS,
   ...SERVER_UPDATES_IPC_ARG_SCHEMAS,
@@ -205,6 +211,7 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     ...createFriendsIpcHandlers(deps.friends),
     ...createDmIpcHandlers(deps.dm),
     ...createProfileIpcHandlers(deps.profile),
+    ...createAttachmentsIpcHandlers(deps.attachments),
     ...createScreenIpcHandlers(deps.screen),
     ...createDrawIpcHandlers(deps.draw),
     ...createServerUpdatesIpcHandlers(deps.serverUpdates),

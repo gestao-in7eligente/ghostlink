@@ -26,9 +26,13 @@ const eva = keyOf('Eva');
 const CONV = dmConversationId(ana.publicKey, bia.publicKey);
 const NOW = 1_700_000_000_000;
 const ID = 'ab'.repeat(16);
+const HASH = 'ef'.repeat(32);
+const PHOTO = { hash: HASH, name: 'foto.png', size: 2048, kind: 'image', mime: 'image/png', width: 640, height: 480 } as const;
+const PDF = { hash: 'cd'.repeat(32), name: 'nota.pdf', size: 90_000, kind: 'file', mime: 'application/pdf' } as const;
+const withFiles = (files: unknown[], text = '') => JSON.stringify({ id: ID, text, attachments: files });
 
 function entry(patch: Partial<Omit<Entry, 'author' | 'sig'>> = {}, key = ana): Entry {
-  return signEntry(key, { conv: CONV, seq: 1, ts: NOW, kind: 'msg', body: entryBodyJson({ kind: 'msg', id: ID, text: 'oi', replyTo: null }), ...patch });
+  return signEntry(key, { conv: CONV, seq: 1, ts: NOW, kind: 'msg', body: entryBodyJson({ kind: 'msg', id: ID, text: 'oi', replyTo: null, attachments: [] }), ...patch });
 }
 
 /** Ana's and Bia's conversation, as Bia's computer sees it: nobody wrote yet. */
@@ -121,7 +125,7 @@ describe('accepting an entry (friends spec §4.2)', () => {
   });
 
   it('refuses a bad signature, whatever else is right', () => {
-    expect(checkEntry({ ...entry(), body: entryBodyJson({ kind: 'msg', id: ID, text: 'tchau', replyTo: null }) }, context())).toBe('bad-signature');
+    expect(checkEntry({ ...entry(), body: entryBodyJson({ kind: 'msg', id: ID, text: 'tchau', replyTo: null, attachments: [] }) }, context())).toBe('bad-signature');
     // Signed by Ana, claimed as Bia's.
     expect(checkEntry({ ...entry(), author: keyToText(bia.publicKey) }, context())).toBe('bad-signature');
   });
@@ -163,14 +167,33 @@ describe('accepting an entry (friends spec §4.2)', () => {
 describe('entry bodies (friends spec §4.2)', () => {
   it('builds and reads msg, edit and delete', () => {
     for (const body of [
-      { kind: 'msg', id: ID, text: 'oi', replyTo: null },
-      { kind: 'msg', id: ID, text: 'resposta', replyTo: 'cd'.repeat(16) },
+      { kind: 'msg', id: ID, text: 'oi', replyTo: null, attachments: [] },
+      { kind: 'msg', id: ID, text: 'resposta', replyTo: 'cd'.repeat(16), attachments: [] },
       { kind: 'edit', id: ID, text: 'oi!' },
       { kind: 'delete', id: ID },
     ] as const) {
       expect(parseEntryBody(body.kind, entryBodyJson(body))).toEqual(body);
     }
-    expect(JSON.parse(entryBodyJson({ kind: 'msg', id: ID, text: 'oi', replyTo: null }))).toEqual({ id: ID, text: 'oi', attachments: [] });
+    expect(JSON.parse(entryBodyJson({ kind: 'msg', id: ID, text: 'oi', replyTo: null, attachments: [] }))).toEqual({ id: ID, text: 'oi', attachments: [] });
+  });
+
+  it('builds and reads a msg with files, signed with the rest (attachments spec §3)', () => {
+    const body = { kind: 'msg', id: ID, text: '', replyTo: null, attachments: [PHOTO, PDF] } as const;
+    const json = entryBodyJson(body);
+    expect(JSON.parse(json)).toEqual({ id: ID, text: '', attachments: [PHOTO, PDF] });
+    expect(parseEntryBody('msg', json)).toEqual(body);
+    // Changing what a file says breaks the signature, like changing the text.
+    const signed = signEntry(ana, { conv: CONV, seq: 1, ts: NOW, kind: 'msg', body: json });
+    expect(verifyEntry(signed)).toBe(true);
+    expect(verifyEntry({ ...signed, body: json.replace(HASH, 'ee'.repeat(32)) })).toBe(false);
+    expect(verifyEntry({ ...signed, body: json.replace('nota.pdf', 'nota.exe') })).toBe(false);
+  });
+
+  it('cleans the names of files it receives, and takes up to 10 files', () => {
+    const odd = parseEntryBody('msg', withFiles([{ ...PDF, name: 'a/b\\c:\u202Egpj.exe\u0000 ' }]));
+    expect(odd).toMatchObject({ kind: 'msg', attachments: [{ ...PDF, name: 'a_b_c_gpj.exe' }] });
+    expect(parseEntryBody('msg', withFiles([{ ...PDF, name: '...' }]))).toMatchObject({ attachments: [{ name: 'file' }] });
+    expect(parseEntryBody('msg', withFiles(Array.from({ length: 10 }, () => PDF), 'dez'))).toMatchObject({ text: 'dez' });
   });
 
   it('takes text up to 4000 characters', () => {
@@ -187,7 +210,17 @@ describe('entry bodies (friends spec §4.2)', () => {
     ['an id that is not 32 hex characters', 'msg', JSON.stringify({ id: 'AB'.repeat(16), text: 'oi', attachments: [] })],
     ['a reply to something that is not an id', 'msg', JSON.stringify({ id: ID, text: 'oi', replyTo: 'x', attachments: [] })],
     ['a null reply (absent means none)', 'msg', JSON.stringify({ id: ID, text: 'oi', replyTo: null, attachments: [] })],
-    ['attachments (files come with phase 3)', 'msg', JSON.stringify({ id: ID, text: 'oi', attachments: [{ hash: 'x' }] })],
+    ['a file whose hash is not SHA-256 hex', 'msg', withFiles([{ ...PHOTO, hash: 'x' }])],
+    ['a file hash in upper case', 'msg', withFiles([{ ...PHOTO, hash: HASH.toUpperCase() }])],
+    ['a file of 0 bytes', 'msg', withFiles([{ ...PHOTO, size: 0 }])],
+    ['a file over 25 MB', 'msg', withFiles([{ ...PDF, size: 25 * 1024 * 1024 + 1 }])],
+    ['a file of an unknown kind', 'msg', withFiles([{ ...PDF, kind: 'html' }])],
+    ['a file type that is not a type', 'msg', withFiles([{ ...PDF, mime: 'text/html; charset=utf-8' }])],
+    ['a file without a name', 'msg', withFiles([{ ...PDF, name: '' }])],
+    ['an image wider than 8192 px', 'msg', withFiles([{ ...PHOTO, width: 8193 }])],
+    ['a file with an extra key', 'msg', withFiles([{ ...PDF, path: 'C:/Windows' }])],
+    ['eleven files', 'msg', withFiles(Array.from({ length: 11 }, () => PDF))],
+    ['no text and no files', 'msg', withFiles([], ' ')],
     ['no attachments list', 'msg', JSON.stringify({ id: ID, text: 'oi' })],
     ['an extra key', 'msg', JSON.stringify({ id: ID, text: 'oi', attachments: [], admin: true })],
     ['an edit without text', 'edit', JSON.stringify({ id: ID })],

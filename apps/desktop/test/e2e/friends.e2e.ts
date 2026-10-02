@@ -1,7 +1,10 @@
 // Friends over P2P, end to end (friends spec 2026-09-30 §11): two real apps on a private
 // loopback DHT. Ana hands out her code, Bia sends the request, Ana accepts, each sees the
-// other online, they talk in a direct conversation (also while Bia is away), and removing
-// the friendship takes it away on both sides.
+// other online, they talk in a direct conversation (also while Bia is away), Ana sends an image
+// that reaches Bia straight from her computer, and removing the friendship takes it away on both sides.
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { crc32, deflateSync } from 'node:zlib';
 import createTestnet from 'hyperdht/testnet.js';
 import type { Page } from 'playwright-core';
 import { afterAll, describe, expect, it, type TestContext } from 'vitest';
@@ -12,6 +15,25 @@ const row = (page: Page, name: string) => page.getByRole('listitem').filter({ ha
 const message = (page: Page, text: string) => page.getByRole('article').filter({ hasText: text });
 const dmRow = (page: Page, name: string) => page.getByRole('list', { name: 'Mensagens diretas' }).getByRole('button', { name: new RegExp(`^${name}`) });
 const friendsNav = (page: Page) => page.getByRole('navigation').getByRole('button', { name: /^Amigos/ });
+
+/** A PNG of one color that a browser decodes (attachments spec §1: images show inside the message). */
+function solidPng(width: number, height: number): Buffer {
+  const chunk = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const out = Buffer.alloc(body.length + 8);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc32(body), body.length + 4);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 2, 0, 0, 0], 8); // 8-bit RGB
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(width * 3, Buffer.from([0x58, 0x65, 0xf2]))]);
+  const pixels = deflateSync(Buffer.concat(Array.from({ length: height }, () => row)));
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', header), chunk('IDAT', pixels), chunk('IEND', Buffer.alloc(0))]);
+}
 
 /** Onboarding, then back to the Home screen (the Friends page). */
 async function openHome(page: Page, nickname: string): Promise<void> {
@@ -120,6 +142,25 @@ describe('GhostLink friends: request by code, presence, direct messages, remove'
     await anaBox.fill('Oi Bia, tudo bem?');
     await anaBox.press('Enter');
     await message(bia.page, 'Oi Bia, tudo bem?').waitFor({ timeout: 60_000 });
+  });
+
+  step('image: Ana sends an image in the conversation, without text, and Bia sees it', 120_000, async () => {
+    // The "+" opens the system picker through this input; Playwright hands it the file directly.
+    await ana.page.locator('input[data-attachment-input]').setInputFiles({ name: 'gatinho.png', mimeType: 'image/png', buffer: solidPng(64, 48) });
+    await ana.page.getByRole('list', { name: 'Arquivos anexados' }).getByText('gatinho.png').waitFor();
+    await ana.page.getByRole('textbox', { name: 'Conversar com @Bia' }).press('Enter');
+    await ana.page.getByRole('list', { name: 'Arquivos anexados' }).waitFor({ state: 'detached' });
+
+    // Ana's copy shows at once; Bia's comes over the friend link by itself (an image under 5 MB).
+    const loaded = (page: Page) => page.getByRole('article').getByRole('img', { name: 'gatinho.png' });
+    await loaded(ana.page).waitFor();
+    await loaded(bia.page).waitFor({ timeout: 60_000 });
+    // Decoded, not just in the page: the bytes came whole through app://ghostlink/_dmfile.
+    const decodedWidth = () => loaded(bia.page).evaluate((el) => (el as unknown as { complete: boolean; naturalWidth: number }).naturalWidth);
+    await expect.poll(decodedWidth, { timeout: 30_000 }).toBe(64);
+    expect(await loaded(bia.page).getAttribute('src')).toMatch(/^app:\/\/ghostlink\/_dmfile\/[0-9a-f]{64}$/);
+    await bia.page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-friends-dm-image-bia.png') });
+    await ana.page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-friends-dm-image-ana.png') });
   });
 
   step('offline: Bia quits, Ana writes two more, Bia comes back and gets them in order', 240_000, async () => {

@@ -115,6 +115,98 @@ describe('sendMessage', () => {
   });
 });
 
+describe('sendMessage with files (anexos §1)', () => {
+  type Upload = { uploadId: string; serverId: string; channelId: string; name: string; bytes: number[] };
+  let uploads: Upload[];
+  let failNext: string | null;
+  let listeners: Array<(e: { uploadId: string; sent: number; total: number }) => void>;
+
+  beforeEach(() => {
+    uploads = [];
+    failNext = null;
+    listeners = [];
+    const ghostlink = (globalThis as unknown as { window: { ghostlink: GhostlinkApi } }).window.ghostlink;
+    ghostlink.attachments = {
+      upload: vi.fn(async (uploadId: string, serverId: string, channelId: string, name: string, bytes: Uint8Array) => {
+        uploads.push({ uploadId, serverId, channelId, name, bytes: [...bytes] });
+        for (const l of listeners) l({ uploadId, sent: 1, total: 2 });
+        if (failNext) {
+          const code = failNext;
+          failNext = null;
+          throw new Error(code);
+        }
+        return { fileId: `F${uploads.length}`.padEnd(26, 'A') };
+      }),
+      save: vi.fn(),
+      onProgress: (cb: (e: { uploadId: string; sent: number; total: number }) => void) => {
+        listeners.push(cb);
+        return () => {
+          listeners = listeners.filter((l) => l !== cb);
+        };
+      },
+    } as unknown as GhostlinkApi['attachments'];
+  });
+
+  const file = (id: string, name: string, bytes: number[]) => ({ id, name, size: bytes.length, kind: 'file' as const, file: new Blob([new Uint8Array(bytes)]) });
+
+  it('uploads each file to the server on screen, then sends the message naming them (the text may be empty)', async () => {
+    handler = (_t, p) => ({ message: message(13, { authorId: ME, content: '', clientMsgId: (p as { clientMsgId: string }).clientMsgId }) });
+    await sendMessage(GERAL, '', null, [file('a', 'a.pdf', [1, 2]), file('b', 'b.png', [3])]);
+    expect(uploads.map((u) => [u.serverId, u.channelId, u.name, u.bytes])).toEqual([
+      ['srv-1', GERAL, 'a.pdf', [1, 2]],
+      ['srv-1', GERAL, 'b.png', [3]],
+    ]);
+    const [type, payload] = calls.at(-1)!;
+    expect(type).toBe('msg.send');
+    expect(payload).toMatchObject({ channelId: GERAL, content: '', attachmentIds: ['F1'.padEnd(26, 'A'), 'F2'.padEnd(26, 'A')] });
+    expect(listeners).toEqual([]); // every progress subscription was dropped
+    expect(log()!.pending).toEqual([]);
+  });
+
+  it('keeps per-file progress, and a retry sends again only what did not get through', async () => {
+    failNext = null;
+    let sends = 0;
+    handler = (_t, p) => {
+      sends++;
+      return { message: message(14, { authorId: ME, clientMsgId: (p as { clientMsgId: string }).clientMsgId }) };
+    };
+    // The second file is refused: the message stays, the first file keeps its id.
+    const api = (globalThis as unknown as { window: { ghostlink: GhostlinkApi } }).window.ghostlink.attachments;
+    const upload = api.upload as ReturnType<typeof vi.fn>;
+    const real = upload.getMockImplementation() as (...args: unknown[]) => Promise<unknown>;
+    upload.mockImplementationOnce(real).mockImplementationOnce(async (...args: unknown[]) => {
+      failNext = 'QUOTA_EXCEEDED';
+      return real(...args);
+    });
+    await sendMessage(GERAL, 'fotos', null, [file('a', 'a.png', [1]), file('b', 'b.png', [2])]);
+    const [pending] = log()!.pending;
+    expect(pending).toMatchObject({ error: 'QUOTA_EXCEEDED' });
+    expect(pending!.files!.map((f) => [f.id, f.fileId, f.progress])).toEqual([
+      ['a', 'F1'.padEnd(26, 'A'), 1],
+      ['b', null, 0.5],
+    ]);
+    expect(sends).toBe(0);
+
+    await retryMessage(GERAL, pending!.clientMsgId);
+    expect(uploads.map((u) => u.name)).toEqual(['a.png', 'b.png', 'b.png']);
+    expect(calls.at(-1)![1]).toMatchObject({ attachmentIds: ['F1'.padEnd(26, 'A'), 'F3'.padEnd(26, 'A')] });
+    expect(log()!.pending).toEqual([]);
+  });
+
+  it('uploads every file again after BAD_ATTACHMENT (an unused upload expires)', async () => {
+    handler = () => {
+      throw new Error('BAD_ATTACHMENT');
+    };
+    await sendMessage(GERAL, 'oi', null, [file('a', 'a.png', [1])]);
+    const [pending] = log()!.pending;
+    expect(pending).toMatchObject({ error: 'BAD_ATTACHMENT' });
+    handler = (_t, p) => ({ message: message(15, { authorId: ME, clientMsgId: (p as { clientMsgId: string }).clientMsgId }) });
+    await retryMessage(GERAL, pending!.clientMsgId);
+    expect(uploads.map((u) => u.name)).toEqual(['a.png', 'a.png']);
+    expect(calls.at(-1)![1]).toMatchObject({ attachmentIds: ['F2'.padEnd(26, 'A')] });
+  });
+});
+
 describe('read marks and typing', () => {
   it('marks read at once and applies the server answer', async () => {
     handler = () => ({ readState: { channelId: GERAL, lastReadMessageId: 12, mentionCount: 0 } });

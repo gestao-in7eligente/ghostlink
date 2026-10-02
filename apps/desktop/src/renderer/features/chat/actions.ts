@@ -14,6 +14,7 @@ import {
   readStateSchemaClient,
   roleSchemaClient,
   serverInfoSchemaClient,
+  serverStorageSchemaClient,
   type BanEntry,
   type Channel,
   type InviteEntry,
@@ -25,11 +26,13 @@ import {
   type ReadState,
   type Role,
   type ServerInfo,
+  type ServerStorage,
 } from '@ghostlink/shared';
 import type { GhostlinkApi } from '../../../shared/ipcTypes.js';
 import { errorCodeOf } from '../../i18n/index.js';
 import { channelLog } from '../../stores/messages.js';
 import { dispatchText, textState } from '../../stores/text.js';
+import type { PendingFile } from '../../stores/textState.js';
 
 /** The preload API (typed without the DOM lib, so node-side tests can load this module). */
 function ghostlink(): GhostlinkApi {
@@ -87,11 +90,51 @@ function newClientMsgId(): string {
   return crypto.randomUUID().replaceAll('-', '');
 }
 
-async function deliver(channelId: string, clientMsgId: string, content: string, replyTo: number | null): Promise<void> {
+/**
+ * One file to the server on screen through main (anexos §4): the bytes go by IPC, and main's
+ * progress events for this upload move its bar. Resolves with the server's file id.
+ */
+async function uploadFile(channelId: string, clientMsgId: string, file: PendingFile): Promise<string> {
+  const serverId = textState().server.serverId;
+  if (serverId === null) throw new Error('CONNECTION_LOST');
+  const api = ghostlink().attachments;
+  const uploadId = newClientMsgId();
+  const progress = (value: number) => dispatchText({ type: 'pending.file', channelId, clientMsgId, fileLocalId: file.id, progress: value });
+  progress(0);
+  const off = api.onProgress((e) => {
+    if (e.uploadId === uploadId && e.total > 0) progress(e.sent / e.total);
+  });
   try {
+    const bytes = new Uint8Array(await file.file.arrayBuffer());
+    const { fileId } = await api.upload(uploadId, serverId, channelId, file.name, bytes);
+    dispatchText({ type: 'pending.file', channelId, clientMsgId, fileLocalId: file.id, progress: 1, fileId });
+    return fileId;
+  } finally {
+    off();
+  }
+}
+
+/** Uploads the files still without an id, one after the other, then sends the message naming them. */
+async function deliver(channelId: string, clientMsgId: string): Promise<void> {
+  const pendingNow = () => channelLog(textState().messages, channelId)?.pending.find((p) => p.clientMsgId === clientMsgId);
+  const start = pendingNow();
+  if (!start) return;
+  try {
+    const attachmentIds: string[] = [];
+    for (const file of start.files ?? []) {
+      // Dropped meanwhile ("Descartar" is only offered after a failure, but the channel may go).
+      if (!pendingNow()) return;
+      attachmentIds.push(file.fileId ?? (await uploadFile(channelId, clientMsgId, file)));
+    }
     const { message } = await request(
       'msg.send',
-      { channelId, content, clientMsgId, ...(replyTo !== null ? { replyTo } : {}) },
+      {
+        channelId,
+        content: start.content,
+        clientMsgId,
+        ...(start.replyTo !== null ? { replyTo: start.replyTo } : {}),
+        ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+      },
       messageAnswer,
     );
     dispatchText({ type: 'message.upsert', message });
@@ -100,19 +143,39 @@ async function deliver(channelId: string, clientMsgId: string, content: string, 
   }
 }
 
-/** Shows the message at once (pending), then sends it; a failure keeps it for a retry. */
-export function sendMessage(channelId: string, content: string, replyTo: number | null): Promise<void> {
-  const clientMsgId = newClientMsgId();
-  dispatchText({ type: 'pending.add', pending: { clientMsgId, channelId, content, replyTo, createdAt: Date.now(), error: null } });
-  return deliver(channelId, clientMsgId, content, replyTo);
+/** A file picked for a message (the composer's tray). */
+export interface OutgoingFile {
+  id: string;
+  name: string;
+  size: number;
+  kind: PendingFile['kind'];
+  file: Blob;
 }
 
-/** Sends a failed message again with the same clientMsgId, so the server never stores it twice. */
+/**
+ * Shows the message at once (pending, with a bar per file), then uploads its files and sends
+ * it; a failure keeps it for a retry. The text may be empty when there are files (anexos §1).
+ */
+export function sendMessage(channelId: string, content: string, replyTo: number | null, files: readonly OutgoingFile[] = []): Promise<void> {
+  const clientMsgId = newClientMsgId();
+  const pendingFiles: PendingFile[] = files.map((f) => ({ id: f.id, name: f.name, size: f.size, kind: f.kind, file: f.file, fileId: null, progress: 0 }));
+  dispatchText({
+    type: 'pending.add',
+    pending: { clientMsgId, channelId, content, replyTo, createdAt: Date.now(), error: null, ...(pendingFiles.length > 0 ? { files: pendingFiles } : {}) },
+  });
+  return deliver(channelId, clientMsgId);
+}
+
+/**
+ * Sends a failed message again with the same clientMsgId, so the server never stores it twice.
+ * Files already uploaded are not sent again, unless the server refused them (BAD_ATTACHMENT:
+ * an upload left unused for an hour is gone).
+ */
 export function retryMessage(channelId: string, clientMsgId: string): Promise<void> {
   const pending = channelLog(textState().messages, channelId)?.pending.find((p) => p.clientMsgId === clientMsgId);
   if (!pending) return Promise.resolve();
-  dispatchText({ type: 'pending.retry', channelId, clientMsgId });
-  return deliver(channelId, clientMsgId, pending.content, pending.replyTo);
+  dispatchText({ type: 'pending.retry', channelId, clientMsgId, resetFiles: pending.error === 'BAD_ATTACHMENT' });
+  return deliver(channelId, clientMsgId);
 }
 
 export function dropMessage(channelId: string, clientMsgId: string): void {
@@ -275,10 +338,17 @@ export interface ServerPatch {
   joinMode?: JoinMode;
   password?: string | null;
   maxMembers?: number;
+  uploadLimitMb?: number;
+  storageQuotaMb?: number;
 }
 
 export async function updateServer(patch: ServerPatch): Promise<ServerInfo> {
   return request('server.update', { ...patch }, serverInfoSchemaClient);
+}
+
+/** The space attachments use on the server (MANAGE_SERVER), for Server settings → Overview. */
+export async function serverStorage(): Promise<ServerStorage> {
+  return request('server.storage', {}, serverStorageSchemaClient);
 }
 
 /** Back to the server's initials (MANAGE_SERVER); setting an icon goes through profile.setServerIcon. */

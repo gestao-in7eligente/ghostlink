@@ -1,12 +1,18 @@
 // The wire codec between friends (friends spec §3.3), on top of Hyperswarm's encrypted link:
 //   1 type byte ‖ body length (uint32 BE) ‖ body
-// Type 1 is JSON (up to 256 KiB); type 2, a file chunk, arrives with files (phase 3). The link
+// Type 1 is JSON (up to 256 KiB), the only type: file parts travel as JSON too (blob.part, with
+// the bytes in base64url), each well under the cap, so no second frame type was needed. The link
 // keeps message boundaries, so one message is exactly one frame. Every JSON body goes through a
 // strict zod schema before anything uses it; whoever receives a FrameError drops the connection.
 import { z } from 'zod';
 import { LIMITS, fromUtf8, utf8 } from '@ghostlink/shared';
+import { DM_FILE_MAX_BYTES } from '../../shared/dmTypes.js';
 import { CONVERSATION_ID } from './conversations.js';
+import { FILE_HASH } from './dmFiles.js';
 import { entrySchema } from './entries.js';
+
+/** A file travels in parts of this size (attachments spec §3); the last one may be shorter. */
+export const PART_BYTES = 32 * 1024;
 
 /** The P2P protocol version announced in `hello`. */
 export const P2P_VERSION = 1;
@@ -30,6 +36,12 @@ const convId = z.string().regex(CONVERSATION_ID);
 /** A friend key as it travels: base64url of 32 bytes. */
 const friendKey = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 const seq = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
+const fileHash = z.string().regex(FILE_HASH);
+/** The most parts a file has: 25 MiB in 32 KiB parts is 800. */
+export const PARTS_MAX = Math.ceil(DM_FILE_MAX_BYTES / PART_BYTES);
+const partIndex = z.number().int().min(0).max(PARTS_MAX);
+/** The base64url length of a full part. */
+const PART_DATA_MAX = Math.ceil((PART_BYTES * 4) / 3);
 
 /** A nickname cut to what the wire takes, never in the middle of a character. */
 export function wireNickname(name: string): string {
@@ -62,12 +74,22 @@ const messageSchema = z.discriminatedUnion('t', [
   z.strictObject({ t: z.literal('sync.want'), conv: convId, author: friendKey, from: seq, to: seq }).refine((want) => want.to >= want.from),
   z.strictObject({ t: z.literal('entry'), entry: entrySchema }),
   z.strictObject({ t: z.literal('typing'), conv: convId }),
+  // Files of messages (attachments spec §3, blobs.ts): `from` is the first part wanted (0 when absent).
+  z.strictObject({ t: z.literal('blob.want'), hash: fileHash, from: partIndex.optional() }),
+  /** `data`: base64url of the part's bytes, 32 KiB except for the last part. */
+  z
+    .strictObject({ t: z.literal('blob.part'), hash: fileHash, index: partIndex, total: partIndex.min(1), data: z.string().max(PART_DATA_MAX).regex(/^[A-Za-z0-9_-]*$/) })
+    .refine((part) => part.index < part.total),
+  /** The other side does not have that file, or may not hand it out. */
+  z.strictObject({ t: z.literal('blob.missing'), hash: fileHash }),
 ]);
 
 export type P2pMessage = z.infer<typeof messageSchema>;
 
 /** The messages that belong to conversations (dm.ts), not to the friendship. */
-export type ConversationMessage = Extract<P2pMessage, { t: 'sync.have' | 'sync.want' | 'entry' | 'typing' }>;
+export type ConversationMessage = Extract<P2pMessage, { t: 'sync.have' | 'sync.want' | 'entry' | 'typing' | `blob.${string}` }>;
+/** The messages of file transfers (blobs.ts). */
+export type BlobMessage = Extract<P2pMessage, { t: `blob.${string}` }>;
 
 /** A frame this side refuses to read or to send. */
 export class FrameError extends Error {

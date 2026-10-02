@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto';
 import {
   CHAT_LIMITS,
   toBase32,
+  type Attachment,
+  type AttachmentKind,
   type Channel,
   type Member,
   type Message,
@@ -247,16 +249,57 @@ export class TextRepo {
     return this.reactionsOf([id]).get(id) ?? [];
   }
 
+  /** The files of these messages, each list in the order they were sent (spec 2026-10-01-anexos §2). */
+  attachmentsOf(ids: readonly number[]): Map<number, Attachment[]> {
+    const out = new Map<number, Attachment[]>();
+    if (ids.length === 0) return out;
+    const rows = this.db.all<{
+      id: string;
+      message_id: number;
+      name: string;
+      size: number;
+      kind: AttachmentKind;
+      mime: string;
+      width: number | null;
+      height: number | null;
+    }>(
+      `SELECT id, message_id, name, size, kind, mime, width, height FROM files
+       WHERE message_id IN (SELECT value FROM json_each(?)) ORDER BY message_id, position`,
+      JSON.stringify(ids),
+    );
+    for (const r of rows) {
+      const id = Number(r.message_id);
+      const list = out.get(id) ?? [];
+      list.push({
+        id: r.id,
+        name: r.name,
+        size: Number(r.size),
+        kind: r.kind,
+        mime: r.mime,
+        ...(r.width === null || r.height === null ? {} : { width: Number(r.width), height: Number(r.height) }),
+      });
+      out.set(id, list);
+    }
+    return out;
+  }
+
+  /** True when the message has at least one file (its text may then be empty). */
+  hasAttachments(messageId: number): boolean {
+    return this.db.get('SELECT 1 AS x FROM files WHERE message_id = ? LIMIT 1', messageId) !== undefined;
+  }
+
   toMessages(rows: readonly MessageRow[]): Message[] {
-    const reactions = this.reactionsOf(rows.map((r) => Number(r.id)));
-    return rows.map((r) => this.#toMessage(r, reactions.get(Number(r.id)) ?? []));
+    const ids = rows.map((r) => Number(r.id));
+    const reactions = this.reactionsOf(ids);
+    const attachments = this.attachmentsOf(ids);
+    return rows.map((r) => this.#toMessage(r, reactions.get(Number(r.id)) ?? [], attachments.get(Number(r.id)) ?? []));
   }
 
   toMessage(row: MessageRow): Message {
     return this.toMessages([row])[0]!;
   }
 
-  #toMessage(r: MessageRow, reactions: Reaction[]): Message {
+  #toMessage(r: MessageRow, reactions: Reaction[], attachments: Attachment[]): Message {
     let replyTo: Message['replyTo'] = null;
     if (r.reply_to_id !== null) {
       const target = this.message(Number(r.reply_to_id));
@@ -288,6 +331,7 @@ export class TextRepo {
       reactions,
       mentions,
       clientMsgId: r.client_msg_id,
+      attachments,
     };
   }
 

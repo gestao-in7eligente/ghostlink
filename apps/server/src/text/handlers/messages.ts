@@ -37,10 +37,27 @@ function visibleMessage(core: TextCore, actor: Subject, id: number): { row: Mess
   return { row, channel, bits };
 }
 
-function content(raw: string): string {
+/** The cleaned text; it may be empty only when files go with it (spec 2026-10-01-anexos §1). */
+function content(raw: string, withFiles = false): string {
   const text = cleanMessageContent(raw);
-  if (text === '') throw new ProtocolError('BAD_REQUEST', 'empty message');
+  if (text === '' && !withFiles) throw new ProtocolError('BAD_REQUEST', 'empty message');
   return text;
+}
+
+/**
+ * Links the files to the new message, in order, inside its transaction (spec §5.3): each one
+ * must be the sender's own attachment, uploaded to this channel and not used yet. Anything
+ * else is BAD_ATTACHMENT, and the transaction (the message with it) rolls back.
+ */
+function linkAttachments(core: TextCore, messageId: number, userId: string, channelId: string, fileIds: readonly string[]): void {
+  fileIds.forEach((fileId, position) => {
+    const { changes } = core.db.run(
+      `UPDATE files SET message_id = ?, position = ?
+       WHERE id = ? AND uploader_id = ? AND purpose = 'attachment' AND channel_id = ? AND message_id IS NULL`,
+      messageId, position, fileId, userId, channelId,
+    );
+    if (changes !== 1) throw new ProtocolError('BAD_ATTACHMENT');
+  });
 }
 
 /**
@@ -79,7 +96,11 @@ function writeMentions(core: TextCore, messageId: number, m: { shown: MessageMen
   for (const u of m.recipients) core.db.run('INSERT INTO mentions (message_id, user_id) VALUES (?, ?)', messageId, u);
 }
 
-/** Soft delete (spec §7): the content is cleared at once; reactions and mentions go too. Call inside db.tx. */
+/**
+ * Soft delete (spec §7): the content is cleared at once; reactions, mentions and the files'
+ * rows go too (emit `messages.deleted` afterwards, so the files module deletes the bytes).
+ * Call inside db.tx.
+ */
 export function softDeleteMessage(core: TextCore, id: number): void {
   core.db.run(
     `UPDATE messages SET content = '', deleted_at = ?, mention_users = '[]', mention_roles = '[]', mention_everyone = 0
@@ -88,6 +109,7 @@ export function softDeleteMessage(core: TextCore, id: number): void {
   );
   core.db.run('DELETE FROM reactions WHERE message_id = ?', id);
   core.db.run('DELETE FROM mentions WHERE message_id = ?', id);
+  core.db.run('DELETE FROM files WHERE message_id = ?', id);
 }
 
 /**
@@ -129,9 +151,10 @@ const send: Handler = (core, ctx, payload) => {
   const actor = core.member(ctx.userId);
   const { channel, bits } = textChannel(core, actor, p.channelId);
   if (!has(bits, PERMISSIONS.SEND_MESSAGES)) throw new ProtocolError('FORBIDDEN');
-  // Files arrive in v0.2: no attachment can satisfy the spec §5.3 rules yet.
-  if (p.attachmentIds !== undefined && p.attachmentIds.length > 0) throw new ProtocolError('BAD_ATTACHMENT');
-  const text = content(p.content);
+  const fileIds = p.attachmentIds ?? [];
+  if (fileIds.length > 0 && !has(bits, PERMISSIONS.ATTACH_FILES)) throw new ProtocolError('FORBIDDEN');
+  if (new Set(fileIds).size !== fileIds.length) throw new ProtocolError('BAD_ATTACHMENT');
+  const text = content(p.content, fileIds.length > 0);
 
   // A retry with the same clientMsgId returns the original message (UNIQUE(user_id, client_msg_id)).
   const existing = core.db.get<MessageRow>('SELECT * FROM messages WHERE user_id = ? AND client_msg_id = ?', ctx.userId, p.clientMsgId);
@@ -153,6 +176,7 @@ const send: Handler = (core, ctx, payload) => {
       channel.id, ctx.userId, text, p.replyTo ?? null, core.now(), p.clientMsgId,
     );
     writeMentions(core, lastInsertRowid, mentions);
+    linkAttachments(core, lastInsertRowid, ctx.userId, channel.id, fileIds);
     // Your own message is read by definition.
     core.db.run(
       `INSERT INTO read_states (user_id, channel_id, last_read_message_id) VALUES (?, ?, ?)
@@ -171,7 +195,7 @@ const edit: Handler = (core, ctx, payload) => {
   const actor = core.member(ctx.userId);
   const { row, channel, bits } = visibleMessage(core, actor, p.id);
   if (row.user_id !== ctx.userId) throw new ProtocolError('FORBIDDEN');
-  const text = content(p.content);
+  const text = content(p.content, core.repo.hasAttachments(Number(row.id)));
   if (text !== row.content) {
     // Only a real change is broadcast, so only a real change is counted.
     if (!core.limiters.msgEdit.take(ctx.userId)) throw new ProtocolError('RATE_LIMITED');
@@ -193,6 +217,7 @@ const remove: Handler = (core, ctx, payload) => {
   if (row.user_id !== ctx.userId && !has(bits, PERMISSIONS.MANAGE_MESSAGES)) throw new ProtocolError('FORBIDDEN');
   core.db.tx(() => softDeleteMessage(core, Number(row.id)));
   core.broadcastChannel(channel, { t: 'msg.deleted', d: { id: Number(row.id), channelId: channel.id } });
+  core.events.emit('messages.deleted', { ids: [Number(row.id)] });
   return {};
 };
 

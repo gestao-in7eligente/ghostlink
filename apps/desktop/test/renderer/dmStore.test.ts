@@ -11,7 +11,7 @@ function conversation(patch: Partial<DmConversation> = {}): DmConversation {
 }
 
 function message(n: number, patch: Partial<DmMessage> = {}): DmMessage {
-  return { id: n.toString(16).padStart(32, '0'), conv: CONV, author: PEER, mine: false, ts: 1_000 * n, text: `m${n}`, replyTo: null, editedAt: null, deleted: false, delivered: true, ...patch };
+  return { id: n.toString(16).padStart(32, '0'), conv: CONV, author: PEER, mine: false, ts: 1_000 * n, text: `m${n}`, replyTo: null, editedAt: null, deleted: false, delivered: true, attachments: [], ...patch };
 }
 
 const page = (from: number, count: number) => Array.from({ length: count }, (_, i) => message(from + i));

@@ -1,6 +1,7 @@
 import { protocol } from 'electron';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isFileRequest } from './attachments/fileRoute.js';
 import { isAvatarRequest } from './avatars/avatarRoute.js';
 
 export const APP_SCHEME = 'app';
@@ -38,7 +39,8 @@ const MIME_TYPES: Readonly<Record<string, string>> = {
 /** Step 3 of the bootstrap: must run before app ready. */
 export function registerAppSchemePrivileges(): void {
   protocol.registerSchemesAsPrivileged([
-    { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+    // `stream`: attachments' video and audio play from app:// with Range requests (anexos §4).
+    { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   ]);
 }
 
@@ -108,24 +110,50 @@ export function createAppProtocolHandler(rendererDir: string): (request: Request
 export interface AppRoutes {
   /** app://ghostlink/_avatar/<hash>: profile photos (avatars/avatarRoute.ts). */
   avatar?: (request: Request) => Promise<Response>;
+  /** app://ghostlink/_file/<serverId>/<fileId>: server attachments (attachments/fileRoute.ts). */
+  file?: (request: Request) => Promise<Response>;
+  /** app://ghostlink/_dmfile/<hash>: direct-message files (the DM engine). */
+  dmFile?: (request: Request) => Promise<Response>;
+}
+
+/** The path prefix of direct-message files (anexos §4). */
+export const DM_FILE_ROUTE_PREFIX = '/_dmfile';
+
+/** True for app://ghostlink/_dmfile and anything under it. */
+export function isDmFileRequest(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  const path = parsed.pathname;
+  return parsed.protocol === `${APP_SCHEME}:` && parsed.host === APP_HOST && (path === DM_FILE_ROUTE_PREFIX || path.startsWith(`${DM_FILE_ROUTE_PREFIX}/`));
 }
 
 /**
- * The renderer's files plus the app's own routes. Every path under /_avatar belongs to the
- * photo route (a 404 there, never index.html), and it works from the dev server's page too:
- * an http://localhost page may load app:// images (measured with Electron 44).
+ * The renderer's files plus the app's own routes. Every path under /_avatar, /_file and /_dmfile
+ * belongs to its route (a 404 there, never index.html), and they work from the dev server's page
+ * too: an http://localhost page may load app:// images (measured with Electron 44).
  */
 export function createAppRequestHandler(rendererDir: string, routes: AppRoutes = {}): (request: Request) => Response | Promise<Response> {
   const files = createAppProtocolHandler(rendererDir);
+  const missing = () => new Response(null, { status: 404, headers: { 'X-Content-Type-Options': 'nosniff' } });
   return (request) => {
-    if (isAvatarRequest(request.url)) {
-      return routes.avatar ? routes.avatar(request) : new Response(null, { status: 404, headers: { 'X-Content-Type-Options': 'nosniff' } });
-    }
+    if (isAvatarRequest(request.url)) return routes.avatar ? routes.avatar(request) : missing();
+    if (isFileRequest(request.url)) return routes.file ? routes.file(request) : missing();
+    if (isDmFileRequest(request.url)) return routes.dmFile ? routes.dmFile(request) : missing();
     return files(request);
   };
 }
 
-/** Step 5 of the bootstrap: serve the built renderer at app://ghostlink/ (never file://). */
-export function registerAppProtocol(rendererDir: string, routes: AppRoutes = {}): void {
-  protocol.handle(APP_SCHEME, createAppRequestHandler(rendererDir, routes));
+/**
+ * Step 5 of the bootstrap: serve the built renderer at app://ghostlink/ (never file://). `routes`
+ * is read at each request, so a route may join later; the handler is returned for main's own use
+ * ("Baixar" reads an attachment through it).
+ */
+export function registerAppProtocol(rendererDir: string, routes: AppRoutes = {}): (request: Request) => Response | Promise<Response> {
+  const handler = createAppRequestHandler(rendererDir, routes);
+  protocol.handle(APP_SCHEME, handler);
+  return handler;
 }
