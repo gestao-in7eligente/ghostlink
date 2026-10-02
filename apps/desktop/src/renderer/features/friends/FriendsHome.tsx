@@ -1,4 +1,4 @@
-import { useState, type RefObject } from 'react';
+import { useEffect, useState, type RefObject } from 'react';
 import { Check, EllipsisVertical, MessageCircle, Search, Users, X } from 'lucide-react';
 import type { Friend, FriendsSnapshot } from '../../../shared/friendsTypes.js';
 import { GhostMark } from '../../components/GhostMark.js';
@@ -9,6 +9,7 @@ import { useFriendsStore } from '../../stores/friends.js';
 import { AddFriendPanel } from './AddFriendPanel.js';
 import { RenameFriendDialog } from './RenameFriendDialog.js';
 import { engineProblem, formatShortCode, friendName, friendsForTab, FRIENDS_TABS, pendingIncoming, type FriendsTab } from './friendsModel.js';
+import { useFriendsTabRequest } from './friendsTab.js';
 import f from './friends.module.css';
 
 type View = FriendsTab | 'add';
@@ -22,11 +23,19 @@ export function FriendsHome({ nickname, searchRef }: { nickname: string; searchR
   const t = useT();
   const snapshot = useFriendsStore((s) => s.snapshot);
   const loadError = useFriendsStore((s) => s.loadError);
-  const [view, setView] = useState<View>('online');
+  const requested = useFriendsTabRequest((s) => s.tab);
+  const [view, setView] = useState<View>(() => requested ?? 'online');
   const [query, setQuery] = useState('');
   const [menu, setMenu] = useState<{ friend: Friend; anchor: DOMRect } | null>(null);
   const [ask, setAsk] = useState<Ask>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // A friend request's notification asks for "Pendentes", also while the page already shows.
+  useEffect(() => {
+    if (requested === null) return;
+    setView(requested);
+    useFriendsTabRequest.getState().clear();
+  }, [requested]);
 
   const friends = snapshot?.friends ?? [];
   const unnamed = t('friends.unnamed');

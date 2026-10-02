@@ -1,11 +1,15 @@
-// Which new messages deserve a desktop notification (spec §11.1 item 8): mentions of
-// the user (directly, by role or @everyone) and replies to them. The main process
-// shows it only while the window is not focused (main/notifications.ts).
-import type { Message } from '@ghostlink/shared';
-import type { ChatNotification } from '../../../shared/ipcTypes.js';
+// Which new messages deserve a desktop notification (spec 2026-10-02-notificacoes-design.md §1),
+// following the server's mode: every message from someone else ('all'), only mentions of the user
+// (directly, by role or @everyone) and replies to them ('mentions', the default), or none. The main
+// process shows it only while the window is not focused (main/notifications.ts).
+import { AVATAR_HASH, type Message } from '@ghostlink/shared';
+import type { ChatNotification, NotifyMode } from '../../../shared/ipcTypes.js';
 import type { Translate } from '../../i18n/index.js';
 import { mentionsUser, type TextState } from '../../stores/textState.js';
 import { markdownToPlainText, parseMarkdown } from './markdown.js';
+
+/** Main keeps 200 characters of the text; this only keeps a huge message off the IPC. */
+const BODY_MAX = 1_000;
 
 export function memberName(state: Pick<TextState, 'members'>, userId: string | null, fallback: string): string {
   if (userId === null || !Object.hasOwn(state.members.byId, userId)) return fallback;
@@ -22,18 +26,29 @@ export function plainContent(state: Pick<TextState, 'members' | 'server'>, conte
   });
 }
 
-export function notificationFor(state: TextState, message: Message, t: Translate): ChatNotification | null {
+/** A mention of me (or of a role of mine, or @everyone), or a reply to one of my messages. */
+function concernsMe(state: TextState, message: Message): boolean {
   const self = state.server.selfId;
-  if (message.authorId === self) return null;
-  if (!Object.hasOwn(state.channels.byId, message.channelId)) return null;
   const roleIds = Object.hasOwn(state.members.byId, self) ? state.members.byId[self]!.roleIds : [];
-  const mention = mentionsUser(message, self, roleIds);
-  const reply = message.replyTo !== null && message.replyTo.authorId === self;
-  if (!mention && !reply) return null;
-  const vars = { name: memberName(state, message.authorId, t('chat.formerMember')), channel: state.channels.byId[message.channelId]!.name };
+  return mentionsUser(message, self, roleIds) || (message.replyTo !== null && message.replyTo.authorId === self);
+}
+
+export function notificationFor(state: TextState, message: Message, t: Translate, mode: NotifyMode): ChatNotification | null {
+  if (mode === 'none' || message.authorId === state.server.selfId) return null;
+  if (!Object.hasOwn(state.channels.byId, message.channelId)) return null;
+  const channel = state.channels.byId[message.channelId]!;
+  if (channel.type !== 'text') return null;
+  if (mode === 'mentions' && !concernsMe(state, message)) return null;
+  const text = plainContent(state, message.content, t, message.mentions.everyone).slice(0, BODY_MAX);
+  const files = message.attachments.length;
+  const icon = state.server.icon;
   return {
-    title: t(mention ? 'chat.notification.mention' : 'chat.notification.reply', vars),
-    body: plainContent(state, message.content, t, message.mentions.everyone),
+    server: state.server.name,
+    channel: channel.name,
+    author: memberName(state, message.authorId, t('chat.formerMember')),
+    // Files alone: "enviou um arquivo".
+    body: text !== '' || files === 0 ? text : files === 1 ? t('notifications.file') : t('notifications.files', { count: files }),
+    serverIcon: icon !== null && AVATAR_HASH.test(icon) ? icon : null,
     channelId: message.channelId,
   };
 }

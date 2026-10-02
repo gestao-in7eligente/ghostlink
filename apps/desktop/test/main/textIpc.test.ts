@@ -120,10 +120,13 @@ describe('app.openExternal, app.copyText and notifications.show', () => {
     expect(await invoke(IPC.appCopyText, TOP, 'https://site/j/#GL1-abc')).toEqual({ ok: true, value: undefined });
     expect(copyText).toHaveBeenCalledWith('https://site/j/#GL1-abc');
     expect(await invoke(IPC.appCopyText, TOP, 'x'.repeat(8193))).toEqual({ ok: false, code: 'BAD_REQUEST' });
-    const n = { title: 'Ana', body: 'oi', channelId: CHANNEL };
+    const n = { server: 'Casa', channel: 'geral', author: 'Ana', body: 'oi', serverIcon: null, channelId: CHANNEL };
     expect(await invoke(IPC.notificationsShow, TOP, n)).toEqual({ ok: true, value: true });
+    expect(await invoke(IPC.notificationsShow, TOP, { ...n, serverIcon: 'ab'.repeat(32) })).toEqual({ ok: true, value: true });
     expect(await invoke(IPC.notificationsShow, TOP, { ...n, channelId: '../x' })).toEqual({ ok: false, code: 'BAD_REQUEST' });
+    // The picture is only ever a hash main serves itself, never a URL or a path.
+    expect(await invoke(IPC.notificationsShow, TOP, { ...n, serverIcon: 'file:///C:/x.png' })).toEqual({ ok: false, code: 'BAD_REQUEST' });
     expect(await invoke(IPC.notificationsShow, TOP, { ...n, icon: 'file:///C:/x.png' })).toEqual({ ok: false, code: 'BAD_REQUEST' });
-    expect(show).toHaveBeenCalledOnce();
+    expect(show).toHaveBeenCalledTimes(2);
   });
 });
