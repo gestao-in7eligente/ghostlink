@@ -148,6 +148,9 @@ jobs:
           mkdir "$RUNNER_TEMP/pkg"
           tar -xzf "release/ghostlink-server-${VERSION}.tgz" -C "$RUNNER_TEMP/pkg"
           test "$(node --disable-warning=ExperimentalWarning "$RUNNER_TEMP/pkg/dist/cli.js" version)" = "${VERSION}"
+          # The Ghost DJ's LiveKit audio add-on loads from the package (ffmpeg may be missing here).
+          dj="$(node --disable-warning=ExperimentalWarning "$RUNNER_TEMP/pkg/dist/cli.js" ghost-dj || true)"
+          printf '%s\n' "$dj" | grep -Fx 'LiveKit audio (@livekit/rtc-node): ok'
       - name: Upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -292,7 +295,10 @@ jobs:
             --label "org.opencontainers.image.version=${VERSION}" \
             -t "${IMAGE}:${VERSION}" .
       - name: Smoke test the image
-        run: test "$(docker run --rm --entrypoint node "${IMAGE}:${VERSION}" /opt/ghostlink/dist/cli.js version)" = "${VERSION}"
+        run: |
+          test "$(docker run --rm --entrypoint node "${IMAGE}:${VERSION}" /opt/ghostlink/dist/cli.js version)" = "${VERSION}"
+          # The Ghost DJ: ffmpeg and its LiveKit audio add-on are in the image.
+          docker run --rm --entrypoint node "${IMAGE}:${VERSION}" /opt/ghostlink/dist/cli.js ghost-dj
       - name: Push
         env:
           GH_TOKEN: ${{ github.token }}

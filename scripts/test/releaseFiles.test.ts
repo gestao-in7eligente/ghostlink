@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gunzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   CHECKSUMS_FILE,
@@ -16,6 +16,7 @@ import {
   unshippedImports,
   type TarEntry,
 } from '../lib/releaseFiles.mjs';
+import { RTC_NATIVE_TARGETS, ensureRtcNative, untar } from '../lib/rtcNative.mjs';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 const dirs: string[] = [];
@@ -160,6 +161,8 @@ describe('unshippedImports', () => {
       'import { createRequire as r } from "node:module";',
       'import { readFileSync } from "node:fs";',
       'var a = __require("zlib"), b = __require("bufferutil"), c = require("utf-8-validate");',
+      // rtc-node's napi loader probes each platform's add-on package (the Linux ones are shipped).
+      'try { __require("@livekit/rtc-ffi-bindings-linux-x64-gnu"); __require("@livekit/rtc-ffi-bindings-darwin-arm64/package.json"); } catch {}',
       'import "node:sqlite";',
       'const msg = "import this from somewhere";',
     ].join('\n');
@@ -182,6 +185,12 @@ describe('serverPackageEntries', () => {
     writeFileSync(join(root, 'apps', 'server', 'dist', 'cli.js'), '#!/usr/bin/env node\nimport { readFileSync } from "node:fs";\n');
     writeFileSync(join(root, 'apps', 'server', 'dist', 'migrations', '001_init.sql'), 'CREATE TABLE t (x);\n');
     writeFileSync(join(root, 'apps', 'server', 'dist', 'migrations', 'notes.txt'), 'not a migration');
+    for (const target of RTC_NATIVE_TARGETS) {
+      const dir = join(root, 'apps', 'server', 'dist', 'node_modules', '@livekit', `rtc-ffi-bindings-${target}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'package.json'), '{}');
+      writeFileSync(join(dir, `rtc-node.${target}.node`), 'native');
+    }
     const installSh = join(root, 'install.sh');
     writeFileSync(installSh, '#!/usr/bin/env bash\necho install\n');
     return { root, installSh };
@@ -196,6 +205,14 @@ describe('serverPackageEntries', () => {
       ['dist/cli.js', 0o755],
       ['dist/migrations', 0o755],
       ['dist/migrations/001_init.sql', 0o644],
+      ['dist/node_modules', 0o755],
+      ['dist/node_modules/@livekit', 0o755],
+      ['dist/node_modules/@livekit/rtc-ffi-bindings-linux-x64-gnu', 0o755],
+      ['dist/node_modules/@livekit/rtc-ffi-bindings-linux-x64-gnu/package.json', 0o644],
+      ['dist/node_modules/@livekit/rtc-ffi-bindings-linux-x64-gnu/rtc-node.linux-x64-gnu.node', 0o644],
+      ['dist/node_modules/@livekit/rtc-ffi-bindings-linux-arm64-gnu', 0o755],
+      ['dist/node_modules/@livekit/rtc-ffi-bindings-linux-arm64-gnu/package.json', 0o644],
+      ['dist/node_modules/@livekit/rtc-ffi-bindings-linux-arm64-gnu/rtc-node.linux-arm64-gnu.node', 0o644],
       ['package.json', 0o644],
       ['install.sh', 0o755],
       ['LICENSE', 0o644],
@@ -214,11 +231,66 @@ describe('serverPackageEntries', () => {
 
   it('refuses a bundle that needs node_modules, a missing build or a missing install.sh', () => {
     const { root, installSh } = fixture();
+    rmSync(join(root, 'apps', 'server', 'dist', 'node_modules', '@livekit', 'rtc-ffi-bindings-linux-arm64-gnu'), { recursive: true });
+    expect(() => serverPackageEntries({ repoRoot: root, installSh })).toThrow(/rtc-ffi-bindings-linux-arm64-gnu is missing/);
     writeFileSync(join(root, 'apps', 'server', 'dist', 'cli.js'), 'import x from "livekit-server-sdk";\n');
     expect(() => serverPackageEntries({ repoRoot: root, installSh })).toThrow(/livekit-server-sdk/);
     rmSync(join(root, 'apps', 'server', 'dist', 'cli.js'));
     expect(() => serverPackageEntries({ repoRoot: root, installSh })).toThrow(/npm run build/);
     const other = fixture();
     expect(() => serverPackageEntries({ repoRoot: other.root, installSh: join(other.root, 'nope.sh') })).toThrow(/missing/);
+  });
+});
+
+describe('the native add-on of @livekit/rtc-node (Ghost DJ) for the server package', () => {
+  /** An npm tarball (package/…) for one platform, and a repo whose package-lock.json pins it. */
+  function registry(target: string, version = '0.12.73') {
+    const files: TarEntry[] = [
+      { name: 'package/package.json', mode: 0o644, data: Buffer.from(JSON.stringify({ name: `@livekit/rtc-ffi-bindings-${target}`, version })) },
+      { name: `package/rtc-node.${target}.node`, mode: 0o755, data: Buffer.from(`native ${target}`) },
+      { name: 'package/README.md', mode: 0o644, data: Buffer.from('readme') },
+    ];
+    const tgz = gzipSync(gunzipSync(tarGz(files, 1)));
+    return { tgz, integrity: `sha512-${createHash('sha512').update(tgz).digest('base64')}` };
+  }
+
+  function repo(integrity: Record<string, string>) {
+    const root = tempDir();
+    const packages: Record<string, unknown> = {};
+    for (const target of RTC_NATIVE_TARGETS) {
+      packages[`node_modules/@livekit/rtc-ffi-bindings-${target}`] = {
+        version: '0.12.73',
+        resolved: `https://registry.npmjs.org/@livekit/rtc-ffi-bindings-${target}/-/rtc-ffi-bindings-${target}-0.12.73.tgz`,
+        integrity: integrity[target],
+      };
+    }
+    writeFileSync(join(root, 'package-lock.json'), JSON.stringify({ packages }));
+    return root;
+  }
+
+  it('fetches the missing platforms, checked against package-lock.json, and keeps only package.json and the .node', async () => {
+    const tarballs = Object.fromEntries(RTC_NATIVE_TARGETS.map((t) => [t, registry(t)]));
+    const root = repo(Object.fromEntries(RTC_NATIVE_TARGETS.map((t) => [t, tarballs[t]!.integrity])));
+    const asked: string[] = [];
+    const fake = (async (url: string) => {
+      asked.push(url);
+      const target = RTC_NATIVE_TARGETS.find((t) => url.includes(`rtc-ffi-bindings-${t}-`))!;
+      return new Response(tarballs[target]!.tgz);
+    }) as unknown as typeof fetch;
+    expect(await ensureRtcNative({ repoRoot: root, fetch: fake })).toEqual(RTC_NATIVE_TARGETS);
+    const dir = join(root, 'apps', 'server', 'dist', 'node_modules', '@livekit', 'rtc-ffi-bindings-linux-arm64-gnu');
+    expect(readFileSync(join(dir, 'rtc-node.linux-arm64-gnu.node'), 'utf8')).toBe('native linux-arm64-gnu');
+    expect(untar(gunzipSync(tarballs['linux-arm64-gnu']!.tgz)).has('package/README.md')).toBe(true);
+    // Already there in the pinned version: nothing more is fetched.
+    expect(await ensureRtcNative({ repoRoot: root, fetch: fake })).toEqual([]);
+    expect(asked).toHaveLength(2);
+  });
+
+  it('refuses a download whose bytes are not the ones package-lock.json pins', async () => {
+    const good = registry('linux-x64-gnu');
+    const evil = registry('linux-x64-gnu', '0.12.74');
+    const root = repo({ 'linux-x64-gnu': good.integrity, 'linux-arm64-gnu': registry('linux-arm64-gnu').integrity });
+    const fake = (async () => new Response(evil.tgz)) as unknown as typeof fetch;
+    await expect(ensureRtcNative({ repoRoot: root, fetch: fake })).rejects.toThrow(/integrity/);
   });
 });

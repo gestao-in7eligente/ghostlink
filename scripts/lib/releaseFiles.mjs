@@ -8,6 +8,7 @@ import { builtinModules } from 'node:module';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { SIGNATURE_SUFFIX, publicKeyFromRaw, verifyBytes } from './releaseKey.mjs';
+import { rtcNativeFiles } from './rtcNative.mjs';
 
 export const CHECKSUMS_FILE = 'checksums-sha256.txt';
 /** Stable versions only (no leading zeros); pre-release tags are not published by release.yml. */
@@ -183,6 +184,8 @@ export function tarGz(entries, mtime) {
 }
 
 const OPTIONAL_BUNDLE_EXTERNALS = new Set(['bufferutil', 'utf-8-validate']); // ws probes them inside try/catch
+// rtc-node's napi loader probes every platform's package inside try/catch; the package ships the Linux ones (rtcNative.mjs).
+const NATIVE_BUNDLE_EXTERNAL = /^@livekit\/rtc-ffi-bindings-[a-z0-9-]+(?:\/package\.json)?$/;
 
 /**
  * Bare modules the bundled CLI loads that the package would have to ship. The VPS package has
@@ -202,7 +205,7 @@ export function unshippedImports(bundle) {
     for (const match of bundle.matchAll(pattern)) {
       const specifier = /** @type {string} */ (match[1]);
       if (specifier.startsWith('node:') || specifier.startsWith('.') || builtins.has(specifier)) continue;
-      if (!OPTIONAL_BUNDLE_EXTERNALS.has(specifier)) found.add(specifier);
+      if (!OPTIONAL_BUNDLE_EXTERNALS.has(specifier) && !NATIVE_BUNDLE_EXTERNAL.test(specifier)) found.add(specifier);
     }
   }
   return [...found].sort();
@@ -210,8 +213,9 @@ export function unshippedImports(bundle) {
 
 /**
  * Entries of ghostlink-server-<version>.tgz (spec §10, §15), extracted as-is into /opt/ghostlink:
- * dist/cli.js (single esbuild bundle), dist/migrations/, package.json, install.sh and LICENSE.
- * The bundle is self-contained, so package.json lists no dependencies.
+ * dist/cli.js (single esbuild bundle), dist/migrations/, the Linux x64 and arm64 native add-ons of
+ * @livekit/rtc-node in dist/node_modules/ (the Ghost DJ's voice; rtcNative.mjs), package.json,
+ * install.sh and LICENSE. Nothing else needs installing, so package.json lists no dependencies.
  * @param {{ repoRoot: string; installSh?: string }} opts `installSh` defaults to scripts/install.sh
  * @returns {{ version: string; entries: TarEntry[] }}
  */
@@ -239,6 +243,14 @@ export function serverPackageEntries({ repoRoot, installSh = join(repoRoot, 'scr
     engines: { node: rootPkg.engines?.node ?? '>=24.14' },
     dependencies: {},
   };
+  const native = rtcNativeFiles(repoRoot);
+  /** @type {TarEntry[]} */
+  const nativeEntries = [{ name: 'dist/node_modules', mode: 0o755 }, { name: 'dist/node_modules/@livekit', mode: 0o755 }];
+  for (const file of native) {
+    const dir = file.name.slice(0, file.name.lastIndexOf('/'));
+    if (!nativeEntries.some((e) => e.name === dir)) nativeEntries.push({ name: dir, mode: 0o755 });
+    nativeEntries.push({ name: file.name, mode: 0o644, data: readFileSync(file.path) });
+  }
   const migrationsDir = join(serverDir, 'dist', 'migrations');
   const migrations = readdirSync(migrationsDir).filter((name) => name.endsWith('.sql')).sort();
   if (migrations.length === 0) throw new Error('apps/server/dist/migrations has no .sql file');
@@ -248,6 +260,7 @@ export function serverPackageEntries({ repoRoot, installSh = join(repoRoot, 'scr
     { name: 'dist/cli.js', mode: 0o755, data: bundle },
     { name: 'dist/migrations', mode: 0o755 },
     ...migrations.map((name) => ({ name: `dist/migrations/${name}`, mode: 0o644, data: readFileSync(join(migrationsDir, name)) })),
+    ...nativeEntries,
     { name: 'package.json', mode: 0o644, data: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`) },
     { name: 'install.sh', mode: 0o755, data: readFileSync(installSh) },
     { name: 'LICENSE', mode: 0o644, data: readFileSync(join(repoRoot, 'LICENSE')) },

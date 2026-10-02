@@ -17,8 +17,10 @@ COPY apps/desktop/package.json apps/desktop/
 RUN npm ci --workspace @ghostlink/server --include-workspace-root --ignore-scripts --no-audit --no-fund
 COPY packages/shared packages/shared
 COPY apps/server apps/server
-# One self-contained file: dist/cli.js (+ dist/migrations/).
-RUN npm run build -w @ghostlink/server
+# One self-contained file: dist/cli.js (+ dist/migrations/, and in dist/node_modules/ the native
+# add-on of @livekit/rtc-node for this platform, which npm ci installed: the Ghost DJ's voice).
+RUN npm run build -w @ghostlink/server \
+ && test -n "$(find apps/server/dist/node_modules/@livekit -name 'rtc-node.linux-*.node')"
 
 FROM debian:bookworm-slim AS livekit
 # Pinned LiveKit, verified against the official checksums.txt (spec §8.1).
@@ -34,6 +36,11 @@ RUN curl -fsSL --retry 5 -o /tmp/livekit.tar.gz \
  && tar -xzf /tmp/livekit.tar.gz -C /opt/livekit livekit-server
 
 FROM node:24-bookworm-slim
+# ffmpeg decodes the Ghost DJ's music (spec 2026-10-02-ghost-dj-design.md §2); the DJ downloads
+# yt-dlp itself into /data/ghost-dj/, checked against its release's SHA2-256SUMS.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 COPY --from=build /src/apps/server/dist /opt/ghostlink/dist
 COPY --from=livekit /opt/livekit/livekit-server /opt/livekit/livekit-server
 COPY apps/server/docker/entrypoint.sh /opt/ghostlink/entrypoint.sh
