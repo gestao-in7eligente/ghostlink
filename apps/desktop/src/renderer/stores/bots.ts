@@ -11,7 +11,7 @@ export const initialBots: BotsState = { commands: {}, locals: {}, profiles: null
 function profilesOf(list: readonly BotProfile[] | undefined): BotsState['profiles'] {
   if (!list) return null;
   const out: Record<string, BotProfileView> = {};
-  for (const p of list) out[p.botId] = { description: p.description, createdBy: p.createdBy, createdAt: p.createdAt, lastSeenAt: p.lastSeenAt };
+  for (const p of list) out[p.botId] = { description: p.description, createdBy: p.createdBy, createdAt: p.createdAt, lastSeenAt: p.lastSeenAt, system: p.system };
   return out;
 }
 
@@ -90,12 +90,12 @@ export function botsSlice(s: BotsState, a: TextAction, root: TextState): BotsSta
       return { ...s, commands: { ...s.commands, [e.botId]: e.commands } };
     case 'bot.updated':
       return withProfile(s, e.botId, (p) =>
-        p?.description === e.description ? p : { ...(p ?? { createdBy: null, createdAt: null, lastSeenAt: null }), description: e.description },
+        p?.description === e.description ? p : { ...(p ?? { createdBy: null, createdAt: null, lastSeenAt: null, system: false }), description: e.description },
       );
     case 'member.joined':
       // A bot created (or back) since the welcome: what its member tells, until the next welcome.
       if (!e.member.bot) return s;
-      return withProfile(s, e.member.userId, (p) => p ?? { description: '', createdBy: null, createdAt: e.member.joinedAt, lastSeenAt: null });
+      return withProfile(s, e.member.userId, (p) => p ?? { description: '', createdBy: null, createdAt: e.member.joinedAt, lastSeenAt: null, system: false });
     case 'presence':
       // The server sets it when a bot's session opens or closes; this app learns it here.
       return withProfile(s, e.userId, (p) => (p ? { ...p, lastSeenAt: a.now } : null));

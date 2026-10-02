@@ -31,7 +31,7 @@ export interface IpcDeps {
   settings: Pick<SettingsStore, 'get' | 'set'>;
   controller: Pick<
     ClientController,
-    'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'request' | 'checkExit' | 'leaveSaved' | 'deleteSaved' | 'setCall' | 'setNotify'
+    'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'request' | 'checkExit' | 'leaveSaved' | 'deleteSaved' | 'setCall' | 'setNotify' | 'setChannel'
   >;
   /** Host mode (spec §9). */
   host?: HostIpcDeps;
@@ -124,6 +124,7 @@ const expectedServerId = z.string().min(1).max(64);
 const address = z.string().min(1).max(262);
 const serverKeyId = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 const serverId = z.string().min(1).max(64);
+const channelId = z.string().regex(/^[A-Z2-7]{26}$/);
 
 export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>> } = {
   [IPC.appInfo]: z.tuple([]),
@@ -180,6 +181,15 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.serversDelete]: z.tuple([serverId]),
   [IPC.serversSetCall]: z.tuple([serverId.nullable()]),
   [IPC.serversSetNotify]: z.tuple([serverId, z.enum(NOTIFY_MODES)]),
+  [IPC.serversSetChannel]: z.tuple([
+    serverId,
+    channelId,
+    z.strictObject({
+      notify: z.enum(NOTIFY_MODES).nullable().optional(),
+      mutedUntil: z.union([z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), z.null(), z.literal(false)]).optional(),
+      pinned: z.boolean().optional(),
+    }),
+  ]),
   ...HOST_IPC_ARG_SCHEMAS,
   ...BACKUP_IPC_ARG_SCHEMAS,
   ...RAILWAY_IPC_ARG_SCHEMAS,
@@ -229,6 +239,7 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     [IPC.serversDelete]: (id) => controller.deleteSaved(id),
     [IPC.serversSetCall]: (id) => controller.setCall(id),
     [IPC.serversSetNotify]: (id, mode) => controller.setNotify(id, mode),
+    [IPC.serversSetChannel]: (id, channel, patch) => controller.setChannel(id, channel, patch),
     ...createHostIpcHandlers(deps.host),
     ...createBackupIpcHandlers(deps.backup),
     ...createRailwayIpcHandlers(deps.railway),

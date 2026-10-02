@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { formatInviteLink, formatPasteCode, toBase64Url } from '@ghostlink/shared';
 import { DeepLinks, extractDeepLink, parseDeepLink, registerProtocolClient } from '../../src/main/deeplink.js';
+import { formatChannelLink } from '../../src/shared/channelLink.js';
 
 const KEY = toBase64Url(new Uint8Array(32).fill(7));
 const LINK = formatInviteLink({ addresses: ['203.0.113.7:7700', '192.168.0.10:7700'], serverKeyId: KEY, inviteCode: 'ABCDEFGH23', name: 'Casa do Zé' });
@@ -38,6 +39,36 @@ describe('parseDeepLink (zod limits: 8 addresses, 2 KB, ports 1..65535)', () => 
     ['a non-string', 42],
   ])('refuses %s', (_label, value) => {
     expect(parseDeepLink(value)).toBeNull();
+  });
+});
+
+describe('channel links (channel menu "Copiar link", v0.5.0)', () => {
+  const CHANNEL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+  it('reads ghostlink://channel/<serverKeyId>/<channelId>, in any case of the scheme and with a trailing slash', () => {
+    const target = { kind: 'channel', serverKeyId: KEY, channelId: CHANNEL };
+    expect(parseDeepLink(formatChannelLink(KEY, CHANNEL))).toEqual(target);
+    expect(parseDeepLink(`GHOSTLINK://Channel/${KEY}/${CHANNEL}/`)).toEqual(target);
+    expect(extractDeepLink(['C:\\GhostLink.exe', formatChannelLink(KEY, CHANNEL)])).toBe(formatChannelLink(KEY, CHANNEL));
+  });
+
+  it.each([
+    ['a short key', `ghostlink://channel/short/${CHANNEL}`],
+    ['a lowercase channel id', `ghostlink://channel/${KEY}/${CHANNEL.toLowerCase()}`],
+    ['a missing channel', `ghostlink://channel/${KEY}`],
+    ['an extra segment', `ghostlink://channel/${KEY}/${CHANNEL}/x`],
+    ['a query', `ghostlink://channel/${KEY}/${CHANNEL}?h=1.2.3.4`],
+  ])('refuses %s', (_label, value) => {
+    expect(parseDeepLink(value)).toBeNull();
+  });
+
+  it('delivers a channel link like an invite', () => {
+    const sent: unknown[] = [];
+    const links = new DeepLinks({ send: (p) => sent.push(p), log: () => {} });
+    links.handle(formatChannelLink(KEY, CHANNEL));
+    expect(links.take()).toEqual({ kind: 'channel', serverKeyId: KEY, channelId: CHANNEL });
+    links.handle(formatChannelLink(KEY, CHANNEL));
+    expect(sent).toEqual([{ kind: 'channel', serverKeyId: KEY, channelId: CHANNEL }]);
   });
 });
 

@@ -38,6 +38,8 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
   useTextSync(welcome);
   useServerDeleteSync(welcome);
   const [dialog, setDialog] = useState<Dialog>(null);
+  /** The channel the invite or the settings are about (the channel menu), or null: the whole server. */
+  const [dialogChannel, setDialogChannel] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
   const stageId = useTextStore((s) => s.channels.stageId);
   const botPageId = useTextStore((s) => s.channels.botPageId);
@@ -67,7 +69,12 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
   return (
     <div ref={shellRef} className={l.shell}>
       <ServerRail currentId={welcome.serverId} onHome={() => void disconnect()} onCurrentExit={setDialog} />
-      <ChannelSidebar onOpen={setDialog} />
+      <ChannelSidebar
+        onOpen={(next, channelId) => {
+          setDialogChannel(channelId ?? null);
+          setDialog(next);
+        }}
+      />
       <main className={l.center}>
         {/* Leave/delete spec §3: the owner's red band while the server waits for its erase. */}
         <DeletionBanner serverId={welcome.serverId} />
@@ -91,8 +98,8 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
       {/* Spec 2026-10-02-cartao-de-perfil: a member's card, from a message's author or the member list. */}
       <ProfileCardHost />
 
-      {dialog === 'invite' && <InviteDialog onClose={() => setDialog(null)} />}
-      {dialog === 'settings' && <ServerSettings onClose={() => setDialog(null)} />}
+      {dialog === 'invite' && <InviteDialog channelId={dialogChannel ?? undefined} onClose={() => setDialog(null)} />}
+      {dialog === 'settings' && <ServerSettings channelId={dialogChannel ?? undefined} onClose={() => setDialog(null)} />}
       {dialog === 'leave' && <LeaveDialog serverId={welcome.serverId} onClose={() => setDialog(null)} onLeaving={setLeaving} onLeft={onLeave} />}
       {dialog === 'delete' && <DeleteOpenServer serverId={welcome.serverId} onClose={() => setDialog(null)} />}
       {(dialog === 'user' || dialog === 'voice') && <UserSettings section={dialog === 'voice' ? 'voice' : undefined} onClose={() => setDialog(null)} />}

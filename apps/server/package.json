@@ -1,6 +1,6 @@
 {
   "name": "@ghostlink/server",
-  "version": "0.4.6",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "license": "GPL-3.0-or-later",
@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@ghostlink/shared": "*",
+    "@livekit/rtc-node": "1.1.0",
     "@peculiar/x509": "2.1.0",
     "livekit-server-sdk": "2.19.1",
     "reflect-metadata": "0.2.2",
@@ -24,7 +25,6 @@
     "zod": "4.6.5"
   },
   "devDependencies": {
-    "@livekit/rtc-node": "1.1.0",
     "@types/ws": "8.18.1",
     "esbuild": "0.28.2",
     "tsx": "4.23.15"

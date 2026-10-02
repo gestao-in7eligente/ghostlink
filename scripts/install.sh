@@ -273,6 +273,8 @@ install_packages() {
   say "Installing the system packages…"
   run apt-get update -q
   run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q ca-certificates curl gnupg openssl tar iproute2
+  # ffmpeg: the Ghost DJ (music bot) decodes with it; without it the DJ stays off.
+  run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends ffmpeg
 }
 
 install_node() {

@@ -112,6 +112,47 @@ describe('SavedServersStore', () => {
     expect(JSON.parse(readFileSync(join(dir.path, SERVERS_FILE), 'utf8')).servers[0]).not.toHaveProperty('notify');
   });
 
+  it("keeps each text channel's mode, mute and pin, dropping what is the default and mutes already over (v0.5.0)", () => {
+    const C1 = 'AAAAAAAAAAAAAAAAAAAAAAAAAA';
+    const C2 = 'BBBBBBBBBBBBBBBBBBBBBBBBBB';
+    let now = 1_000;
+    const s = SavedServersStore.load(dir.path, { now: () => now, newId: () => 'id-1' });
+    const a = s.upsert({ serverKeyId: KEY_A, name: 'A', addresses: ['10.0.0.1'], nickname: 'x' });
+    expect(s.setChannel(a.id, C1, { notify: 'all', mutedUntil: 5_000 })).toBe(true);
+    expect(s.setChannel(a.id, C1, { notify: 'all' })).toBe(false);
+    expect(s.setChannel(a.id, C2, { mutedUntil: null, pinned: true })).toBe(true);
+    expect(s.setChannel(a.id, C1, { pinned: true })).toBe(true);
+    expect(s.setChannel(a.id, C2, { pinned: true })).toBe(false); // already pinned: it keeps its place
+    expect(s.setChannel('nope', C1, { pinned: true })).toBe(false);
+    expect(s.get(a.id)).toMatchObject({ channels: { [C1]: { notify: 'all', mutedUntil: 5_000 }, [C2]: { mutedUntil: null } }, pinned: [C2, C1] });
+    // A later join keeps them, and so does the file.
+    s.upsert({ serverKeyId: KEY_A, name: 'A', addresses: ['10.0.0.2'], nickname: 'x' });
+    expect(SavedServersStore.load(dir.path).get(a.id)).toMatchObject({ channels: { [C2]: { mutedUntil: null } }, pinned: [C2, C1] });
+    // Once its time passed, a timed mute is dropped with the next write; back to defaults, nothing is left.
+    now = 6_000;
+    expect(s.setChannel(a.id, C1, { notify: null, pinned: false })).toBe(true);
+    expect(s.get(a.id)).toMatchObject({ channels: { [C2]: { mutedUntil: null } }, pinned: [C2] });
+    expect(s.setChannel(a.id, C2, { mutedUntil: false, pinned: false })).toBe(true);
+    const written = JSON.parse(readFileSync(join(dir.path, SERVERS_FILE), 'utf8')).servers[0];
+    expect(written).not.toHaveProperty('channels');
+    expect(written).not.toHaveProperty('pinned');
+    expectBadRequest(() => s.setChannel(a.id, '__proto__', { pinned: true }));
+  });
+
+  it('reads damaged channel choices as none, keeping the server', () => {
+    writeFileSync(
+      join(dir.path, SERVERS_FILE),
+      JSON.stringify({
+        version: 1,
+        servers: [{ id: 'x', name: 'A', addresses: ['10.0.0.1:7700'], serverKeyId: KEY_A, nickname: 'x', addedAt: 1, channels: { nope: { notify: 'all' } }, pinned: 'C1' }],
+      }),
+    );
+    const saved = store().get('x');
+    expect(saved).toMatchObject({ id: 'x', name: 'A' });
+    expect(saved?.channels).toBeUndefined();
+    expect(saved?.pinned).toBeUndefined();
+  });
+
   it("reads an unknown notification mode (a newer app's) as the default, keeping the server", () => {
     writeFileSync(
       join(dir.path, SERVERS_FILE),

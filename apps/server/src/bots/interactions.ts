@@ -2,6 +2,7 @@ import {
   ProtocolError,
   cleanMessageContent,
   type BotCommand,
+  type InteractionCreateEvent,
   type InteractionEphemeralEvent,
   type InteractionFailedEvent,
   type InteractionOption,
@@ -101,12 +102,24 @@ function cleaned(raw: string): string {
 export class Interactions {
   readonly #live = new Map<string, Live>();
   readonly #perBot = new Map<string, number>();
+  /** System bots (the Ghost DJ): their interactions are handed to these, inside the server. */
+  readonly #local = new Map<string, (event: InteractionCreateEvent) => void>();
 
   constructor(
     private readonly ctx: ModuleContext,
     private readonly text: BotTextApi,
     private readonly timing: InteractionTiming,
   ) {}
+
+  /**
+   * A system bot answers inside the server: its `interaction.create` goes to `handler` (right
+   * after `interaction.invoke` answered) instead of a session, and it answers through respond(),
+   * edit() and followup() like any bot, with the same deadlines.
+   */
+  setLocalHandler(botId: string, handler: ((event: InteractionCreateEvent) => void) | null): void {
+    if (handler) this.#local.set(botId, handler);
+    else this.#local.delete(botId);
+  }
 
   /** Starts one: the bot gets `interaction.create`. The caller checked everything else. */
   start(p: { botId: string; channelId: string; userId: string; command: string; options: InteractionOption[] }): string {
@@ -130,8 +143,21 @@ export class Interactions {
     };
     this.#live.set(id, live);
     this.#perBot.set(p.botId, (this.#perBot.get(p.botId) ?? 0) + 1);
-    const event = { t: 'interaction.create', d: { id, channelId: p.channelId, user, command: p.command, options: p.options, createdAt: now } };
-    if (this.ctx.sessions.broadcast(event, (s) => s.userId === p.botId) === 0) {
+    const d: InteractionCreateEvent = { id, channelId: p.channelId, user, command: p.command, options: p.options, createdAt: now };
+    const local = this.#local.get(p.botId);
+    if (local) {
+      // After the invoke's answer, as a bot's event would arrive.
+      setImmediate(() => {
+        if (!this.#live.has(id)) return;
+        try {
+          local(d);
+        } catch (e) {
+          this.ctx.logger.error('a system bot failed to handle a command', { command: p.command, error: String(e) });
+        }
+      });
+      return id;
+    }
+    if (this.ctx.sessions.broadcast({ t: 'interaction.create', d }, (s) => s.userId === p.botId) === 0) {
       this.#drop(live);
       throw new ProtocolError('BOT_OFFLINE');
     }

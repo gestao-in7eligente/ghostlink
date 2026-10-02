@@ -124,6 +124,8 @@ export interface BotProfileView {
   createdAt: number | null;
   /** When it last connected or left (the server's clock, then this app's at each presence change); null: never. */
   lastSeenAt: number | null;
+  /** The server's own bot (the Ghost DJ): no connection code, cannot be deleted. False before 0.5.0. */
+  system: boolean;
 }
 
 export interface BotsState {

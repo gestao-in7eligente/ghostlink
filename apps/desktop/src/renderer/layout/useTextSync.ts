@@ -1,9 +1,12 @@
 // Keeps the text stores in step with the server on screen: every welcome (join or
 // reconnect) resets them, its events are applied as they arrive (a call's server in the
 // background has its own, stores/callText.ts), new messages raise a desktop notification
-// as the server's mode says (its menu in the rail), and a notification click opens its channel.
+// as the channel's choices say (its menu: muted, or its own mode) or else the server's (its menu
+// in the rail), and a notification click opens its channel.
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { DEFAULT_NOTIFY_MODE, type NotifyMode, type RendererWelcome } from '../../shared/ipcTypes.js';
+import type { RendererWelcome, SavedServer } from '../../shared/ipcTypes.js';
+import { effectiveNotifyMode } from '../features/channelMenu/channelPrefs.js';
+import { takeChannelRequest } from '../features/channelMenu/channelRequest.js';
 import { parseTextEvent, snapshotFromWelcome } from '../features/chat/events.js';
 import { notificationFor } from '../features/chat/notify.js';
 import { useT } from '../i18n/index.js';
@@ -18,15 +21,15 @@ export function useTextSync(welcome: RendererWelcome): void {
   const t = useT();
   const tRef = useRef(t);
   tRef.current = t;
-  /** Each saved server's notification mode (kept in its saved entry), read again whenever the list changes. */
-  const modes = useRef(new Map<string, NotifyMode>());
+  /** Each saved server's entry (its notification mode and its channels' choices), read again whenever the list changes. */
+  const saved = useRef(new Map<string, SavedServer>());
   const listRevision = useSavedListStore((s) => s.revision);
 
   useEffect(() => {
     let alive = true;
     window.ghostlink.servers.list().then(
       (list) => {
-        if (alive) modes.current = new Map(list.map((s) => [s.id, s.notify ?? DEFAULT_NOTIFY_MODE]));
+        if (alive) saved.current = new Map(list.map((s) => [s.id, s]));
       },
       () => undefined,
     );
@@ -43,6 +46,9 @@ export function useTextSync(welcome: RendererWelcome): void {
     const kept = takeCallText(welcome.serverId);
     if (kept) useTextStore.setState(kept);
     else dispatchText({ type: 'reset', snapshot: snapshotFromWelcome(welcome) });
+    // An invite to a channel, or a channel link (channel menu §2): that channel opens, when I can see it.
+    const channelId = takeChannelRequest(welcome.server.serverKeyId);
+    if (channelId !== null) dispatchText({ type: 'select', channelId });
   }, [welcome]);
 
   useLayoutEffect(
@@ -53,7 +59,8 @@ export function useTextSync(welcome: RendererWelcome): void {
         if (!event) return;
         dispatchText({ type: 'event', event, now: Date.now() });
         if (event.t === 'msg.new') {
-          const note = notificationFor(textState(), event.message, tRef.current, modes.current.get(serverId) ?? DEFAULT_NOTIFY_MODE);
+          const mode = effectiveNotifyMode(saved.current.get(serverId), event.message.channelId, Date.now());
+          const note = notificationFor(textState(), event.message, tRef.current, mode);
           if (note) window.ghostlink.notifications.show(note).catch(() => undefined);
         }
       }),

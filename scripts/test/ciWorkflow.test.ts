@@ -28,6 +28,8 @@ interface Workflow {
 const source = readFileSync(fileURLToPath(new URL('../../.github/workflows/ci.yml', import.meta.url)), 'utf8');
 const workflow = parse(source) as Workflow;
 const jobs = Object.entries(workflow.jobs);
+/** The jobs that run the repository's code on Node; `image` only builds the server image with Docker. */
+const nodeJobs = jobs.filter(([name]) => name !== 'image');
 const steps = jobs.flatMap(([, job]) => job.steps);
 const runIndex = (job: Job, command: string) => job.steps.findIndex((s) => s.run?.split('\n').some((l) => l.trim() === command));
 
@@ -67,18 +69,26 @@ describe('ci.yml jobs', () => {
   });
 
   it('bounds every job in time and lets every OS finish', () => {
-    for (const [name, job] of jobs) {
-      expect(job['timeout-minutes'], name).toBeGreaterThan(0);
-      expect(job.strategy['fail-fast'], name).toBe(false);
-    }
+    for (const [name, job] of jobs) expect(job['timeout-minutes'], name).toBeGreaterThan(0);
+    for (const [name, job] of nodeJobs) expect(job.strategy['fail-fast'], name).toBe(false);
   });
 
-  it('installs Node 24 with the npm cache in every job', () => {
-    for (const [name, job] of jobs) {
+  it('installs Node 24 with the npm cache in every Node job', () => {
+    for (const [name, job] of nodeJobs) {
       const setup = job.steps.find((s) => s.uses?.startsWith('actions/setup-node@'));
       expect(setup?.with, name).toEqual({ 'node-version': '24.x', cache: 'npm' });
       expect(job.steps.find((s) => s.name === 'Install dependencies')?.run, name).toMatch(/for attempt in 1 2 3; do\s+npm ci && exit 0/);
     }
+  });
+
+  it('builds the server image on every pull request as the release does, without pushing it', () => {
+    const image = workflow.jobs.image!;
+    expect(image['runs-on']).toBe('ubuntu-latest');
+    const run = image.steps.map((st) => st.run ?? '').join('\n');
+    expect(run).toMatch(/docker build -f apps\/server\/docker\/Dockerfile/);
+    expect(run).toMatch(/cli\.js version/);
+    expect(run).toMatch(/cli\.js ghost-dj/);
+    expect(run).not.toMatch(/docker (push|login)/);
   });
 
   it('tests on Windows, Linux and macOS: lint, typecheck, then tests', () => {

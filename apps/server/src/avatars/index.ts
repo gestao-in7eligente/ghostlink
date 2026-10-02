@@ -1,3 +1,5 @@
+import { createHash, randomBytes } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   AVATAR_LIMITS,
@@ -10,6 +12,7 @@ import {
   serverIconClearSchema,
   type AvatarUploadResult,
   type IconUploadResult,
+  type ImageMime,
 } from '@ghostlink/shared';
 import type { ModuleContext, ServerModule } from '../modules.js';
 import { SlidingWindowLimiter } from '../ratelimit/limiter.js';
@@ -31,6 +34,11 @@ export interface AvatarsModule extends ServerModule {
    * those modules after it.
    */
   readonly uploads: UploadHub;
+  /**
+   * Makes an image the server ships (the Ghost DJ's default photo) the photo of a member, as an
+   * upload would, and announces it with `member.updated`. Synchronous; usable after init.
+   */
+  setServerPhoto(userId: string, bytes: Uint8Array, mime: ImageMime): void;
 }
 
 export interface AvatarsModuleOptions {
@@ -134,6 +142,21 @@ export function createAvatarsModule(opts: AvatarsModuleOptions = {}): AvatarsMod
 
     get uploads(): UploadHub {
       return need().hub;
+    },
+
+    setServerPhoto(userId, bytes, mime) {
+      const s = need();
+      const hash = createHash('sha256').update(bytes).digest('hex');
+      if (!s.store.find(hash)) {
+        // A staged name: a crash between the write and the commit leaves nothing behind (AvatarStore.open).
+        const staged = join(s.store.dir, `upload-${randomBytes(8).toString('hex')}.tmp`);
+        writeFileSync(staged, bytes, { mode: 0o600 });
+        s.store.commit(staged, hash, mime);
+      }
+      if (s.ctx.db.run('UPDATE users SET avatar_file_id = ? WHERE id = ? AND removed_at IS NULL', hash, userId).changes > 0) {
+        cleanUp(s);
+        s.text.announceMember(userId);
+      }
     },
 
     handlers: {

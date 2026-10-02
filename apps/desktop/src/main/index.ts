@@ -81,8 +81,8 @@ if (!app.requestSingleInstanceLock()) {
   let mainWindow: BrowserWindow | null = null;
   // spec §12: ghostlink:// links from argv (Windows) and open-url (macOS); the page confirms them.
   const links = new DeepLinks({
-    send: (invite) => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC_EVENTS.deepLink, invite);
+    send: (link) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC_EVENTS.deepLink, link);
     },
     log: (message) => mainLog.warn(message),
   });

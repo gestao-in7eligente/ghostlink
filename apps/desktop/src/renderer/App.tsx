@@ -3,6 +3,8 @@ import type { AppErrorCode } from '../shared/appErrors.js';
 import type { IdentityStatus, RendererWelcome } from '../shared/ipcTypes.js';
 import { ErrorLine, Screen } from './components/Screen.js';
 import ui from './components/ui.module.css';
+import { ChannelLinkNotice } from './features/channelMenu/ChannelLinkNotice.js';
+import { forgetDeletedChannel } from './features/channelMenu/useSavedServer.js';
 import { HostIndicator } from './features/host/HostIndicator.js';
 import { HostScreens } from './features/host/HostScreens.js';
 import { useHostStatusSync } from './features/host/useHostStatusSync.js';
@@ -58,6 +60,8 @@ export function App() {
       dispatch({ type: 'serverEvent', event, serverId });
       // The server icon (spec 2026-10-01-icone-do-servidor): main stored it in the saved list before this event.
       if (event.t === 'server.updated' || event.t === 'welcome') useSavedListStore.getState().changed();
+      // A deleted channel's own choices here (pin, notifications, mute) go with it (channel menu).
+      if (event.t === 'channel.deleted') forgetDeletedChannel(serverId, event.d);
     });
     let alive = true;
     Promise.all([api.identity.status(), api.settings.get()]).then(
@@ -171,6 +175,7 @@ export function App() {
       <HostScreens onJoined={joined} />
       <CreateServerScreens onJoined={joined} />
       {identityDialogs}
+      <ChannelLinkNotice />
     </>
   );
   if (deepLink) {

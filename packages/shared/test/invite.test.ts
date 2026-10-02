@@ -109,6 +109,20 @@ describe('invite formats', () => {
     expect(parseJoinInput(formatPasteCode(minimal))).toEqual({ kind: 'invite', invite: minimal });
   });
 
+  it('carries the channel of "Convite para o canal" through every format, and drops a malformed one (v0.5.0)', () => {
+    const CHANNEL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const withChannel: InvitePayload = { ...payload, channelId: CHANNEL };
+    for (const text of [formatInviteLink(withChannel), formatPasteCode(withChannel), formatWebLink(withChannel, SITE)]) {
+      expect(parseJoinInput(text)).toEqual({ kind: 'invite', invite: { ...normalized, channelId: CHANNEL } });
+    }
+    expect(formatInviteLink(withChannel)).toContain(`&c=${CHANNEL}`);
+    // Only a hint: a bad or repeated channel leaves a valid invite without it.
+    expect(parseJoinInput(`${formatInviteLink(payload)}&c=nope`)).toEqual({ kind: 'invite', invite: normalized });
+    expect(parseJoinInput(`${formatInviteLink(withChannel)}&c=${CHANNEL}`)).toEqual({ kind: 'invite', invite: normalized });
+    const paste = (obj: unknown) => `GL1-${toBase64Url(utf8(JSON.stringify(obj)))}`;
+    expect(parseJoinInput(paste({ h: payload.addresses, k: KEY_ID, c: 42 }))).toEqual({ kind: 'invite', invite: { addresses: normalized.addresses, serverKeyId: KEY_ID } });
+  });
+
   it('accepts a trailing slash after the link host (Windows shells add it)', () => {
     const link = formatInviteLink(payload).replace('ghostlink://join?', 'ghostlink://join/?');
     expect(parseJoinInput(link)).toEqual({ kind: 'invite', invite: normalized });

@@ -1,10 +1,14 @@
-import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { ProtocolError, formatFingerprint, formatHostPort, parseHostPort } from '@ghostlink/shared';
 import { ensureSetupCode, resetSetupCode } from './auth/setupCode.js';
 import { dataPaths } from './config/paths.js';
 import { Db, DatabaseTooNewError } from './db/database.js';
 import { getMeta } from './db/serverMeta.js';
+import { findFfmpeg } from './ghostDj/ffmpeg.js';
+import { GHOST_DJ_DIR, GHOST_DJ_MODULE_NAME, type GhostDjModule } from './ghostDj/index.js';
+import { COOKIES_FILE, installedYtdlpVersion } from './ghostDj/ytdlp.js';
 import { consoleLogger, defaultModules, startServer } from './index.js';
 import { buildInviteInfo, createInvite } from './invites/invites.js';
 import { resolveNodeIp } from './net/addresses.js';
@@ -48,6 +52,8 @@ Commands:
   setup-code   Print the pending owner setup code
   reset-owner  Issue a new owner setup code (whoever uses it becomes the owner)
   status       Print version, fingerprint and membership summary
+  ghost-dj     Check what the Ghost DJ (music bot) needs: ffmpeg, its LiveKit
+               audio add-on and, with --data, yt-dlp and cookies.txt
   version      Print the server version
 
 Options:
@@ -161,6 +167,7 @@ async function cmdStart(values: Values, env: NodeJS.ProcessEnv, io: CliIo, opts:
   const net = createNetModule({ upnp: values.upnp === true, manageAddresses: publicAddresses === undefined, bindHost: host, nodeIp, mediaPorts: MEDIA_PORTS });
   const features = defaultModules();
   const voice = features.find((m): m is VoiceModule => m.name === 'voice');
+  const ghostDj = features.find((m): m is GhostDjModule => m.name === GHOST_DJ_MODULE_NAME);
   let server;
   try {
     server = await startServer({
@@ -206,6 +213,7 @@ async function cmdStart(values: Values, env: NodeJS.ProcessEnv, io: CliIo, opts:
       io.out(`UPnP: ${status.upnp.state}${mapped ? ` (${mapped})` : ''}`);
     }
     if (status.cgnat) io.out('Warning: the router is behind CGNAT or double NAT; people outside your network cannot reach it directly. Use a VPN or a VPS.');
+    if (ghostDj) io.out(`Ghost DJ: ${ghostDj.status()}`);
   };
   const stop = opts.untilStop ?? waitForSignal();
   // With --upnp, report once the router answered (or not); never delays a stop request.
@@ -301,6 +309,29 @@ function cmdStatus(values: Values, env: NodeJS.ProcessEnv, io: CliIo): number {
   }
 }
 
+/** What the Ghost DJ needs on this machine (spec 2026-10-02-ghost-dj-design.md §2). */
+async function cmdGhostDj(values: Values, env: NodeJS.ProcessEnv, io: CliIo): Promise<number> {
+  const ffmpeg = findFfmpeg();
+  io.out(`ffmpeg: ${ffmpeg ? 'found' : 'not found (install it: sudo apt install ffmpeg)'}`);
+  let audio = false;
+  try {
+    const { checkLivekitAudio } = await import('./ghostDj/livekitOutput.js');
+    await checkLivekitAudio();
+    audio = true;
+    io.out('LiveKit audio (@livekit/rtc-node): ok');
+  } catch (e) {
+    const why = (e instanceof Error ? e.message : String(e)).split(/\r?\n/)[0];
+    io.out(`LiveKit audio (@livekit/rtc-node): failed (${why})`);
+  }
+  const data = values.data ?? env.GHOSTLINK_DATA;
+  if (data) {
+    const dir = join(resolve(data), GHOST_DJ_DIR);
+    io.out(`yt-dlp: ${installedYtdlpVersion(dir) ?? 'not downloaded yet (the running server downloads it)'}`);
+    io.out(`${GHOST_DJ_DIR}/${COOKIES_FILE}: ${existsSync(join(dir, COOKIES_FILE)) ? 'present' : 'absent (only needed when YouTube blocks this server)'}`);
+  }
+  return ffmpeg !== null && audio ? EXIT_OK : EXIT_ERROR;
+}
+
 /** Entry point of the ghostlink-server command. Output is English (contract §4). */
 export async function runCli(argv: string[], io: CliIo = defaultIo, env: NodeJS.ProcessEnv = process.env, opts: CliOptions = {}): Promise<number> {
   try {
@@ -322,6 +353,8 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, env: NodeJS.
         return cmdSetupCode(values, env, io);
       case 'status':
         return cmdStatus(values, env, io);
+      case 'ghost-dj':
+        return await cmdGhostDj(values, env, io);
       case 'version':
         io.out(SERVER_VERSION);
         return EXIT_OK;

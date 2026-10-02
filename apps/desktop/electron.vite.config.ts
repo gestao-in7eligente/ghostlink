@@ -51,7 +51,9 @@ export default defineConfig({
       target: 'node24',
       // The workspace packages export TypeScript source, so they must be bundled; every
       // other dependency stays in node_modules (electron-vite 5 option, replaces externalizeDepsPlugin).
-      externalizeDeps: { exclude: ['@ghostlink/shared', '@ghostlink/server'] },
+      // @livekit/rtc-node (native) is the Ghost DJ's, which a server hosted by the app never runs
+      // (defaultModules({ ghostDj: false })): left out of the bundle and never loaded.
+      externalizeDeps: { exclude: ['@ghostlink/shared', '@ghostlink/server'], include: ['@livekit/rtc-node'] },
       rollupOptions: {
         input: {
           index: here('src/main/index.ts'),

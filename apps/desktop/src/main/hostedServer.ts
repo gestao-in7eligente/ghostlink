@@ -235,7 +235,8 @@ export async function runHostedServer(port: ParentPortLike, argv: string[], deps
       logger,
       // `net` first: voice waits (bounded) for its first UPnP answer and announces its node_ip
       // (the router's WAN IP, else the LAN), following later changes (spec §8.1).
-      modules: [netModule, ...defaultModules()],
+      // No Ghost DJ here: the app ships neither ffmpeg nor its LiveKit participant (Ghost DJ spec §2).
+      modules: [netModule, ...defaultModules({ ghostDj: false })],
       // An explicit --node-ip wins in voice as well; the packaged app pins the LiveKit binary.
       voice: voiceOptions(args),
     });

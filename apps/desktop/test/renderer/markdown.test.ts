@@ -102,6 +102,48 @@ describe('markdown: links', () => {
   });
 });
 
+describe('markdown: channel links (ghostlink://channel/…, v0.5.0)', () => {
+  const KEY = 'k'.repeat(43);
+  const HERE = 'H'.repeat(26);
+  const link = (channelId: string, key = KEY) => `ghostlink://channel/${key}/${channelId}`;
+  const openedChannels: string[] = [];
+  const withChannels: MarkdownContext = {
+    ...ctx,
+    classes: { ...ctx.classes, channel: 'ch', channelUnknown: 'chx' },
+    channels: {
+      chip: (key, channelId) => (key !== KEY ? { kind: 'unknown' } : channelId === HERE ? { kind: 'here', name: 'geral' } : { kind: 'elsewhere', server: 'Casa' }),
+      open: (key, channelId) => openedChannels.push(`${key}/${channelId}`),
+      labels: { channel: 'canal', unknown: 'canal desconhecido' },
+    },
+  };
+  const render = (src: string, c: MarkdownContext = withChannels) => renderToStaticMarkup(createElement('div', null, renderMarkdown(parseMarkdown(src), c)));
+
+  it('reads an exact channel link, without trailing punctuation; anything else stays text', () => {
+    expect(inline(`veja ${link(HERE)}.`)).toEqual([
+      { k: 'text', text: 'veja ' },
+      { k: 'channel', serverKeyId: KEY, channelId: HERE, raw: link(HERE) },
+      { k: 'text', text: '.' },
+    ]);
+    for (const src of [link(HERE.toLowerCase()), `${link(HERE)}/x`, `ghostlink://join?h=1.2.3.4:7700&k=${KEY}`, `ghostlink://channel/${KEY}`, `x${link(HERE)}`, 'steam://run/1', 'ghostlink://evil']) {
+      expect(inline(src).every((n) => n.k === 'text'), src).toBe(true);
+    }
+  });
+
+  it('a chip: "#name" here, "<server> › #canal" on another server, both opening it; a grey one otherwise', () => {
+    expect(render(link(HERE))).toBe(`<div><div class="p"><span role="link" tabindex="0" class="m ch" title="${link(HERE)}">#geral</span></div></div>`);
+    expect(render(link('E'.repeat(26)))).toContain('>Casa › #canal</span>');
+    expect(render(link(HERE, 'z'.repeat(43)))).toBe(`<div><div class="p"><span class="m chx" title="${link(HERE, 'z'.repeat(43))}">#canal desconhecido</span></div></div>`);
+    const [paragraph] = renderMarkdown(parseMarkdown(link(HERE)), withChannels) as unknown as [{ props: { children: [{ props: { onClick(e: unknown): void } }] } }];
+    paragraph.props.children[0].props.onClick({ preventDefault: () => undefined });
+    expect(openedChannels).toEqual([`${KEY}/${HERE}`]);
+  });
+
+  it('stays plain text where nothing resolves channels, and is never an anchor', () => {
+    expect(render(link(HERE), ctx)).toBe(`<div><div class="p">${link(HERE)}</div></div>`);
+    expect(render(link(HERE))).not.toContain('<a');
+  });
+});
+
 describe('markdown: mentions', () => {
   it('renders user and role tokens with names; unknown ones are labelled', () => {
     expect(html(`oi <@${USER}> e <@${'b'.repeat(32)}> e <@&${ROLE}> e <@&${'Z'.repeat(26)}>`)).toBe(

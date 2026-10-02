@@ -294,6 +294,24 @@
   color: var(--text-strong);
 }
 
+/* A channel link (ghostlink://channel/…): a chip that opens the channel, like Discord's. */
+.channelLink {
+  cursor: pointer;
+}
+
+.channelLink:hover,
+.channelLink:focus-visible {
+  outline: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* One that names no channel I can see: grey, and nothing to click. */
+.channelUnknown {
+  background: color-mix(in srgb, var(--text-faint) 18%, transparent);
+  color: var(--text-faint);
+}
+
 .edited {
   color: var(--text-faint);
   font-size: 11px;

@@ -1,14 +1,19 @@
 // ghostlink:// links (spec §12): registration, argv extraction (first launch and
 // second-instance), macOS open-url, validation, and delivery to the renderer. A link
 // never connects by itself: the renderer shows the invite (the name is only a hint
-// from the link) and the person accepts it.
+// from the link) and the person accepts it. A channel link (ghostlink://channel/…, the
+// channel menu's "Copiar link") only opens a server already saved.
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import { CRYPTO_LABELS, LIMITS, parseJoinInput, type ParsedJoinInput } from '@ghostlink/shared';
+import { parseChannelLink } from '../shared/channelLink.js';
+import type { ChannelLinkTarget } from '../shared/ipcTypes.js';
 
 export const DEEP_LINK_SCHEME = CRYPTO_LABELS.scheme;
 
 export type DeepLinkInvite = Extract<ParsedJoinInput, { kind: 'invite' }>;
+/** What a valid link brings to the page: an invite or a saved server's channel. */
+export type DeepLinkTarget = DeepLinkInvite | ChannelLinkTarget;
 
 const PREFIX = new RegExp(`^${DEEP_LINK_SCHEME}://`, 'i');
 /** 2 KB in total; the address count (≤ 8) and ports (1..65535) are checked by parseJoinInput. */
@@ -22,10 +27,12 @@ export function extractDeepLink(argv: readonly string[]): string | null {
   return null;
 }
 
-/** A validated invite from a ghostlink:// link, or null (GL1- codes and web links are not links). */
-export function parseDeepLink(value: unknown): DeepLinkInvite | null {
+/** A validated invite or channel from a ghostlink:// link, or null (GL1- codes and web links are not links). */
+export function parseDeepLink(value: unknown): DeepLinkTarget | null {
   const parsed = linkSchema.safeParse(value);
   if (!parsed.success) return null;
+  const channel = parseChannelLink(parsed.data);
+  if (channel !== null) return channel;
   try {
     const result = parseJoinInput(parsed.data);
     return result.kind === 'invite' ? result : null;
@@ -39,29 +46,29 @@ export function parseDeepLink(value: unknown): DeepLinkInvite | null {
  * before the renderer listens), then forwards new links as events.
  */
 export class DeepLinks {
-  readonly #send: (invite: DeepLinkInvite) => void;
+  readonly #send: (link: DeepLinkTarget) => void;
   readonly #log: (message: string) => void;
-  #pending: DeepLinkInvite | null = null;
+  #pending: DeepLinkTarget | null = null;
   #rendererReady = false;
 
-  constructor(opts: { send: (invite: DeepLinkInvite) => void; log: (message: string) => void }) {
+  constructor(opts: { send: (link: DeepLinkTarget) => void; log: (message: string) => void }) {
     this.#send = opts.send;
     this.#log = opts.log;
   }
 
   handle(url: string | null | undefined): void {
     if (url === null || url === undefined) return;
-    const invite = parseDeepLink(url);
-    if (invite === null) {
+    const link = parseDeepLink(url);
+    if (link === null) {
       this.#log('ignored an invalid ghostlink:// link'); // never log the link: it carries an invite code
       return;
     }
-    if (this.#rendererReady) this.#send(invite);
-    else this.#pending = invite;
+    if (this.#rendererReady) this.#send(link);
+    else this.#pending = link;
   }
 
   /** The page calls this once it listens: returns the link that arrived before, if any. */
-  take(): DeepLinkInvite | null {
+  take(): DeepLinkTarget | null {
     this.#rendererReady = true;
     const pending = this.#pending;
     this.#pending = null;

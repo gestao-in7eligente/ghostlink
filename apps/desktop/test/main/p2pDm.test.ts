@@ -579,7 +579,8 @@ describe('what a friend link refuses (friends spec §4.2, §11)', () => {
     expect(seqs).toHaveLength(WANT_MAX);
     expect(seqs[0]).toBe(3);
     expect(seqs.at(-1)).toBe(WANT_MAX + 2);
-  });
+    // Hundreds of signed entries: a Windows CI runner needed 35 s (v0.5.0 CI).
+  }, 120_000);
 
   it('ignores a sync.have about conversations it does not share', async () => {
     const { ana, bia, person } = await friendsAlready();

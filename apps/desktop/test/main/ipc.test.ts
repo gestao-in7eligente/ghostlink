@@ -20,7 +20,7 @@ let deps: {
   appInfo: ReturnType<typeof vi.fn>;
   identity: { status: string; create: ReturnType<typeof vi.fn>; retry: ReturnType<typeof vi.fn>; replaceKeepingBackup: ReturnType<typeof vi.fn> };
   settings: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
-  controller: Record<'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'checkExit' | 'leaveSaved' | 'deleteSaved' | 'setNotify', ReturnType<typeof vi.fn>>;
+  controller: Record<'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'checkExit' | 'leaveSaved' | 'deleteSaved' | 'setNotify' | 'setChannel', ReturnType<typeof vi.fn>>;
   updates: Record<'state' | 'setAutoCheck' | 'checkNow' | 'restart', ReturnType<typeof vi.fn>>;
   releaseNotes: Record<'get' | 'follow' | 'forgetFailures', ReturnType<typeof vi.fn>>;
 };
@@ -43,6 +43,7 @@ beforeEach(() => {
       leaveSaved: vi.fn(async () => {}),
       deleteSaved: vi.fn(async () => ({ at: 9_000 })),
       setNotify: vi.fn(),
+      setChannel: vi.fn(),
     },
     updates: {
       state: vi.fn(() => UPDATE_STATE),
@@ -98,6 +99,29 @@ describe('registerIpc', () => {
     expect(await invoke(IPC.serversSetNotify, TOP, 's1')).toEqual({ ok: false, code: 'BAD_REQUEST' });
     expect(deps.controller.setNotify).toHaveBeenCalledOnce();
     expect(await invoke(IPC.settingsSet, TOP, { desktopNotifications: false })).toEqual({ ok: true, value: { locale: 'en', nickname: 'Ana', desktopNotifications: false } });
+  });
+
+  it("a text channel's own choices go through a strict patch (channel menu, v0.5.0)", async () => {
+    const CHANNEL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (const patch of [{ notify: 'all' }, { notify: null }, { mutedUntil: 1_000 }, { mutedUntil: null }, { mutedUntil: false }, { pinned: true }, {}]) {
+      expect(await invoke(IPC.serversSetChannel, TOP, 's1', CHANNEL, patch)).toEqual({ ok: true, value: undefined });
+    }
+    expect(deps.controller.setChannel).toHaveBeenCalledWith('s1', CHANNEL, { mutedUntil: null });
+    deps.controller.setChannel.mockClear();
+    for (const args of [
+      ['s1', 'lowercase-channel-id-xxxxxx', { pinned: true }],
+      ['s1', CHANNEL, { notify: 'loud' }],
+      ['s1', CHANNEL, { mutedUntil: true }],
+      ['s1', CHANNEL, { mutedUntil: -1 }],
+      ['s1', CHANNEL, { mutedUntil: 1.5 }],
+      ['s1', CHANNEL, { pinned: 'yes' }],
+      ['s1', CHANNEL, { pinned: true, admin: true }],
+      ['s1', CHANNEL],
+      ['', CHANNEL, {}],
+    ]) {
+      expect(await invoke(IPC.serversSetChannel, TOP, ...args)).toEqual({ ok: false, code: 'BAD_REQUEST' });
+    }
+    expect(deps.controller.setChannel).not.toHaveBeenCalled();
   });
 });
 

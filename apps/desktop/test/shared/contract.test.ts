@@ -87,6 +87,7 @@ describe('IPC channel names (contract §5)', () => {
       'ghostlink:servers.list',
       'ghostlink:servers.remove',
       'ghostlink:servers.setCall',
+      'ghostlink:servers.setChannel',
       'ghostlink:servers.setNotify',
       'ghostlink:settings.get',
       'ghostlink:settings.set',

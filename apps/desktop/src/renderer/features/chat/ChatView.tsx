@@ -14,6 +14,9 @@ import { useSettingsStore } from '../../stores/settings.js';
 import { MAX_ATTACHMENTS, type TrayLimits } from '../attachments/attachmentModel.js';
 import a from '../attachments/attachments.module.css';
 import { DropOverlay, useFileDrop, useTray } from '../attachments/filePicking.js';
+import { channelChip } from '../channelMenu/channelChip.js';
+import { openChannelLink } from '../channelMenu/openChannelLink.js';
+import { useSavedServers } from '../channelMenu/useSavedServer.js';
 import { useProfileCardStore } from '../profileCard/profileCardStore.js';
 import type { UserMenuRequest } from '../userMenu/triggers.js';
 import { UserMenuFor } from '../userMenu/UserMenu.js';
@@ -119,16 +122,37 @@ function OpenChannel({ channel }: { channel: Channel }) {
   const selfId = server.selfId;
   const myRoleIds = useMemo(() => (Object.hasOwn(members.byId, selfId) ? members.byId[selfId]!.roleIds : []), [members, selfId]);
 
+  // Channel links in messages: this server's channels by name, my other servers by theirs.
+  const channelsById = useTextStore((s) => s.channels.byId);
+  const serverKeyId = useConnectionStore((s) => (s.welcome !== null && s.welcome.serverId === server.serverId ? s.welcome.server.serverKeyId : null));
+  const savedServers = useSavedServers();
+
   const md: MarkdownContext = useMemo(
     () => ({
-      classes: { paragraph: c.p, quote: c.quote, codeBlock: c.codeBlock, code: c.code, link: c.link, mention: c.mention, mentionMe: c.mentionMe },
+      classes: {
+        paragraph: c.p,
+        quote: c.quote,
+        codeBlock: c.codeBlock,
+        code: c.code,
+        link: c.link,
+        mention: c.mention,
+        mentionMe: c.mentionMe,
+        channel: c.channelLink,
+        channelUnknown: c.channelUnknown,
+      },
       userName: (id) => (Object.hasOwn(members.byId, id) ? members.byId[id]!.nickname : null),
       role: (id) => (Object.hasOwn(server.roles, id) ? { name: server.roles[id]!.name, color: roleColorHex(server.roles[id]!.color) } : null),
       pingsMe: (kind, id) => (kind === 'user' ? id === selfId : myRoleIds.includes(id)),
       labels: { everyone: t('chat.everyone'), formerMember: t('chat.formerMember'), deletedRole: t('chat.unknownRole').replace(/^@/, '') },
       openLink: (url) => void window.ghostlink.app.openExternal(url).catch(() => undefined),
+      channels: {
+        chip: (key, channelId) =>
+          channelChip(key, channelId, { onScreen: serverKeyId === null ? null : { serverKeyId, channels: channelsById }, saved: savedServers }),
+        open: (key, channelId) => void openChannelLink({ kind: 'channel', serverKeyId: key, channelId }),
+        labels: { channel: t('channelLink.channel'), unknown: t('channelLink.unknownChannel') },
+      },
     }),
-    [members, server.roles, selfId, myRoleIds, t],
+    [members, server.roles, selfId, myRoleIds, t, serverKeyId, channelsById, savedServers],
   );
 
   const env: MessageEnv = useMemo(

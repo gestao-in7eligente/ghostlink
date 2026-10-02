@@ -115,6 +115,9 @@ export const bots = {
   'bots.settings.createdOn': 'Criado em {date}',
   'bots.settings.lastSeen': 'Visto por último {ago}',
   'bots.settings.neverConnected': 'Nunca conectou',
+  // A system bot (the Ghost DJ, v0.5.0): the server's own, with no code and no delete.
+  'bots.settings.system': 'Bot do sistema',
+  'bots.settings.systemHint': 'Criado pelo próprio servidor: não tem código de conexão e não pode ser excluído.',
   'bots.settings.photoHint': 'O bot também pode enviar a própria foto quando se conectar.',
   'bots.activity.messages24h': 'Mensagens nas últimas 24 h',
   'bots.activity.noUses': 'Nenhum comando foi usado nos últimos 7 dias.',

@@ -7,19 +7,24 @@ import { rolesByPosition } from '../../stores/server.js';
 import { dispatchText, useTextStore } from '../../stores/text.js';
 import { createChannel, updateChannel } from '../chat/actions.js';
 
+/** What a new channel starts with ("Duplicar canal": the copy's name, the topic, privacy and roles). */
+export type ChannelPrefill = Pick<Channel, 'name' | 'topic' | 'private' | 'allowedRoleIds'>;
+
 /**
  * Creates a channel of `type`, or edits `channel`: name, topic, voice limit, and
  * privacy with the roles allowed to see it (spec §6: admins and the owner always do).
+ * `prefill` starts a new one filled in.
  */
-export function CreateChannelDialog({ type, channel, onClose }: { type?: ChannelType; channel?: Channel; onClose: () => void }) {
+export function CreateChannelDialog({ type, channel, prefill, onClose }: { type?: ChannelType; channel?: Channel; prefill?: ChannelPrefill; onClose: () => void }) {
   const t = useT();
   const kind = channel?.type ?? type ?? 'text';
   const roles = useTextStore((st) => st.server.roles);
   const roleList = useMemo(() => rolesByPosition(roles).filter((r) => !r.isDefault), [roles]);
-  const [name, setName] = useState(channel?.name ?? '');
-  const [topic, setTopic] = useState(channel?.topic ?? '');
-  const [isPrivate, setPrivate] = useState(channel?.private ?? false);
-  const [allowed, setAllowed] = useState<string[]>(channel?.allowedRoleIds ?? []);
+  const start = channel ?? prefill;
+  const [name, setName] = useState(start?.name ?? '');
+  const [topic, setTopic] = useState(start?.topic ?? '');
+  const [isPrivate, setPrivate] = useState(start?.private ?? false);
+  const [allowed, setAllowed] = useState<string[]>(start?.allowedRoleIds ?? []);
   const [userLimit, setUserLimit] = useState(channel?.userLimit ?? 0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

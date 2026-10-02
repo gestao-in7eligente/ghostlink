@@ -174,7 +174,8 @@ describe('bots contract', () => {
     });
 
     it("read the bot's settings, tolerating a field gone wrong, and a welcome with or without botProfiles", () => {
-      const bot = { userId: BOT, name: 'Hermes', avatar: null, createdBy: USER, createdAt: 5, description: 'Oi', lastSeenAt: null, online: true };
+      // `system` (v0.5.0, the Ghost DJ) defaults to false for servers that do not send it.
+      const bot = { userId: BOT, name: 'Hermes', avatar: null, createdBy: USER, createdAt: 5, description: 'Oi', lastSeenAt: null, online: true, system: false };
       const got = {
         bot,
         usage: [{ command: 'ping', count: 2 }],
@@ -188,7 +189,7 @@ describe('bots contract', () => {
       });
       expect(botUpdateResultSchemaClient.parse({ bot }).bot).toEqual(bot);
       expect(botUpdatedEventSchemaClient.parse({ botId: BOT, description: 'Novo' })).toEqual({ botId: BOT, description: 'Novo' });
-      const profile = { botId: BOT, description: 'Oi', createdBy: USER, createdAt: 5, lastSeenAt: 8 };
+      const profile = { botId: BOT, description: 'Oi', createdBy: USER, createdAt: 5, lastSeenAt: 8, system: false };
       expect(botsWelcomeSchemaClient.parse({ botCommands: [], botProfiles: [profile] })).toEqual({ botCommands: [], botProfiles: [profile] });
       expect(botsWelcomeSchemaClient.parse({ botCommands: [], botProfiles: 'old' }).botProfiles).toBeUndefined();
     });

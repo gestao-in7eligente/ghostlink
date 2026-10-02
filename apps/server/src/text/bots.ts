@@ -20,6 +20,8 @@ export interface BotTextApi {
   textChannel(userId: string, channelId: string): { channelId: string; bits: number };
   /** Bits of `userId` in the channel; 0 when they cannot see it or it does not exist. */
   channelBits(userId: string, channelId: string): number;
+  /** A channel's name (text or voice), or null when it does not exist. */
+  channelName(channelId: string): string | null;
   /** A text channel id `userId` can see (an interaction's `channel` option). */
   canSeeChannel(userId: string, channelId: string): boolean;
   /**
@@ -33,6 +35,11 @@ export interface BotTextApi {
   broadcastMembers(event: ServerEvent): void;
   /** A member just created by the server (a bot): `member.joined` to everyone. */
   memberCreated(userId: string): void;
+  /**
+   * A system bot (the Ghost DJ) has no session: it counts as online while the server runs.
+   * `presence` goes to everyone when it changes.
+   */
+  setOnline(userId: string, online: boolean): void;
   /**
    * Ends a membership: `update` runs in the same transaction as the removal of roles, read
    * states and mentions (messages stay), then the session closes with `closeWith` and everyone
@@ -80,6 +87,8 @@ export function createBotTextApi(need: () => TextCore): BotTextApi {
 
     channelBits: (userId, channelId) => bitsIn(need(), userId, channelId),
 
+    channelName: (channelId) => need().repo.channel(channelId)?.name ?? null,
+
     canSeeChannel: (userId, channelId) => {
       const core = need();
       const row = core.repo.channel(channelId);
@@ -114,6 +123,14 @@ export function createBotTextApi(need: () => TextCore): BotTextApi {
       if (!member) return;
       core.knownMembers.add(userId);
       core.broadcastAll({ t: 'member.joined', d: { member } }, userId);
+    },
+
+    setOnline: (userId, online) => {
+      const core = need();
+      if (online === core.online.has(userId)) return;
+      if (online) core.online.add(userId);
+      else core.online.delete(userId);
+      core.broadcastAll({ t: 'presence', d: { userId, online } }, userId);
     },
 
     removeMember: (userId, update, closeWith) => {

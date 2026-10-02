@@ -1,11 +1,11 @@
 // Sandboxed preload (spec §12): the whole renderer API, nothing else. It imports
 // only `electron` and type-only modules, so the bundle stays a single CJS file.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import type { ParsedJoinInput } from '@ghostlink/shared';
 import {
   IPC,
   IPC_EVENTS,
   type ConnectionStateEvent,
+  type DeepLink,
   type OpenChannelEvent,
   type GhostlinkApi,
   type IpcArgs,
@@ -75,6 +75,7 @@ export const api: GhostlinkApi = {
     delete: (id) => invoke(IPC.serversDelete, id),
     setCall: (serverId) => invoke(IPC.serversSetCall, serverId),
     setNotify: (id, mode) => invoke(IPC.serversSetNotify, id, mode),
+    setChannel: (id, channelId, patch) => invoke(IPC.serversSetChannel, id, channelId, patch),
   },
   host: {
     status: () => invoke(IPC.hostStatus),
@@ -93,7 +94,7 @@ export const api: GhostlinkApi = {
   onServerEvent: (cb) => subscribe<ServerEventMessage>(IPC_EVENTS.server, (m) => cb(m.event, m.serverId)),
   onHostStatus: (cb) => subscribe<HostStatus>(IPC_EVENTS.host, cb),
   deepLink: { take: () => invoke(IPC.deepLinkTake) },
-  onDeepLink: (cb) => subscribe<ParsedJoinInput>(IPC_EVENTS.deepLink, cb),
+  onDeepLink: (cb) => subscribe<DeepLink>(IPC_EVENTS.deepLink, cb),
   server: {
     request: <T>(type: string, payload?: unknown, serverId?: string) =>
       (serverId === undefined ? invoke(IPC.serverRequest, type, payload) : invoke(IPC.serverRequest, type, payload, serverId)) as Promise<T>,
