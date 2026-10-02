@@ -22,6 +22,11 @@ export interface BotTextApi {
   channelBits(userId: string, channelId: string): number;
   /** A text channel id `userId` can see (an interaction's `channel` option). */
   canSeeChannel(userId: string, channelId: string): boolean;
+  /**
+   * Every text channel `viewerId` can see, in their order, with the bits `userId` has there
+   * (0 when it is hidden from them): what a bot may do, as the bot's settings show it.
+   */
+  textChannelsFor(viewerId: string, userId: string): { channelId: string; bits: number }[];
   /** Sends a channel event to whoever can see the channel now (audience rule, spec §5.3). */
   broadcastChannel(channelId: string, event: ServerEvent): void;
   /** Sends a membership-level event to every member. */
@@ -79,6 +84,20 @@ export function createBotTextApi(need: () => TextCore): BotTextApi {
       const core = need();
       const row = core.repo.channel(channelId);
       return row !== undefined && row.type === 'text' && core.access.channelPerms(core.access.subject(userId), row) !== 0;
+    },
+
+    textChannelsFor: (viewerId, userId) => {
+      const core = need();
+      const viewer = core.access.subject(viewerId);
+      const subject = core.access.subject(userId);
+      const out: { channelId: string; bits: number }[] = [];
+      for (const row of core.repo.channels()) {
+        if (row.type !== 'text') continue;
+        const access = core.access.channelAccess(row);
+        if (core.access.channelPerms(viewer, row, access) === 0) continue;
+        out.push({ channelId: row.id, bits: core.access.channelPerms(subject, row, access) });
+      }
+      return out;
     },
 
     broadcastChannel: (channelId, event) => {

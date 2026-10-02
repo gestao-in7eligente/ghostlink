@@ -24,3 +24,6 @@ apps/desktop/resources/livekit/
 *.log
 .DS_Store
 Thumbs.db
+
+# Python (integrations/hermes-agent)
+__pycache__/

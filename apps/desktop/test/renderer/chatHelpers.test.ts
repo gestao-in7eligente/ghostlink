@@ -13,7 +13,7 @@ import {
 } from '../../src/renderer/features/chat/mentions.js';
 import { notificationFor } from '../../src/renderer/features/chat/notify.js';
 import { translate, type Translate } from '../../src/renderer/i18n/index.js';
-import { ADMIN_ROLE, BOB, CAROL, FANS_ROLE, GERAL, ME, MOD_ROLE, ROLES, ev, member, message, role, run, start } from './textFixtures.js';
+import { ADMIN_ROLE, BOB, CAROL, FANS_ROLE, GERAL, ME, MOD_ROLE, ROLES, VOICE, ev, member, message, role, run, start } from './textFixtures.js';
 
 const t: Translate = (key, vars) => translate('pt-BR', key, vars);
 const T0 = new Date(2026, 8, 19, 9, 36).getTime();
@@ -110,24 +110,45 @@ describe('mention autocomplete', () => {
   });
 });
 
-describe('notifications (spec §11.1 item 8)', () => {
+describe('notifications (spec 2026-10-02-notificacoes §1)', () => {
   const state = run(start(), ev({ t: 'member.updated', member: member(ME, 'Eu', { roleIds: [FANS_ROLE] }) }));
+  const mentionMe = { users: [ME], roles: [], everyone: false };
 
-  it('notifies mentions of me, my roles and @everyone, with plain text', () => {
-    const n = notificationFor(state, message(20, { content: `**oi** <@${ME}>`, mentions: { users: [ME], roles: [], everyone: false } }), t);
-    expect(n).toEqual({ title: 'Bob mencionou você em #geral', body: 'oi @Eu', channelId: GERAL });
-    expect(notificationFor(state, message(21, { mentions: { users: [], roles: [FANS_ROLE], everyone: false } }), t)).not.toBeNull();
-    expect(notificationFor(state, message(22, { mentions: { users: [], roles: [], everyone: true } }), t)).not.toBeNull();
+  it("'mentions' (the default) notifies mentions of me, my roles and @everyone: the card's server, channel, author and plain text", () => {
+    const n = notificationFor(state, message(20, { content: `**oi** <@${ME}>`, mentions: mentionMe }), t, 'mentions');
+    expect(n).toEqual({ server: 'Casa', channel: 'geral', author: 'Bob', body: 'oi @Eu', serverIcon: null, channelId: GERAL });
+    expect(notificationFor(state, message(21, { mentions: { users: [], roles: [FANS_ROLE], everyone: false } }), t, 'mentions')).not.toBeNull();
+    expect(notificationFor(state, message(22, { mentions: { users: [], roles: [], everyone: true } }), t, 'mentions')).not.toBeNull();
   });
 
-  it('notifies replies to me', () => {
-    const n = notificationFor(state, message(20, { replyTo: { id: 3, authorId: ME, content: 'x', deleted: false } }), t);
-    expect(n?.title).toBe('Bob respondeu você em #geral');
+  it("'mentions' notifies replies to me and stays quiet for ordinary messages", () => {
+    const n = notificationFor(state, message(20, { replyTo: { id: 3, authorId: ME, content: 'x', deleted: false } }), t, 'mentions');
+    expect(n).toMatchObject({ author: 'Bob', body: 'mensagem 20', channelId: GERAL });
+    expect(notificationFor(state, message(21), t, 'mentions')).toBeNull();
   });
 
-  it('stays quiet for my own messages, ordinary messages and unknown channels', () => {
-    expect(notificationFor(state, message(20, { authorId: ME, mentions: { users: [ME], roles: [], everyone: true } }), t)).toBeNull();
-    expect(notificationFor(state, message(21), t)).toBeNull();
-    expect(notificationFor(state, message(22, { channelId: 'Q'.repeat(26), mentions: { users: [ME], roles: [], everyone: false } }), t)).toBeNull();
+  it("'all' notifies any message from someone else; 'none' nothing at all", () => {
+    expect(notificationFor(state, message(21), t, 'all')).toEqual({ server: 'Casa', channel: 'geral', author: 'Bob', body: 'mensagem 21', serverIcon: null, channelId: GERAL });
+    expect(notificationFor(state, message(22, { mentions: mentionMe }), t, 'none')).toBeNull();
+    expect(notificationFor(state, message(23), t, 'none')).toBeNull();
+  });
+
+  it('stays quiet in every mode for my own messages, unknown channels and voice channels', () => {
+    for (const mode of ['all', 'mentions'] as const) {
+      expect(notificationFor(state, message(20, { authorId: ME, mentions: { users: [ME], roles: [], everyone: true } }), t, mode)).toBeNull();
+      expect(notificationFor(state, message(22, { channelId: 'Q'.repeat(26), mentions: mentionMe }), t, mode)).toBeNull();
+      expect(notificationFor(state, message(23, { channelId: VOICE, mentions: mentionMe }), t, mode)).toBeNull();
+    }
+  });
+
+  it('says "enviou um arquivo" for files alone, and carries the server icon only when it is a hash', () => {
+    const file = { id: 'F1', name: 'a.png', size: 1, kind: 'image' as const, mime: 'image/png' };
+    expect(notificationFor(state, message(20, { content: '', attachments: [file] }), t, 'all')?.body).toBe('enviou um arquivo');
+    expect(notificationFor(state, message(21, { content: '', attachments: [file, { ...file, id: 'F2' }] }), t, 'all')?.body).toBe('enviou 2 arquivos');
+    expect(notificationFor(state, message(22, { content: 'olha', attachments: [file] }), t, 'all')?.body).toBe('olha');
+    const hash = 'ab'.repeat(32);
+    const withIcon = { ...state, server: { ...state.server, icon: hash } };
+    expect(notificationFor(withIcon, message(23), t, 'all')?.serverIcon).toBe(hash);
+    expect(notificationFor({ ...state, server: { ...state.server, icon: '../x' } }, message(24), t, 'all')?.serverIcon).toBeNull();
   });
 });

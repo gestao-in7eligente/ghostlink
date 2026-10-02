@@ -1,7 +1,7 @@
 // The tray icon (v0.3.2, as Discord's): the ghost stays near the clock (Windows) / in the menu
 // bar (macOS) while the app runs. A click opens the window; the menu has "Abrir GhostLink", the
 // hosting entries while a server is hosted here (spec §9), and "Sair do GhostLink".
-import { Menu, Notification, Tray, nativeImage, type MenuItemConstructorOptions, type NativeImage } from 'electron';
+import { Menu, Tray, nativeImage, type MenuItemConstructorOptions, type NativeImage } from 'electron';
 import { APP_NAME } from '@ghostlink/shared';
 import type { HostStatus } from '../shared/hostTypes.js';
 import type { Locale } from '../shared/ipcTypes.js';
@@ -112,7 +112,11 @@ export interface AppTrayDeps {
   locale(): Locale;
   onOpen(): void;
   onQuit(): void;
-  platform?: NodeJS.Platform;
+  /**
+   * Shows the app's own notice (ChatNotifier.showNotice): GhostLink's card on Windows and Linux, the
+   * system's notification on macOS; a click opens the window.
+   */
+  notice(text: string): void;
 }
 
 /** The ghost near the clock, from show() until the app quits. */
@@ -155,12 +159,7 @@ export class AppTray {
 
   /** The first time ever the window hides: where the app went, and how to quit it. */
   notifyKeptRunning(): void {
-    const content = trayText(this.#deps.locale(), 'tray.notice');
-    if ((this.#deps.platform ?? process.platform) === 'win32' && this.#tray) {
-      this.#tray.displayBalloon({ title: APP_NAME, content, iconType: 'info' });
-    } else if (Notification.isSupported()) {
-      new Notification({ title: APP_NAME, body: content }).show();
-    }
+    this.#deps.notice(trayText(this.#deps.locale(), 'tray.notice'));
   }
 
   destroy(): void {

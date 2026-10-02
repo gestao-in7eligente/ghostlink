@@ -65,12 +65,14 @@ export default defineConfig({
       target: 'node24',
       rollupOptions: {
         // index: the main window. splash: the update splash (main/updateSplash.ts). drawOverlay: the
-        // pencil over the shared screen (main/drawOverlay.ts). They share no module, so each stays one
-        // file (a sandboxed preload cannot require a chunk).
+        // pencil over the shared screen (main/drawOverlay.ts). toast: the notification cards
+        // (main/toasts.ts). They share no module, so each stays one file (a sandboxed preload cannot
+        // require a chunk).
         input: {
           index: here('src/preload/index.ts'),
           splash: here('src/preload/splash.ts'),
           drawOverlay: here('src/preload/drawOverlay.ts'),
+          toast: here('src/preload/toast.ts'),
         },
         // A sandboxed preload cannot be an ES module; .cjs keeps Node from reading it as ESM.
         output: { format: 'cjs', entryFileNames: '[name].cjs' },
@@ -87,11 +89,13 @@ export default defineConfig({
       assetsInlineLimit: (file) => (/\.(?:js|mjs|wasm)$/.test(file) ? false : undefined),
       // splash.html: the update splash shown while the app checks for updates (app://ghostlink/splash.html).
       // drawOverlay.html: the pencil's strokes over the shared monitor (app://ghostlink/drawOverlay.html).
+      // toast.html: the notification cards in the corner of the screen (app://ghostlink/toast.html).
       rollupOptions: {
         input: {
           index: here('src/renderer/index.html'),
           splash: here('src/renderer/splash.html'),
           drawOverlay: here('src/renderer/drawOverlay.html'),
+          toast: here('src/renderer/toast.html'),
         },
       },
     },

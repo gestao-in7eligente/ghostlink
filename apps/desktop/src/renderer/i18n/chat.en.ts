@@ -67,8 +67,6 @@ export const chat: Record<keyof typeof ptBR, string> = {
   'chat.mentionKind.user': 'member',
   'chat.mentionKind.role': 'role',
   'chat.mentionKind.everyone': 'everyone in the channel',
-  'chat.notification.mention': '{name} mentioned you in #{channel}',
-  'chat.notification.reply': '{name} replied to you in #{channel}',
   'chat.link.title': 'Open external link',
   'chat.link.message': 'This link opens in your browser. Check the address before you continue.',
   'chat.link.open': 'Open link',

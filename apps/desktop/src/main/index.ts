@@ -1,6 +1,6 @@
 // Main-process bootstrap (contract §5). Everything testable lives in the modules it
 // wires together; this file is the thin glue that needs a real Electron.
-import { BrowserWindow, Menu, Notification, app, clipboard, desktopCapturer, dialog, net, safeStorage, screen, session, shell } from 'electron';
+import { BrowserWindow, Menu, Notification, app, clipboard, desktopCapturer, dialog, ipcMain, net, safeStorage, screen, session, shell } from 'electron';
 import { mkdtempSync } from 'node:fs';
 import { release } from 'node:os';
 import { basename, join, resolve } from 'node:path';
@@ -38,6 +38,7 @@ import { ScreenPicker } from './screenPicker.js';
 import { installSecurity, originOf } from './security.js';
 import { SettingsStore } from './settings.js';
 import { runSmoke } from './smoke.js';
+import { ToastStack } from './toasts.js';
 import { AppTray, ghostImage, shouldHideOnClose } from './tray.js';
 import { UpdateSplash } from './updateSplash.js';
 import { Updater, createUpdaterBackend, type StartupOutcome } from './updater.js';
@@ -181,22 +182,45 @@ async function start(): Promise<BrowserWindow | null> {
     },
     onDeletion: (update) => deletions?.observe(update),
   });
-  const { host, tray } = startHostMode(window, controller, servers, settings, send);
+  // GhostLink's own notification cards (v0.4.2, Windows and Linux): their window opens with the first one.
+  const toasts = new ToastStack({
+    url: `${APP_ORIGIN}/toast.html`,
+    preload: fileURLToPath(new URL('../preload/toast.cjs', import.meta.url)),
+    packaged: app.isPackaged,
+    platform: process.platform,
+    createWindow: (options) => new BrowserWindow(options),
+    workArea: () => screen.getPrimaryDisplay().workArea,
+    ipc: ipcMain,
+    locale: () => settings.get().locale,
+    log: (message) => mainLog.warn(message),
+  });
+  // A hidden cards window would keep the app from quitting once the main window is gone.
+  window.on('closed', () => toasts.dispose());
+  app.on('before-quit', () => toasts.dispose());
   const notifier = new ChatNotifier({
+    platform: process.platform,
+    enabled: () => settings.get().desktopNotifications !== false,
+    locale: () => settings.get().locale,
     isSupported: () => Notification.isSupported(),
     create: (options) => new Notification(options),
+    toasts,
     window: () => (window.isDestroyed() ? null : window),
     openChannel: (event) => send(IPC_EVENTS.openChannel, event),
     // A direct message's click takes the same path: a conversation id is 32 lowercase hex
     // characters, never a channel id (26 base32 characters), so the renderer can tell them apart.
     openConversation: (conv) => send(IPC_EVENTS.openChannel, { channelId: conv }),
+    openFriendRequests: () => send(IPC_EVENTS.openFriendRequests, null),
   });
+  const { host, tray } = startHostMode(window, controller, servers, settings, send, (text) => void notifier.showNotice(text));
   // Friends over P2P (v0.3): the engine follows the identity; the smoke run has its own self-test on loopback.
   const friends = new FriendsEngine({
     identity,
     settings,
     userDataDir: userData,
-    emit: (snapshot) => send(IPC_EVENTS.friends, snapshot),
+    emit: (snapshot) => {
+      send(IPC_EVENTS.friends, snapshot);
+      notifier.friendsChanged(snapshot); // a new request gets a card
+    },
     emitDm: (event) => send(IPC_EVENTS.dm, event),
     notifyDm: (notification) => void notifier.showDm(notification),
     // "Baixar" on a DM file: the same save dialog (and e2e hook) as server attachments.
@@ -262,7 +286,7 @@ async function start(): Promise<BrowserWindow | null> {
     getSources: (opts) => desktopCapturer.getSources(opts),
     now: () => Date.now(),
     appOrigin,
-    ownMediaSourceId: () => (window.isDestroyed() ? null : window.getMediaSourceId()),
+    ownMediaSourceIds: () => [window.isDestroyed() ? null : window.getMediaSourceId(), toasts.mediaSourceId()].filter((id) => id !== null),
   });
   // The pencil over the shared monitor (pencil spec §4): it opens over the screen main handed over,
   // or follows the shared window (Windows: koffi is imported with the first one).
@@ -421,9 +445,10 @@ function startHostMode(
   servers: SavedServersStore,
   settings: SettingsStore,
   send: (channel: string, payload: unknown) => void,
+  notice: (text: string) => void,
 ): { host: HostManager; tray: AppTray } {
   const showWindow = () => revealWindow(window);
-  const tray = new AppTray({ locale: () => settings.get().locale, onOpen: showWindow, onQuit: () => app.quit() });
+  const tray = new AppTray({ locale: () => settings.get().locale, onOpen: showWindow, onQuit: () => app.quit(), notice });
   tray.show();
   const host = new HostManager({
     userDataDir: app.getPath('userData'),

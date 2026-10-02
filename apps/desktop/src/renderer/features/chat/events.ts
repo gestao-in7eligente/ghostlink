@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import {
   botCommandsSchemaClient,
+  botUpdatedEventSchemaClient,
   botsWelcomeSchemaClient,
   channelSchemaClient,
   interactionEphemeralEventSchemaClient,
@@ -18,6 +19,7 @@ import {
   textWelcomeSchemaClient,
   type BotCommand,
   type BotCommands,
+  type BotProfile,
   type Channel,
   type Envelope,
   type InteractionEphemeralEvent,
@@ -54,6 +56,7 @@ export type TextEvent =
   | { t: 'server.updated'; server: ServerInfo }
   // Bots (bots spec §2, §3)
   | { t: 'commands.updated'; botId: string; commands: BotCommand[] }
+  | { t: 'bot.updated'; botId: string; description: string }
   | ({ t: 'interaction.thinking' } & InteractionThinkingEvent)
   | ({ t: 'interaction.ephemeral' } & InteractionEphemeralEvent)
   | ({ t: 'interaction.failed' } & InteractionFailedEvent);
@@ -133,6 +136,10 @@ const EVENT_PARSERS: { readonly [T in TextEventType]: (d: unknown) => Extract<Te
     const p = botCommandsSchemaClient.safeParse(d);
     return p.success ? { t: 'commands.updated', botId: p.data.botId, commands: p.data.commands } : null;
   },
+  'bot.updated': (d) => {
+    const p = botUpdatedEventSchemaClient.safeParse(d);
+    return p.success ? { t: 'bot.updated', botId: p.data.botId, description: p.data.description } : null;
+  },
   'interaction.thinking': (d) => {
     const p = interactionThinkingEventSchemaClient.safeParse(d);
     return p.success ? { t: 'interaction.thinking', ...p.data } : null;
@@ -161,15 +168,19 @@ export interface TextSnapshot {
   text: TextWelcome;
   /** Every bot's slash commands (servers before 0.4.0: none). */
   botCommands?: readonly BotCommands[];
+  /** Every bot's description, creator and last connection (servers before 0.4.2: absent). */
+  botProfiles?: readonly BotProfile[];
 }
 
 /** Builds the snapshot; module keys ride along on the welcome object (main/connection.ts keeps them). */
 export function snapshotFromWelcome(welcome: RendererWelcome): TextSnapshot {
+  const bots = botsWelcomeSchemaClient.parse(welcome);
   return {
     serverId: welcome.serverId,
     self: { ...welcome.self },
     server: { name: welcome.server.name, joinMode: welcome.server.joinMode, version: welcome.server.version },
     text: textWelcomeSchemaClient.parse(welcome),
-    botCommands: botsWelcomeSchemaClient.parse(welcome).botCommands,
+    botCommands: bots.botCommands,
+    ...(bots.botProfiles ? { botProfiles: bots.botProfiles } : {}),
   };
 }

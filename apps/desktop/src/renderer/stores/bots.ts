@@ -1,11 +1,27 @@
 // The `bots` store (bots spec §3): every bot's slash commands (the welcome's `botCommands`, then
-// `commands.updated`), and the lines about interactions that only this app shows: "{bot} está
-// pensando…", an ephemeral answer ("Só você pode ver isto") and "O bot não respondeu". The
-// server keeps none of these, so a new welcome drops them.
-import type { BotCommand, Message } from '@ghostlink/shared';
-import type { BotLocal, BotsState, TextAction, TextState } from './textState.js';
+// `commands.updated`), each bot's profile (bot page spec: the welcome's `botProfiles`, then
+// `bot.updated` and its presence), and the lines about interactions that only this app shows:
+// "{bot} está pensando…", an ephemeral answer ("Só você pode ver isto") and "O bot não
+// respondeu". The server keeps none of these lines, so a new welcome drops them.
+import type { BotCommand, BotProfile, Message } from '@ghostlink/shared';
+import type { BotLocal, BotProfileView, BotsState, TextAction, TextState } from './textState.js';
 
-export const initialBots: BotsState = { commands: {}, locals: {} };
+export const initialBots: BotsState = { commands: {}, locals: {}, profiles: null };
+
+function profilesOf(list: readonly BotProfile[] | undefined): BotsState['profiles'] {
+  if (!list) return null;
+  const out: Record<string, BotProfileView> = {};
+  for (const p of list) out[p.botId] = { description: p.description, createdBy: p.createdBy, createdAt: p.createdAt, lastSeenAt: p.lastSeenAt };
+  return out;
+}
+
+/** Changes one bot's profile (`patch` gets the current one, if any); nothing on a server without profiles. */
+function withProfile(s: BotsState, botId: string, patch: (current: BotProfileView | undefined) => BotProfileView | null): BotsState {
+  if (s.profiles === null) return s;
+  const current = Object.hasOwn(s.profiles, botId) ? s.profiles[botId] : undefined;
+  const next = patch(current);
+  return next === null || next === current ? s : { ...s, profiles: { ...s.profiles, [botId]: next } };
+}
 
 const EMPTY: readonly BotLocal[] = [];
 
@@ -53,7 +69,7 @@ export function botsSlice(s: BotsState, a: TextAction, root: TextState): BotsSta
     case 'reset': {
       const commands: Record<string, readonly BotCommand[]> = {};
       for (const entry of a.snapshot.botCommands ?? []) commands[entry.botId] = entry.commands;
-      return { commands, locals: {} };
+      return { commands, locals: {}, profiles: profilesOf(a.snapshot.botProfiles) };
     }
     case 'bots.dismiss': {
       const list = localsOf(s, a.channelId);
@@ -72,6 +88,17 @@ export function botsSlice(s: BotsState, a: TextAction, root: TextState): BotsSta
   switch (e.t) {
     case 'commands.updated':
       return { ...s, commands: { ...s.commands, [e.botId]: e.commands } };
+    case 'bot.updated':
+      return withProfile(s, e.botId, (p) =>
+        p?.description === e.description ? p : { ...(p ?? { createdBy: null, createdAt: null, lastSeenAt: null }), description: e.description },
+      );
+    case 'member.joined':
+      // A bot created (or back) since the welcome: what its member tells, until the next welcome.
+      if (!e.member.bot) return s;
+      return withProfile(s, e.member.userId, (p) => p ?? { description: '', createdBy: null, createdAt: e.member.joinedAt, lastSeenAt: null });
+    case 'presence':
+      // The server sets it when a bot's session opens or closes; this app learns it here.
+      return withProfile(s, e.userId, (p) => (p ? { ...p, lastSeenAt: a.now } : null));
     case 'member.left': {
       if (!Object.hasOwn(s.commands, e.userId)) return s;
       const commands = { ...s.commands };

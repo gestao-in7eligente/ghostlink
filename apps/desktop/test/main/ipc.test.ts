@@ -20,7 +20,7 @@ let deps: {
   appInfo: ReturnType<typeof vi.fn>;
   identity: { status: string; create: ReturnType<typeof vi.fn>; retry: ReturnType<typeof vi.fn>; replaceKeepingBackup: ReturnType<typeof vi.fn> };
   settings: { get: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
-  controller: Record<'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'checkExit' | 'leaveSaved' | 'deleteSaved', ReturnType<typeof vi.fn>>;
+  controller: Record<'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'checkExit' | 'leaveSaved' | 'deleteSaved' | 'setNotify', ReturnType<typeof vi.fn>>;
   updates: Record<'state' | 'setAutoCheck' | 'checkNow' | 'restart', ReturnType<typeof vi.fn>>;
   releaseNotes: Record<'get' | 'follow' | 'forgetFailures', ReturnType<typeof vi.fn>>;
 };
@@ -42,6 +42,7 @@ beforeEach(() => {
       checkExit: vi.fn(async () => ({ kind: 'member' })),
       leaveSaved: vi.fn(async () => {}),
       deleteSaved: vi.fn(async () => ({ at: 9_000 })),
+      setNotify: vi.fn(),
     },
     updates: {
       state: vi.fn(() => UPDATE_STATE),
@@ -89,6 +90,15 @@ describe('registerIpc', () => {
     expect(await invoke(IPC.serversLeave, TOP, 's1', 'yes')).toEqual({ ok: false, code: 'BAD_REQUEST' });
     expect(await invoke(IPC.serversDelete, TOP, '')).toEqual({ ok: false, code: 'BAD_REQUEST' });
   });
+
+  it("a saved server's notification mode takes one of the three modes (v0.4.2)", async () => {
+    expect(await invoke(IPC.serversSetNotify, TOP, 's1', 'all')).toEqual({ ok: true, value: undefined });
+    expect(deps.controller.setNotify).toHaveBeenCalledWith('s1', 'all');
+    expect(await invoke(IPC.serversSetNotify, TOP, 's1', 'loud')).toEqual({ ok: false, code: 'BAD_REQUEST' });
+    expect(await invoke(IPC.serversSetNotify, TOP, 's1')).toEqual({ ok: false, code: 'BAD_REQUEST' });
+    expect(deps.controller.setNotify).toHaveBeenCalledOnce();
+    expect(await invoke(IPC.settingsSet, TOP, { desktopNotifications: false })).toEqual({ ok: true, value: { locale: 'en', nickname: 'Ana', desktopNotifications: false } });
+  });
 });
 
 describe('sender check (spec §12)', () => {
@@ -123,6 +133,7 @@ describe('argument validation', () => {
     ['a missing id', IPC.serversConnect, []],
     ['an unknown locale', IPC.settingsSet, [{ locale: 'fr' }]],
     ['a non-boolean closeToTray', IPC.settingsSet, [{ closeToTray: 'no' }]],
+    ['a non-boolean desktopNotifications', IPC.settingsSet, [{ desktopNotifications: 1 }]],
     ['an own __proto__ key', IPC.settingsSet, [JSON.parse('{"__proto__":{"nickname":"x"}}')]],
     ['a huge join input', IPC.joinParse, ['x'.repeat(5_000)]],
     ['a non-boolean auto-check', IPC.updatesSetAutoCheck, ['false']],

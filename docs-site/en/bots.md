@@ -106,7 +106,7 @@ client.login(process.env.GHOSTLINK_BOT);
 
 | Part | What the package has, with discord.js v14's names |
 |---|---|
-| Client | `new Client({ intents })` (intents are accepted and ignored), `client.login(code)`, `client.user`, `client.application`, `client.channels.cache` and `.fetch(id)`, `client.users.cache` and `.fetch(id)`, `client.guilds.cache` (the server), `client.ws.ping`, `client.isReady()`, `client.destroy()` |
+| Client | `new Client({ intents })` (intents are accepted and ignored), `client.login(code)`, `client.user`, `client.application` (and `client.application.edit({ description })`, the description shown on the bot's page), `client.channels.cache` and `.fetch(id)`, `client.users.cache` and `.fetch(id)`, `client.guilds.cache` (the server), `client.ws.ping`, `client.isReady()`, `client.destroy()` |
 | Events | `Events.ClientReady` (`'ready'` too), `Events.MessageCreate`, `Events.InteractionCreate`, `'error'`, `'warn'`, `'debug'` |
 | Messages | `content`, `author` (`id`, `username`, `bot`, `tag`, `displayName`), `channel`, `channelId`, `guild`, `mentions.users`, `mentions.everyone`, `mentions.has(user)`, `createdTimestamp`, `createdAt`, `reply(text \| { content })`, `edit()` and `delete()` |
 | Text channels | `id`, `name`, `topic`, `send(text \| { content })`, `sendTyping()`, `messages.fetch({ limit, before })` (up to 100, newest first) and `messages.fetch(id)` |

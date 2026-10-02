@@ -50,7 +50,7 @@ Put a feature's payload and event types, its server-side strict schemas and its 
 
 Migrations are numbered SQL files in `src/db/migrations/NNN_name.sql`, one transaction each. `loadMigrations()` refuses gaps.
 
-- The Text track owns `002_*.sql`; `003_server_delete.sql` adds `server_meta.deleting_at` and `deleted_at` (the `serverDelete` module, `src/deletion/`); `004_files.sql` adds the `files` table (attachments); `005_bots.sql` adds `users.is_bot`, the `bots` table and the `messages.interaction_*` columns (the `bots` module).
+- The Text track owns `002_*.sql`; `003_server_delete.sql` adds `server_meta.deleting_at` and `deleted_at` (the `serverDelete` module, `src/deletion/`); `004_files.sql` adds the `files` table (attachments); `005_bots.sql` adds `users.is_bot`, the `bots` table and the `messages.interaction_*` columns (the `bots` module); `006_bot_settings.sql` adds `bots.description`, `bots.last_seen_at` and the `bot_command_uses` table (the bot's settings, same module).
 - Any other track that needs tables takes the next free number when it merges, and renumbers its file if another track merged first, so the numbering stays contiguous.
 - Never edit a migration that has already been merged. Use `STRICT` tables, as `001_init.sql` does.
 
@@ -72,6 +72,7 @@ Put tests next to the existing ones in `apps/server/test` (and `test/integration
 - The handshake (`auth/handshake.ts`, `auth/botAuth.ts`) takes a `hello` with `bot: <token>` straight to the welcome (`self.bot: true`): the per-IP auth-failure limit applies first, a wrong token counts toward it, and bans, kicks and server deletion apply as for members.
 - Bot messages and edits use the text module's bot buckets (twice the member limit). The bots module reaches members, channels and messages only through `TextModule.bots` (`src/text/bots.ts`).
 - `commands.set` (bots only) stores JSON in `bots.commands` and sends `commands.updated`; the welcome carries `botCommands`. Interactions live in memory (`src/bots/interactions.ts`): `interaction.create` to the bot alone, 3 s for the first answer, then 15 min for edits and follow-ups. Ephemeral answers go to the invoker's sessions only and are never stored.
+- The bot's settings (bot page spec, the `botSettings` flag): `bot.get` (MANAGE_SERVER) answers the description, the last connection (`bots.last_seen_at`, set when a bot session opens and when it closes), the uses per command and the last 20 uses (`bot_command_uses`: one row per `interaction.invoke` that reached the bot, `answered` once its first `interaction.respond` arrived, kept 7 days; the list leaves out channels the requester cannot see), its messages of the last 24 h, and what it may do in each text channel the requester sees. `bot.update` (MANAGE_SERVER: name and description) and `bot.setDescription` (the bot itself) send `bot.updated` to everyone, a rename `member.updated` too; the welcome carries `botProfiles`.
 
 ## Deleting the server
 

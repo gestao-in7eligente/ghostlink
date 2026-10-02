@@ -1,15 +1,62 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { BookOpen, ExternalLink, TriangleAlert } from 'lucide-react';
 import { errorCodeOf, errorMessage, useT } from '../../i18n/index.js';
-import { Avatar, ErrorText, Modal, primitives as p } from '../../layout/primitives.js';
+import { Avatar, ConfirmDialog, ErrorText, Modal, primitives as p } from '../../layout/primitives.js';
 import s from '../../layout/settings.module.css';
 import { useSettingsStore } from '../../stores/settings.js';
 import { AvatarCropModal } from '../profile/AvatarCropModal.js';
 import { IMAGE_ACCEPT, usePickedImage } from '../profile/usePickedImage.js';
 import { CopyField } from '../server-settings/InviteDialog.js';
-import { createBot, setBotPhoto } from './botActions.js';
+import { createBot, deleteBot, regenerateBotCode, setBotPhoto } from './botActions.js';
 import { botsGuideUrl } from './botsModel.js';
 import b from './bots.module.css';
+
+/** The bot a menu or the settings act on. */
+interface BotRef {
+  userId: string;
+  nickname: string;
+}
+
+/**
+ * "Gerar novo código" (bots spec §3), from the bot's menu and from its settings: confirmed, then
+ * the new code, shown once with Copiar. The old code stops working and the bot is disconnected.
+ */
+export function RegenerateBotDialog({ bot, onClose }: { bot: BotRef; onClose: () => void }) {
+  const t = useT();
+  const [code, setCode] = useState<string | null>(null);
+  // ConfirmDialog closes itself after a success; by then the code screen has taken its place.
+  const replaced = useRef(false);
+  if (code !== null) return <BotCodeDialog name={bot.nickname} code={code} onClose={onClose} />;
+  return (
+    <ConfirmDialog
+      title={t('bots.regenerate.title', { name: bot.nickname })}
+      body={t('bots.regenerate.body')}
+      confirmLabel={t('bots.regenerate')}
+      onConfirm={async () => {
+        const next = await regenerateBotCode(bot.userId);
+        replaced.current = true;
+        setCode(next);
+      }}
+      onClose={() => {
+        if (!replaced.current) onClose();
+      }}
+    />
+  );
+}
+
+/** "Excluir bot" (bots spec §3), from the bot's menu and from its settings: confirmed; its messages stay. */
+export function DeleteBotDialog({ bot, onClose }: { bot: BotRef; onClose: () => void }) {
+  const t = useT();
+  return (
+    <ConfirmDialog
+      title={t('bots.delete.title', { name: bot.nickname })}
+      body={t('bots.delete.body')}
+      confirmLabel={t('bots.delete')}
+      onConfirm={() => deleteBot(bot.userId)}
+      onClose={onClose}
+    />
+  );
+}
 
 /** The longest name the field takes (the server keeps 1–32 visible characters, like a nickname). */
 const NAME_MAX = 64;

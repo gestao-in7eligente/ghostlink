@@ -1,8 +1,8 @@
 import { ipcMain, type WebFrameMain } from 'electron';
 import { z } from 'zod';
-import { LIMITS, isReleaseVersion } from '@ghostlink/shared';
+import { LIMITS, avatarHashSchema, isReleaseVersion } from '@ghostlink/shared';
 import { toAppErrorCode } from '../shared/appErrors.js';
-import { IPC, type AppInfo, type ChatNotification, type IpcArgs, type IpcChannel, type IpcResult, type IpcReturn } from '../shared/ipcTypes.js';
+import { IPC, NOTIFY_MODES, type AppInfo, type ChatNotification, type IpcArgs, type IpcChannel, type IpcResult, type IpcReturn } from '../shared/ipcTypes.js';
 import { ATTACHMENTS_IPC_ARG_SCHEMAS, createAttachmentsIpcHandlers, type AttachmentsIpcDeps } from './attachments/attachmentsIpc.js';
 import type { ClientController } from './controller.js';
 import { BACKUP_IPC_ARG_SCHEMAS, createBackupIpcHandlers, type IdentityBackup } from './backup.js';
@@ -29,7 +29,10 @@ export interface IpcDeps {
   appInfo(): AppInfo;
   identity: Pick<IdentityStore, 'status' | 'create' | 'retry' | 'replaceKeepingBackup'>;
   settings: Pick<SettingsStore, 'get' | 'set'>;
-  controller: Pick<ClientController, 'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'request' | 'checkExit' | 'leaveSaved' | 'deleteSaved' | 'setCall'>;
+  controller: Pick<
+    ClientController,
+    'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'request' | 'checkExit' | 'leaveSaved' | 'deleteSaved' | 'setCall' | 'setNotify'
+  >;
   /** Host mode (spec §9). */
   host?: HostIpcDeps;
   /** Identity backup, import and delete (spec §3.4). */
@@ -87,9 +90,9 @@ export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
   'voice.join', 'voice.leave', 'voice.selfState', 'voice.moderate',
   // The pencil on shared screens (v0.2.3)
   'screen.draw', 'screen.drawAllow',
-  // Bots (v0.4.0): managing them (MANAGE_SERVER) and using their slash commands. A bot's photo goes
+  // Bots (v0.4.0; settings v0.4.2): managing them (MANAGE_SERVER) and using their slash commands. A bot's photo goes
   // through profile.setBotAvatar; commands.set and the interaction answers are the bots' own.
-  'bot.create', 'bot.regenerate', 'bot.delete', 'bot.list', 'interaction.invoke',
+  'bot.create', 'bot.regenerate', 'bot.delete', 'bot.list', 'bot.get', 'bot.update', 'interaction.invoke',
   'ping',
 ]);
 
@@ -130,7 +133,14 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
     z.tuple([requestTypeSchema, requestPayloadSchema, expectedServerId]),
   ]),
   [IPC.notificationsShow]: z.tuple([
-    z.strictObject({ title: z.string().min(1).max(256), body: z.string().max(4096), channelId: z.string().regex(/^[A-Z2-7]{26}$/) }),
+    z.strictObject({
+      server: z.string().max(256),
+      channel: z.string().max(256),
+      author: z.string().max(256),
+      body: z.string().max(4096),
+      serverIcon: avatarHashSchema.nullable(),
+      channelId: z.string().regex(/^[A-Z2-7]{26}$/),
+    }),
   ]),
   [IPC.identityStatus]: z.tuple([]),
   [IPC.identityCreate]: z.tuple([]),
@@ -138,7 +148,12 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.identityReplaceKeepingBackup]: z.tuple([]),
   [IPC.settingsGet]: z.tuple([]),
   [IPC.settingsSet]: z.tuple([
-    z.strictObject({ locale: z.enum(LOCALES).optional(), nickname: z.string().max(256).optional(), closeToTray: z.boolean().optional() }),
+    z.strictObject({
+      locale: z.enum(LOCALES).optional(),
+      nickname: z.string().max(256).optional(),
+      closeToTray: z.boolean().optional(),
+      desktopNotifications: z.boolean().optional(),
+    }),
   ]),
   [IPC.joinParse]: z.tuple([z.string().max(2 * LIMITS.inviteMaxLength)]),
   [IPC.joinProbe]: z.tuple([address]),
@@ -161,6 +176,7 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.serversLeave]: z.tuple([serverId, z.boolean()]),
   [IPC.serversDelete]: z.tuple([serverId]),
   [IPC.serversSetCall]: z.tuple([serverId.nullable()]),
+  [IPC.serversSetNotify]: z.tuple([serverId, z.enum(NOTIFY_MODES)]),
   ...HOST_IPC_ARG_SCHEMAS,
   ...BACKUP_IPC_ARG_SCHEMAS,
   ...RAILWAY_IPC_ARG_SCHEMAS,
@@ -208,6 +224,7 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     [IPC.serversLeave]: (id, deleteMyMessages) => controller.leaveSaved(id, deleteMyMessages),
     [IPC.serversDelete]: (id) => controller.deleteSaved(id),
     [IPC.serversSetCall]: (id) => controller.setCall(id),
+    [IPC.serversSetNotify]: (id, mode) => controller.setNotify(id, mode),
     ...createHostIpcHandlers(deps.host),
     ...createBackupIpcHandlers(deps.backup),
     ...createRailwayIpcHandlers(deps.railway),

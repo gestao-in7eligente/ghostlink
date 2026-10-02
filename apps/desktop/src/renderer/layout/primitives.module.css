@@ -48,15 +48,16 @@
   object-fit: cover;
 }
 
+/* A bigger picture (the profile card's) sets --dot-size, --dot-ring-width and --dot-offset. */
 .dot {
   position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 12px;
-  height: 12px;
+  right: var(--dot-offset, -1px);
+  bottom: var(--dot-offset, -1px);
+  width: var(--dot-size, 12px);
+  height: var(--dot-size, 12px);
   border-radius: 50%;
   background: var(--text-ghost);
-  border: 2.5px solid var(--dot-ring, var(--bg-sidebar));
+  border: var(--dot-ring-width, 2.5px) solid var(--dot-ring, var(--bg-sidebar));
 }
 
 .dotOn {
@@ -336,6 +337,31 @@
 .checkOn {
   border-color: var(--accent);
   background: var(--accent);
+}
+
+.radio {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--text-faint);
+  border-radius: 50%;
+}
+
+.radioOn {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 4px, transparent 4.5px);
+}
+
+/* On the highlighted item (the accent color) the mark turns white, so it stays visible. */
+.menuItem:hover .radio,
+.menuItem:focus-visible .radio {
+  border-color: var(--accent-ink);
+}
+
+.menuItem:hover .radioOn,
+.menuItem:focus-visible .radioOn {
+  background: radial-gradient(circle, var(--accent-ink) 0 4px, transparent 4.5px);
 }
 
 /* ---- select: the field looks like the settings' text inputs, the list like a popover ---- */

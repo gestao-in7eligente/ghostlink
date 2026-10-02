@@ -86,6 +86,7 @@ describe('IPC channel names (contract §5)', () => {
       'ghostlink:servers.list',
       'ghostlink:servers.remove',
       'ghostlink:servers.setCall',
+      'ghostlink:servers.setNotify',
       'ghostlink:settings.get',
       'ghostlink:settings.set',
       'ghostlink:updates.checkNow',
@@ -97,7 +98,7 @@ describe('IPC channel names (contract §5)', () => {
   });
 
   it('keeps the event channels apart from the invoke channels', () => {
-    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server', 'ghostlink:event.host', 'ghostlink:event.deepLink', 'ghostlink:event.openChannel', 'ghostlink:event.updates', 'ghostlink:event.ptt', 'ghostlink:event.railway', 'ghostlink:event.friends', 'ghostlink:event.dm', 'ghostlink:event.serverUpdates', 'ghostlink:event.attachmentProgress']);
+    expect(Object.values(IPC_EVENTS)).toEqual(['ghostlink:event.connectionState', 'ghostlink:event.server', 'ghostlink:event.host', 'ghostlink:event.deepLink', 'ghostlink:event.openChannel', 'ghostlink:event.updates', 'ghostlink:event.ptt', 'ghostlink:event.railway', 'ghostlink:event.friends', 'ghostlink:event.dm', 'ghostlink:event.serverUpdates', 'ghostlink:event.attachmentProgress', 'ghostlink:event.openFriendRequests']);
     for (const event of Object.values(IPC_EVENTS)) expect(Object.values(IPC)).not.toContain(event);
   });
 });

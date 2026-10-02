@@ -17,6 +17,17 @@
  *   - `bot.list {}` → `BotListResult`.
  *   A bot's photo goes through the avatar upload with `botId` (avatar.ts).
  *
+ * The bot's settings (servers with FEATURE_BOT_SETTINGS, 0.4.2; bot page spec "Servidor"):
+ *   - `bot.get { botId }` (MANAGE_SERVER) → `BotGetResult`: the bot with its description and
+ *     state, uses per command over the last 7 days, the last 20 uses in channels the requester
+ *     can see, its messages in the last 24 h, and what it may do in each text channel the
+ *     requester can see (its real access, by its roles);
+ *   - `bot.update { botId, name?, description? }` (MANAGE_SERVER) → `BotUpdateResult`: the name
+ *     follows the nickname rules (NICK_TAKEN); a rename sends `member.updated`;
+ *   - `bot.setDescription { description }` (bots only, for themselves) → `{ description }`.
+ *   Any change sends `bot.updated` (`BotUpdatedEvent`) to everyone connected; the welcome's
+ *   `botProfiles` lists every bot's description, creator and last connection.
+ *
  * Slash commands:
  *   - `commands.set { commands }` (bots only) → `{ commands }`; everyone connected gets
  *     `commands.updated` (`BotCommands`); the welcome's `botCommands` lists every bot's.
@@ -41,6 +52,13 @@ import { formatHostPort, parseHostPort } from './invite.js';
 /** The `features` flag of a server that has bots (spec §1: servers before 0.4.0 have none). */
 export const FEATURE_BOTS = 'bots';
 
+/**
+ * The `features` flag of a server with the bot's settings (0.4.2): `bot.get`, `bot.update`,
+ * `bot.setDescription`, `bot.updated` and the welcome's `botProfiles`. Before it, the app shows
+ * the settings read-only.
+ */
+export const FEATURE_BOT_SETTINGS = 'botSettings';
+
 export const BOT_LIMITS = {
   /** The connection token's secret: 256 random bits (b64url, 43 characters). */
   tokenBytes: 32,
@@ -64,12 +82,23 @@ export const BOT_LIMITS = {
   invokesPerChannelPerSecond: 5,
   /** A bot's messages (and answers) use the members' msg.send limit times this (spec §2). */
   messageRateMultiplier: 2,
-  /** `bot.create`, `bot.regenerate` and `bot.delete` together, per manager per window. */
+  /**
+   * `bot.create`, `bot.regenerate`, `bot.delete` and `bot.update` together, per manager per
+   * window; `bot.setDescription` per bot per window.
+   */
   managePerWindow: 10,
   manageWindowMs: 60_000,
   /** `commands.set` per bot per window. */
   commandsSetPerWindow: 10,
   commandsSetWindowMs: 60_000,
+  /** The bot's own description ("Sobre", bot page spec), in characters. */
+  botDescriptionMax: 1000,
+  /** Command uses are kept and counted this long (bot page spec: 7 days). */
+  usageWindowMs: 7 * 24 * 3_600_000,
+  /** `bot.get`'s latest uses. */
+  recentUses: 20,
+  /** `bot.get`'s message count covers this long. */
+  messagesWindowMs: 24 * 3_600_000,
 } as const;
 
 /** `^[a-z0-9_-]{1,32}$` (spec §2): command and option names. */
@@ -151,6 +180,95 @@ export interface BotListResult {
   bots: BotInfo[];
 }
 
+// ---- the bot's settings (FEATURE_BOT_SETTINGS) ----
+
+/** A bot as its settings show it (`bot.get`, `bot.update`). */
+export interface BotDetails extends BotInfo {
+  /** Its "Sobre" (chat markdown, up to BOT_LIMITS.botDescriptionMax characters); '' when none. */
+  description: string;
+  /** When its last session opened or closed (the server's clock); null: it never connected. */
+  lastSeenAt: number | null;
+  online: boolean;
+}
+
+export interface BotGetPayload {
+  botId: string;
+}
+
+/** One command's uses over the last 7 days. */
+export interface BotCommandUsage {
+  command: string;
+  count: number;
+}
+
+/** One `interaction.invoke` that reached the bot. */
+export interface BotCommandUse {
+  /** Who used the command (maybe no longer a member). */
+  userId: string;
+  command: string;
+  channelId: string;
+  at: number;
+  /** The bot gave its first answer (`interaction.respond`: a reply or a defer). */
+  answered: boolean;
+}
+
+/** What the bot may do in one text channel, by its roles (the server's own access rules). */
+export interface BotChannelAccess {
+  channelId: string;
+  view: boolean;
+  send: boolean;
+}
+
+export interface BotGetResult {
+  bot: BotDetails;
+  /** Uses per command over the last 7 days, the most used first. */
+  usage: BotCommandUsage[];
+  /** The last 20 uses of the last 7 days, newest first, only in channels the requester can see. */
+  recent: BotCommandUse[];
+  /** Messages the bot wrote in the last 24 h that were not deleted. */
+  messagesLast24h: number;
+  /** Every text channel the requester can see, in their order. */
+  channels: BotChannelAccess[];
+}
+
+export interface BotUpdatePayload {
+  botId: string;
+  /** Cleaned like a nickname (as in bot.create): 1–32 visible characters, NICK_TAKEN. */
+  name?: string;
+  /** Up to BOT_LIMITS.botDescriptionMax characters; stored cleaned like a message. */
+  description?: string;
+}
+
+export interface BotUpdateResult {
+  bot: BotDetails;
+}
+
+/** Sent by a bot for itself (`client.application.edit({ description })` in discord-compat). */
+export interface BotSetDescriptionPayload {
+  description: string;
+}
+
+export interface BotSetDescriptionResult {
+  /** The description as stored (cleaned). */
+  description: string;
+}
+
+/** `bot.updated` event, to everyone connected: a bot changed (its name comes with `member.updated`). */
+export interface BotUpdatedEvent {
+  botId: string;
+  description: string;
+}
+
+/** A bot's public profile, for everyone: the welcome's `botProfiles`. */
+export interface BotProfile {
+  botId: string;
+  description: string;
+  createdBy: string | null;
+  createdAt: number;
+  /** When its last session opened or closed; null: it never connected. */
+  lastSeenAt: number | null;
+}
+
 // ---- slash commands ----
 
 export interface CommandChoice {
@@ -184,6 +302,8 @@ export interface BotCommands {
 /** Welcome keys added by the bots module. */
 export interface BotsWelcome {
   botCommands: BotCommands[];
+  /** Servers with FEATURE_BOT_SETTINGS (0.4.2): every bot's profile. */
+  botProfiles?: BotProfile[];
 }
 
 // ---- interactions ----
@@ -289,10 +409,18 @@ const content = z.string().max(CHAT_LIMITS.messageMaxLength);
 /** The token's secret as sent in `hello.bot`. */
 export const botTokenSchema = z.string().regex(B64U_32);
 
-export const botCreateSchema = z.strictObject({ name: z.string().min(1).max(64) });
+const botName = z.string().min(1).max(64);
+const botDescription = z.string().max(BOT_LIMITS.botDescriptionMax);
+
+export const botCreateSchema = z.strictObject({ name: botName });
 export const botRegenerateSchema = z.strictObject({ botId: userIdSchema });
 export const botDeleteSchema = z.strictObject({ botId: userIdSchema });
 export const botListSchema = z.strictObject({});
+export const botGetSchema = z.strictObject({ botId: userIdSchema });
+export const botUpdateSchema = z
+  .strictObject({ botId: userIdSchema, name: botName.optional(), description: botDescription.optional() })
+  .refine((p) => p.name !== undefined || p.description !== undefined, 'nothing to update');
+export const botSetDescriptionSchema = z.strictObject({ description: botDescription });
 
 const commandChoiceSchema = z.strictObject({
   name: z.string().min(1).max(BOT_LIMITS.choiceNameMax),
@@ -374,12 +502,47 @@ const idClient = z.string().min(1).max(64);
 const commandNameClient = z.string().min(1).max(64);
 const textClient = z.string().max(1024);
 
-export const botInfoSchemaClient: z.ZodType<BotInfo> = z.object({
+const botInfoObjectClient = z.object({
   userId: idClient,
   name: z.string().max(256),
   avatar: z.string().regex(/^[0-9a-f]{64}$/).nullable().catch(null),
   createdBy: idClient.nullable().catch(null),
   createdAt: z.number().catch(0),
+});
+
+export const botInfoSchemaClient: z.ZodType<BotInfo> = botInfoObjectClient;
+
+const descriptionClient = z.string().max(BOT_LIMITS.botDescriptionMax * 2).catch('');
+
+export const botDetailsSchemaClient: z.ZodType<BotDetails> = botInfoObjectClient.extend({
+  description: descriptionClient,
+  lastSeenAt: z.number().nullable().catch(null),
+  online: z.boolean().catch(false),
+});
+
+export const botGetResultSchemaClient: z.ZodType<BotGetResult> = z.object({
+  bot: botDetailsSchemaClient,
+  usage: z.array(z.object({ command: commandNameClient, count: z.number().int().min(0) })).max(1000).catch([]),
+  recent: z
+    .array(z.object({ userId: idClient, command: commandNameClient, channelId: idClient, at: z.number(), answered: z.boolean().catch(false) }))
+    .max(100)
+    .catch([]),
+  messagesLast24h: z.number().int().min(0).catch(0),
+  channels: z.array(z.object({ channelId: idClient, view: z.boolean().catch(false), send: z.boolean().catch(false) })).max(10_000).catch([]),
+});
+
+export const botUpdateResultSchemaClient: z.ZodType<BotUpdateResult> = z.object({ bot: botDetailsSchemaClient });
+
+export const botSetDescriptionResultSchemaClient: z.ZodType<BotSetDescriptionResult> = z.object({ description: descriptionClient });
+
+export const botUpdatedEventSchemaClient: z.ZodType<BotUpdatedEvent> = z.object({ botId: idClient, description: descriptionClient });
+
+export const botProfileSchemaClient: z.ZodType<BotProfile> = z.object({
+  botId: idClient,
+  description: descriptionClient,
+  createdBy: idClient.nullable().catch(null),
+  createdAt: z.number().catch(0),
+  lastSeenAt: z.number().nullable().catch(null),
 });
 
 export const botCreateResultSchemaClient: z.ZodType<BotCreateResult> = z.object({
@@ -416,6 +579,7 @@ export const botCommandsSchemaClient: z.ZodType<BotCommands> = z.object({
 
 export const botsWelcomeSchemaClient: z.ZodType<BotsWelcome> = z.object({
   botCommands: z.array(botCommandsSchemaClient).max(1000).catch([]),
+  botProfiles: z.array(botProfileSchemaClient).max(1000).optional().catch(undefined),
 });
 
 export const interactionInvokeResultSchemaClient: z.ZodType<InteractionInvokeResult> = z.object({ id: idClient });
