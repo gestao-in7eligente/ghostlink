@@ -15,7 +15,9 @@
  *   - `bot.delete { botId }` → `{}` (the member leaves with `member.left`; its messages stay,
  *     with `authorBot: true`);
  *   - `bot.list {}` → `BotListResult`.
- *   A bot's photo goes through the avatar upload with `botId` (avatar.ts).
+ *   A bot's photo goes through the avatar upload with `botId` (avatar.ts). A system bot (the Ghost
+ *   DJ, ghostDj.ts; `BotInfo.system`) has no code: `bot.regenerate` and `bot.delete` refuse it
+ *   (FORBIDDEN), and the server answers its slash commands itself.
  *
  * The bot's settings (servers with FEATURE_BOT_SETTINGS, 0.4.2; bot page spec "Servidor"):
  *   - `bot.get { botId }` (MANAGE_SERVER) → `BotGetResult`: the bot with its description and
@@ -159,6 +161,11 @@ export interface BotInfo {
   avatar: string | null;
   createdBy: string | null;
   createdAt: number;
+  /**
+   * A system bot (the Ghost DJ, ghostDj.ts): created by the server itself, with no connection
+   * code; `bot.regenerate` and `bot.delete` refuse it (FORBIDDEN). False from older servers.
+   */
+  system: boolean;
 }
 
 export interface BotCreatePayload {
@@ -267,6 +274,8 @@ export interface BotProfile {
   createdAt: number;
   /** When its last session opened or closed; null: it never connected. */
   lastSeenAt: number | null;
+  /** A system bot (see BotInfo.system). False from older servers. */
+  system: boolean;
 }
 
 // ---- slash commands ----
@@ -508,6 +517,7 @@ const botInfoObjectClient = z.object({
   avatar: z.string().regex(/^[0-9a-f]{64}$/).nullable().catch(null),
   createdBy: idClient.nullable().catch(null),
   createdAt: z.number().catch(0),
+  system: z.boolean().catch(false),
 });
 
 export const botInfoSchemaClient: z.ZodType<BotInfo> = botInfoObjectClient;
@@ -543,6 +553,7 @@ export const botProfileSchemaClient: z.ZodType<BotProfile> = z.object({
   createdBy: idClient.nullable().catch(null),
   createdAt: z.number().catch(0),
   lastSeenAt: z.number().nullable().catch(null),
+  system: z.boolean().catch(false),
 });
 
 export const botCreateResultSchemaClient: z.ZodType<BotCreateResult> = z.object({

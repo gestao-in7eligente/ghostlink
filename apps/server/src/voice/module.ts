@@ -16,6 +16,7 @@ import {
   type VoiceChannelState,
   type VoiceJoinResponse,
 } from '@ghostlink/shared';
+import { TrackSource } from 'livekit-server-sdk';
 import { getMeta } from '../db/serverMeta.js';
 import {
   LivekitBackend,
@@ -100,6 +101,21 @@ export interface VoiceModule extends ServerModule {
   readonly active: boolean;
   /** Calls `listener` each time `active` changes; returns the unsubscribe. */
   onActiveChange(listener: (active: boolean) => void): () => void;
+  /** LiveKit runs now (voice.join would work). */
+  readonly available: boolean;
+  /**
+   * An in-process participant (the Ghost DJ: a system bot, with no session): the channel is
+   * checked as voice.join checks it, plus SPEAK (NOT_FOUND, BAD_REQUEST for a text channel,
+   * FORBIDDEN, CHANNEL_FULL; INTERNAL while LiveKit is down). It is assigned there, like a
+   * member who joined, and gets a token for LiveKit's loopback port that may publish its
+   * microphone only and subscribe to nothing. Permission changes, moderation and the sweeps
+   * apply to it as to anyone; leaveLocal() or removeUser() take it out.
+   */
+  joinLocal(userId: string, channelId: string): Promise<{ url: string; token: string }>;
+  /** Takes an in-process participant out of voice (LiveKit drops its connection). */
+  leaveLocal(userId: string): Promise<void>;
+  /** Calls `listener` with the channels whose voice.state was just sent; returns the unsubscribe. */
+  onStateChange(listener: (channelIds: string[]) => void): () => void;
   /** Test/diagnostic view of the in-memory state. */
   readonly registry: VoiceRegistry;
 }
@@ -185,6 +201,9 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
   /** `active` as listeners last heard it. */
   let wasActive = false;
   const activeListeners = new Set<(active: boolean) => void>();
+  const stateListeners = new Set<(channelIds: string[]) => void>();
+  /** In-process participants (joinLocal): no session, microphone only. */
+  const local = new Set<string>();
 
   const access = (): VoiceAccess => opts.access?.(ctx) ?? voiceAccessOf(text) ?? NO_CHANNELS;
   const log = (what: string) => (e: unknown) => ctx.logger.warn(`voice: ${what} failed`, { error: String(e) });
@@ -199,7 +218,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
   /** May `userId` be in `channelId`'s room right now? (the /rtc proxy and every LiveKit event). */
   const allowed = (userId: string, channelId: string): boolean => {
     if (registry.assignedChannel(userId) !== channelId) return false;
-    if (!ctx.sessions.isOnlineOrInGrace(userId)) return false;
+    if (!local.has(userId) && !ctx.sessions.isOnlineOrInGrace(userId)) return false;
     const a = access();
     const channel = a.channel(channelId);
     if (!channel || channel.type !== 'voice') return false;
@@ -222,11 +241,20 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
 
   /** voice.state goes only to sessions that can see the channel, decided per recipient now (spec §5.3). */
   const broadcast = (channelIds: Iterable<string>): void => {
-    for (const channelId of new Set(channelIds)) {
+    const changed = [...new Set(channelIds)];
+    for (const channelId of changed) {
       const event: ServerEvent = { t: 'voice.state', d: registry.state(channelId) };
       ctx.sessions.broadcast(event, (s) => has(access().permissions(s.userId, channelId), P.VIEW_CHANNEL));
     }
     checkActive();
+    if (changed.length === 0) return;
+    for (const listener of stateListeners) {
+      try {
+        listener(changed);
+      } catch (e) {
+        log('a voice state listener')(e);
+      }
+    }
   };
 
   /** A user who just gained voice channels gets their voice.state with channel.created (spec §5.3). */
@@ -256,11 +284,17 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     for (const s of ctx.sessions.list()) if (s.userId === userId) ctx.sessions.send(s.sessionId, event);
   };
 
-  const permissionFor = (userId: string, channelId: string): LivekitPermission =>
-    livekitPermission(access().permissions(userId, channelId), moderation(registry, userId));
+  const permissionFor = (userId: string, channelId: string): LivekitPermission => {
+    const permission = livekitPermission(access().permissions(userId, channelId), moderation(registry, userId));
+    if (!local.has(userId)) return permission;
+    // An in-process participant only plays sound: its microphone, and it hears nothing.
+    const canPublishSources = permission.canPublishSources.filter((source) => source === TrackSource.MICROPHONE);
+    return { ...permission, canSubscribe: false, canPublish: canPublishSources.length > 0, canPublishSources };
+  };
 
   const removeUser = async (userId: string, o: { notify?: boolean } = {}): Promise<void> => {
     const channels = new Set([registry.assignedChannel(userId), registry.channelOf(userId)].filter((c): c is string => c !== null));
+    local.delete(userId);
     registry.unassign(userId);
     applied.delete(userId);
     broadcast(registry.removeEverywhere(userId));
@@ -512,6 +546,44 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     return { livekitUrl: livekitUrl(rc), token, iceServers: [] };
   };
 
+  const joinLocal = async (userId: string, channelId: string): Promise<{ url: string; token: string }> => {
+    const a = access();
+    const channel = a.channel(channelId);
+    const bits = channel ? a.permissions(userId, channelId) : 0;
+    if (!channel || !has(bits, P.VIEW_CHANNEL)) throw new ProtocolError('NOT_FOUND');
+    if (channel.type !== 'voice') throw new ProtocolError('BAD_REQUEST');
+    if (!has(bits, P.CONNECT_VOICE | P.SPEAK) || !inGoodStanding(userId)) throw new ProtocolError('FORBIDDEN');
+    if (channel.userLimit > 0 && registry.assignedCount(channelId, userId) >= channel.userLimit) throw new ProtocolError('CHANNEL_FULL');
+    const signal = (): number => {
+      const port = !stopped && !restarting && backend?.available ? backend.signalPort : null;
+      if (port === null) throw new ProtocolError('INTERNAL');
+      return port;
+    };
+    signal();
+    const nickname = ctx.db.get<{ nickname: string }>('SELECT nickname FROM users WHERE id = ?', userId)?.nickname ?? userId.slice(0, 8);
+    // Before the token: permissionFor() narrows an in-process participant's block.
+    const wasLocal = local.has(userId);
+    local.add(userId);
+    let token: string;
+    let port: number;
+    try {
+      token = await createJoinToken({ ...backend!.keys, userId, channelId, nickname, permission: permissionFor(userId, channelId) });
+      port = signal();
+    } catch (e) {
+      if (!wasLocal && registry.assignedChannel(userId) === null) local.delete(userId);
+      throw e;
+    }
+    const previous = registry.assignedChannel(userId);
+    const present = registry.channelOf(userId);
+    registry.assign(userId, channelId);
+    broadcast(registry.removeEverywhere(userId, channelId));
+    for (const old of new Set([previous, present])) {
+      if (old && old !== channelId) void backend!.removeParticipant(voiceRoomName(old), voiceIdentity(userId)).catch(log('removeParticipant'));
+    }
+    // LiveKit's own loopback port: the /rtc proxy (TLS, pinned by the app) is for people.
+    return { url: `ws://127.0.0.1:${port}`, token };
+  };
+
   const moderate = async (rc: RequestContext, payload: unknown): Promise<Record<string, never>> => {
     const p = voiceModerateSchema.parse(payload);
     const a = access();
@@ -719,6 +791,15 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     onActiveChange(listener) {
       activeListeners.add(listener);
       return () => void activeListeners.delete(listener);
+    },
+    get available() {
+      return !stopped && backend?.available === true;
+    },
+    joinLocal,
+    leaveLocal: (userId) => removeUser(userId),
+    onStateChange(listener) {
+      stateListeners.add(listener);
+      return () => void stateListeners.delete(listener);
     },
   };
   return module;

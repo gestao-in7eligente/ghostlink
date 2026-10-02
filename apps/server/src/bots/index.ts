@@ -36,8 +36,10 @@ import {
   type BotUpdateResult,
   type BotUpdatedEvent,
   type BotsWelcome,
+  type InteractionCreateEvent,
   type InteractionInvokeResult,
   type InteractionResult,
+  type Message,
 } from '@ghostlink/shared';
 import { z } from 'zod';
 import { newBotToken } from '../auth/botAuth.js';
@@ -57,8 +59,47 @@ export interface BotsModuleOptions {
   responseWindowMs?: number;
 }
 
+/** A bot the server runs itself (bots.system, 007_system_bots.sql): the Ghost DJ. */
+export interface SystemBotSpec {
+  /** bots.system, e.g. 'ghost-dj'; one bot per kind. */
+  kind: string;
+  /** Its name when it is created; when a member already has it, a number is added ("Ghost DJ 2"). */
+  name: string;
+  /** Its "Sobre" when it is created. */
+  description: string;
+  /** Stored at every start, so a new server version brings its commands up to date. */
+  commands: BotCommand[];
+  /** Each use of one of its commands, inside the server, right after `interaction.invoke` answered. */
+  onInteraction(event: InteractionCreateEvent): void;
+}
+
+/**
+ * What a system bot does through the bots module: it answers its interactions with the same
+ * rules and deadlines as a bot over its session (bots spec §2), and writes plain messages.
+ * Every call throws ProtocolError like the matching request would.
+ */
+export interface SystemBot {
+  readonly botId: string;
+  /** True when the server just created it, or brought it back after a kick: it has no photo yet. */
+  readonly fresh: boolean;
+  respond(p: { id: string; type: 'reply'; content: string; ephemeral?: boolean } | { id: string; type: 'defer'; ephemeral?: boolean }): Message | null;
+  edit(id: string, content: string): Message | null;
+  followup(id: string, content: string, ephemeral?: boolean): Message | null;
+  /** A message of its own in a text channel (NOT_FOUND when the channel is gone, RATE_LIMITED). */
+  post(channelId: string, content: string): Message;
+  /** Edits one of its messages (NOT_FOUND when it is gone). */
+  editMessage(messageId: number, content: string): Message;
+}
+
 export interface BotsModule extends ServerModule {
   readonly name: typeof BOTS_MODULE_NAME;
+  /**
+   * Creates the system bot of `spec.kind` on the first run (a member with no connection code),
+   * brings it back if a kick took it out (not after a ban), stores its commands and routes its
+   * interactions to `spec.onInteraction`. It counts as online while the server runs. Call it from
+   * the init of a module registered after this one.
+   */
+  ensureSystemBot(spec: SystemBotSpec): SystemBot;
 }
 
 /** Interactions in flight per bot, answered ones included (memory bound; spec §2 sets none). */
@@ -90,6 +131,7 @@ interface BotRow {
   avatar_file_id: string | null;
   created_by: string | null;
   created_at: number;
+  system: string | null;
 }
 
 interface ProfileRow {
@@ -98,6 +140,7 @@ interface ProfileRow {
   created_by: string | null;
   created_at: number;
   last_seen_at: number | null;
+  system: string | null;
 }
 
 type BotDetailsRow = BotRow & ProfileRow;
@@ -108,6 +151,7 @@ const toInfo = (r: BotRow): BotInfo => ({
   avatar: r.avatar_file_id ?? null,
   createdBy: r.created_by,
   createdAt: Number(r.created_at),
+  system: r.system !== null,
 });
 
 const toProfile = (r: ProfileRow): BotProfile => ({
@@ -116,6 +160,7 @@ const toProfile = (r: ProfileRow): BotProfile => ({
   createdBy: r.created_by,
   createdAt: Number(r.created_at),
   lastSeenAt: r.last_seen_at === null ? null : Number(r.last_seen_at),
+  system: r.system !== null,
 });
 
 /** Stored commands, validated when set; anything unreadable counts as none. */
@@ -153,7 +198,7 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
 
   const botRow = (s: State, botId: string): BotRow | undefined =>
     s.ctx.db.get<BotRow>(
-      `SELECT b.user_id, u.nickname, u.avatar_file_id, b.created_by, b.created_at FROM bots b JOIN users u ON u.id = b.user_id
+      `SELECT b.user_id, u.nickname, u.avatar_file_id, b.created_by, b.created_at, b.system FROM bots b JOIN users u ON u.id = b.user_id
        WHERE b.user_id = ?`,
       botId,
     );
@@ -185,12 +230,12 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
 
   const allProfiles = (s: State): BotProfile[] =>
     s.ctx.db
-      .all<ProfileRow>('SELECT user_id, description, created_by, created_at, last_seen_at FROM bots ORDER BY created_at, user_id')
+      .all<ProfileRow>('SELECT user_id, description, created_by, created_at, last_seen_at, system FROM bots ORDER BY created_at, user_id')
       .map(toProfile);
 
   const detailsRow = (s: State, botId: string): BotDetailsRow | undefined =>
     s.ctx.db.get<BotDetailsRow>(
-      `SELECT b.user_id, u.nickname, u.avatar_file_id, b.created_by, b.created_at, b.description, b.last_seen_at
+      `SELECT b.user_id, u.nickname, u.avatar_file_id, b.created_by, b.created_at, b.description, b.last_seen_at, b.system
        FROM bots b JOIN users u ON u.id = b.user_id WHERE b.user_id = ?`,
       botId,
     );
@@ -209,6 +254,64 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
   };
 
   const isBot = (s: State, userId: string): boolean => s.ctx.db.get('SELECT 1 AS x FROM bots WHERE user_id = ?', userId) !== undefined;
+
+  /** `name`, or "name 2", "name 3"… when a member has it: a nickname nobody holds. */
+  const freeNickname = (s: State, name: string): { display: string; norm: string } => {
+    for (let n = 1; n < 100; n++) {
+      const nick = normalizeNickname(n === 1 ? name : `${name} ${n}`);
+      if (!s.ctx.db.get('SELECT 1 AS x FROM users WHERE nickname_norm = ?', nick.norm)) return nick;
+    }
+    return normalizeNickname(`${name} ${randomBytes(3).toString('hex')}`);
+  };
+
+  const ensureSystemBot = (spec: SystemBotSpec): SystemBot => {
+    const s = need();
+    const db = s.ctx.db;
+    const { commands } = commandsSetSchema.parse({ commands: spec.commands });
+    let fresh = false;
+    let botId = db.get<{ user_id: string }>('SELECT user_id FROM bots WHERE system = ?', spec.kind)?.user_id;
+    if (botId === undefined) {
+      const id = randomBytes(16).toString('hex');
+      const nick = freeNickname(s, spec.name);
+      const now = s.ctx.now();
+      db.tx(() => {
+        db.run(
+          `INSERT INTO users (id, public_key, nickname, nickname_norm, locale, joined_at, is_bot) VALUES (?, ?, ?, ?, NULL, ?, 1)`,
+          id, Buffer.concat([Buffer.from('bot'), randomBytes(16)]), nick.display, nick.norm, now,
+        );
+        // No connection code: the hash of a secret nobody ever sees.
+        db.run(
+          'INSERT INTO bots (user_id, name, token_hash, created_by, created_at, description, system) VALUES (?, ?, ?, NULL, ?, ?, ?)',
+          id, nick.display, newBotToken().hash, now, cleanMessageContent(spec.description), spec.kind,
+        );
+      });
+      s.text.memberCreated(id);
+      botId = id;
+      fresh = true;
+    } else if (!s.text.isMember(botId) && !db.get('SELECT 1 AS x FROM bans WHERE user_id = ?', botId)) {
+      // A kick took it out: it is back at the next start (a ban keeps it out).
+      db.run('UPDATE users SET removed_at = NULL, rejoin_blocked_until = NULL WHERE id = ?', botId);
+      s.text.memberCreated(botId);
+      fresh = true;
+    }
+    const id = botId;
+    db.run('UPDATE bots SET commands = ? WHERE user_id = ?', JSON.stringify(commands), id);
+    s.interactions.setLocalHandler(id, spec.onInteraction);
+    if (s.text.isMember(id)) s.text.setOnline(id, true);
+    return {
+      botId: id,
+      fresh,
+      respond: (p) => {
+        const message = s.interactions.respond(id, p);
+        markAnswered(s, id, p.id);
+        return message;
+      },
+      edit: (interactionId, content) => s.interactions.edit(id, { id: interactionId, content }),
+      followup: (interactionId, content, ephemeral) => s.interactions.followup(id, { id: interactionId, content, ephemeral }),
+      post: (channelId, content) => s.text.post({ channelId, authorId: id, content }),
+      editMessage: (messageId, content) => s.text.edit(messageId, id, content),
+    };
+  };
 
   /** A bot's session opened or closed: "visto por último". Never fails the session. */
   const touchLastSeen = (s: State, userId: string): void => {
@@ -262,7 +365,7 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
       const s = need();
       requireManager(s, ctx.userId);
       const nick = normalizeNickname(p.name);
-      const count = Number(s.ctx.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM bots')?.n ?? 0);
+      const count = Number(s.ctx.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM bots WHERE system IS NULL')?.n ?? 0);
       if (count >= BOT_LIMITS.maxBots) throw new ProtocolError('BAD_REQUEST', 'too many bots');
       if (s.ctx.db.get('SELECT 1 AS x FROM users WHERE nickname_norm = ?', nick.norm)) throw new ProtocolError('NICK_TAKEN');
       if (!s.manage.hit(ctx.userId)) throw new ProtocolError('RATE_LIMITED');
@@ -285,7 +388,10 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
       const p = botRegenerateSchema.parse(payload);
       const s = need();
       requireManager(s, ctx.userId);
-      if (!botRow(s, p.botId)) throw new ProtocolError('NOT_FOUND');
+      const row = botRow(s, p.botId);
+      if (!row) throw new ProtocolError('NOT_FOUND');
+      // The server's own bot has no connection code.
+      if (row.system !== null) throw new ProtocolError('FORBIDDEN');
       if (!s.manage.hit(ctx.userId)) throw new ProtocolError('RATE_LIMITED');
       const { token, hash } = newBotToken();
       s.ctx.db.run('UPDATE bots SET token_hash = ? WHERE user_id = ?', hash, p.botId);
@@ -298,7 +404,9 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
       const p = botDeleteSchema.parse(payload);
       const s = need();
       requireManager(s, ctx.userId);
-      if (!botRow(s, p.botId)) throw new ProtocolError('NOT_FOUND');
+      const row = botRow(s, p.botId);
+      if (!row) throw new ProtocolError('NOT_FOUND');
+      if (row.system !== null) throw new ProtocolError('FORBIDDEN');
       if (!s.manage.hit(ctx.userId)) throw new ProtocolError('RATE_LIMITED');
       // Messages stay (authorBot: true, a former member); the name is free again.
       s.text.removeMember(p.botId, () => {
@@ -319,7 +427,7 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
       const s = need();
       requireManager(s, ctx.userId);
       const rows = s.ctx.db.all<BotRow>(
-        `SELECT b.user_id, u.nickname, u.avatar_file_id, b.created_by, b.created_at FROM bots b JOIN users u ON u.id = b.user_id
+        `SELECT b.user_id, u.nickname, u.avatar_file_id, b.created_by, b.created_at, b.system FROM bots b JOIN users u ON u.id = b.user_id
          ORDER BY b.created_at, b.user_id`,
       );
       return { bots: rows.map(toInfo) };
@@ -453,6 +561,7 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
     name: BOTS_MODULE_NAME,
     features: [FEATURE_BOTS, FEATURE_BOT_SETTINGS],
     handlers,
+    ensureSystemBot,
 
     init(ctx) {
       const textModule = ctx.getModule<TextModule>(TEXT_MODULE_NAME);

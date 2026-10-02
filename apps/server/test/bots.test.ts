@@ -376,7 +376,7 @@ describe("bots: the bot's settings (bot page spec)", () => {
     expect((await fx.owner.ok<BotGetResult>('bot.get', { botId })).bot.description).toBe('Sou o Hermes.');
     const later = await fx.join();
     expect(botsWelcomeSchemaClient.parse(later.welcome).botProfiles).toEqual([
-      { botId, description: 'Sou o Hermes.', createdBy: fx.owner.userId, createdAt: fx.clock.now, lastSeenAt: fx.clock.now },
+      { botId, description: 'Sou o Hermes.', createdBy: fx.owner.userId, createdAt: fx.clock.now, lastSeenAt: fx.clock.now, system: false },
     ]);
   });
 
