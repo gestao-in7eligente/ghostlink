@@ -1,13 +1,19 @@
 // Bots in the app (bots spec §3): who is a bot, when the sidebar shows the BOTS section, and which
 // slash commands a channel offers. Pure, over the text stores' state.
-import { PERMISSIONS, has, permissionsFor, type Channel, type Member } from '@ghostlink/shared';
+import { PERMISSIONS, SITE_URL, has, permissionsFor, type Channel, type Member } from '@ghostlink/shared';
+import type { Locale } from '../../../shared/ipcTypes.js';
 import { byNickname } from '../../stores/members.js';
 import { subjectOf } from '../../stores/server.js';
 import type { MembersState, ServerState } from '../../stores/textState.js';
 import type { SlashCommand, SlashEntry } from './slashModel.js';
 
-export function isBot(member: Pick<Member, 'bot'> | undefined): member is Member {
+export function isBot<M extends Pick<Member, 'bot'>>(member: M | undefined): member is M {
   return member?.bot === true;
+}
+
+/** The site's guide to connecting a bot (the code in GHOSTLINK_BOT, the discord.js import swap). */
+export function botsGuideUrl(locale: Locale): string {
+  return locale === 'en' ? `${SITE_URL}en/bots` : `${SITE_URL}bots`;
 }
 
 /** The server's bots, by name. */

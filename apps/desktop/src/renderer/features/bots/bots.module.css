@@ -1,0 +1,533 @@
+/* Bots (spec 2026-10-02-bots-design.md §3): the sidebar's BOTS section, the BOT tag, the "/" picker,
+   the command chips in the composer and the interaction lines in the chat, in Discord's look. */
+
+/* ---- the BOT tag (members, messages, mentions) ---- */
+
+.tag {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 15px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+/* ---- the sidebar's BOTS section ---- */
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 16px);
+  height: 36px;
+  margin: 1px 8px;
+  padding: 0 4px 0 8px;
+  border-radius: 6px;
+  color: var(--text-faint);
+  --dot-ring: var(--bg-sidebar);
+}
+
+.row:hover,
+.row:focus-within {
+  background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
+  color: var(--text-strong);
+  --dot-ring: var(--bg-hover);
+}
+
+.rowMain {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: left;
+}
+
+button.rowMain {
+  cursor: pointer;
+}
+
+.offline .rowMain > [data-avatar] {
+  opacity: 0.55;
+}
+
+.rowName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowMore {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.row:hover .rowMore,
+.row:focus-within .rowMore,
+.rowMore[aria-expanded='true'] {
+  opacity: 1;
+}
+
+.rowMore:hover {
+  color: var(--text-strong);
+}
+
+.addRow {
+  border: none;
+  background: none;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.addIcon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-hover);
+  color: var(--text-soft);
+}
+
+/* ---- "Adicionar bot" and the connection code ---- */
+
+.photoRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.photoActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.plainButton {
+  min-height: 36px;
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.plainButton:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.guide {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.guide:hover {
+  text-decoration: underline;
+}
+
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.warning svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ---- the "/" picker (over the composer, like the mentions list) ---- */
+
+.picker {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  max-height: 340px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.pickerTitle {
+  margin: 0;
+  padding: 10px 14px 6px;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pickerList {
+  scrollbar-width: thin;
+  margin: 0;
+  padding: 0 6px 6px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.optionActive {
+  background: var(--bg-hover);
+}
+
+.optionText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.optionName {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.optionArgs {
+  color: var(--text-faint);
+  font-weight: 500;
+}
+
+.optionDescription {
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.optionBot {
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickerListTop {
+  padding-top: 6px;
+}
+
+.pickerEntry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* ---- the command and its chips, in place of the text box ---- */
+
+.draft {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 30px;
+  padding: 2px 0;
+}
+
+.command {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px 0 4px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: default;
+}
+
+.command:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  max-width: 100%;
+  height: 26px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+
+.chip:focus-within {
+  border-color: var(--accent);
+}
+
+.chipInvalid {
+  border-color: var(--danger-strong);
+}
+
+.chipName {
+  flex-shrink: 0;
+  height: 100%;
+  padding: 0 6px;
+  background: var(--bg-3);
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.chipOptional .chipName {
+  color: var(--text-faint);
+}
+
+.chipInput {
+  width: auto;
+  min-width: 48px;
+  max-width: 360px;
+  height: 100%;
+  padding: 0 8px;
+  border: none;
+  background: none;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.chipInput::placeholder {
+  color: var(--text-placeholder);
+}
+
+/* The app's Select inside a chip: no frame of its own, as tall as the chip. */
+.chipSelect {
+  min-width: 96px;
+  min-height: 24px;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  font-size: 14px;
+}
+
+.chipSelectWrap {
+  display: inline-flex;
+  height: 100%;
+}
+
+.chipRemove {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.chipRemove:hover {
+  color: var(--text-strong);
+}
+
+.addOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 24px;
+  padding: 0 7px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  background: none;
+  color: var(--text-faint);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.addOption:hover,
+.addOption:focus-visible {
+  border-style: solid;
+  color: var(--text-strong);
+  outline: none;
+}
+
+.draftError {
+  margin: 6px 2px 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.draftHint {
+  margin: 6px 2px 0;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+/* ---- interaction lines in the chat ---- */
+
+/* "Fulano usou /comando", above the bot's answer (where a reply's quote goes). */
+.used {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0 0 2px 20px;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+.usedName {
+  color: var(--text-soft);
+  font-weight: 600;
+}
+
+.usedCommand {
+  color: var(--accent-text);
+  font-weight: 500;
+}
+
+.usedText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* An answer only I see. */
+.ephemeral {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.ephemeral:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.noteDot {
+  color: var(--text-ghost);
+}
+
+.dismiss {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--link);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dismiss:hover {
+  text-decoration: underline;
+}
+
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-soft);
+  font-size: 15px;
+  font-style: italic;
+}
+
+.failed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--danger);
+  font-size: 15px;
+}

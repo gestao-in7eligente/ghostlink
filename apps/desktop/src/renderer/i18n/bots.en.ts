@@ -23,8 +23,6 @@ export const bots: Record<keyof typeof botsPt, string> = {
   'bots.code.body': "Paste this code into your bot's GHOSTLINK_BOT environment variable. With it, the bot joins this server as {name}.",
   'bots.code.label': 'Connection code',
   'bots.code.warning': 'Save it now: it is not shown again.',
-  'bots.code.copy': 'Copy',
-  'bots.code.copied': 'Copied',
   'bots.code.guide': 'How to connect the bot (guide)',
   'bots.code.done': 'Done',
 

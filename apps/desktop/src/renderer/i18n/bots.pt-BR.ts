@@ -25,8 +25,6 @@ export const bots = {
   'bots.code.body': 'Cole este código na variável de ambiente GHOSTLINK_BOT do seu bot. Com ele, o bot entra neste servidor como {name}.',
   'bots.code.label': 'Código de conexão',
   'bots.code.warning': 'Guarde agora: ele não aparece de novo.',
-  'bots.code.copy': 'Copiar',
-  'bots.code.copied': 'Copiado',
   'bots.code.guide': 'Como conectar o bot (guia)',
   'bots.code.done': 'Pronto',
 

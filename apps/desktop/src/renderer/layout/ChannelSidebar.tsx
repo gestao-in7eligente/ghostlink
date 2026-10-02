@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { ChevronDown, Hash, Lock, LogOut, Plus, Settings, Trash2, UserPlus, Volume2 } from 'lucide-react';
 import { PERMISSIONS, has, type Channel, type ChannelType } from '@ghostlink/shared';
 import { GhostMark } from '../components/GhostMark.js';
+import { BotsSection } from '../features/bots/BotsSection.js';
 import { canOpenServerSettings } from '../features/server-settings/access.js';
 import { CreateChannelDialog } from '../features/server-settings/CreateChannelDialog.js';
 import { useOpenServerExit } from '../features/serverDelete/DeletionBanner.js';
@@ -83,6 +84,7 @@ export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog) => 
       )}
 
       <div className={l.channelScroll}>
+        <BotsSection />
         <ChannelSection title={t('layout.textChannels')} type="text" channels={text} canCreate={canManageChannels} onCreate={() => setCreating('text')} />
         {text.length === 0 && <p className={l.emptyHint}>{t('layout.noChannel')}</p>}
         <ChannelSection title={t('layout.voiceChannels')} type="voice" channels={voice} canCreate={canManageChannels} onCreate={() => setCreating('voice')} />
