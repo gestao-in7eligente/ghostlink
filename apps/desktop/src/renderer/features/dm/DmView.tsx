@@ -12,6 +12,9 @@ import c from '../chat/chat.module.css';
 import { formatDay, formatFull, formatStamp, formatTime } from '../chat/grouping.js';
 import { parseMarkdown } from '../chat/markdown.js';
 import { renderMarkdown, type MarkdownContext } from '../chat/markdownRender.js';
+import { channelChip } from '../channelMenu/channelChip.js';
+import { openChannelLink } from '../channelMenu/openChannelLink.js';
+import { useSavedServers } from '../channelMenu/useSavedServer.js';
 import d from './dm.module.css';
 import { DmComposer, type ComposerMode } from './DmComposer.js';
 import { buildDmRows, dmAttachmentViews, dmSummary, isTyping, repliedMessage, TYPING_TTL_MS, type DmFileNotes, type DmRow } from './dmModel.js';
@@ -81,16 +84,33 @@ export function DmView({ conversation, friend, name, myName }: { conversation: D
     return () => window.removeEventListener('focus', mark);
   }, [conv, conversation.unread, newest, log?.status]);
 
+  // A channel link from a friend names one of my servers (the Home screen has none on screen).
+  const savedServers = useSavedServers();
   const md: MarkdownContext = useMemo(
     () => ({
-      classes: { paragraph: c.p, quote: c.quote, codeBlock: c.codeBlock, code: c.code, link: c.link, mention: c.mention, mentionMe: c.mentionMe },
+      classes: {
+        paragraph: c.p,
+        quote: c.quote,
+        codeBlock: c.codeBlock,
+        code: c.code,
+        link: c.link,
+        mention: c.mention,
+        mentionMe: c.mentionMe,
+        channel: c.channelLink,
+        channelUnknown: c.channelUnknown,
+      },
       userName: () => null,
       role: () => null,
       pingsMe: () => false,
       labels: { everyone: '@everyone', formerMember: t('chat.formerMember'), deletedRole: t('chat.unknownRole').replace(/^@/, '') },
       openLink: (url) => void window.ghostlink.app.openExternal(url).catch(() => undefined),
+      channels: {
+        chip: (key, channelId) => channelChip(key, channelId, { onScreen: null, saved: savedServers }),
+        open: (key, channelId) => void openChannelLink({ kind: 'channel', serverKeyId: key, channelId }),
+        labels: { channel: t('channelLink.channel'), unknown: t('channelLink.unknownChannel') },
+      },
     }),
-    [t],
+    [t, savedServers],
   );
 
   const notes: DmFileNotes = useMemo(

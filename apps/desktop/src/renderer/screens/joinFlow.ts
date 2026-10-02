@@ -8,6 +8,8 @@ export interface JoinTarget {
   serverKeyId: string;
   inviteCode?: string;
   name?: string;
+  /** "Convite para o canal": the channel to open once in (when I can see it). */
+  channelId?: string;
 }
 
 export type JoinStep = 'input' | 'probing' | 'confirm' | 'details' | 'connecting' | 'done';

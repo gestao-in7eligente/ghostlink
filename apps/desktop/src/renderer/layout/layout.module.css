@@ -340,6 +340,16 @@
   color: var(--text-strong);
 }
 
+/* A muted channel (its menu's "Silenciar canal"): dimmed and never bold; its mention counter stays. */
+.channelMuted,
+.channelMuted .channelIcon {
+  color: var(--text-ghost);
+}
+
+.channelMuted:hover {
+  color: var(--text-faint);
+}
+
 .channelActive,
 .channelActive:hover {
   background: var(--bg-selected);

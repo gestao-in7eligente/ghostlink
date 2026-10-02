@@ -2,13 +2,30 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { LIMITS, ProtocolError, avatarHashSchema, formatHostPort, parseHostPort, sanitizeLabel } from '@ghostlink/shared';
-import { DEFAULT_NOTIFY_MODE, NOTIFY_MODES, type NotifyMode, type SavedServer } from '../shared/ipcTypes.js';
+import {
+  DEFAULT_NOTIFY_MODE,
+  MAX_CHANNEL_PREFS,
+  NOTIFY_MODES,
+  type ChannelPrefs,
+  type ChannelPrefsPatch,
+  type NotifyMode,
+  type SavedServer,
+} from '../shared/ipcTypes.js';
 import { readJsonFile, writeJsonAtomic } from './files.js';
 
 export type { SavedServer } from '../shared/ipcTypes.js';
 
 export const SERVERS_FILE = 'servers.json';
 const NAME_MAX_GRAPHEMES = 64;
+
+/** A channel id (entityIdSchema): 128 random bits in base32. */
+export const CHANNEL_ID = /^[A-Z2-7]{26}$/;
+const channelIdSchema = z.string().regex(CHANNEL_ID);
+
+const channelPrefsSchema = z.object({
+  notify: z.enum(NOTIFY_MODES).optional().catch(undefined),
+  mutedUntil: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable().optional().catch(undefined),
+});
 
 function canonicalAddress(address: string): string {
   const { host, port } = parseHostPort(address.trim());
@@ -26,6 +43,13 @@ const savedServerSchema = z.object({
   iconHash: avatarHashSchema.optional().catch(undefined),
   // v0.4.2; an unknown mode (a newer app's) reads as the default.
   notify: z.enum(NOTIFY_MODES).optional().catch(undefined),
+  // v0.5.0, the channel menu: damaged choices are none, not a damaged file.
+  channels: z
+    .record(channelIdSchema, channelPrefsSchema)
+    .refine((r) => Object.keys(r).length <= MAX_CHANNEL_PREFS)
+    .optional()
+    .catch(undefined),
+  pinned: z.array(channelIdSchema).max(MAX_CHANNEL_PREFS).optional().catch(undefined),
 });
 
 const fileSchema = z.object({ version: z.literal(1), servers: z.array(savedServerSchema).max(1000) });
@@ -97,6 +121,8 @@ export class SavedServersStore {
       addedAt: existing?.addedAt ?? this.#now(),
       ...(existing?.iconHash === undefined ? {} : { iconHash: existing.iconHash }),
       ...(existing?.notify === undefined ? {} : { notify: existing.notify }),
+      ...(existing?.channels === undefined ? {} : { channels: existing.channels }),
+      ...(existing?.pinned === undefined ? {} : { pinned: existing.pinned }),
     };
     const next = existing ? this.#servers.map((s) => (s === existing ? entry : s)) : [...this.#servers, entry];
     this.#save(next);
@@ -129,6 +155,48 @@ export class SavedServersStore {
     return true;
   }
 
+  /**
+   * One text channel's choices on this computer (channel menu, v0.5.0): its notification mode, its mute
+   * and its pin. Nothing is written for what is the default, and mutes already over are dropped on the
+   * way. Returns true when it changed (and was written); false for an unknown id. Throws
+   * ProtocolError('BAD_REQUEST') past MAX_CHANNEL_PREFS channels.
+   */
+  setChannel(id: string, channelId: string, patch: ChannelPrefsPatch): boolean {
+    if (!CHANNEL_ID.test(channelId)) throw new ProtocolError('BAD_REQUEST', 'invalid channel id');
+    const existing = this.#servers.find((s) => s.id === id);
+    if (!existing) return false;
+    const now = this.#now();
+    const channels: Record<string, ChannelPrefs> = {};
+    for (const [key, prefs] of Object.entries(existing.channels ?? {})) channels[key] = { ...prefs };
+    const prefs: ChannelPrefs = Object.hasOwn(channels, channelId) ? channels[channelId]! : {};
+    if (patch.notify === null) delete prefs.notify;
+    else if (patch.notify !== undefined) prefs.notify = patch.notify;
+    if (patch.mutedUntil === false) delete prefs.mutedUntil;
+    else if (patch.mutedUntil !== undefined) prefs.mutedUntil = patch.mutedUntil;
+    channels[channelId] = prefs;
+    for (const [key, value] of Object.entries(channels)) {
+      if (typeof value.mutedUntil === 'number' && value.mutedUntil <= now) delete value.mutedUntil;
+      if (value.notify === undefined && value.mutedUntil === undefined) delete channels[key];
+    }
+    // A new pin goes after the others (pin order); pinning a pinned channel keeps its place.
+    const before = existing.pinned ?? [];
+    let pinned = before;
+    if (patch.pinned === true && !before.includes(channelId)) pinned = [...before, channelId];
+    else if (patch.pinned === false) pinned = before.filter((c) => c !== channelId);
+    if (Object.keys(channels).length > MAX_CHANNEL_PREFS || pinned.length > MAX_CHANNEL_PREFS) {
+      throw new ProtocolError('BAD_REQUEST', 'too many channel choices');
+    }
+    const { channels: _channels, pinned: _pinned, ...rest } = existing;
+    const entry: SavedServer = {
+      ...rest,
+      ...(Object.keys(channels).length === 0 ? {} : { channels }),
+      ...(pinned.length === 0 ? {} : { pinned }),
+    };
+    if (JSON.stringify(channels) === JSON.stringify(existing.channels ?? {}) && JSON.stringify(pinned) === JSON.stringify(before)) return false;
+    this.#save(this.#servers.map((s) => (s === existing ? entry : s)));
+    return true;
+  }
+
   /** Returns false when no server has this id. */
   remove(id: string): boolean {
     const next = this.#servers.filter((s) => s.id !== id);
@@ -144,5 +212,8 @@ export class SavedServersStore {
 }
 
 function copy(s: SavedServer): SavedServer {
-  return { ...s, addresses: [...s.addresses] };
+  const out: SavedServer = { ...s, addresses: [...s.addresses] };
+  if (s.channels) out.channels = Object.fromEntries(Object.entries(s.channels).map(([id, prefs]) => [id, { ...prefs }]));
+  if (s.pinned) out.pinned = [...s.pinned];
+  return out;
 }

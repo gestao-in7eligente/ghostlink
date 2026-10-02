@@ -9,6 +9,11 @@ export interface InvitePayload {
   serverKeyId: string;
   inviteCode?: string;
   name?: string;
+  /**
+   * The channel whoever joins lands in, when they can see it ("Convite para o canal", v0.5.0). Only a
+   * hint, like the name: an app that does not know it ignores it, and a malformed one is dropped.
+   */
+  channelId?: string;
 }
 
 export type ParsedJoinInput =
@@ -24,6 +29,8 @@ const IPV4 = new RegExp(`^${IPV4_OCTET}(?:\\.${IPV4_OCTET}){3}$`);
 const PORT = /^[0-9]{1,5}$/;
 const SERVER_KEY_ID = /^[A-Za-z0-9_-]{43}$/;
 const INVITE_CODE = /^[A-Z2-7]{10}$/;
+/** A channel id (entityIdSchema in chat.ts): 128 random bits in base32. */
+const CHANNEL_ID = /^[A-Z2-7]{26}$/;
 
 function bad(message: string): ProtocolError {
   return new ProtocolError('BAD_REQUEST', message);
@@ -105,6 +112,7 @@ function normalizePayload(p: InvitePayload): InvitePayload {
     const name = sanitizeLabel(p.name, INVITE_NAME_MAX_GRAPHEMES);
     if (name !== '') out.name = name;
   }
+  if (typeof p.channelId === 'string' && CHANNEL_ID.test(p.channelId)) out.channelId = p.channelId;
   return out;
 }
 
@@ -113,7 +121,7 @@ function checkLength(s: string): string {
   return s;
 }
 
-/** ghostlink://join?h=a,b&k=<serverKeyId>&i=<code>&n=<name> */
+/** ghostlink://join?h=a,b&k=<serverKeyId>&i=<code>&n=<name>&c=<channelId> */
 export function formatInviteLink(p: InvitePayload): string {
   const v = normalizePayload(p);
   const q = new URLSearchParams();
@@ -121,13 +129,14 @@ export function formatInviteLink(p: InvitePayload): string {
   q.set('k', v.serverKeyId);
   if (v.inviteCode !== undefined) q.set('i', v.inviteCode);
   if (v.name !== undefined) q.set('n', v.name);
+  if (v.channelId !== undefined) q.set('c', v.channelId);
   return checkLength(`${CRYPTO_LABELS.scheme}://join?${q.toString()}`);
 }
 
-/** "GL1-" + base64url(UTF-8(JSON {h, k, i, n})) */
+/** "GL1-" + base64url(UTF-8(JSON {h, k, i, n, c})) */
 export function formatPasteCode(p: InvitePayload): string {
   const v = normalizePayload(p);
-  const json = JSON.stringify({ h: v.addresses, k: v.serverKeyId, i: v.inviteCode, n: v.name });
+  const json = JSON.stringify({ h: v.addresses, k: v.serverKeyId, i: v.inviteCode, n: v.name, c: v.channelId });
   return checkLength(CRYPTO_LABELS.pastePrefix + toBase64Url(utf8(json)));
 }
 
@@ -141,6 +150,8 @@ const pasteJsonSchema = z.object({
   k: z.string().max(64),
   i: z.string().max(64).optional(),
   n: z.string().max(1024).optional(),
+  // v0.5.0: older apps drop it (an unknown key); anything but a string is no channel, not a bad invite.
+  c: z.string().max(64).optional().catch(undefined),
 });
 
 function parseInviteLink(s: string): InvitePayload {
@@ -166,6 +177,9 @@ function parseInviteLink(s: string): InvitePayload {
   const n = params.get('n');
   if (i !== null) payload.inviteCode = i;
   if (n !== null) payload.name = n;
+  // The channel is only a hint: a repeated one is none.
+  const c = params.getAll('c');
+  if (c.length === 1) payload.channelId = c[0]!;
   return normalizePayload(payload);
 }
 
@@ -182,6 +196,7 @@ function parsePasteCode(s: string): InvitePayload {
   const payload: InvitePayload = { addresses: parsed.data.h, serverKeyId: parsed.data.k };
   if (parsed.data.i !== undefined) payload.inviteCode = parsed.data.i;
   if (parsed.data.n !== undefined) payload.name = parsed.data.n;
+  if (parsed.data.c !== undefined) payload.channelId = parsed.data.c;
   return normalizePayload(payload);
 }
 

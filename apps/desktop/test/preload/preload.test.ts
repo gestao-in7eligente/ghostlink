@@ -29,7 +29,7 @@ describe('preload bridge', () => {
     expect(Object.keys(api.identity).sort()).toEqual(['create', 'delete', 'exportBackup', 'importBackup', 'pickBackup', 'replaceKeepingBackup', 'retry', 'status']);
     expect(Object.keys(api.ptt)).toEqual(['configure']);
     expect(Object.keys(api.join).sort()).toEqual(['connect', 'parse', 'probe']);
-    expect(Object.keys(api.servers).sort()).toEqual(['checkExit', 'connect', 'delete', 'disconnect', 'leave', 'list', 'remove', 'setCall', 'setNotify']);
+    expect(Object.keys(api.servers).sort()).toEqual(['checkExit', 'connect', 'delete', 'disconnect', 'leave', 'list', 'remove', 'setCall', 'setChannel', 'setNotify']);
     expect(Object.keys(api.settings).sort()).toEqual(['get', 'set']);
     expect(Object.keys(api.dm).sort()).toEqual(['attach', 'conversations', 'edit', 'fetchFile', 'hide', 'history', 'onEvent', 'open', 'read', 'remove', 'saveFile', 'send', 'typing']);
     expect(Object.keys(api.friends).sort()).toEqual(['accept', 'add', 'block', 'dismiss', 'newCode', 'onChange', 'remove', 'rename', 'setAvailable', 'setInbox', 'state']);
@@ -72,6 +72,7 @@ describe('preload bridge', () => {
     ['servers.setCall', () => api.servers.setCall('s1'), IPC.serversSetCall, ['s1']],
     ['servers.setCall null', () => api.servers.setCall(null), IPC.serversSetCall, [null]],
     ['servers.setNotify', () => api.servers.setNotify('s1', 'all'), IPC.serversSetNotify, ['s1', 'all']],
+    ['servers.setChannel', () => api.servers.setChannel('s1', 'C1', { pinned: true }), IPC.serversSetChannel, ['s1', 'C1', { pinned: true }]],
     ['host.status', () => api.host.status(), IPC.hostStatus, []],
     ['host.start', () => api.host.start(hostConfig), IPC.hostStart, [hostConfig]],
     ['host.stop', () => api.host.stop(), IPC.hostStop, []],

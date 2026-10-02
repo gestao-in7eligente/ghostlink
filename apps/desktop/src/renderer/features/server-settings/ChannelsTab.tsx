@@ -10,12 +10,15 @@ import { deleteChannel, reorderChannels } from '../chat/actions.js';
 import { moveChannel } from './access.js';
 import { CreateChannelDialog } from './CreateChannelDialog.js';
 
-/** Create, edit, reorder and delete channels (MANAGE_CHANNELS). */
-export function ChannelsTab() {
+/**
+ * Create, edit, reorder and delete channels (MANAGE_CHANNELS). `editId`: opens with that channel's editor
+ * (the channel menu's "Editar canal"), and `onEditClosed` says when any editor closed.
+ */
+export function ChannelsTab({ editId, onEditClosed }: { editId?: string; onEditClosed?: () => void }) {
   const t = useT();
   const byId = useTextStore((st) => st.channels.byId);
   const all = useMemo(() => Object.values(byId), [byId]);
-  const [editing, setEditing] = useState<Channel | null>(null);
+  const [editing, setEditing] = useState<Channel | null>(() => (editId !== undefined && Object.hasOwn(byId, editId) ? byId[editId]! : null));
   const [creating, setCreating] = useState<ChannelType | null>(null);
   const [deleting, setDeleting] = useState<Channel | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +98,7 @@ export function ChannelsTab() {
           onClose={() => {
             setEditing(null);
             setCreating(null);
+            onEditClosed?.();
           }}
         />
       )}
