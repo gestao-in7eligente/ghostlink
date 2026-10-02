@@ -1,6 +1,6 @@
 // Local voice settings (spec §8.4, §11.1 item 7): devices, input mode and key, the
-// voice-activity threshold, noise suppression, mute/deafen, per-user volume per server, and the
-// camera with its quality. They live in this app's localStorage (per userData profile); what is
+// voice-activity threshold, noise suppression, mute/deafen, per-user volume and mute per server,
+// and the camera with its quality. They live in this app's localStorage (per userData profile); what is
 // read back is never trusted.
 import { create } from 'zustand';
 import { DEFAULT_CAMERA_QUALITY, isCameraQuality, type CameraQuality } from './camera.js';
@@ -36,6 +36,11 @@ export interface VoiceSettings {
   deafened: boolean;
   /** serverId → userId (or screenVolumeKey(userId) for their stream) → volume in percent (0–200); absent means 100. */
   volumes: Readonly<Record<string, Readonly<Record<string, number>>>>;
+  /**
+   * serverId → the people I muted for myself ("Silenciar" in their menu, spec
+   * 2026-10-02-menu-do-usuario §2). Apart from `volumes`, so muting keeps the chosen volume.
+   */
+  localMutes: Readonly<Record<string, readonly string[]>>;
   /** null = the system's first camera (spec 2026-10-01-camera §2). */
   cameraDeviceId: string | null;
   /** What my camera sends: 720p30 by default. */
@@ -52,6 +57,7 @@ export const defaultVoiceSettings: VoiceSettings = {
   muted: false,
   deafened: false,
   volumes: {},
+  localMutes: {},
   cameraDeviceId: null,
   cameraQuality: DEFAULT_CAMERA_QUALITY,
 };
@@ -68,6 +74,7 @@ export interface KeyValueStorage {
 
 /** A person's voice volume is under their user id; their stream's sound under "screen:<userId>". */
 const VOLUME_KEY = /^(?:screen:)?[0-9a-f]{32}$/;
+const USER_ID = /^[0-9a-f]{32}$/;
 const SERVER_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const PTT_CODE = /^[A-Z][A-Za-z0-9]{0,23}$/;
 const MAX_SERVERS = 100;
@@ -105,6 +112,18 @@ function parseVolumes(raw: unknown): VoiceSettings['volumes'] {
   return out;
 }
 
+function parseLocalMutes(raw: unknown): VoiceSettings['localMutes'] {
+  const out: Record<string, string[]> = {};
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return out;
+  for (const serverId of Object.keys(raw).filter((k) => SERVER_ID.test(k)).slice(0, MAX_SERVERS)) {
+    const users = own(raw, serverId);
+    if (!Array.isArray(users)) continue;
+    const ids = [...new Set(users.filter((u): u is string => typeof u === 'string' && USER_ID.test(u)))].slice(0, MAX_USERS_PER_SERVER);
+    if (ids.length > 0) out[serverId] = ids;
+  }
+  return out;
+}
+
 /** Field by field: every valid value is kept, everything else falls back to the default. */
 export function parseVoiceSettings(raw: unknown): VoiceSettings {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return defaultVoiceSettings;
@@ -128,6 +147,7 @@ export function parseVoiceSettings(raw: unknown): VoiceSettings {
     muted: typeof muted === 'boolean' ? muted : false,
     deafened: typeof deafened === 'boolean' ? deafened : false,
     volumes: parseVolumes(own(raw, 'volumes')),
+    localMutes: parseLocalMutes(own(raw, 'localMutes')),
     cameraDeviceId: deviceId(own(raw, 'cameraDeviceId')),
     cameraQuality: isCameraQuality(cameraQuality) ? cameraQuality : DEFAULT_CAMERA_QUALITY,
   };
@@ -172,6 +192,22 @@ export function withVolume(settings: VoiceSettings, serverId: string, userId: st
   if (Object.keys(users).length > 0) volumes[serverId] = users;
   else delete volumes[serverId];
   return { ...settings, volumes };
+}
+
+/** Whether I muted `userId` for myself on a server. */
+export function isLocallyMuted(settings: VoiceSettings, serverId: string | null, userId: string): boolean {
+  return serverId !== null && Object.hasOwn(settings.localMutes, serverId) && settings.localMutes[serverId]!.includes(userId);
+}
+
+/** Mutes or unmutes `userId` for me on a server; their volume stays as it was. */
+export function withLocalMute(settings: VoiceSettings, serverId: string, userId: string, muted: boolean): VoiceSettings {
+  const current = Object.hasOwn(settings.localMutes, serverId) ? settings.localMutes[serverId]! : [];
+  if (current.includes(userId) === muted) return settings;
+  const users = muted ? [...current, userId] : current.filter((u) => u !== userId);
+  const localMutes = { ...settings.localMutes };
+  if (users.length > 0) localMutes[serverId] = users;
+  else delete localMutes[serverId];
+  return { ...settings, localMutes };
 }
 
 function browserStorage(): KeyValueStorage | null {

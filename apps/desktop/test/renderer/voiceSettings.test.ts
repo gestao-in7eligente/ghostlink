@@ -3,11 +3,13 @@ import {
   NOISE_SUPPRESSIONS,
   VOICE_SETTINGS_KEY,
   defaultVoiceSettings,
+  isLocallyMuted,
   loadVoiceSettings,
   parseVoiceSettings,
   saveVoiceSettings,
   screenVolumeKey,
   volumeOf,
+  withLocalMute,
   withVolume,
   type KeyValueStorage,
 } from '../../src/renderer/features/voice/settings.js';
@@ -35,6 +37,7 @@ describe('voice settings', () => {
       muted: false,
       deafened: false,
       volumes: {},
+      localMutes: {},
       cameraDeviceId: null,
       cameraQuality: '720p30',
     });
@@ -112,6 +115,27 @@ describe('voice settings', () => {
     // Back to 100 % forgets the entry.
     expect(withVolume(s, 's1', ANA, 100).volumes).toEqual({ s2: { [ANA]: 20 } });
     expect(volumeOf(s, 's1', '__proto__')).toBe(100);
+  });
+
+  it('muting someone for me is saved per server and user, apart from their volume (menu spec §2)', () => {
+    let s = withLocalMute(withVolume(defaultVoiceSettings, 's1', BIA, 40), 's1', BIA, true);
+    expect(isLocallyMuted(s, 's1', BIA)).toBe(true);
+    expect([isLocallyMuted(s, 's2', BIA), isLocallyMuted(s, 's1', ANA), isLocallyMuted(s, null, BIA)]).toEqual([false, false, false]);
+    expect(volumeOf(s, 's1', BIA)).toBe(40);
+    expect(withLocalMute(s, 's1', BIA, true)).toBe(s);
+
+    const storage = memory();
+    saveVoiceSettings(storage, s);
+    s = loadVoiceSettings(storage);
+    expect(s.localMutes).toEqual({ s1: [BIA] });
+    // Unmuting forgets the entry; the volume chosen before is still there.
+    s = withLocalMute(s, 's1', BIA, false);
+    expect(s.localMutes).toEqual({});
+    expect(volumeOf(s, 's1', BIA)).toBe(40);
+    // Settings from before the menu have none; storage is never trusted.
+    expect(parseVoiceSettings({ volumes: {} }).localMutes).toEqual({});
+    expect(parseVoiceSettings({ localMutes: { s1: [BIA, 'nope', 42, BIA, `screen:${ANA}`], 'bad id!': [ANA], s2: ANA, s3: [] } }).localMutes).toEqual({ s1: [BIA] });
+    expect(isLocallyMuted(s, '__proto__', BIA)).toBe(false);
   });
 
   it('a stream’s volume is kept apart from the same person’s voice, and survives storage (spec 2026-10-01 §5)', () => {

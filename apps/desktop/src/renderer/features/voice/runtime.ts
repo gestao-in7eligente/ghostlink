@@ -19,7 +19,7 @@ import { webNoiseBackend } from './noiseBackend.js';
 import { NoiseSuppressors, VOICE_SAMPLE_RATE, captureFor, type ResolvedSuppression } from './noiseSuppression.js';
 import { cancelScreenPicker, createScreenOutlet, pickScreen } from './screenStore.js';
 import { VoiceSession } from './session.js';
-import { screenVolumeKey, useVoiceSettings, withVolume, type NoiseSuppression, type VoiceSettings } from './settings.js';
+import { screenVolumeKey, useVoiceSettings, withLocalMute, withVolume, type NoiseSuppression, type VoiceSettings } from './settings.js';
 import { lifetime } from './lifetime.js';
 import { callElsewhere, callServerId, selfVoice, useVoiceStore, viewVoice, welcomeServerId } from './state.js';
 
@@ -268,7 +268,7 @@ function start(): () => void {
       applyPtt();
       configureGlobalPtt(s);
     }
-    if (s.volumes !== prev.volumes) current.applyVolumes();
+    if (s.volumes !== prev.volumes || s.localMutes !== prev.localMutes) current.applyVolumes();
     if (s.inputDeviceId !== prev.inputDeviceId) void current.switchDevice('audioinput', s.inputDeviceId ?? 'default');
     if (s.outputDeviceId !== prev.outputDeviceId) void current.switchDevice('audiooutput', s.outputDeviceId ?? 'default');
     if (s.cameraDeviceId !== prev.cameraDeviceId) void current.switchCamera(s.cameraDeviceId);
@@ -380,6 +380,15 @@ export function toggleDeafen(): Promise<void> {
 export function setUserVolume(userId: string, percent: number): void {
   const serverId = viewVoice(useVoiceStore.getState()).serverId;
   if (serverId) useVoiceSettings.getState().update((s) => withVolume(s, serverId, userId, percent));
+}
+
+/**
+ * "Silenciar" in someone's menu: their voice off for me only, saved per server (the one on
+ * screen) and user like the volume, which it leaves as it was.
+ */
+export function setLocalMute(userId: string, muted: boolean): void {
+  const serverId = viewVoice(useVoiceStore.getState()).serverId;
+  if (serverId) useVoiceSettings.getState().update((s) => withLocalMute(s, serverId, userId, muted));
 }
 
 /** A person's stream volume (0–200 %), saved apart from their voice (spec 2026-10-01 §5). */

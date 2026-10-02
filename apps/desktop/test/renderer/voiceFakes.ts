@@ -77,7 +77,7 @@ export class FakeScreenTrack extends EventEmitter {
 
 export class FakeLocal {
   identity = `u_${ME}`;
-  permissions: { canPublish: boolean; canPublishSources: number[] } | undefined = { canPublish: true, canPublishSources: [MIC] };
+  permissions: { canSubscribe?: boolean; canPublish: boolean; canPublishSources: number[] } | undefined = { canSubscribe: true, canPublish: true, canPublishSources: [MIC] };
   mic: FakePub | null = null;
   readonly screenPubs = new Map<Track.Source, FakePub>();
   readonly published: Array<{ track: FakeTrack | FakeScreenTrack; options: unknown }> = [];

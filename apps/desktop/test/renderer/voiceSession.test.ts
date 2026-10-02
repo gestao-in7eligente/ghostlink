@@ -2,7 +2,7 @@ import { RoomEvent, Track, type LocalAudioTrack } from 'livekit-client';
 import { TrackSource } from 'livekit-server-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VoiceSession, canPublishMicrophone } from '../../src/renderer/features/voice/session.js';
-import { defaultVoiceSettings, withVolume } from '../../src/renderer/features/voice/settings.js';
+import { defaultVoiceSettings, withLocalMute, withVolume } from '../../src/renderer/features/voice/settings.js';
 import { BIA, CAIO, FakePub, FakeRoom, FakeTrack, MIC, ME, flush, harness, participant, type Harness } from './voiceFakes.js';
 
 let h: Harness;
@@ -282,6 +282,17 @@ describe('mute and deafen (spec §8.3: self state is display only; the real mute
     expect(room().localParticipant.micCalls.at(-1)!.enabled).toBe(true);
   });
 
+  it('muting someone for myself silences their voice only, and keeps their volume for later', async () => {
+    h.settings.value = withLocalMute(withVolume(defaultVoiceSettings, 's1', BIA, 150), 's1', BIA, true);
+    await h.session.join('VC1');
+    const bia = room().addRemote(BIA, 'Bia');
+    h.session.applyVolumes();
+    expect([bia.volume, bia.screenVolume]).toEqual([0, 1]);
+    h.settings.value = withLocalMute(h.settings.value, 's1', BIA, false);
+    h.session.applyVolumes();
+    expect(bia.volume).toBe(1.5);
+  });
+
   it('unmuting while deafened also undeafens (Discord-like)', async () => {
     await h.session.join('VC1');
     await h.session.setDeafened(true);
@@ -320,6 +331,28 @@ describe('moderation from the server (spec §8.3)', () => {
     await h.session.handleServerEvent({ t: 'voice.state', d: {} });
     expect(local.published).toHaveLength(2);
     expect(h.microphones).toHaveLength(2);
+  });
+
+  it('a server deafen plays everyone silent; after it, the app subscribes again once LiveKit allows it', async () => {
+    await h.session.join('VC1');
+    const local = room().localParticipant;
+    const bia = room().addRemote(BIA, 'Bia', [Track.Source.Microphone]);
+    const mic = [...bia.trackPublications.values()][0]!;
+    h.dispatch({ type: 'serverEvent', event: { t: 'voice.state', d: { channelId: 'VC1', participants: [participant(ME, { serverDeafened: true }), participant(BIA)] } } });
+    await h.session.handleServerEvent({ t: 'voice.state', d: {} });
+    expect(bia.volume).toBe(0);
+    // LiveKit ended the subscription (canSubscribe false).
+    mic.subscribed = false;
+    local.permissions = { canSubscribe: false, canPublish: true, canPublishSources: [MIC] };
+    room().emit(RoomEvent.ParticipantPermissionsChanged, { canSubscribe: true }, local);
+    expect(mic.subscribed).toBe(false);
+
+    h.dispatch({ type: 'serverEvent', event: { t: 'voice.state', d: { channelId: 'VC1', participants: [participant(ME), participant(BIA)] } } });
+    await h.session.handleServerEvent({ t: 'voice.state', d: {} });
+    expect(bia.volume).toBe(1);
+    local.permissions = { canSubscribe: true, canPublish: true, canPublishSources: [MIC] };
+    room().emit(RoomEvent.ParticipantPermissionsChanged, { canSubscribe: false }, local);
+    expect(mic.subscribed).toBe(true);
   });
 
   it('voice.forceMove joins the new channel by itself', async () => {
