@@ -20,6 +20,9 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
+/** A server's member id of a public key (apps/server's userIdFromPublicKey), computed here independently. */
+const userIdOf = (key: Uint8Array) => createHash('sha256').update(key).digest('hex').slice(0, 32);
+
 function codeOf(fn: () => unknown): string | undefined {
   try {
     fn();
@@ -125,7 +128,7 @@ describe('adding by code (friends spec §5.1)', () => {
 
     ana.friends.add(bia.code());
     expect(ana.friends.list()).toEqual([
-      { key: keyToText(bia.key), shortCode: shortCode(bia.key), nickname: '', localName: null, state: 'pending_out', online: false, since: timers.now },
+      { key: keyToText(bia.key), userId: userIdOf(bia.key), shortCode: shortCode(bia.key), nickname: '', localName: null, state: 'pending_out', online: false, since: timers.now },
     ]);
     expect(ana.state.changes).toBe(1);
     expect(ana.friends.allows(bia.key)).toBe(true);
@@ -189,7 +192,7 @@ describe('a request from the code to the friendship (friends spec §5.1)', () =>
     await flush();
     expect(ana.sees(bia)).toBe('pending_out');
     expect(bia.row(ana)).toEqual({
-      key: keyToText(ana.key), shortCode: shortCode(ana.key), nickname: 'Ana', localName: null, state: 'pending_in', online: false, since: timers.now,
+      key: keyToText(ana.key), userId: userIdOf(ana.key), shortCode: shortCode(ana.key), nickname: 'Ana', localName: null, state: 'pending_in', online: false, since: timers.now,
     });
     // The request arrived: the invite secret is not kept any longer, and no retry waits.
     expect(ana.store.get(bia.key)!.inviteSecret).toBeNull();
@@ -350,6 +353,13 @@ describe('a request from the code to the friendship (friends spec §5.1)', () =>
     await timers.advance(5_000);
     expect(world.inboxLinks).toHaveLength(2);
     expect(stolen).toEqual([]);
+  });
+
+  it('each friend in the list carries the member id of their key (profile card spec §3)', async () => {
+    const { ana, bia } = await friendsAlready();
+    expect(ana.row(bia)).toMatchObject({ state: 'friend', userId: userIdOf(bia.key) });
+    expect(bia.row(ana)).toMatchObject({ state: 'friend', userId: userIdOf(ana.key) });
+    expect(ana.row(bia)!.userId).toMatch(/^[0-9a-f]{32}$/);
   });
 });
 

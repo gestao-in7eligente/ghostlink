@@ -1,7 +1,7 @@
 // The friend key (friends spec §2): one Ed25519 key per person, derived from the friend seed.
 // Signing and verifying use node:crypto, never a transitive dependency of the P2P stack; the
 // public half is the same 32 bytes Hyperswarm derives from that seed (a test asserts it).
-import { createHmac, createPublicKey, timingSafeEqual, verify } from 'node:crypto';
+import { createHash, createHmac, createPublicKey, timingSafeEqual, verify } from 'node:crypto';
 import { CRYPTO_LABELS, fromBase64Url, toBase64Url, utf8 } from '@ghostlink/shared';
 import { AppError } from '../../shared/appErrors.js';
 import { serverKeyFromSeed } from '../identity.js';
@@ -46,6 +46,11 @@ export function keyFromText(text: string): Uint8Array {
   } catch {
     throw new AppError('BAD_REQUEST', 'invalid friend key');
   }
+}
+
+/** hex(SHA-256(raw key))[0:32], the way a server makes a member id of a public key (its userIdFromPublicKey). */
+export function userIdOfKey(key: Uint8Array): string {
+  return createHash('sha256').update(key).digest('hex').slice(0, 32);
 }
 
 export function sameKey(a: Uint8Array, b: Uint8Array): boolean {

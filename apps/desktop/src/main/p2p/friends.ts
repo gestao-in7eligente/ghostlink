@@ -11,7 +11,7 @@ import type { Friend } from '../../shared/friendsTypes.js';
 import type { Log } from '../log.js';
 import { P2P_VERSION, decodeMessage, encodeMessage, wireNickname, type ConversationMessage, type P2pMessage } from './frames.js';
 import { INVITE_SECRET_BYTES, decodeFriendCode, encodeFriendCode, inboxPublicKey, inboxSeed, shortCode } from './friendCode.js';
-import { keyToText, sameKey, type FriendKey } from './friendKey.js';
+import { keyToText, sameKey, userIdOfKey, type FriendKey } from './friendKey.js';
 import { InboxLimiter, knock, serveInbox, type Timers } from './inbox.js';
 import type { FriendRow, FriendsStore } from './store.js';
 import type { FriendLink, FriendSwarm } from './swarm.js';
@@ -126,6 +126,7 @@ export class Friends {
   list(): Friend[] {
     return this.#store.list().map((row) => ({
       key: keyToText(row.key),
+      userId: userIdOfKey(row.key),
       shortCode: shortCode(row.key),
       nickname: row.nickname,
       localName: row.localName,
