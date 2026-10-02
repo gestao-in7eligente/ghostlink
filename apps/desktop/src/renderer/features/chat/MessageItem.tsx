@@ -3,10 +3,11 @@ import { CornerUpLeft, Pencil, Reply, SmilePlus, Trash2 } from 'lucide-react';
 import type { Attachment, Message } from '@ghostlink/shared';
 import { errorMessage, type Translate } from '../../i18n/index.js';
 import { Avatar } from '../../layout/primitives.js';
-import type { PendingFile, PendingMessage } from '../../stores/textState.js';
+import type { BotLocal, PendingFile, PendingMessage } from '../../stores/textState.js';
 import type { AttachmentView, UploadView } from '../attachments/attachmentModel.js';
 import { AttachmentList } from '../attachments/AttachmentList.js';
 import { UploadProgress } from '../attachments/UploadProgress.js';
+import { BotLocalRow, BotTag, UsedCommand } from '../bots/BotParts.js';
 import c from './chat.module.css';
 import { formatDay, formatFull, formatStamp, formatTime, type Row } from './grouping.js';
 import { parseMarkdown } from './markdown.js';
@@ -22,6 +23,8 @@ export interface MessageEnv {
   md: MarkdownContext;
   /** A member's nickname, or "ex-membro". */
   name(userId: string | null): string;
+  /** The author's name and whether it is a bot: a member's, or "bot excluído" / "ex-membro" (`authorBot` from the message). */
+  author(userId: string, authorBot: boolean): { name: string; bot: boolean };
   /** A member's photo hash, or null (initials). */
   avatar(userId: string | null): string | null;
   /** Message text without markup, mentions shown as names (reply previews). */
@@ -39,6 +42,8 @@ export interface MessageEnv {
   onJumpTo(id: number): void;
   onRetry(pending: PendingMessage): void;
   onDrop(pending: PendingMessage): void;
+  /** "Dispensar" on an interaction line only I see (bots spec §3). */
+  onDismiss(local: BotLocal): void;
 }
 
 function Content({ content, everyone, md }: { content: string; everyone: boolean; md: MarkdownContext }) {
@@ -55,10 +60,11 @@ function uploadViews(files: readonly PendingFile[]): UploadView[] {
   return files.map((f) => ({ id: f.id, name: f.name, size: f.size, kind: f.kind, progress: f.progress, done: f.fileId !== null }));
 }
 
-function Header({ name, at, env }: { name: string; at: number; env: MessageEnv }) {
+function Header({ name, at, env, bot = false }: { name: string; at: number; env: MessageEnv; bot?: boolean }) {
   return (
     <div className={c.msgHeader}>
       <span className={c.author}>{name}</span>
+      {bot && <BotTag t={env.t} />}
       <time className={c.stamp} dateTime={new Date(at).toISOString()} title={formatFull(at, env.locale)}>
         {formatStamp(at, env.locale)}
       </time>
@@ -165,6 +171,8 @@ export const MessageRow = memo(function MessageRow({ row, env }: { row: Row; env
     );
   }
 
+  if (row.kind === 'bot') return <BotLocalRow local={row.local} env={env} />;
+
   if (row.kind === 'pending') {
     const p = row.pending;
     return (
@@ -195,19 +203,21 @@ export const MessageRow = memo(function MessageRow({ row, env }: { row: Row; env
   }
 
   const m = row.message;
+  const author = env.author(m.authorId, m.authorBot);
   const classes = [c.msg, row.head ? c.msgHead : '', env.pingsMe(m) ? c.msgMention : '', env.highlightId === m.id ? c.msgHighlight : ''];
   return (
-    <div className={classes.filter(Boolean).join(' ')} role="article" aria-label={`${env.name(m.authorId)}, ${formatStamp(m.createdAt, env.locale)}`}>
+    <div className={classes.filter(Boolean).join(' ')} role="article" aria-label={`${author.name}, ${formatStamp(m.createdAt, env.locale)}`}>
       {m.replyTo && <ReplyPreview message={m} env={env} />}
+      {m.interaction && <UsedCommand userId={m.interaction.userId} command={m.interaction.command} env={env} />}
       {row.head ? (
-        <Avatar size={40} name={env.name(m.authorId)} hash={env.avatar(m.authorId)} self={m.authorId === env.selfId} />
+        <Avatar size={40} name={author.name} hash={env.avatar(m.authorId)} self={m.authorId === env.selfId} />
       ) : (
         <time className={c.gutter} dateTime={new Date(m.createdAt).toISOString()} title={formatFull(m.createdAt, env.locale)}>
           {formatTime(m.createdAt, env.locale)}
         </time>
       )}
       <div className={c.msgBody}>
-        {row.head && <Header name={env.name(m.authorId)} at={m.createdAt} env={env} />}
+        {row.head && <Header name={author.name} at={m.createdAt} env={env} bot={author.bot} />}
         {(m.content !== '' || m.attachments.length === 0) && (
           <div className={c.content}>
             <Content content={m.content} everyone={m.mentions.everyone} md={env.md} />

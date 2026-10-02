@@ -16,6 +16,7 @@ import {
   startDraft,
   type SlashEntry,
 } from '../../src/renderer/features/bots/slashModel.js';
+import { buildRows } from '../../src/renderer/features/chat/grouping.js';
 import { channelLocals } from '../../src/renderer/stores/bots.js';
 import { ADMIN_ROLE, BOB, GERAL, ME, SECRET, channel, ev, member, message, run, snapshot, start } from './textFixtures.js';
 
@@ -169,6 +170,10 @@ describe('the bots store', () => {
 
     state = run(state, ev({ t: 'interaction.failed', id: 'I3', userId: ME, ...base }));
     expect(channelLocals(state.bots, GERAL).map((l) => l.kind)).toEqual(['ephemeral', 'failed']);
+
+    // In the chat: each line right after the message it followed; the next message starts a group.
+    const rows = buildRows([message(10), message(11), message(12, { authorId: BOB }), message(13, { authorId: BOB })], [], ME, channelLocals(state.bots, GERAL));
+    expect(rows.filter((r) => r.kind !== 'date').map((r) => `${r.key}${r.head ? '*' : ''}`)).toEqual(['m:10*', 'm:11', 'b:ephemeral:I2*', 'b:failed:I3*', 'm:12*', 'm:13']);
 
     state = run(state, { type: 'bots.dismiss', channelId: GERAL, kind: 'ephemeral', id: 'I2' }, { type: 'bots.dismiss', channelId: GERAL, kind: 'failed', id: 'I3' });
     expect(channelLocals(state.bots, GERAL)).toEqual([]);

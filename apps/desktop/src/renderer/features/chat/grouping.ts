@@ -1,12 +1,14 @@
 // Message list rows (spec §11.1 item 5): date separators, and messages grouped by
 // author when sent less than 5 minutes apart. Pure, so the list only renders rows.
 import { CHAT_LIMITS, type Message } from '@ghostlink/shared';
-import type { PendingMessage } from '../../stores/textState.js';
+import type { BotLocal, PendingMessage } from '../../stores/textState.js';
 
 export type Row =
   | { kind: 'date'; key: string; at: number }
   | { kind: 'message'; key: string; message: Message; head: boolean }
-  | { kind: 'pending'; key: string; pending: PendingMessage; head: boolean };
+  | { kind: 'pending'; key: string; pending: PendingMessage; head: boolean }
+  /** An interaction line only this app shows (bots spec §3), right after the message it followed. */
+  | { kind: 'bot'; key: string; local: BotLocal; head: true };
 
 /** Local calendar day, so separators follow the user's clock. */
 export function dayKey(at: number): string {
@@ -15,11 +17,12 @@ export function dayKey(at: number): string {
 }
 
 /**
- * Rows for a channel: loaded messages (oldest first), then the user's own
- * messages still being sent. A group starts on a new author, a new day, a reply,
- * or a gap of 5 minutes or more.
+ * Rows for a channel: loaded messages (oldest first), with the interaction lines after the
+ * message each one followed, then the user's own messages still being sent. A group starts on a
+ * new author, a new day, a reply, a bot's answer to a command, after an interaction line, or after
+ * a gap of 5 minutes or more.
  */
-export function buildRows(items: readonly Message[], pending: readonly PendingMessage[], selfId: string): Row[] {
+export function buildRows(items: readonly Message[], pending: readonly PendingMessage[], selfId: string, locals: readonly BotLocal[] = []): Row[] {
   const rows: Row[] = [];
   let lastAuthor: string | null = null;
   let lastAt = 0;
@@ -33,10 +36,22 @@ export function buildRows(items: readonly Message[], pending: readonly PendingMe
     lastDay = day;
     return head;
   };
+  // Stable: lines after the same message keep the order they appeared in.
+  const queue = [...locals].sort((a, b) => a.afterId - b.afterId);
+  let q = 0;
+  const flush = (beforeId: number) => {
+    while (q < queue.length && queue[q]!.afterId < beforeId) {
+      const local = queue[q++]!;
+      rows.push({ kind: 'bot', key: `b:${local.kind}:${local.id}`, local, head: true });
+      lastAuthor = null;
+    }
+  };
   for (const message of items) {
-    const head = place(message.authorId, message.createdAt, message.replyTo !== null);
+    flush(message.id);
+    const head = place(message.authorId, message.createdAt, message.replyTo !== null || message.interaction !== null);
     rows.push({ kind: 'message', key: `m:${message.id}`, message, head });
   }
+  flush(Number.POSITIVE_INFINITY);
   for (const p of pending) {
     const head = place(selfId, Math.max(p.createdAt, lastAt), p.replyTo !== null);
     rows.push({ kind: 'pending', key: `p:${p.clientMsgId}`, pending: p, head });
