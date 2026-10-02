@@ -23,7 +23,7 @@ describe('preload bridge', () => {
       'app', 'attachments', 'deepLink', 'dm', 'draw', 'friends', 'host', 'identity', 'join', 'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onOpenFriendRequests', 'onPtt', 'onServerEvent', 'profile', 'ptt', 'railway', 'screen', 'server', 'serverUpdates', 'servers', 'settings', 'updates',
     ]);
     expect(Object.keys(api.host).sort()).toEqual(['copyText', 'firewall', 'fixFirewall', 'invite', 'join', 'logs', 'recoverOwnership', 'restart', 'start', 'status', 'stop']);
-    expect(Object.keys(api.app).sort()).toEqual(['copyText', 'info', 'openExternal']);
+    expect(Object.keys(api.app).sort()).toEqual(['copyText', 'info', 'openExternal', 'showWindow']);
     expect(Object.keys(api.server)).toEqual(['request']);
     expect(Object.keys(api.notifications)).toEqual(['show']);
     expect(Object.keys(api.identity).sort()).toEqual(['create', 'delete', 'exportBackup', 'importBackup', 'pickBackup', 'replaceKeepingBackup', 'retry', 'status']);
@@ -86,6 +86,7 @@ describe('preload bridge', () => {
     ['host.fixFirewall', () => api.host.fixFirewall(), IPC.hostFixFirewall, []],
     ['app.openExternal', () => api.app.openExternal('https://x/'), IPC.appOpenExternal, ['https://x/']],
     ['app.copyText', () => api.app.copyText('abc'), IPC.appCopyText, ['abc']],
+    ['app.showWindow', () => api.app.showWindow(), IPC.appShowWindow, []],
     ['server.request', () => api.server.request('msg.send', { a: 1 }), IPC.serverRequest, ['msg.send', { a: 1 }]],
     ['server.request for a server', () => api.server.request('msg.send', { a: 1 }, 'srv-1'), IPC.serverRequest, ['msg.send', { a: 1 }, 'srv-1']],
     ['notifications.show', () => api.notifications.show(chatNote), IPC.notificationsShow, [chatNote]],

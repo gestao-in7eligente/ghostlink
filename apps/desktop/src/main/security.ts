@@ -1,4 +1,4 @@
-import { app, session, type WebContents } from 'electron';
+import { app, session, type HandlerDetails, type WebContents, type WindowOpenHandlerResponse } from 'electron';
 
 /**
  * `scheme://host[:port]` for app:, http: and https: URLs; null for anything else.
@@ -29,20 +29,32 @@ export function allowPermissionCheck(permission: string, requestingOrigin: strin
   return (permission === 'media' || permission === 'speaker-selection') && originOf(requestingOrigin) === appOrigin;
 }
 
-/** Applied to every webContents ever created (spec §12). */
-export function hardenWebContents(contents: Pick<WebContents, 'on' | 'setWindowOpenHandler'>): void {
+/** The window.open a webContents asks for, as the rule sees it. */
+export type WindowOpenDetails = Pick<HandlerDetails, 'url' | 'frameName'>;
+
+/**
+ * The one window.open the app lets through: the new window's options when `opener` asks for
+ * it, or null to deny. Only the call's mini window has one (callWindow.ts).
+ */
+export type WindowOpenRule = (opener: Pick<WebContents, 'id' | 'getURL'>, details: WindowOpenDetails) => WindowOpenHandlerResponse | null;
+
+/**
+ * Applied to every webContents ever created (spec §12): no navigation, no webview, and every
+ * window.open denied unless `allow` answers for it.
+ */
+export function hardenWebContents(contents: Pick<WebContents, 'id' | 'getURL' | 'on' | 'setWindowOpenHandler'>, allow?: WindowOpenRule): void {
   contents.on('will-navigate', (event) => event.preventDefault());
   contents.on('will-attach-webview', (event) => event.preventDefault());
-  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  contents.setWindowOpenHandler((details) => allow?.(contents, details) ?? { action: 'deny' });
 }
 
 /**
  * Step 5 of the bootstrap: navigation and window guards for all webContents,
  * the permission policy and the download rule. `appOrigin` is app://ghostlink,
- * or the dev server's origin in development.
+ * or the dev server's origin in development. `windowOpen`: the one popup allowed.
  */
-export function installSecurity(opts: { appOrigin: string }): void {
-  app.on('web-contents-created', (_event, contents) => hardenWebContents(contents));
+export function installSecurity(opts: { appOrigin: string; windowOpen?: WindowOpenRule }): void {
+  app.on('web-contents-created', (_event, contents) => hardenWebContents(contents, opts.windowOpen));
   const ses = session.defaultSession;
   ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
     callback(allowPermissionRequest(permission, details.requestingUrl || webContents.getURL(), opts.appOrigin));

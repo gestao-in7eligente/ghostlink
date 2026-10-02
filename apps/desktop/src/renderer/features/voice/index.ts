@@ -4,7 +4,8 @@
 //   - VoiceStage({ channelId }) in the center when a voice channel is open;
 //   - joinVoice(channelId) as the layout's onJoinVoice handler;
 //   - VoiceSettings() inside the user settings screen (a person's volume lives in their menu, features/userMenu);
-//   - provideVoiceDirectory(...) to feed names, channels and permissions from live stores.
+//   - provideVoiceDirectory(...) to feed names, channels and permissions from live stores;
+//   - CallWindowHost() once at the page's root: the call's mini window while I share my screen.
 import { joinVoice } from './runtime.js';
 import { VoiceChannelParticipants } from './VoiceChannelParticipants.js';
 import { VoiceControls } from './VoiceControls.js';
@@ -12,6 +13,7 @@ import { VoicePanel } from './VoicePanel.js';
 import { VoiceSettings } from './VoiceSettings.js';
 import { VoiceStage } from './VoiceStage.js';
 
+export { CallWindowHost } from './CallWindow.js';
 export { UserVolume } from './UserVolume.js';
 export { VoiceChannelParticipants } from './VoiceChannelParticipants.js';
 export { VoiceControls } from './VoiceControls.js';

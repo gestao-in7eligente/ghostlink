@@ -104,6 +104,17 @@ export const voice = {
   'voice.key.space': 'Espaço',
   'voice.key.left': '{key} esquerdo',
   'voice.key.right': '{key} direito',
+
+  // The call's mini window while I share my screen (v0.4.4, spec 2026-10-02-janelinha-da-chamada).
+  'voice.callWindow.label': 'Janelinha da chamada',
+  'voice.callWindow.presenting': 'Você está apresentando',
+  'voice.callWindow.backToApp': 'Voltar ao GhostLink',
+  'voice.callWindow.close': 'Fechar esta janela (o compartilhamento continua)',
+  'voice.callWindow.people': 'Quem está na chamada',
+  'voice.callWindow.morePeople': 'Mais {count} na chamada',
+  'voice.callWindow.draw': 'Deixar os outros desenharem na minha tela',
+  'voice.callWindow.stop': 'Parar de compartilhar',
+  'voice.callWindow.leave': 'Sair da chamada',
 } as const;
 
 /** Names that read the same in every language (the i18n test allows them). */

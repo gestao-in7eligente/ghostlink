@@ -10,6 +10,7 @@ import { IPC_EVENTS, type Locale, type Platform, type ServerEventMessage } from 
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges, type AppRoutes } from './appProtocol.js';
 import { createAttachments } from './attachments/index.js';
 import { createAvatars } from './avatars/index.js';
+import { CallWindow } from './callWindow.js';
 import { ClientController } from './controller.js';
 import { GHOSTKEY_EXTENSION, IdentityBackup, type IdentityBackupDeps } from './backup.js';
 import { DeepLinks, extractDeepLink, registerProtocolClient } from './deeplink.js';
@@ -121,7 +122,9 @@ async function start(): Promise<BrowserWindow | null> {
   const appRoutes: AppRoutes = { avatar: avatars.route };
   const appRequests = registerAppProtocol(fileURLToPath(new URL('../renderer/', import.meta.url)), appRoutes);
   if (!smoke) registerProtocolClient(app, { argv: process.argv, execPath: process.execPath, env: process.env });
-  installSecurity({ appOrigin });
+  // The call's mini window (v0.4.4): the only window.open let through, from the main window's page.
+  const callWindow = new CallWindow({ appOrigin, packaged: app.isPackaged, platform: process.platform, workArea: () => screen.getPrimaryDisplay().workArea });
+  installSecurity({ appOrigin, windowOpen: callWindow.rule });
   installRendererPinning(session.defaultSession);
 
   const identity = IdentityStore.load(userData, safeStorage);
@@ -157,6 +160,8 @@ async function start(): Promise<BrowserWindow | null> {
 
   const window = createMainWindow();
   target = window;
+  callWindow.attach(window.webContents);
+  window.on('closed', () => callWindow.close());
   if (opening.splash) closeSplashWhenShown(opening.splash, window);
   // Files in server channels (v0.3.3): uploads with progress, app://ghostlink/_file and "Baixar".
   const attachments = createAttachments({
@@ -286,7 +291,7 @@ async function start(): Promise<BrowserWindow | null> {
     getSources: (opts) => desktopCapturer.getSources(opts),
     now: () => Date.now(),
     appOrigin,
-    ownMediaSourceIds: () => [window.isDestroyed() ? null : window.getMediaSourceId(), toasts.mediaSourceId()].filter((id) => id !== null),
+    ownMediaSourceIds: () => [window.isDestroyed() ? null : window.getMediaSourceId(), toasts.mediaSourceId(), callWindow.mediaSourceId()].filter((id) => id !== null),
   });
   // The pencil over the shared monitor (pencil spec §4): it opens over the screen main handed over,
   // or follows the shared window (Windows: koffi is imported with the first one).
@@ -345,6 +350,7 @@ async function start(): Promise<BrowserWindow | null> {
       }),
       copyText: (text) => clipboard.writeText(text),
     },
+    showWindow: () => revealWindow(window),
     updates: updater,
     releaseNotes,
     ptt,

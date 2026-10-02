@@ -15,6 +15,7 @@ let request: ReturnType<typeof vi.fn>;
 let openExternal: ReturnType<typeof vi.fn>;
 let copyText: ReturnType<typeof vi.fn>;
 let show: ReturnType<typeof vi.fn>;
+let showWindow: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   electron.ipcMain.handle.mockReset();
@@ -22,11 +23,13 @@ beforeEach(() => {
   openExternal = vi.fn(async () => true);
   copyText = vi.fn();
   show = vi.fn(() => true);
+  showWindow = vi.fn();
   registerIpc({
     appOrigin: 'app://ghostlink',
     controller: { request },
     shell: { openExternal, copyText },
     notifications: { show },
+    showWindow,
   } as unknown as Deps);
 });
 
@@ -128,5 +131,15 @@ describe('app.openExternal, app.copyText and notifications.show', () => {
     expect(await invoke(IPC.notificationsShow, TOP, { ...n, serverIcon: 'file:///C:/x.png' })).toEqual({ ok: false, code: 'BAD_REQUEST' });
     expect(await invoke(IPC.notificationsShow, TOP, { ...n, icon: 'file:///C:/x.png' })).toEqual({ ok: false, code: 'BAD_REQUEST' });
     expect(show).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("app.showWindow (the call's mini window brings GhostLink back)", () => {
+  it('brings the main window to the front for the app page only, without arguments', async () => {
+    expect(await invoke(IPC.appShowWindow, TOP)).toEqual({ ok: true, value: undefined });
+    expect(showWindow).toHaveBeenCalledOnce();
+    expect(await invoke(IPC.appShowWindow, TOP, 'x')).toEqual({ ok: false, code: 'BAD_REQUEST' });
+    expect(await invoke(IPC.appShowWindow, { url: 'about:blank', parent: null })).toEqual({ ok: false, code: 'FORBIDDEN' });
+    expect(showWindow).toHaveBeenCalledOnce();
   });
 });

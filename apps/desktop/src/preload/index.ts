@@ -44,6 +44,7 @@ export const api: GhostlinkApi = {
     info: () => invoke(IPC.appInfo),
     openExternal: (url) => invoke(IPC.appOpenExternal, url),
     copyText: (text) => invoke(IPC.appCopyText, text),
+    showWindow: () => invoke(IPC.appShowWindow),
   },
   identity: {
     status: () => invoke(IPC.identityStatus),

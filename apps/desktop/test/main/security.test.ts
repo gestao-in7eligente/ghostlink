@@ -71,29 +71,45 @@ describe('permission policy (spec §12)', () => {
   });
 });
 
+type OpenHandler = (d: { url: string; frameName: string }) => unknown;
+
 describe('hardenWebContents', () => {
-  it('blocks navigation and webviews, and denies every new window', () => {
-    const contents = Object.assign(new EventEmitter(), { setWindowOpenHandler: vi.fn() });
+  it('blocks navigation and webviews, and denies every new window without a rule', () => {
+    const contents = Object.assign(new EventEmitter(), { id: 1, getURL: () => 'app://ghostlink/', setWindowOpenHandler: vi.fn() });
     hardenWebContents(contents as never);
     for (const event of ['will-navigate', 'will-attach-webview']) {
       const e = { preventDefault: vi.fn() };
       contents.emit(event, e, 'https://evil.example/');
       expect(e.preventDefault, event).toHaveBeenCalledOnce();
     }
-    const openHandler = contents.setWindowOpenHandler.mock.calls[0]![0] as (d: { url: string }) => unknown;
-    expect(openHandler({ url: 'https://example.com' })).toEqual({ action: 'deny' });
+    const openHandler = contents.setWindowOpenHandler.mock.calls[0]![0] as OpenHandler;
+    expect(openHandler({ url: 'https://example.com', frameName: '' })).toEqual({ action: 'deny' });
+  });
+
+  it("lets through only what the rule allows (the call's mini window), and denies when it answers null", () => {
+    const contents = Object.assign(new EventEmitter(), { id: 7, getURL: () => 'app://ghostlink/', setWindowOpenHandler: vi.fn() });
+    const rule = vi.fn((_opener: unknown, d: { frameName: string }) => (d.frameName === 'ok' ? { action: 'allow' as const } : null));
+    hardenWebContents(contents as never, rule);
+    const openHandler = contents.setWindowOpenHandler.mock.calls[0]![0] as OpenHandler;
+    expect(openHandler({ url: 'about:blank', frameName: 'ok' })).toEqual({ action: 'allow' });
+    expect(openHandler({ url: 'about:blank', frameName: 'other' })).toEqual({ action: 'deny' });
+    expect(rule).toHaveBeenCalledWith(contents, { url: 'about:blank', frameName: 'ok' });
   });
 });
 
 describe('installSecurity', () => {
-  installSecurity({ appOrigin: APP });
+  const windowOpen = vi.fn(() => null);
+  installSecurity({ appOrigin: APP, windowOpen });
   const { handlers } = electron;
 
-  it('hardens every webContents created later', () => {
-    const contents = Object.assign(new EventEmitter(), { setWindowOpenHandler: vi.fn() });
+  it('hardens every webContents created later, with the one window.open rule', () => {
+    const contents = Object.assign(new EventEmitter(), { id: 3, getURL: () => 'about:blank', setWindowOpenHandler: vi.fn() });
     (handlers['app:web-contents-created'] as (e: unknown, c: unknown) => void)({}, contents);
     expect(contents.setWindowOpenHandler).toHaveBeenCalledOnce();
     expect(contents.listenerCount('will-navigate')).toBe(1);
+    const openHandler = contents.setWindowOpenHandler.mock.calls[0]![0] as OpenHandler;
+    expect(openHandler({ url: 'about:blank', frameName: 'x' })).toEqual({ action: 'deny' });
+    expect(windowOpen).toHaveBeenCalledWith(contents, { url: 'about:blank', frameName: 'x' });
   });
 
   it('wires the request handler to the policy, falling back to the page URL', () => {
