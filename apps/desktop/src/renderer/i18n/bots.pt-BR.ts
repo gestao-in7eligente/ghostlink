@@ -133,7 +133,36 @@ export const bots = {
   'bots.code.step2': 'Cole o código na variável de ambiente {env} do bot.',
   'bots.code.step3': 'No código do bot, troque {from} por {to} e inicie o bot.',
   'bots.page.about': 'Sobre',
+
+  // The Ghost DJ's panel on its page (v0.5.1, spec 2026-10-02-ghost-dj-som-e-equalizador §2).
+  'dj.now.title': 'Tocando agora',
+  'dj.now.nothing': 'Nada tocando agora',
+  'dj.now.nothingHint': 'Entre num canal de voz e use /play num canal de texto para pedir uma música.',
+  'dj.now.requestedBy': 'Pedido por {name}',
+  'dj.now.in': 'em {channel}',
+  'dj.now.paused': 'Pausado',
+  'dj.now.position': '{at} de {length}',
+  'dj.now.next': 'Próximas ({count})',
+  'dj.control.pause': 'Pausar',
+  'dj.control.resume': 'Continuar',
+  'dj.control.skip': 'Pular',
+  'dj.control.stop': 'Parar e sair',
+  'dj.control.volume': 'Volume',
+  'dj.control.readOnly': 'Entre em {channel} para controlar o Ghost DJ.',
+  'dj.control.readOnlyIdle': 'Os controles funcionam enquanto o Ghost DJ toca no seu canal de voz.',
+  'dj.eq.title': 'Equalizador',
+  'dj.eq.hint': 'Vale para todos na chamada, na hora, e fica salvo neste servidor.',
+  'dj.eq.presets': 'Predefinições',
+  'dj.eq.band': 'Faixa de {freq}',
+  'dj.eq.gain': '{gain} dB',
+  'dj.eq.preset.default': 'Padrão',
+  'dj.eq.preset.bass': 'Graves+',
+  'dj.eq.preset.pop': 'Pop',
+  'dj.eq.preset.rock': 'Rock',
+  'dj.eq.preset.voice': 'Voz',
+  'dj.eq.preset.electronic': 'Eletrônica',
+  'dj.eq.preset.custom': 'Personalizado',
 } as const;
 
 /** Keys whose English text is the same on purpose (i18n.test.ts). */
-export const BOTS_SAME_IN_BOTH = ['bots.section', 'bots.tag', 'bots.rowLabel', 'slash.optionLabel'] as const;
+export const BOTS_SAME_IN_BOTH = ['bots.section', 'bots.tag', 'bots.rowLabel', 'slash.optionLabel', 'dj.control.volume', 'dj.eq.gain', 'dj.eq.preset.pop', 'dj.eq.preset.rock'] as const;

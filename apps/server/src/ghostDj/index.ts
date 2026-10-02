@@ -1,8 +1,24 @@
 import { join } from 'node:path';
-import { FEATURE_GHOST_DJ, GHOST_DJ_LIMITS, GHOST_DJ_SYSTEM_KIND } from '@ghostlink/shared';
+import {
+  FEATURE_GHOST_DJ,
+  FEATURE_GHOST_DJ_PANEL,
+  GHOST_DJ_EQ_PRESETS,
+  GHOST_DJ_LIMITS,
+  GHOST_DJ_SYSTEM_KIND,
+  PERMISSIONS,
+  ghostDjControlSchema,
+  ghostDjEqSchema,
+  ghostDjEqStoredSchema,
+  ghostDjStateRequestSchema,
+  ghostDjVolumeSchema,
+  has,
+  type GhostDjEq,
+  type GhostDjState,
+} from '@ghostlink/shared';
 import { AVATARS_MODULE_NAME, type AvatarsModule } from '../avatars/index.js';
 import { BOTS_MODULE_NAME, type BotsModule } from '../bots/index.js';
-import type { ModuleContext, ServerModule } from '../modules.js';
+import type { Db } from '../db/database.js';
+import type { ModuleContext, RequestContext, ServerModule } from '../modules.js';
 import { TEXT_MODULE_NAME, type TextModule } from '../text/index.js';
 import type { VoiceModule } from '../voice/index.js';
 import { DJ_AVATAR_PNG_BASE64 } from './avatar.js';
@@ -19,6 +35,8 @@ export type { AudioOutput } from './output.js';
 export type { ResolveResult, ResolvedTrack, TrackError } from './ytdlp.js';
 
 export const GHOST_DJ_MODULE_NAME = 'ghostDj';
+/** A burst of changes (a slider dragged) sends one `dj.state`. */
+const STATE_DELAY_MS = 50;
 /** `<data>/ghost-dj/`: yt-dlp, its manifest and cache, and the owner's cookies.txt. */
 export const GHOST_DJ_DIR = 'ghost-dj';
 
@@ -38,6 +56,8 @@ export interface GhostDjModuleOptions {
   panelDelayMs?: number;
   /** How often the idle and alone rules are checked. Default 5 s. */
   tickMs?: number;
+  /** How long a burst of changes waits before one `dj.state` goes out. Default 50 ms. */
+  stateDelayMs?: number;
   /**
    * End rtc-node's native side when the server stops (its threads would keep the process
    * alive). Default true; tests that run several servers in one process pass false.
@@ -65,6 +85,27 @@ function voiceModuleOf(ctx: ModuleContext): VoiceModule | null {
   }
 }
 
+/** The server's equalizer as saved; flat ("Padrão") until someone changes it. */
+function loadEq(db: Db): GhostDjEq {
+  const row = db.get<{ eq_preset: string; eq_gains: string }>('SELECT eq_preset, eq_gains FROM ghost_dj_settings WHERE id = 1');
+  if (row) {
+    try {
+      return ghostDjEqStoredSchema.parse({ preset: row.eq_preset, gains: JSON.parse(row.eq_gains) });
+    } catch {
+      // unreadable: back to flat
+    }
+  }
+  return { preset: 'default', gains: [...GHOST_DJ_EQ_PRESETS.default] };
+}
+
+function saveEq(db: Db, eq: GhostDjEq): void {
+  db.run(
+    'INSERT INTO ghost_dj_settings (id, eq_preset, eq_gains) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET eq_preset = excluded.eq_preset, eq_gains = excluded.eq_gains',
+    eq.preset,
+    JSON.stringify(eq.gains),
+  );
+}
+
 function avatarsModuleOf(ctx: ModuleContext): AvatarsModule | null {
   try {
     return ctx.getModule<AvatarsModule>(AVATARS_MODULE_NAME);
@@ -89,6 +130,8 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
   let timer: NodeJS.Timeout | null = null;
   let rtcLoaded = false;
   let stopped = false;
+  let ctx: ModuleContext | null = null;
+  let stateTimer: NodeJS.Timeout | null = null;
 
   const playable = (): boolean => ffmpeg !== null && voice !== null;
 
@@ -102,6 +145,37 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
     return null;
   };
 
+  /**
+   * The state as `userId` may see it: without the voice channel and its tracks when they cannot
+   * see that channel (as if the DJ were in none; the equalizer is the server's).
+   */
+  const stateFor = (userId: string, full: GhostDjState): GhostDjState => {
+    if (full.channelId === null) return full;
+    const text = ctx!.getModule<TextModule>(TEXT_MODULE_NAME);
+    if (has(text.voiceAccess.permissions(userId, full.channelId), PERMISSIONS.VIEW_CHANNEL)) return full;
+    return { ...full, channelId: null, current: null, positionSec: 0, paused: false, volume: GHOST_DJ_LIMITS.defaultVolume, loop: 'off', next: [], queueLength: 0 };
+  };
+
+  /** `dj.state` to every session (each as they may see it), once per burst of changes. */
+  const announce = (): void => {
+    if (stateTimer || stopped || !ctx) return;
+    stateTimer = setTimeout(() => {
+      stateTimer = null;
+      if (!dj || !ctx || stopped) return;
+      const full = dj.view();
+      for (const session of ctx.sessions.list()) ctx.sessions.send(session.sessionId, { t: 'dj.state', d: stateFor(session.userId, full) });
+    }, opts.stateDelayMs ?? STATE_DELAY_MS);
+    stateTimer.unref();
+  };
+
+  const engine = (): GhostDj => {
+    if (!dj) throw new Error('the Ghost DJ is not initialized');
+    return dj;
+  };
+
+  /** A panel request: the new state as the caller sees it. */
+  const answer = (rc: RequestContext): GhostDjState => stateFor(rc.userId, engine().view());
+
   const createOutput = async (): Promise<AudioOutput> => {
     if (opts.createOutput) return opts.createOutput();
     const { createLivekitOutput } = await import('./livekitOutput.js');
@@ -113,7 +187,26 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
     name: GHOST_DJ_MODULE_NAME,
 
     get features(): readonly string[] {
-      return playable() && voice!.available ? [FEATURE_GHOST_DJ] : [];
+      return playable() && voice!.available ? [FEATURE_GHOST_DJ, FEATURE_GHOST_DJ_PANEL] : [FEATURE_GHOST_DJ_PANEL];
+    },
+
+    handlers: {
+      'dj.state': (rc, payload) => {
+        ghostDjStateRequestSchema.parse(payload);
+        return answer(rc);
+      },
+      'dj.eq': (rc, payload) => {
+        engine().setEq(rc.userId, ghostDjEqSchema.parse(payload));
+        return answer(rc);
+      },
+      'dj.volume': (rc, payload) => {
+        engine().setVolume(rc.userId, ghostDjVolumeSchema.parse(payload).volume);
+        return answer(rc);
+      },
+      'dj.control': async (rc, payload) => {
+        await engine().control(rc.userId, ghostDjControlSchema.parse(payload).action);
+        return answer(rc);
+      },
     },
 
     get botId() {
@@ -125,6 +218,7 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
     },
 
     init(c) {
+      ctx = c;
       voice = voiceModuleOf(c);
       ffmpeg = opts.ffmpeg !== undefined ? opts.ffmpeg : findFfmpeg();
       const text = c.getModule<TextModule>(TEXT_MODULE_NAME).bots;
@@ -174,6 +268,9 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
         idleLeaveMs: opts.idleLeaveMs ?? GHOST_DJ_LIMITS.idleLeaveMs,
         aloneLeaveMs: opts.aloneLeaveMs ?? GHOST_DJ_LIMITS.aloneLeaveMs,
         panelDelayMs: opts.panelDelayMs ?? 1_000,
+        eq: loadEq(c.db),
+        saveEq: (eq) => saveEq(c.db, eq),
+        onState: announce,
       });
     },
 
@@ -195,6 +292,8 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
       stopped = true;
       if (timer) clearInterval(timer);
       timer = null;
+      if (stateTimer) clearTimeout(stateTimer);
+      stateTimer = null;
       binary?.stop();
       await dj?.shutdown();
       if (rtcLoaded && opts.disposeOnStop !== false) {

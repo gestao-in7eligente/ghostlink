@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   FEATURE_GHOST_DJ,
+  FEATURE_GHOST_DJ_PANEL,
   botsWelcomeSchemaClient,
   type BotInfo,
+  type GhostDjState,
   type InteractionEphemeralEvent,
   type Member,
   type Message,
@@ -12,6 +14,8 @@ import { createAvatarsModule } from '../src/avatars/index.js';
 import { createBotsModule } from '../src/bots/index.js';
 import { FRAME_BYTES, createGhostDjModule, type AudioOutput, type DjTrack, type GhostDjModule, type PcmSource, type ResolveResult, type TrackError } from '../src/ghostDj/index.js';
 import type { PlayTarget } from '../src/ghostDj/youtube.js';
+import { silentLogger, startServer } from '../src/index.js';
+import { createTextModule } from '../src/text/index.js';
 import { createVoiceModule } from '../src/voice/index.js';
 import { FakeBackend } from './helpers/voice.js';
 import { channelId, textFixture, type TextClient, type TextFixture } from './text/helpers.js';
@@ -116,6 +120,7 @@ async function setup(o: { ffmpeg?: string | null } = {}): Promise<Dj> {
       return output;
     },
     panelDelayMs: 10,
+    stateDelayMs: 5,
     tickMs: 3_600_000,
   });
   const fx = await textFixture({
@@ -347,5 +352,98 @@ describe('Ghost DJ: leaving by itself (spec §1)', () => {
     d.module.tick();
     await expect.poll(() => d.outputs[0]!.closed).toBe(true);
     expect(djState(d)).toBeNull();
+  });
+});
+
+describe('Ghost DJ: the panel (spec 2026-10-02-ghost-dj-som-e-equalizador §2)', () => {
+  it('anyone reads the state; only people in its channel change the equalizer, the volume or the playback', async () => {
+    const d = await setup();
+    expect((d.fx.owner.welcome as { features: string[] }).features).toContain(FEATURE_GHOST_DJ_PANEL);
+    const ana = await d.fx.join({ nickname: 'ana' });
+    const bia = await d.fx.join({ nickname: 'bia' });
+    // Nothing playing: flat equalizer, and nobody may change anything.
+    expect(await bia.ok<GhostDjState>('dj.state', {})).toMatchObject({ channelId: null, current: null, eq: { preset: 'default', gains: [0, 0, 0, 0, 0] } });
+    expect(await ana.fail('dj.eq', { preset: 'rock' })).toBe('FORBIDDEN');
+
+    await enterVoice(d, ana, d.sala);
+    await privateAnswer(ana, await use(d, ana, 'play', [{ name: 'busca', value: 'um' }]), /Tocando/);
+    await privateAnswer(ana, await use(d, ana, 'play', [{ name: 'busca', value: 'dois' }]), /Na fila/);
+    expect(await bia.ok<GhostDjState>('dj.state', {})).toMatchObject({
+      channelId: d.sala,
+      current: { title: 'um', requesterName: 'ana', requestedBy: ana.userId },
+      next: [{ title: 'dois' }],
+      queueLength: 1,
+      volume: 50,
+      paused: false,
+    });
+
+    // Bia is not in its voice channel: read only, as with the slash commands.
+    expect(await bia.fail('dj.eq', { preset: 'rock' })).toBe('FORBIDDEN');
+    expect(await bia.fail('dj.volume', { volume: 10 })).toBe('FORBIDDEN');
+    expect(await bia.fail('dj.control', { action: 'pause' })).toBe('FORBIDDEN');
+    expect(await ana.fail('dj.eq', { gains: [13, 0, 0, 0, 0] })).toBe('BAD_REQUEST');
+    expect(await ana.fail('dj.eq', { preset: 'jazz' })).toBe('BAD_REQUEST');
+
+    // Ana is: a preset, then a band by hand ("Personalizado"); every panel hears of it.
+    expect((await ana.ok<GhostDjState>('dj.eq', { preset: 'bass' })).eq).toEqual({ preset: 'bass', gains: [6, 4, 0, 0, 0] });
+    expect((await bia.event<GhostDjState>('dj.state', (s) => s.eq.preset === 'bass')).current?.title).toBe('um');
+    expect((await ana.ok<GhostDjState>('dj.eq', { gains: [6, 4, 0, 0, 3] })).eq).toEqual({ preset: 'custom', gains: [6, 4, 0, 0, 3] });
+    expect((await ana.ok<GhostDjState>('dj.volume', { volume: 80 })).volume).toBe(80);
+    expect(djState(d)!.volume).toBe(80);
+
+    expect((await ana.ok<GhostDjState>('dj.control', { action: 'pause' })).paused).toBe(true);
+    await bia.event<GhostDjState>('dj.state', (s) => s.paused);
+    expect((await ana.ok<GhostDjState>('dj.control', { action: 'resume' })).paused).toBe(false);
+    await ana.ok('dj.control', { action: 'skip' });
+    await expect.poll(() => djState(d)?.current?.title).toBe('dois');
+    await bia.event<GhostDjState>('dj.state', (s) => s.current?.title === 'dois' && s.queueLength === 0);
+    expect(await ana.ok<GhostDjState>('dj.control', { action: 'stop' })).toMatchObject({ channelId: null, current: null });
+    await expect.poll(() => d.outputs[0]!.closed).toBe(true);
+    await bia.event<GhostDjState>('dj.state', (s) => s.channelId === null);
+    expect(await ana.fail('dj.control', { action: 'skip' })).toBe('FORBIDDEN');
+  });
+
+  it('someone who cannot see its voice channel gets the state without it', async () => {
+    const d = await setup();
+    const ana = await d.fx.join({ nickname: 'ana' });
+    const bia = await d.fx.join({ nickname: 'bia' });
+    const { role } = await d.fx.owner.ok<{ role: { id: string } }>('role.create', { name: 'Música' });
+    for (const userId of [ana.userId, d.djId]) await d.fx.owner.ok('member.setRoles', { userId, roleIds: [role.id] });
+    const { channel } = await d.fx.owner.ok<{ channel: { id: string } }>('channel.create', { name: 'Privada', type: 'voice', private: true, allowedRoleIds: [role.id] });
+    await ana.sync();
+    await enterVoice(d, ana, channel.id);
+    await privateAnswer(ana, await use(d, ana, 'play', [{ name: 'busca', value: 'segredo' }]), /Tocando/);
+    await d.fx.owner.ok('dj.state', {});
+    expect(await ana.ok<GhostDjState>('dj.state', {})).toMatchObject({ channelId: channel.id, current: { title: 'segredo' } });
+    expect(await bia.ok<GhostDjState>('dj.state', {})).toMatchObject({ channelId: null, current: null, next: [], queueLength: 0 });
+    await ana.ok('dj.eq', { preset: 'pop' });
+    const seen = await bia.event<GhostDjState>('dj.state', (s) => s.eq.preset === 'pop');
+    expect(seen).toMatchObject({ channelId: null, current: null });
+  });
+
+  it('the equalizer is the server’s: it outlives the session and a restart', async () => {
+    const d = await setup();
+    const ana = await d.fx.join({ nickname: 'ana' });
+    await enterVoice(d, ana, d.sala);
+    await privateAnswer(ana, await use(d, ana, 'play', [{ name: 'busca', value: 'um' }]), /Tocando/);
+    await ana.ok('dj.eq', { gains: [-3, 0, 2, 5, 12] });
+    await ana.ok('dj.control', { action: 'stop' });
+    expect((await ana.ok<GhostDjState>('dj.state', {})).eq).toEqual({ preset: 'custom', gains: [-3, 0, 2, 5, 12] });
+    await d.fx.t.server.close();
+
+    const again = createGhostDjModule({ ffmpeg: 'ffmpeg-fake', ytdlp: false, tickMs: 3_600_000 });
+    const backend = new FakeBackend();
+    const server = await startServer({
+      dataDir: d.fx.t.dataDir,
+      port: 0,
+      host: '127.0.0.1',
+      logger: silentLogger,
+      modules: [createTextModule(), createVoiceModule({ backend: () => backend }), createAvatarsModule(), createBotsModule(), again],
+    });
+    try {
+      expect(again.dj!.view().eq).toEqual({ preset: 'custom', gains: [-3, 0, 2, 5, 12] });
+    } finally {
+      await server.close();
+    }
   });
 });

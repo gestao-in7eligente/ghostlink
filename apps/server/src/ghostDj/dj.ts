@@ -1,8 +1,21 @@
-import { GHOST_DJ_LIMITS, ProtocolError, type InteractionCreateEvent, type InteractionOption } from '@ghostlink/shared';
+import {
+  GHOST_DJ_EQ_PRESETS,
+  GHOST_DJ_LIMITS,
+  GHOST_DJ_PANEL_NEXT,
+  ProtocolError,
+  type GhostDjControlAction,
+  type GhostDjEq,
+  type GhostDjEqPayload,
+  type GhostDjState,
+  type GhostDjTrackView,
+  type InteractionCreateEvent,
+  type InteractionOption,
+} from '@ghostlink/shared';
 import type { SystemBot } from '../bots/index.js';
 import type { Logger } from '../logger.js';
 import { LOOP_CHOICES, loopLabel, say, trackErrorText, type LoopMode } from './commands.js';
-import { FRAME_BYTES, FRAME_SAMPLES, CHANNELS, type PcmSource } from './ffmpeg.js';
+import { DjMixer } from './equalizer.js';
+import { FRAME_BYTES, FRAME_SAMPLES, type PcmSource } from './ffmpeg.js';
 import type { AudioOutput } from './output.js';
 import { chatText, formatDuration, parsePlayQuery, type PlayTarget } from './youtube.js';
 import type { ResolveResult, TrackError } from './ytdlp.js';
@@ -20,7 +33,7 @@ export interface DjTrack {
 /** What the DJ needs from voice (voice/module.ts). */
 export interface DjVoice {
   readonly available: boolean;
-  joinLocal(userId: string, channelId: string): Promise<{ url: string; token: string }>;
+  joinLocal(userId: string, channelId: string): Promise<{ url: string; token: string; icePort: number | null }>;
   leaveLocal(userId: string): Promise<void>;
   /** The voice channel the user is in (or joining), or null. */
   channelOf(userId: string): string | null;
@@ -47,6 +60,12 @@ export interface DjDeps {
   aloneLeaveMs: number;
   /** A burst of changes edits the panel once. */
   panelDelayMs: number;
+  /** The equalizer as saved for this server (it applies to every session). */
+  eq: GhostDjEq;
+  /** Saves a new equalizer (it survives restarts). */
+  saveEq(eq: GhostDjEq): void;
+  /** What the panels show changed (`dj.state` goes out). */
+  onState(): void;
 }
 
 type EndReason = 'stop' | 'idle' | 'alone' | 'disconnected' | 'shutdown';
@@ -75,6 +94,8 @@ interface Session {
   /** A track that could not be played, shown on the panel while the next one plays. */
   notice: string | null;
   ended: boolean;
+  /** The equalizer and the volume, with their filters' memory. */
+  mixer: DjMixer;
 }
 
 type Outcome = { kind: 'ended' } | { kind: 'skipped' } | { kind: 'stopped' } | { kind: 'failed'; error: TrackError };
@@ -98,14 +119,8 @@ export function gainOf(volume: number): number {
   return (Math.max(0, Math.min(100, volume)) / 100) ** 2;
 }
 
-/** One frame of `buf` at `offset`, with the volume applied. */
-function frameAt(buf: Buffer, offset: number, gain: number): Int16Array {
-  const out = new Int16Array(FRAME_SAMPLES * CHANNELS);
-  for (let i = 0; i < out.length; i++) {
-    const v = Math.round(buf.readInt16LE(offset + i * 2) * gain);
-    out[i] = v > 32_767 ? 32_767 : v < -32_768 ? -32_768 : v;
-  }
-  return out;
+function trackView(t: DjTrack): GhostDjTrackView {
+  return { title: t.title, url: t.url, durationSec: t.durationSec, requestedBy: t.requestedBy, requesterName: t.requesterName };
 }
 
 function trackLine(t: DjTrack): string {
@@ -120,12 +135,14 @@ function trackLine(t: DjTrack): string {
  */
 export class GhostDj {
   readonly #d: DjDeps;
+  #eq: GhostDjEq;
   #session: Session | null = null;
   #opening: Promise<Session> | null = null;
   readonly #offState: () => void;
 
   constructor(deps: DjDeps) {
     this.#d = deps;
+    this.#eq = { preset: deps.eq.preset, gains: [...deps.eq.gains] };
     this.#offState = deps.voice.onStateChange((ids) => {
       const s = this.#session;
       if (s && ids.includes(s.voiceChannelId)) this.#checkAlone(s);
@@ -141,6 +158,54 @@ export class GhostDj {
   get state(): { current: DjTrack | null; queue: DjTrack[]; paused: boolean; volume: number; loop: LoopMode; panelId: number | null } | null {
     const s = this.#session;
     return s ? { current: s.current, queue: [...s.queue], paused: s.paused, volume: s.volume, loop: s.loop, panelId: s.panelId } : null;
+  }
+
+  /** What the panels show (`dj.state`), as everyone who can see its voice channel sees it. */
+  view(): GhostDjState {
+    const s = this.#session;
+    return {
+      channelId: s?.voiceChannelId ?? null,
+      current: s?.current ? trackView(s.current) : null,
+      positionSec: s?.current ? (s.frames * FRAME_SAMPLES) / 48_000 : 0,
+      paused: s?.paused ?? false,
+      volume: s?.volume ?? GHOST_DJ_LIMITS.defaultVolume,
+      loop: s?.loop ?? 'off',
+      next: (s?.queue ?? []).slice(0, GHOST_DJ_PANEL_NEXT).map(trackView),
+      queueLength: s?.queue.length ?? 0,
+      eq: { preset: this.#eq.preset, gains: [...this.#eq.gains] },
+    };
+  }
+
+  // ---- the panel (spec 2026-10-02-ghost-dj-som-e-equalizador §2): the slash commands' rules ----
+
+  /** The session `userId` may control: they are in its voice channel. FORBIDDEN otherwise. */
+  #controlledBy(userId: string): Session {
+    const s = this.#session;
+    if (!s || s.ended || this.#d.voice.channelOf(userId) !== s.voiceChannelId) throw new ProtocolError('FORBIDDEN');
+    return s;
+  }
+
+  /** A preset, or the five gains by hand ("Personalizado"): saved for the server and heard at once. */
+  setEq(userId: string, eq: GhostDjEqPayload): void {
+    this.#controlledBy(userId);
+    this.#eq = 'preset' in eq ? { preset: eq.preset, gains: [...GHOST_DJ_EQ_PRESETS[eq.preset]] } : { preset: 'custom', gains: [...eq.gains] };
+    this.#d.saveEq(this.#eq);
+    this.#d.onState();
+  }
+
+  setVolume(userId: string, volume: number): void {
+    const s = this.#controlledBy(userId);
+    s.volume = volume;
+    this.#panel(s);
+  }
+
+  /** Pause, resume, skip (NOT_FOUND with nothing playing) or stop (it leaves the channel). */
+  async control(userId: string, action: GhostDjControlAction): Promise<void> {
+    const s = this.#controlledBy(userId);
+    if (action === 'stop') return this.#end(s, 'stop');
+    if (!s.current || (action === 'skip' && !s.source)) throw new ProtocolError('NOT_FOUND');
+    if (action === 'skip') this.#cut(s);
+    else this.#setPaused(s, action === 'pause');
   }
 
   /** An interaction for the DJ (SystemBotSpec.onInteraction). Never throws. */
@@ -292,6 +357,12 @@ export class GhostDj {
     if (!s) return;
     if (!s.current) return this.#answer(e, say.notPlaying, true);
     if (pause === s.paused) return this.#answer(e, pause ? say.alreadyPaused : say.notPaused, true);
+    this.#setPaused(s, pause);
+    this.#answer(e, pause ? say.paused(chatText(e.user.nickname, 40)) : say.resumed(chatText(e.user.nickname, 40)), false);
+  }
+
+  #setPaused(s: Session, pause: boolean): void {
+    if (pause === s.paused) return;
     s.paused = pause;
     if (pause) {
       s.output.clear();
@@ -301,7 +372,6 @@ export class GhostDj {
       this.#wake(s);
     }
     this.#panel(s);
-    this.#answer(e, pause ? say.paused(chatText(e.user.nickname, 40)) : say.resumed(chatText(e.user.nickname, 40)), false);
   }
 
   #skip(e: InteractionCreateEvent): void {
@@ -381,11 +451,11 @@ export class GhostDj {
 
   async #connect(voiceChannelId: string, textChannelId: string): Promise<Session> {
     const botId = this.#d.bot.botId;
-    const { url, token } = await this.#d.voice.joinLocal(botId, voiceChannelId);
+    const { url, token, icePort } = await this.#d.voice.joinLocal(botId, voiceChannelId);
     let output: AudioOutput | null = null;
     try {
       output = await this.#d.createOutput();
-      await output.connect(url, token);
+      await output.connect(url, token, icePort);
     } catch (e) {
       await output?.close().catch(() => undefined);
       await this.#d.voice.leaveLocal(botId).catch(() => undefined);
@@ -410,6 +480,7 @@ export class GhostDj {
       aloneSince: null,
       notice: null,
       ended: false,
+      mixer: new DjMixer(),
     };
     output.onClosed(() => void this.#end(s, 'disconnected'));
     this.#session = s;
@@ -420,6 +491,7 @@ export class GhostDj {
     if (s.ended) return;
     s.ended = true;
     if (this.#session === s) this.#session = null;
+    this.#d.onState();
     const voiceName = this.#voiceName(s.voiceChannelId);
     s.queue = [];
     s.current = null;
@@ -512,7 +584,7 @@ export class GhostDj {
           while (s.paused && !stopped()) await new Promise<void>((resolve) => (s.wake = resolve));
           const out = stopped();
           if (out) return out;
-          await s.output.write(frameAt(buf, offset, gainOf(s.volume)));
+          await s.output.write(s.mixer.frame(buf, offset, FRAME_SAMPLES, gainOf(s.volume), this.#eq.gains));
           offset += FRAME_BYTES;
           if (++s.frames >= MAX_FRAMES) return { kind: 'ended' };
         }
@@ -561,7 +633,9 @@ export class GhostDj {
 
   /** The panel changed: written once after a short delay, whatever else changes meanwhile. */
   #panel(s: Session): void {
-    if (s.ended || s.panelTimer) return;
+    if (s.ended) return;
+    this.#d.onState();
+    if (s.panelTimer) return;
     s.panelTimer = setTimeout(() => {
       s.panelTimer = null;
       if (!s.ended) this.#writePanel(s, this.#panelText(s));

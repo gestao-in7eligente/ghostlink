@@ -109,9 +109,11 @@ export interface VoiceModule extends ServerModule {
    * FORBIDDEN, CHANNEL_FULL; INTERNAL while LiveKit is down). It is assigned there, like a
    * member who joined, and gets a token for LiveKit's loopback port that may publish its
    * microphone only and subscribe to nothing. Permission changes, moderation and the sweeps
-   * apply to it as to anyone; leaveLocal() or removeUser() take it out.
+   * apply to it as to anyone; leaveLocal() or removeUser() take it out. `icePort`: behind a TCP
+   * proxy, LiveKit's ICE-TCP port, whose only candidate is the proxy's public address (the
+   * participant, which runs here, may reach that port on loopback instead); else null.
    */
-  joinLocal(userId: string, channelId: string): Promise<{ url: string; token: string }>;
+  joinLocal(userId: string, channelId: string): Promise<{ url: string; token: string; icePort: number | null }>;
   /** Takes an in-process participant out of voice (LiveKit drops its connection). */
   leaveLocal(userId: string): Promise<void>;
   /** Calls `listener` with the channels whose voice.state was just sent; returns the unsubscribe. */
@@ -546,7 +548,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     return { livekitUrl: livekitUrl(rc), token, iceServers: [] };
   };
 
-  const joinLocal = async (userId: string, channelId: string): Promise<{ url: string; token: string }> => {
+  const joinLocal = async (userId: string, channelId: string): Promise<{ url: string; token: string; icePort: number | null }> => {
     const a = access();
     const channel = a.channel(channelId);
     const bits = channel ? a.permissions(userId, channelId) : 0;
@@ -581,7 +583,7 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
       if (old && old !== channelId) void backend!.removeParticipant(voiceRoomName(old), voiceIdentity(userId)).catch(log('removeParticipant'));
     }
     // LiveKit's own loopback port: the /rtc proxy (TLS, pinned by the app) is for people.
-    return { url: `ws://127.0.0.1:${port}`, token };
+    return { url: `ws://127.0.0.1:${port}`, token, icePort: proxy ? proxy.port : null };
   };
 
   const moderate = async (rc: RequestContext, payload: unknown): Promise<Record<string, never>> => {
