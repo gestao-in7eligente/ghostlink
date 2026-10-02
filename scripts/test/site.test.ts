@@ -132,8 +132,14 @@ describe('site privacy (no trackers, spec §3.5/§16)', () => {
     }
   });
 
+  /** What a file runs: in a Markdown page, code blocks and `inline code` are text for the reader (the bots guide shows `messages.fetch()`). */
+  const runnable = (file: string) => {
+    const text = read(`docs-site/${file}`);
+    return file.endsWith('.md') ? text.replace(/^```[^\n]*\n[\s\S]*?^```[ \t]*$/gm, '').replace(/`[^`\n]*`/g, '') : text;
+  };
+
   it('calls the network only from the download helper, and only the GitHub API', () => {
-    const callers = code.filter((file) => /\bfetch\b|XMLHttpRequest|sendBeacon|new WebSocket|EventSource/.test(read(`docs-site/${file}`)));
+    const callers = code.filter((file) => /\bfetch\b|XMLHttpRequest|sendBeacon|new WebSocket|EventSource/.test(runnable(file)));
     expect(callers).toEqual(['.vitepress/theme/lib/download.ts']);
     expect(read('docs-site/.vitepress/theme/lib/download.ts')).toMatch(/fetchImpl\(LATEST_RELEASE_API_URL,/);
   });
