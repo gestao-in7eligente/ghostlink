@@ -70,7 +70,7 @@ export const voice = {
   'voice.screen.streamOf': 'Transmissão de {name}',
   'voice.screen.connecting': 'Conectando à transmissão…',
   'voice.screen.focus': 'Ampliar a transmissão de {name}',
-  'voice.screen.showAll': 'Ver todas as transmissões',
+  'voice.screen.showAll': 'Voltar para a grade',
   'voice.screen.yours': 'Sua transmissão',
 
   'voice.settings.title': 'Voz e vídeo',

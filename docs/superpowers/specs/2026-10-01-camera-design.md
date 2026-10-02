@@ -8,7 +8,7 @@ Desenho aprovado pelo dono em 2026-10-01. Detalha a parte "Câmera" da spec prin
 |---|---|
 | Onde | Canais de voz dos servidores. Chamadas de DM entram quando existirem (v0.3). |
 | Quem pode | Quem tem `VIDEO` no canal. O servidor já libera a fonte `camera` no token de quem tem (`permissions.ts`), então **nada muda no servidor**. |
-| Quem vê | **Todos, automaticamente**, como no Discord (spec principal §8.4: `Camera` é assinada como o microfone). A tela continua com "Assistir". |
+| Quem vê | **Todos, automaticamente**, como no Discord (spec principal §8.4: `Camera` é assinada como o microfone). A tela continua com "Assistir" (desde a v0.4.6 ela também chega sem clicar; ver a spec de transmitir a tela §5). |
 | Qualidade de envio | **720p30 (padrão)**, 1080p30 ou 480p30, nas configurações. Simulcast de 3 camadas (180p, 360p e a escolhida). |
 | Recepção | `adaptiveStream` do LiveKit: cada pessoa recebe a camada que cabe no tamanho do quadro e cai de camada sozinha quando a internet piora. |
 | Lançamento | **v0.2.3**, branch `v0.2.3` (a partir da `v0.2.2`), junto com o lápis na tela. |

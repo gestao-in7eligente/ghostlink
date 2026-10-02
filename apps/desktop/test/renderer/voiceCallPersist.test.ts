@@ -114,8 +114,8 @@ describe('the voice store during a call elsewhere', () => {
   });
 
   it('a move to another channel stays a call: no idle, the old room\'s state goes', () => {
-    const s = run(inCallOnA(), { type: 'watch', userId: BIA, watching: true }, { type: 'speaking', userIds: [BIA] }, { type: 'call', status: 'connecting', channelId: 'VC2' });
-    expect(s).toMatchObject({ serverId: 'A', call: { status: 'connecting', channelId: 'VC2' }, watching: [], speaking: [] });
+    const s = run(inCallOnA(), { type: 'watch', userId: BIA, watching: false }, { type: 'speaking', userIds: [BIA] }, { type: 'call', status: 'connecting', channelId: 'VC2' });
+    expect(s).toMatchObject({ serverId: 'A', call: { status: 'connecting', channelId: 'VC2' }, unwatched: [], speaking: [] });
   });
 });
 

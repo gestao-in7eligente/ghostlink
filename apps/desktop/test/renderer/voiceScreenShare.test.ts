@@ -108,7 +108,7 @@ describe('keepScreenAudio (spec §4: the mandatory check)', () => {
   });
 });
 
-describe('wantsSubscription (spec §8.4: microphones and cameras always, a screen only while watched)', () => {
+describe('wantsSubscription (microphones and cameras always, a screen too unless I stopped watching it)', () => {
   const S = Track.Source;
   const K = Track.Kind;
 
@@ -117,16 +117,16 @@ describe('wantsSubscription (spec §8.4: microphones and cameras always, a scree
     expect(wantsSubscription(S.Microphone, K.Audio, null, [])).toBe(true);
   });
 
-  it('a screen and its sound only for someone being watched', () => {
-    expect(wantsSubscription(S.ScreenShare, K.Video, BIA, [])).toBe(false);
-    expect(wantsSubscription(S.ScreenShareAudio, K.Audio, BIA, [])).toBe(false);
-    expect(wantsSubscription(S.ScreenShare, K.Video, BIA, [BIA])).toBe(true);
-    expect(wantsSubscription(S.ScreenShareAudio, K.Audio, BIA, [BIA])).toBe(true);
-    expect(wantsSubscription(S.ScreenShare, K.Video, CAIO, [BIA])).toBe(false);
-    expect(wantsSubscription(S.ScreenShare, K.Video, null, [BIA])).toBe(false);
+  it('a screen and its sound without a click (owner, 2026-10-02), but not after "Parar de assistir"', () => {
+    expect(wantsSubscription(S.ScreenShare, K.Video, BIA, [])).toBe(true);
+    expect(wantsSubscription(S.ScreenShareAudio, K.Audio, BIA, [])).toBe(true);
+    expect(wantsSubscription(S.ScreenShare, K.Video, BIA, [BIA])).toBe(false);
+    expect(wantsSubscription(S.ScreenShareAudio, K.Audio, BIA, [BIA])).toBe(false);
+    expect(wantsSubscription(S.ScreenShare, K.Video, CAIO, [BIA])).toBe(true);
+    expect(wantsSubscription(S.ScreenShare, K.Video, null, [])).toBe(false);
   });
 
-  it('always the cameras, watched or not (spec 2026-10-01-camera §1: everyone sees them, like Discord)', () => {
+  it('always the cameras, even of someone whose screen I stopped watching (spec 2026-10-01-camera §1)', () => {
     expect(wantsSubscription(S.Camera, K.Video, BIA, [])).toBe(true);
     expect(wantsSubscription(S.Camera, K.Video, BIA, [BIA])).toBe(true);
     expect(wantsSubscription(S.Camera, K.Video, null, [])).toBe(true);

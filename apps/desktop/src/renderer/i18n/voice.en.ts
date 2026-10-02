@@ -71,7 +71,7 @@ export const voice: Record<keyof typeof voicePt, string> = {
   'voice.screen.streamOf': "{name}'s stream",
   'voice.screen.connecting': 'Connecting to the stream…',
   'voice.screen.focus': "Enlarge {name}'s stream",
-  'voice.screen.showAll': 'Show all streams',
+  'voice.screen.showAll': 'Back to the grid',
   'voice.screen.yours': 'Your stream',
 
   'voice.settings.title': 'Voice & Video',

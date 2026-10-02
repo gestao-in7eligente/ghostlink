@@ -105,7 +105,7 @@ function onDraw(d: unknown): void {
   if (v.call.status === 'idle' || v.call.channelId !== channelId) return;
   const mine = sharerId === v.selfUserId;
   // Only on a screen I show: my own share, or one I watch.
-  if (mine ? v.sharing === null : !v.watching.includes(sharerId)) return;
+  if (mine ? v.sharing === null : v.unwatched.includes(sharerId)) return;
   const input: StrokeInput = { key: `${userId}:${strokeId}`, userId, points, end };
   apply(sharerId, input);
   if (mine) feedOverlay(input);
@@ -117,7 +117,7 @@ function onAllow(d: unknown): void {
 }
 
 function voiceView(v: VoiceState): VoiceView {
-  return { selfUserId: v.selfUserId, call: v.call, channels: v.channels, watching: v.watching, sharing: v.sharing };
+  return { selfUserId: v.selfUserId, call: v.call, channels: v.channels, unwatched: v.unwatched, sharing: v.sharing };
 }
 
 function start(): () => void {
@@ -152,7 +152,7 @@ function start(): () => void {
       if (v.sharing) shareStarted(v, true);
       else shareEnded(prev.selfUserId);
     }
-    if (v.channels !== prev.channels || v.call !== prev.call || v.watching !== prev.watching || v.sharing !== prev.sharing) {
+    if (v.channels !== prev.channels || v.call !== prev.call || v.unwatched !== prev.unwatched || v.sharing !== prev.sharing) {
       draw({ type: 'voice', voice: voiceView(v) });
     }
     if (v.call.channelId !== prev.call.channelId && prev.call.channelId !== null) clearBoards();

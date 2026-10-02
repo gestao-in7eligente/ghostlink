@@ -154,26 +154,43 @@ describe('screen sharing in the voice store (spec 2026-10-01 §5)', () => {
     expect(s.sharing).toBeNull();
   });
 
-  it('the watched set: watch adds once, unwatch removes', () => {
-    let s = run({ type: 'call', status: 'connected', channelId: 'VC1' }, { type: 'watch', userId: BIA, watching: true });
-    expect(s.watching).toEqual([BIA]);
-    expect(voiceReducer(s, { type: 'watch', userId: BIA, watching: true })).toBe(s); // no re-render
-    s = voiceReducer(s, { type: 'watch', userId: ANA, watching: true });
-    expect(s.watching).toEqual([BIA, ANA]);
-    s = voiceReducer(s, { type: 'watch', userId: BIA, watching: false });
-    expect(s.watching).toEqual([ANA]);
-    expect(voiceReducer(s, { type: 'watch', userId: BIA, watching: false })).toBe(s);
+  it('"Parar de assistir" adds once to the unwatched set, "Assistir" removes', () => {
+    let s = run({ type: 'call', status: 'connected', channelId: 'VC1' }, { type: 'watch', userId: BIA, watching: false });
+    expect(s.unwatched).toEqual([BIA]);
+    expect(voiceReducer(s, { type: 'watch', userId: BIA, watching: false })).toBe(s); // no re-render
+    s = voiceReducer(s, { type: 'watch', userId: ANA, watching: false });
+    expect(s.unwatched).toEqual([BIA, ANA]);
+    s = voiceReducer(s, { type: 'watch', userId: BIA, watching: true });
+    expect(s.unwatched).toEqual([ANA]);
+    expect(voiceReducer(s, { type: 'watch', userId: BIA, watching: true })).toBe(s);
   });
 
-  it('survives LiveKit reconnecting (it is re-applied afterwards), and ends with the call', () => {
-    let s = run({ type: 'call', status: 'connected', channelId: 'VC1' }, { type: 'watch', userId: BIA, watching: true }, { type: 'sharing', sharing });
+  it('survives LiveKit reconnecting, and ends with the call', () => {
+    let s = run({ type: 'call', status: 'connected', channelId: 'VC1' }, { type: 'watch', userId: BIA, watching: false }, { type: 'sharing', sharing });
     s = voiceReducer(s, { type: 'call', status: 'reconnecting', channelId: 'VC1' });
     s = voiceReducer(s, { type: 'call', status: 'connected', channelId: 'VC1' });
-    expect([s.watching, s.sharing]).toEqual([[BIA], sharing]);
+    expect([s.unwatched, s.sharing]).toEqual([[BIA], sharing]);
     s = voiceReducer(s, { type: 'call', status: 'idle', channelId: null });
-    expect([s.watching, s.sharing]).toEqual([[], null]);
-    s = voiceReducer(run({ type: 'watch', userId: BIA, watching: true }, { type: 'sharing', sharing }), { type: 'reset' });
-    expect([s.watching, s.sharing]).toEqual([[], null]);
+    expect([s.unwatched, s.sharing]).toEqual([[], null]);
+    s = voiceReducer(run({ type: 'watch', userId: BIA, watching: false }, { type: 'sharing', sharing }), { type: 'reset' });
+    expect([s.unwatched, s.sharing]).toEqual([[], null]);
+  });
+
+  it('holds for that share only: once voice.state no longer shows the person live in my call, it is forgotten', () => {
+    const CAIO = 'c'.repeat(32);
+    const state = (participants: VoiceParticipant[]) => ({ type: 'serverEvent' as const, event: { t: 'voice.state', d: { channelId: 'VC1', participants } } });
+    let s = run(
+      { type: 'welcome', welcome: welcome([{ channelId: 'VC1', participants: [p(ANA), p(BIA, { screen: true }), p(CAIO, { screen: true })] }]) },
+      { type: 'call', status: 'connected', channelId: 'VC1' },
+      { type: 'watch', userId: BIA, watching: false },
+      { type: 'watch', userId: CAIO, watching: false },
+    );
+    // Still live (a mute, a camera): nothing changes.
+    const same = voiceReducer(s, state([p(ANA), p(BIA, { screen: true, muted: true }), p(CAIO, { screen: true })]));
+    expect(same.unwatched).toEqual([BIA, CAIO]);
+    // Bia stops sharing, Caio leaves the call: their next share is watched again.
+    s = voiceReducer(same, state([p(ANA), p(BIA)]));
+    expect(s.unwatched).toEqual([]);
   });
 
   it('who is live in a channel comes from voice.state (screen per person)', () => {
@@ -189,24 +206,22 @@ describe('screen sharing in the voice store (spec 2026-10-01 §5)', () => {
   });
 });
 
-describe('streamLayout (the voice stage while watching)', () => {
+describe('streamLayout (the screens on the voice stage)', () => {
   const CAIO = 'c'.repeat(32);
 
-  it('nothing watched: the usual grid', () => {
-    expect(streamLayout([BIA, CAIO], [], null)).toEqual({ shown: [], focused: null });
+  it('every live screen is shown in its tile without a click, in the channel order; none large until clicked', () => {
+    expect(streamLayout([BIA, CAIO], [], null)).toEqual({ shown: [BIA, CAIO], focused: null });
+    expect(streamLayout([CAIO], [], null)).toEqual({ shown: [CAIO], focused: null });
+    expect(streamLayout([BIA, CAIO], [], CAIO)).toEqual({ shown: [BIA, CAIO], focused: CAIO });
   });
 
-  it('one stream watched: it is shown large', () => {
-    expect(streamLayout([BIA, CAIO], [CAIO], null)).toEqual({ shown: [CAIO], focused: CAIO });
+  it('a screen I stopped watching is not shown, nor large', () => {
+    expect(streamLayout([BIA, CAIO], [BIA], null)).toEqual({ shown: [CAIO], focused: null });
+    expect(streamLayout([BIA, CAIO], [BIA], BIA)).toEqual({ shown: [CAIO], focused: null });
   });
 
-  it('several: a grid of streams, in the channel order, until one is clicked', () => {
-    expect(streamLayout([BIA, CAIO], [CAIO, BIA], null)).toEqual({ shown: [BIA, CAIO], focused: null });
-    expect(streamLayout([BIA, CAIO], [CAIO, BIA], BIA)).toEqual({ shown: [BIA, CAIO], focused: BIA });
-  });
-
-  it('only live people: a watched stream that ended is not shown, nor focused', () => {
-    expect(streamLayout([CAIO], [BIA, CAIO], BIA)).toEqual({ shown: [CAIO], focused: CAIO });
-    expect(streamLayout([], [BIA], BIA)).toEqual({ shown: [], focused: null });
+  it('only live people: a stream that ended is not shown, nor large', () => {
+    expect(streamLayout([CAIO], [], BIA)).toEqual({ shown: [CAIO], focused: null });
+    expect(streamLayout([], [], BIA)).toEqual({ shown: [], focused: null });
   });
 });

@@ -1,8 +1,9 @@
 // Screen sharing end to end (spec 2026-10-01-transmitir-tela-design.md §10): two built app
 // instances. Ana hosts and Bia joins by invite, both enter voice; Ana picks the first screen
 // in GhostLink's own picker (main's display-media handler hands it over, so no
-// GHOSTLINK_E2E_PICK is needed); Bia sees "AO VIVO", watches, receives decoded frames, stops
-// watching; Ana stops and the badge goes away. The PC's sound cannot be checked with fake
+// GHOSTLINK_E2E_PICK is needed); Bia sees "AO VIVO" and, without clicking, decoded frames in
+// Ana's stream tile; a click shows it large; she stops watching ("Assistir" is back) and watches
+// again; Ana stops and the badge goes away. The PC's sound cannot be checked with fake
 // devices: it is on the manual checklist.
 // Run with `npm run test:e2e` (builds the app first). Skipped without the LiveKit binary.
 import { tmpdir } from 'node:os';
@@ -122,30 +123,44 @@ describe.skipIf(!binary)('screen sharing: Ana shares a screen, Bia watches it', 
     await ana.page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-screen-live-ana.png') });
   });
 
-  step('watch: Bia sees AO VIVO, clicks Assistir, and receives decoded frames', 90_000, async () => {
+  step('watch: Bia sees AO VIVO and, without clicking, decoded frames in Ana’s stream tile', 90_000, async () => {
     // The voice channel's list and the stage say Ana is live (voice.state → screen).
     await voiceRow(bia.page, sala, 'Ana').locator('[data-screen-live-badge]').waitFor({ timeout: 30_000 });
-    const watch = bia.page.locator(`[data-screen-watch="${anaId}"]`);
-    await watch.waitFor({ timeout: 10_000 });
-    // Not watched yet: no video is received (opt-in subscription, spec §8.4).
-    expect(await screenVideo(bia.page, anaId)).toBeNull();
-    await watch.click();
+    // No "Assistir" to click (owner, 2026-10-02): her screen plays in its tile on the stage.
     await expect.poll(async () => (await screenVideo(bia.page, anaId))?.readyState ?? 0, { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
     await expect.poll(async () => (await screenVideo(bia.page, anaId))?.width ?? 0, { timeout: 30_000 }).toBeGreaterThan(0);
+    expect(await bia.page.locator(`[data-screen-watch="${anaId}"]`).count()).toBe(0);
+    // A tile of the grid, beside the people's tiles (not large until clicked).
+    expect(await bia.page.locator(`[data-voice-stage] [data-screen-view="${anaId}"]`).count()).toBe(1);
+    expect(await bia.page.getByRole('button', { name: 'Voltar para a grade' }).count()).toBe(0);
     const frame = await screenVideo(bia.page, anaId);
-    console.log(`[screen e2e] Bia receives Ana's screen at ${frame?.width}×${frame?.height}`);
+    console.log(`[screen e2e] Bia receives Ana's screen in its tile at ${frame?.width}×${frame?.height}`);
     // The stream's sound is subscribed with the picture, and plays apart from Ana's voice.
     if (withSound) await bia.page.locator(`audio[data-screen-user="${anaId}"]`).waitFor({ state: 'attached', timeout: 20_000 });
     await bia.page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-screen-watch-bia.png') });
   });
 
-  step('stop watching: the video goes away and "Assistir" is back', 60_000, async () => {
+  step('focus: a click on the tile shows the stream large, and the grid comes back', 60_000, async () => {
+    await bia.page.getByRole('button', { name: 'Ampliar a transmissão de Ana' }).click();
+    const back = bia.page.getByRole('button', { name: 'Voltar para a grade' });
+    await back.waitFor({ timeout: 10_000 });
+    // The large view is a new <video>: its first frames come a moment later.
+    await expect.poll(async () => (await screenVideo(bia.page, anaId))?.width ?? 0, { timeout: 10_000 }).toBeGreaterThan(0);
+    await bia.page.screenshot({ path: join(tmpdir(), 'ghostlink-e2e-screen-focus-bia.png') });
+    await back.click();
+    await back.waitFor({ state: 'detached', timeout: 10_000 });
+  });
+
+  step('stop watching: the video goes away and "Assistir" is back; it brings the picture back', 60_000, async () => {
     await bia.page.locator(`[data-screen-unwatch="${anaId}"]`).click();
     await bia.page.locator(`video[data-screen-video="${anaId}"]`).waitFor({ state: 'detached', timeout: 10_000 });
     await bia.page.locator(`audio[data-screen-user="${anaId}"]`).waitFor({ state: 'detached', timeout: 10_000 });
-    await bia.page.locator(`[data-screen-watch="${anaId}"]`).waitFor({ timeout: 10_000 });
+    const watch = bia.page.locator(`[data-screen-watch="${anaId}"]`);
+    await watch.waitFor({ timeout: 10_000 });
     // Her voice is still received.
     expect(await tile(bia.page, 'Ana').getAttribute('data-receiving')).toBe('true');
+    await watch.click();
+    await expect.poll(async () => (await screenVideo(bia.page, anaId))?.width ?? 0, { timeout: 30_000 }).toBeGreaterThan(0);
   });
 
   step('stop: Ana stops sharing and the badge goes away for Bia', 60_000, async () => {

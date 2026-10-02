@@ -1,5 +1,5 @@
 import { MonitorUp, MonitorX, PhoneCall, Volume2 } from 'lucide-react';
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { VoiceParticipant } from '@ghostlink/shared';
 import { useT } from '../../i18n/index.js';
@@ -109,8 +109,8 @@ function ShareButton({ channelId }: { channelId: string }) {
 /**
  * The center view of a voice channel, like Discord's call screen: a black stage with 16:9
  * tiles as large as it allows (a green ring while speaking), the screens (spec 2026-10-01
- * §5: a tile with "Assistir" per live person; what I watch large, or in a grid when
- * several, a click focusing one), cameras filling their tiles, and the call bar (join, or
+ * §5: each live screen plays in its own tile without a click, a click shows it large; one I
+ * stopped watching shows "Assistir"), cameras filling their tiles, and the call bar (join, or
  * [mic ⌄ camera ⌄ headphones ⌄] [share] and the red hang-up while in this channel).
  */
 export function VoiceStage({ channelId, onOpenSettings }: { channelId: string; onOpenSettings?: () => void }) {
@@ -128,30 +128,23 @@ export function VoiceStage({ channelId, onOpenSettings }: { channelId: string; o
   const name = directory.channelName(channelId) ?? '';
   // Screens are watched from inside the call only (a subscription in my room).
   const live = useVoiceStore(useShallow((v) => (here ? liveIn(v, channelId).filter((u) => u !== v.selfUserId) : NONE)));
-  const watching = useVoiceStore((v) => v.watching);
+  const unwatched = useVoiceStore((v) => v.unwatched);
   const sharing = useVoiceStore((v) => here && v.sharing !== null);
   const [focus, setFocus] = useState<string | null>(null);
-  const streams = streamLayout(live, watching, focus);
+  const streams = streamLayout(live, unwatched, focus);
+  // A large stream that ended (or that I stopped watching) is forgotten: the person's next share starts in its tile.
+  useEffect(() => {
+    if (focus !== null && streams.focused === null) setFocus(null);
+  }, [focus, streams.focused]);
   const others = streams.focused ? streams.shown.filter((u) => u !== streams.focused) : [];
-  const unwatched = live.filter((u) => !streams.shown.includes(u));
-  const { ref: bodyRef, layout } = useTileLayout((sharing && selfUserId ? 1 : 0) + unwatched.length + participants.length);
-  const tiles = (
-    <>
-      {sharing && selfUserId && <OwnStreamTile userId={selfUserId} />}
-      {unwatched.map((u) => (
-        <StreamTile key={'screen-' + u} userId={u} />
-      ))}
-      {participants.map((p) => (
-        <Tile
-          key={p.userId}
-          p={p}
-          isSelf={p.userId === selfUserId}
-          speaking={here && speakers.includes(p.userId)}
-          receiving={here && receiving.includes(p.userId)}
-        />
-      ))}
-    </>
-  );
+  const { ref: bodyRef, layout } = useTileLayout((sharing && selfUserId ? 1 : 0) + live.length + participants.length);
+  const own = sharing && selfUserId ? <OwnStreamTile userId={selfUserId} /> : null;
+  // A live screen's tile: its picture (a click shows it large), or "Assistir" once I stopped watching it.
+  const streamTile = (u: string) =>
+    streams.shown.includes(u) ? <StreamView key={'screen-' + u} userId={u} size="grid" onFocus={() => setFocus(u)} /> : <StreamTile key={'screen-' + u} userId={u} />;
+  const people = participants.map((p) => (
+    <Tile key={p.userId} p={p} isSelf={p.userId === selfUserId} speaking={here && speakers.includes(p.userId)} receiving={here && receiving.includes(p.userId)} />
+  ));
 
   return (
     <section className={s.stage} aria-label={name} data-voice-stage={channelId}>
@@ -159,7 +152,7 @@ export function VoiceStage({ channelId, onOpenSettings }: { channelId: string; o
         <Volume2 size={20} className={s.stageHeaderIcon} aria-hidden="true" />
         <h2>{name}</h2>
       </header>
-      <div ref={bodyRef} className={streams.shown.length > 0 ? s.stageBody + ' ' + s.stageBodyWatching : s.stageBody}>
+      <div ref={bodyRef} className={streams.focused ? s.stageBody + ' ' + s.stageBodyWatching : s.stageBody}>
         {participants.length === 0 ? (
           <div className={s.empty}>
             <span className={s.emptyIcon}>
@@ -168,27 +161,23 @@ export function VoiceStage({ channelId, onOpenSettings }: { channelId: string; o
             <h3>{t('voice.empty')}</h3>
             <p>{t('voice.emptyHint')}</p>
           </div>
-        ) : streams.shown.length > 0 ? (
+        ) : streams.focused ? (
           <>
-            {streams.focused ? (
-              <StreamView userId={streams.focused} size="large" onShowAll={streams.shown.length > 1 ? () => setFocus(null) : undefined} />
-            ) : (
-              <div className={s.streamGrid}>
-                {streams.shown.map((u) => (
-                  <StreamView key={u} userId={u} size="grid" onFocus={() => setFocus(u)} />
-                ))}
-              </div>
-            )}
+            <StreamView userId={streams.focused} size="large" onShowAll={() => setFocus(null)} />
             <div className={s.strip}>
               {others.map((u) => (
                 <StreamView key={u} userId={u} size="compact" onFocus={() => setFocus(u)} />
               ))}
-              {tiles}
+              {own}
+              {live.filter((u) => !streams.shown.includes(u)).map(streamTile)}
+              {people}
             </div>
           </>
         ) : (
           <div className={s.grid} style={{ gridTemplateColumns: `repeat(${layout.columns}, ${layout.width}px)` }}>
-            {tiles}
+            {own}
+            {live.map(streamTile)}
+            {people}
           </div>
         )}
       </div>

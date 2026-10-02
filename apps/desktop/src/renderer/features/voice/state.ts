@@ -86,8 +86,12 @@ export interface VoiceState extends ServerVoice {
   notice: VoiceNotice | null;
   /** My screen share, or null. Who else is live comes from voice.state (`screen` per person). */
   sharing: ScreenSharing | null;
-  /** People whose screen I watch (spec §8.4): re-applied on TrackPublished, also after a reconnect. */
-  watching: string[];
+  /**
+   * People whose live screen I stopped watching ("Parar de assistir"). Every other screen in my call
+   * is watched without a click (owner, 2026-10-02); this holds for that share only: when it ends,
+   * the person's next share is watched again.
+   */
+  unwatched: string[];
   /** My camera is on (or opening). Who else has one comes from voice.state (`camera` per person). */
   camera: boolean;
 }
@@ -114,7 +118,7 @@ export const initialVoiceState: VoiceState = {
   inputLevelDb: -100,
   notice: null,
   sharing: null,
-  watching: [],
+  unwatched: [],
   camera: false,
 };
 
@@ -230,13 +234,13 @@ export function voiceReducer(s: VoiceState, a: VoiceAction): VoiceState {
     case 'welcome': {
       // Outside a call the runtime's server is the one on screen.
       const next = fromWelcome(s, a.welcome);
-      return s.call.status === 'idle' ? { ...next, viewServerId: next.serverId } : next;
+      return s.call.status === 'idle' ? { ...next, viewServerId: next.serverId } : forgetEndedShares(next);
     }
     case 'view':
       return onView(s, a.welcome);
     case 'serverEvent': {
       if (a.serverId === undefined || a.serverId === s.serverId) {
-        return a.event.t === 'welcome' ? fromWelcome(s, a.event.d) : applyEvent(s, a.event);
+        return forgetEndedShares(a.event.t === 'welcome' ? fromWelcome(s, a.event.d) : applyEvent(s, a.event));
       }
       if (s.view === null || a.serverId !== s.view.serverId) return s;
       const view = applyEvent(s.view, a.event);
@@ -278,8 +282,8 @@ export function voiceReducer(s: VoiceState, a: VoiceAction): VoiceState {
     case 'sharing':
       return { ...s, sharing: a.sharing };
     case 'watch': {
-      if (s.watching.includes(a.userId) === a.watching) return s;
-      return { ...s, watching: a.watching ? [...s.watching, a.userId] : s.watching.filter((u) => u !== a.userId) };
+      if (s.unwatched.includes(a.userId) !== a.watching) return s;
+      return { ...s, unwatched: a.watching ? s.unwatched.filter((u) => u !== a.userId) : [...s.unwatched, a.userId] };
     }
     case 'camera':
       return s.camera === a.on ? s : { ...s, camera: a.on };
@@ -287,7 +291,15 @@ export function voiceReducer(s: VoiceState, a: VoiceAction): VoiceState {
 }
 
 /** What belongs to one LiveKit room and goes with it. */
-const ROOM_CLEARED = { speaking: [], subscribed: [], pingMs: null, transmitting: false, sharing: null, watching: [], camera: false } satisfies Partial<VoiceState>;
+const ROOM_CLEARED = { speaking: [], subscribed: [], pingMs: null, transmitting: false, sharing: null, unwatched: [], camera: false } satisfies Partial<VoiceState>;
+
+/** "Parar de assistir" lasts as long as that share: whoever no longer shares in my call (voice.state) is watched again next time. */
+function forgetEndedShares(s: VoiceState): VoiceState {
+  if (s.unwatched.length === 0) return s;
+  const live = s.call.channelId === null ? [] : liveIn(s, s.call.channelId);
+  const unwatched = s.unwatched.filter((u) => live.includes(u));
+  return unwatched.length === s.unwatched.length ? s : { ...s, unwatched };
+}
 
 const NOBODY: VoiceParticipant[] = [];
 
@@ -336,14 +348,13 @@ export function liveIn(s: Pick<ServerVoice, 'channels'>, channelId: string): str
 }
 
 /**
- * The voice stage while watching: the streams shown (live and watched, in the channel's
- * order) and the one shown large: the one clicked, or the only one. With several and
- * none clicked they form a grid.
+ * The streams on the voice stage: those shown with their picture (live and not stopped with
+ * "Parar de assistir", in the channel's order), each in its tile, and the one clicked, shown
+ * large while it is still shown.
  */
-export function streamLayout(live: readonly string[], watching: readonly string[], focus: string | null): { shown: string[]; focused: string | null } {
-  const shown = live.filter((u) => watching.includes(u));
-  const focused = focus !== null && shown.includes(focus) ? focus : shown.length === 1 ? shown[0]! : null;
-  return { shown, focused };
+export function streamLayout(live: readonly string[], unwatched: readonly string[], focus: string | null): { shown: string[]; focused: string | null } {
+  const shown = live.filter((u) => !unwatched.includes(u));
+  return { shown, focused: focus !== null && shown.includes(focus) ? focus : null };
 }
 
 /** Whether `userId` shows as speaking: LiveKit's report, or my own open gate for me. */

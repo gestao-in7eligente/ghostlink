@@ -139,7 +139,7 @@ describe('joining a voice channel (spec §8.2)', () => {
 });
 
 describe('media in the call (spec §8.4)', () => {
-  it('subscribes to microphones and cameras already there and to new ones, never to a screen', async () => {
+  it('subscribes to microphones, cameras and screens already there, and to new ones', async () => {
     h.respond.set('voice.join', () => {
       // Someone is already in the room when we connect.
       return { livekitUrl: 'wss://127.0.0.1:7700', token: 't', iceServers: [] };
@@ -159,7 +159,8 @@ describe('media in the call (spec §8.4)', () => {
     expect(subs).toEqual([
       [Track.Source.Microphone, true],
       [Track.Source.Camera, true],
-      [Track.Source.ScreenShare, null],
+      // A screen live when I join plays without a click (owner, 2026-10-02).
+      [Track.Source.ScreenShare, true],
     ]);
     expect(h.state().names[BIA]).toBe('Bia');
 

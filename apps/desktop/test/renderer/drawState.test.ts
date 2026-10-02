@@ -10,13 +10,13 @@ const SHARING = { quality: '1080p30', content: 'motion', audio: false, name: 'Te
 
 const person = (userId: string, screen = false): VoiceParticipant => ({ userId, muted: false, deafened: false, camera: false, screen, serverMuted: false, serverDeafened: false });
 
-/** Bia's view: in VC1 with Ana, who shares; Bia watches her. */
+/** Bia's view: in VC1 with Ana, who shares; Bia watches her (without a click). */
 function bia(over: Partial<VoiceView> = {}): VoiceView {
   return {
     selfUserId: BIA,
     call: { status: 'connected', channelId: 'VC1' },
     channels: { VC1: [person(ANA, true), person(BIA)] },
-    watching: [ANA],
+    unwatched: [],
     sharing: null,
     ...over,
   };
@@ -24,7 +24,7 @@ function bia(over: Partial<VoiceView> = {}): VoiceView {
 
 /** Ana's view: she shares in VC1. */
 function ana(over: Partial<VoiceView> = {}): VoiceView {
-  return { ...bia(), selfUserId: ANA, watching: [], sharing: SHARING, ...over };
+  return { ...bia(), selfUserId: ANA, sharing: SHARING, ...over };
 }
 
 const on: DrawState = { ...initialDrawState, available: true };
@@ -42,7 +42,7 @@ describe('canDraw', () => {
   });
 
   it('not on a share I do not watch, one that ended, or my own when I do not share', () => {
-    expect(canDraw(on, bia({ watching: [] }), ANA)).toBe(false);
+    expect(canDraw(on, bia({ unwatched: [ANA] }), ANA)).toBe(false);
     expect(canDraw(on, bia({ channels: { VC1: [person(ANA), person(BIA)] } }), ANA)).toBe(false);
     expect(canDraw(on, bia(), BIA)).toBe(false);
     expect(canDraw(on, ana({ sharing: null }), ANA)).toBe(false);
@@ -71,7 +71,7 @@ describe('drawReducer', () => {
     const drawing = drawReducer(on, { type: 'pencil', sharerId: ANA, voice: bia() });
     expect(drawing.pencil).toBe(ANA);
     expect(drawReducer(drawing, { type: 'pencil', sharerId: null, voice: bia() }).pencil).toBeNull();
-    expect(drawReducer(on, { type: 'pencil', sharerId: ANA, voice: bia({ watching: [] }) })).toBe(on);
+    expect(drawReducer(on, { type: 'pencil', sharerId: ANA, voice: bia({ unwatched: [ANA] }) })).toBe(on);
   });
 
   it('follows screen.drawAllow: off hides my pencil on that share; on again lets it back', () => {
@@ -96,7 +96,7 @@ describe('drawReducer', () => {
   it('drops the pencil when I stop watching, leave the call or the share ends', () => {
     const drawing = drawReducer(on, { type: 'pencil', sharerId: ANA, voice: bia() });
     expect(drawReducer(drawing, { type: 'voice', voice: bia() })).toBe(drawing);
-    expect(drawReducer(drawing, { type: 'voice', voice: bia({ watching: [] }) }).pencil).toBeNull();
+    expect(drawReducer(drawing, { type: 'voice', voice: bia({ unwatched: [ANA] }) }).pencil).toBeNull();
     expect(drawReducer(drawing, { type: 'voice', voice: bia({ call: { status: 'idle', channelId: null } }) }).pencil).toBeNull();
     expect(drawReducer(drawing, { type: 'voice', voice: bia({ channels: { VC1: [person(BIA)] } }) }).pencil).toBeNull();
   });

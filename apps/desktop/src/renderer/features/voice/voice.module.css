@@ -487,14 +487,6 @@ button.tile {
   gap: 8px;
   padding-bottom: 8px;
 }
-.streamGrid {
-  display: grid;
-  flex: 1 1 auto;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  align-content: center;
-  gap: 8px;
-  min-height: 0;
-}
 /* Everyone else under the large stream: a row of small tiles, like Discord's focused layout. */
 .strip {
   display: grid;

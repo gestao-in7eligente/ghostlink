@@ -1,6 +1,6 @@
 // Screen sharing in the voice session (spec 2026-10-01-transmitir-tela-design.md §2, §4, §5):
-// watching is an opt-in subscription re-applied after reconnects; sharing publishes through
-// the picker flow and ends with the capture.
+// every screen in the call is watched without a click, "Parar de assistir" holds for that share
+// (also across reconnects); sharing publishes through the picker flow and ends with the capture.
 import { RoomEvent, Track } from 'livekit-client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { screenCaptureOptions, screenVideoPublishOptions, SCREEN_AUDIO_PUBLISH, type ScreenSelection } from '../../src/renderer/features/voice/screenShare.js';
@@ -19,83 +19,68 @@ afterEach(async () => {
   await h.session.dispose();
 });
 
-describe('watching a screen (spec §8.4: only on "Assistir")', () => {
-  it('watch subscribes that person’s screen and its sound; microphones stay as they are', async () => {
+describe('watching a screen (owner, 2026-10-02: without a click)', () => {
+  it('every new screen in my call is subscribed with its sound; microphones stay as they are', async () => {
     await h.session.join('VC1');
-    const bia = room().addRemote(BIA, 'Bia', [S.Microphone, S.ScreenShare, S.ScreenShareAudio]);
-    const caio = room().addRemote(CAIO, 'Caio', [S.ScreenShare]);
-    h.session.watch(BIA);
-    expect(h.state().watching).toEqual([BIA]);
-    expect(sourcesOf(bia)).toEqual([
-      [S.Microphone, null],
-      [S.ScreenShare, true],
-      [S.ScreenShareAudio, true],
-    ]);
-    expect(sourcesOf(caio)).toEqual([[S.ScreenShare, null]]);
+    const bia = room().addRemote(BIA, 'Bia', [S.Microphone]);
+    const caio = room().addRemote(CAIO, 'Caio');
+    expect(room().publish(bia, S.ScreenShare).subscribed).toBe(true);
+    expect(room().publish(bia, S.ScreenShareAudio).subscribed).toBe(true);
+    expect(room().publish(caio, S.ScreenShare).subscribed).toBe(true);
+    expect(sourcesOf(bia)[0]).toEqual([S.Microphone, null]);
+    // Cameras too, as before (spec 2026-10-01-camera §1).
+    expect(room().publish(caio, S.Camera).subscribed).toBe(true);
+    expect(h.state().unwatched).toEqual([]);
   });
 
-  it('unwatch unsubscribes both, and the picture goes away at once', async () => {
+  it('"Parar de assistir" unsubscribes both and the picture goes away at once; "Assistir" brings them back', async () => {
     await h.session.join('VC1');
-    const bia = room().addRemote(BIA, 'Bia', [S.ScreenShare, S.ScreenShareAudio]);
-    h.session.watch(BIA);
-    const [video] = [...bia.trackPublications.values()];
+    const bia = room().addRemote(BIA, 'Bia');
+    const caio = room().addRemote(CAIO, 'Caio', [S.ScreenShare]);
+    const video = room().publish(bia, S.ScreenShare);
+    const audio = room().publish(bia, S.ScreenShareAudio);
     room().emit(RoomEvent.TrackSubscribed, { kind: Track.Kind.Video }, video, bia);
     expect(h.videos.remote.has(BIA)).toBe(true);
     h.session.unwatch(BIA);
-    expect(h.state().watching).toEqual([]);
-    expect(sourcesOf(bia)).toEqual([
-      [S.ScreenShare, false],
-      [S.ScreenShareAudio, false],
-    ]);
+    expect(h.state().unwatched).toEqual([BIA]);
+    expect([video.subscribed, audio.subscribed]).toEqual([false, false]);
     expect(h.videos.remote.has(BIA)).toBe(false);
-  });
-
-  it('a TrackPublished for a watched person subscribes it; for others, nothing', async () => {
-    await h.session.join('VC1');
-    const bia = room().addRemote(BIA, 'Bia');
-    const caio = room().addRemote(CAIO, 'Caio');
+    // Caio's screen is not touched.
+    expect(sourcesOf(caio)).toEqual([[S.ScreenShare, null]]);
     h.session.watch(BIA);
-    expect(room().publish(bia, S.ScreenShare).subscribed).toBe(true);
-    expect(room().publish(bia, S.ScreenShareAudio).subscribed).toBe(true);
-    expect(room().publish(caio, S.ScreenShare).subscribed).toBeNull();
-    // Cameras do not wait for "Assistir" (spec 2026-10-01-camera §1).
-    expect(room().publish(caio, S.Camera).subscribed).toBe(true);
+    expect(h.state().unwatched).toEqual([]);
+    expect([video.subscribed, audio.subscribed]).toEqual([true, true]);
   });
 
-  it('is re-applied after a full reconnect: everyone comes back through TrackPublished', async () => {
+  it('a screen I stopped watching stays off through a full reconnect: everyone comes back through TrackPublished', async () => {
     await h.session.join('VC1');
     let bia = room().addRemote(BIA, 'Bia', [S.ScreenShare, S.ScreenShareAudio]);
-    h.session.watch(BIA);
+    h.session.unwatch(BIA);
     // LiveKit's full reconnect: participants are removed first, then their tracks unpublished.
     room().emit(RoomEvent.Reconnecting);
     room().remoteParticipants.delete(bia.identity);
     for (const pub of bia.trackPublications.values()) room().emit(RoomEvent.TrackUnpublished, pub, bia);
     room().emit(RoomEvent.Reconnected);
-    expect(h.state().watching).toEqual([BIA]);
+    expect(h.state().unwatched).toEqual([BIA]);
     bia = room().addRemote(BIA, 'Bia');
-    expect(room().publish(bia, S.ScreenShare).subscribed).toBe(true);
-    expect(room().publish(bia, S.ScreenShareAudio).subscribed).toBe(true);
+    expect(room().publish(bia, S.ScreenShare).subscribed).toBeNull();
+    expect(room().publish(bia, S.ScreenShareAudio).subscribed).toBeNull();
   });
 
-  it('someone who stops sharing is no longer watched; someone who drops out (or reconnects) still is', async () => {
+  it('holds for that share only: once she stops sharing, her next share is watched again', async () => {
     await h.session.join('VC1');
     const bia = room().addRemote(BIA, 'Bia', [S.ScreenShare]);
-    const caio = room().addRemote(CAIO, 'Caio', [S.ScreenShare]);
-    h.session.watch(BIA);
-    h.session.watch(CAIO);
-    // Bia stops: her screen is unpublished while she stays in the room.
+    h.session.unwatch(BIA);
+    // She stops: her screen is unpublished while she stays in the room.
     room().emit(RoomEvent.TrackUnpublished, [...bia.trackPublications.values()][0], bia);
-    // Caio's connection drops: he leaves the room first.
-    room().remoteParticipants.delete(caio.identity);
-    room().emit(RoomEvent.TrackUnpublished, [...caio.trackPublications.values()][0], caio);
-    expect(h.state().watching).toEqual([CAIO]);
+    expect(h.state().unwatched).toEqual([]);
+    expect(room().publish(bia, S.ScreenShare).subscribed).toBe(true);
   });
 
   it('the picture goes to the video outlet; the sound plays apart from the voice, with the stream volume', async () => {
     h.settings.value = withVolume(withVolume(defaultVoiceSettings, 's1', BIA, 50), 's1', screenVolumeKey(BIA), 160);
     await h.session.join('VC1');
     const bia = room().addRemote(BIA, 'Bia', [S.ScreenShare, S.ScreenShareAudio]);
-    h.session.watch(BIA);
     const [videoPub, audioPub] = [...bia.trackPublications.values()];
     const video = { kind: Track.Kind.Video };
     const audio = { kind: Track.Kind.Audio };
@@ -122,6 +107,7 @@ describe('watching a screen (spec §8.4: only on "Assistir")', () => {
   it('a screen that arrives after "Parar de assistir" is not shown', async () => {
     await h.session.join('VC1');
     const bia = room().addRemote(BIA, 'Bia', [S.ScreenShare, S.ScreenShareAudio]);
+    h.session.unwatch(BIA);
     const [videoPub, audioPub] = [...bia.trackPublications.values()];
     room().emit(RoomEvent.TrackSubscribed, { kind: Track.Kind.Video }, videoPub, bia);
     room().emit(RoomEvent.TrackSubscribed, { kind: Track.Kind.Audio }, audioPub, bia);
@@ -129,21 +115,22 @@ describe('watching a screen (spec §8.4: only on "Assistir")', () => {
     expect(h.attached).toEqual([]);
   });
 
-  it('nobody watches their own screen, and outside a call watch does nothing', async () => {
-    h.session.watch(BIA);
-    expect(h.state().watching).toEqual([]);
+  it('outside a call, or on my own screen, "Parar de assistir" does nothing', async () => {
+    h.session.unwatch(BIA);
+    expect(h.state().unwatched).toEqual([]);
     await h.session.join('VC1');
-    h.session.watch(ME);
-    expect(h.state().watching).toEqual([]);
+    h.session.unwatch(ME);
+    expect(h.state().unwatched).toEqual([]);
   });
 
-  it('leaving the call forgets what was watched and drops the pictures', async () => {
+  it('leaving the call forgets "Parar de assistir" and drops the pictures', async () => {
     await h.session.join('VC1');
     const bia = room().addRemote(BIA, 'Bia', [S.ScreenShare]);
-    h.session.watch(BIA);
+    room().addRemote(CAIO, 'Caio', [S.ScreenShare]);
     room().emit(RoomEvent.TrackSubscribed, { kind: Track.Kind.Video }, [...bia.trackPublications.values()][0], bia);
+    h.session.unwatch(CAIO);
     await h.session.leave();
-    expect(h.state().watching).toEqual([]);
+    expect(h.state().unwatched).toEqual([]);
     expect(h.videos.remote.size).toBe(0);
   });
 });

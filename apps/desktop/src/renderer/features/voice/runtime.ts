@@ -411,12 +411,12 @@ export function toggleCamera(): Promise<void> {
   return session?.setCamera(!useVoiceStore.getState().camera) ?? Promise.resolve();
 }
 
-/** "Assistir" (spec §8.4: a screen is received only on demand). */
+/** "Assistir": a screen I stopped watching comes back (every other one is watched without a click). */
 export function watchScreen(userId: string): void {
   session?.watch(userId);
 }
 
-/** "Parar de assistir". */
+/** "Parar de assistir": until that share ends. */
 export function unwatchScreen(userId: string): void {
   session?.unwatch(userId);
 }
