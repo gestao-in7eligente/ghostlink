@@ -34,6 +34,8 @@ export interface ChannelsState {
   activeId: string | null;
   /** The voice channel shown in the center (the Voice track's stage), or null for the chat. */
   stageId: string | null;
+  /** The bot whose page is shown in the center (bot page spec), selected like a channel; null for the chat. */
+  botPageId: string | null;
   /** The window is focused and the open chat is scrolled to the newest message. */
   attentive: boolean;
 }
@@ -131,6 +133,8 @@ export type TextAction =
   | { type: 'event'; event: TextEvent; now: number }
   | { type: 'select'; channelId: string }
   | { type: 'stage'; channelId: string | null }
+  /** Opens a bot's page in the center, like a channel (a channel, or the stage, closes it). */
+  | { type: 'bot.open'; botId: string }
   | { type: 'attention'; attentive: boolean }
   | { type: 'history.start'; channelId: string; older: boolean }
   /** `before`: the oldest loaded message the older page was asked for; a page for a trimmed log is dropped. */
