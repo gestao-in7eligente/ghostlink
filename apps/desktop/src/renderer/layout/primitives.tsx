@@ -358,18 +358,32 @@ export function Menu({ anchor, label, onClose, children, align = 'start', width 
   );
 }
 
+/** An item's label, with an optional quieter second line under it (Discord's "Silenciado até 15:30"). */
+function MenuLabel({ children, hint }: { children: ReactNode; hint?: ReactNode }) {
+  if (hint === undefined || hint === null) return <span className={p.menuLabel}>{children}</span>;
+  return (
+    <span className={`${p.menuLabel} ${p.menuLabelStack}`}>
+      <span className={p.menuLabelMain}>{children}</span>
+      <span className={p.menuHint}>{hint}</span>
+    </span>
+  );
+}
+
 export function MenuItem({
   children,
   onSelect,
   danger = false,
   disabled = false,
   icon,
+  hint,
 }: {
   children: ReactNode;
   onSelect: () => void;
   danger?: boolean;
   disabled?: boolean;
   icon?: ReactNode;
+  /** A second line under the label. */
+  hint?: ReactNode;
 }) {
   return (
     <button
@@ -380,7 +394,7 @@ export function MenuItem({
       tabIndex={-1}
       onClick={() => !disabled && onSelect()}
     >
-      <span className={p.menuLabel}>{children}</span>
+      <MenuLabel hint={hint}>{children}</MenuLabel>
       {icon && <span className={p.menuIcon}>{icon}</span>}
     </button>
   );
@@ -432,7 +446,22 @@ const SUBMENU_CLOSE_MS = 250;
  * give the focus back to the item. It lives inside the parent menu's element (position: fixed), so
  * a click in it is a click in the menu, and the parent's arrow keys work in it too.
  */
-export function MenuSub({ label, children, menuLabel, icon, width = 220 }: { label: ReactNode; children: ReactNode; menuLabel: string; icon?: ReactNode; width?: number }) {
+export function MenuSub({
+  label,
+  children,
+  menuLabel,
+  icon,
+  hint,
+  width = 220,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+  menuLabel: string;
+  icon?: ReactNode;
+  /** A second line under the label (the current choice, like Discord's "Só @menções"). */
+  hint?: ReactNode;
+  width?: number;
+}) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -524,7 +553,7 @@ export function MenuSub({ label, children, menuLabel, icon, width = 220 }: { lab
         tabIndex={-1}
         onClick={() => show(true)}
       >
-        <span className={p.menuLabel}>{label}</span>
+        <MenuLabel hint={hint}>{label}</MenuLabel>
         {icon && <span className={p.menuIcon}>{icon}</span>}
         <ChevronRight size={16} className={p.menuChevron} aria-hidden="true" />
       </button>
@@ -545,10 +574,10 @@ export function MenuSub({ label, children, menuLabel, icon, width = 220 }: { lab
 }
 
 /** One choice of a few (role="menuitemradio"): a round mark shows the chosen one. */
-export function MenuRadio({ children, checked, onSelect }: { children: ReactNode; checked: boolean; onSelect: () => void }) {
+export function MenuRadio({ children, checked, onSelect, hint }: { children: ReactNode; checked: boolean; onSelect: () => void; hint?: ReactNode }) {
   return (
     <button type="button" role="menuitemradio" aria-checked={checked} className={p.menuItem} tabIndex={-1} onClick={onSelect}>
-      <span className={p.menuLabel}>{children}</span>
+      <MenuLabel hint={hint}>{children}</MenuLabel>
       <span className={checked ? `${p.radio} ${p.radioOn}` : p.radio} aria-hidden="true" />
     </button>
   );

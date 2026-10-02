@@ -311,6 +311,33 @@
   white-space: nowrap;
 }
 
+/* A label with a second line under it ("Config. de notificação" over "Só @menções"). */
+.menuLabelStack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding: 5px 0;
+}
+
+.menuLabelMain,
+.menuHint {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menuHint {
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.menuItem:hover:not([aria-disabled='true']) .menuHint,
+.menuItem:focus-visible .menuHint {
+  color: inherit;
+}
+
 .menuIcon {
   display: inline-grid;
   place-items: center;

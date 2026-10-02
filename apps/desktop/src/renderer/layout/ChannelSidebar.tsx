@@ -1,23 +1,39 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Hash, Lock, LogOut, Plus, Settings, Trash2, UserPlus, Volume2 } from 'lucide-react';
 import { PERMISSIONS, has, type Channel, type ChannelType } from '@ghostlink/shared';
+import type { SavedServer } from '../../shared/ipcTypes.js';
 import { GhostMark } from '../components/GhostMark.js';
 import { BotsSection } from '../features/bots/BotsSection.js';
+import { ChannelMenu } from '../features/channelMenu/ChannelMenu.js';
+import { channelPrefsOf, isChannelMuted, nextMuteEnd, pinnedFirst } from '../features/channelMenu/channelPrefs.js';
+import { useSavedServer } from '../features/channelMenu/useSavedServer.js';
 import { canOpenServerSettings } from '../features/server-settings/access.js';
 import { CreateChannelDialog } from '../features/server-settings/CreateChannelDialog.js';
 import { useOpenServerExit } from '../features/serverDelete/DeletionBanner.js';
+import { userMenuTriggers } from '../features/userMenu/triggers.js';
 import { useT } from '../i18n/index.js';
 import { centerView, isUnread, readMark, sortedChannels } from '../stores/channels.js';
 import { myPermissions } from '../stores/server.js';
 import { dispatchText, useTextStore } from '../stores/text.js';
 import l from './layout.module.css';
-import { Menu, MenuItem, MenuSeparator, ServerIcon } from './primitives.js';
+import { Menu, MenuItem, MenuSeparator, ServerIcon, type MenuAnchor } from './primitives.js';
 import { useLayoutSlots } from './slots.js';
 
 export type SidebarDialog = 'invite' | 'settings' | 'leave' | 'delete';
 
-/** Server header with its menu, then the text and voice channels (spec §11.1 item 4). */
-export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog) => void }) {
+/** What a text channel row needs from the sidebar: my choices for it, the time, and its menu. */
+interface TextRowContext {
+  saved: SavedServer | null;
+  now: number;
+  openMenu: (channelId: string, anchor: MenuAnchor) => void;
+}
+
+/**
+ * Server header with its menu, then the text and voice channels (spec §11.1 item 4). A text channel's
+ * right click (or menu key) opens its menu (spec 2026-10-02-menu-do-canal); `channelId` names the channel
+ * an invite or the settings opened from it are about.
+ */
+export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog, channelId?: string) => void }) {
   const t = useT();
   const name = useTextStore((s) => s.server.name);
   const icon = useTextStore((s) => s.server.icon);
@@ -26,7 +42,19 @@ export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog) => 
   const byId = useTextStore((s) => s.channels.byId);
   const [menu, setMenu] = useState<DOMRect | null>(null);
   const [creating, setCreating] = useState<ChannelType | null>(null);
+  const [channelMenu, setChannelMenu] = useState<{ channelId: string; anchor: MenuAnchor } | null>(null);
   const headerRef = useRef<HTMLButtonElement>(null);
+  // My choices for this server's channels (pins, mutes), kept on this computer.
+  const saved = useSavedServer(server.serverId);
+  const [tick, setTick] = useState(0);
+
+  // A timed mute ends by itself: the channel shows normally again at that moment.
+  useEffect(() => {
+    const end = nextMuteEnd(saved, Date.now());
+    if (end === null) return;
+    const timer = setTimeout(() => setTick((n) => n + 1), Math.min(end - Date.now() + 50, 2 ** 31 - 1));
+    return () => clearTimeout(timer);
+  }, [saved, tick]);
 
   const bits = useMemo(() => myPermissions({ server, members }), [server, members]);
   const canInvite = has(bits, PERMISSIONS.CREATE_INVITES);
@@ -34,7 +62,7 @@ export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog) => 
   const canManageChannels = has(bits, PERMISSIONS.MANAGE_CHANNELS);
   // Members leave, the owner deletes (leave/delete spec §2, §3).
   const exit = useOpenServerExit();
-  const text = useMemo(() => sortedChannels(byId, 'text'), [byId]);
+  const text = useMemo(() => pinnedFirst(sortedChannels(byId, 'text'), saved?.pinned), [byId, saved]);
   const voice = useMemo(() => sortedChannels(byId, 'voice'), [byId]);
 
   const pick = (dialog: SidebarDialog) => {
@@ -85,11 +113,27 @@ export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog) => 
 
       <div className={l.channelScroll}>
         <BotsSection />
-        <ChannelSection title={t('layout.textChannels')} type="text" channels={text} canCreate={canManageChannels} onCreate={() => setCreating('text')} />
+        <ChannelSection
+          title={t('layout.textChannels')}
+          type="text"
+          channels={text}
+          canCreate={canManageChannels}
+          onCreate={() => setCreating('text')}
+          textRow={{ saved, now: Date.now(), openMenu: (channelId, anchor) => setChannelMenu({ channelId, anchor }) }}
+        />
         {text.length === 0 && <p className={l.emptyHint}>{t('layout.noChannel')}</p>}
         <ChannelSection title={t('layout.voiceChannels')} type="voice" channels={voice} canCreate={canManageChannels} onCreate={() => setCreating('voice')} />
       </div>
       {creating && <CreateChannelDialog type={creating} onClose={() => setCreating(null)} />}
+      {channelMenu && Object.hasOwn(byId, channelMenu.channelId) && (
+        <ChannelMenu
+          channel={byId[channelMenu.channelId]!}
+          anchor={channelMenu.anchor}
+          saved={saved}
+          onClose={() => setChannelMenu(null)}
+          onOpen={onOpen}
+        />
+      )}
     </aside>
   );
 }
@@ -100,12 +144,14 @@ function ChannelSection({
   channels,
   canCreate,
   onCreate,
+  textRow,
 }: {
   title: string;
   type: ChannelType;
   channels: Channel[];
   canCreate: boolean;
   onCreate: () => void;
+  textRow?: TextRowContext;
 }) {
   const t = useT();
   const headingId = `section-${type}`;
@@ -122,22 +168,26 @@ function ChannelSection({
         )}
       </div>
       <ul className={l.channelList}>
-        {channels.map((c) => (type === 'text' ? <TextChannelRow key={c.id} channel={c} /> : <VoiceChannelRow key={c.id} channel={c} />))}
+        {channels.map((c) => (type === 'text' && textRow ? <TextChannelRow key={c.id} channel={c} context={textRow} /> : <VoiceChannelRow key={c.id} channel={c} />))}
       </ul>
     </section>
   );
 }
 
-function TextChannelRow({ channel }: { channel: Channel }) {
+function TextChannelRow({ channel, context }: { channel: Channel; context: TextRowContext }) {
   const t = useT();
   const active = useTextStore((s) => s.channels.activeId === channel.id && centerView(s.channels) === 'chat');
   const mark = useTextStore((s) => readMark(s.channels, channel.id));
-  const unread = !active && isUnread(channel, mark);
+  // Muted (its menu): dimmed and never bold; its mentions still count.
+  const muted = isChannelMuted(channelPrefsOf(context.saved, channel.id), context.now);
+  const unread = !active && !muted && isUnread(channel, mark);
   const mentions = mark.mentionCount;
-  const className = [l.channel, active ? l.channelActive : '', unread ? l.channelUnread : ''].filter(Boolean).join(' ');
+  const className = [l.channel, muted ? l.channelMuted : '', active ? l.channelActive : '', unread ? l.channelUnread : ''].filter(Boolean).join(' ');
+  const triggers = userMenuTriggers((anchor) => context.openMenu(channel.id, anchor));
   const label = [
     channel.name,
     channel.private ? t('layout.privateChannel') : null,
+    muted ? t('channelMenu.mutedLabel') : null,
     unread ? t('layout.unread') : null,
     mentions > 0 ? t('layout.mentions', { count: mentions }) : null,
   ]
@@ -151,6 +201,7 @@ function TextChannelRow({ channel }: { channel: Channel }) {
         aria-current={active ? 'page' : undefined}
         aria-label={label}
         onClick={() => dispatchText({ type: 'select', channelId: channel.id })}
+        {...triggers}
         data-channel={channel.id}
       >
         <Hash className={l.channelIcon} size={18} aria-hidden="true" />

@@ -5,6 +5,7 @@ import { errorCodeOf, useT, type Translate } from '../../i18n/index.js';
 import { ErrorText, Modal, Select, primitives as p } from '../../layout/primitives.js';
 import s from '../../layout/settings.module.css';
 import { useTextStore } from '../../stores/text.js';
+import { inviteLinksWithChannel } from '../channelMenu/channelMenuModel.js';
 import { createInvite } from '../chat/actions.js';
 
 export const MAX_USES_CHOICES = [0, 1, 5, 10, 25, 100] as const;
@@ -71,10 +72,14 @@ export function CopyField({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** "Convidar pessoas" (server menu): a fresh invite link to share (spec §3.5). */
-export function InviteDialog({ onClose }: { onClose: () => void }) {
+/**
+ * "Convidar pessoas" (server menu): a fresh invite link to share (spec §3.5). `channelId`: the channel
+ * menu's "Convite para o canal", whose links also carry the channel whoever joins lands in.
+ */
+export function InviteDialog({ onClose, channelId }: { onClose: () => void; channelId?: string }) {
   const t = useT();
   const name = useTextStore((st) => st.server.name);
+  const channel = useTextStore((st) => (channelId !== undefined && Object.hasOwn(st.channels.byId, channelId) ? st.channels.byId[channelId]! : null));
   const [maxUses, setMaxUses] = useState(0);
   const [hours, setHours] = useState(24 * 7);
   const [invite, setInvite] = useState<InviteLinks | null>(null);
@@ -85,7 +90,8 @@ export function InviteDialog({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      setInvite(await createInvite(inviteRequest(maxUses, hours)));
+      const links = await createInvite(inviteRequest(maxUses, hours));
+      setInvite(channel ? inviteLinksWithChannel(links, channel.id) : links);
     } catch (e) {
       setError(errorCodeOf(e));
     } finally {
@@ -96,6 +102,7 @@ export function InviteDialog({ onClose }: { onClose: () => void }) {
   return (
     <Modal title={t('invite.title', { name })} onClose={onClose} size="medium">
       <div className={s.form}>
+        {channel && <p className={s.hint}>{t('channelMenu.inviteHint', { name: channel.name })}</p>}
         <InviteOptions maxUses={maxUses} setMaxUses={setMaxUses} hours={hours} setHours={setHours} />
         <div className={s.row}>
           <button type="button" className={`${p.button} ${invite ? '' : p.buttonPrimary}`} disabled={busy} onClick={() => void generate()}>
