@@ -117,9 +117,10 @@ async function djEnv(proxy?: ProxyEndpoint): Promise<Env> {
 
 /**
  * The owner in the voice channel as a real participant (through `url`: LiveKit, or a relay),
- * then /play: resolves with the stereo PCM heard, once `seconds` of it are in.
+ * then /play: resolves with the stereo PCM heard, once `seconds` of it are in, and the address
+ * the listener's media came from (its selected ICE candidate pair's remote end).
  */
-async function hear(e: Env, url: string, seconds: number): Promise<Int16Array> {
+async function hear(e: Env, url: string, seconds: number): Promise<{ pcm: Int16Array; from: { address: string; protocol: string } | null }> {
   const { token } = await e.owner.ok<{ token: string }>('voice.join', { channelId: e.sala });
   const room = new Room();
   rooms.push(room);
@@ -156,7 +157,49 @@ async function hear(e: Env, url: string, seconds: number): Promise<Int16Array> {
     pcm.set(f.subarray(0, pcm.length - at), at);
     at += f.length;
   }
-  return pcm;
+  return { pcm, from: selectedRemote(await room.getRtcStats()) };
+}
+
+/** The remote end of the selected ICE candidate pair in rtc-node's session stats. */
+function selectedRemote(stats: unknown): { address: string; protocol: string } | null {
+  const all = JSON.parse(JSON.stringify(stats, (_k, v: unknown) => (typeof v === 'bigint' ? Number(v) : v))) as Record<string, Record<string, Record<string, unknown>>[]>;
+  const byId = new Map<string, { kind: string; body: Record<string, unknown> }>();
+  for (const entry of [...(all.publisherStats ?? []), ...(all.subscriberStats ?? [])]) {
+    const [kind, parts] = Object.entries(entry)[0]!;
+    const body: Record<string, unknown> = Object.assign({}, ...Object.values(parts));
+    byId.set(String(body.id), { kind, body });
+  }
+  for (const { kind, body } of byId.values()) {
+    if (kind !== 'transport') continue;
+    const pair = byId.get(String(body.selectedCandidatePairId))?.body;
+    const remote = pair ? byId.get(String(pair.remoteCandidateId))?.body : undefined;
+    if (remote && Number(pair!.bytesReceived) > 0) return { address: String(remote.address), protocol: String(remote.protocol) };
+  }
+  return null;
+}
+
+/**
+ * What a listener should hear, measured after the first second: meanwhile its jitter buffer
+ * stretches the sound to reach its delay (libwebrtc NetEq), splicing both channels where the
+ * left one repeats, which smears this signal's unrelated right-channel tones (real music's
+ * channels are alike). Then: each side carries its own tones and almost nothing of the other's,
+ * and every 10 ms holds the signal (a concealed or missing packet drops the level).
+ */
+function expectClean(pcm: Int16Array): void {
+  const steady = pcm.subarray(RATE * 2);
+  const sent = AMPLITUDE * gainOf(50);
+  for (const [ch, own, other] of [[0, LEFT, RIGHT], [1, RIGHT, LEFT]] as const) {
+    for (const f of own) expect(Math.abs(dB(tone(steady, ch, f), sent)), `${f} Hz in channel ${ch}`).toBeLessThan(1.5);
+    for (const f of other) expect(dB(tone(steady, ch, f), sent), `${f} Hz leaking into channel ${ch}`).toBeLessThan(-30);
+  }
+  const levels: number[] = [];
+  for (let i = 0; i + 960 <= steady.length; i += 960) {
+    let sum = 0;
+    for (let j = i; j < i + 960; j++) sum += steady[j]! ** 2;
+    levels.push(Math.sqrt(sum / 960));
+  }
+  const median = [...levels].sort((a, b) => a - b)[levels.length >> 1]!;
+  expect(levels.filter((l) => l < median * 0.5)).toEqual([]);
 }
 
 async function stop(e: Env): Promise<void> {
@@ -167,24 +210,8 @@ async function stop(e: Env): Promise<void> {
 describe.skipIf(!binary)('Ghost DJ with the real LiveKit', () => {
   it('someone in the channel hears it in stereo, bass to treble, with no gaps (v0.5.1: it was mono, in Opus voice mode)', async () => {
     const e = await djEnv();
-    const pcm = await hear(e, `ws://127.0.0.1:${e.livekitPort}`, 4);
-    // The first second settles (jitter buffer); the next three are measured.
-    const steady = pcm.subarray(RATE * 2);
-    const sent = AMPLITUDE * gainOf(50);
-    // Stereo: each side carries its own tones, and almost nothing of the other side's.
-    for (const [ch, own, other] of [[0, LEFT, RIGHT], [1, RIGHT, LEFT]] as const) {
-      for (const f of own) expect(Math.abs(dB(tone(steady, ch, f), sent)), `${f} Hz in channel ${ch}`).toBeLessThan(1.5);
-      for (const f of other) expect(dB(tone(steady, ch, f), sent), `${f} Hz leaking into channel ${ch}`).toBeLessThan(-30);
-    }
-    // No gaps: every 10 ms holds the signal (a concealed or missing packet drops the level).
-    const levels: number[] = [];
-    for (let i = 0; i + 960 <= steady.length; i += 960) {
-      let sum = 0;
-      for (let j = i; j < i + 960; j++) sum += steady[j]! ** 2;
-      levels.push(Math.sqrt(sum / 960));
-    }
-    const median = [...levels].sort((a, b) => a - b)[levels.length >> 1]!;
-    expect(levels.filter((l) => l < median * 0.5)).toEqual([]);
+    const { pcm } = await hear(e, `ws://127.0.0.1:${e.livekitPort}`, 5);
+    expectClean(pcm);
     await stop(e);
   }, 60_000);
 });
@@ -199,8 +226,10 @@ describe.runIf(binary && process.platform === 'linux')('Ghost DJ behind a TCP pr
     const e = await djEnv({ host: '192.0.2.1', port: external });
     const relay = await startSignalRelay({ target: `ws://127.0.0.1:${e.livekitPort}`, icePort: external });
     relays.push(relay);
-    const pcm = await hear(e, relay.url, 1);
-    expect(Math.abs(dB(tone(pcm, 1, 1_000), AMPLITUDE * gainOf(50)))).toBeLessThan(3);
+    const { pcm, from } = await hear(e, relay.url, 5);
+    // Over ICE-TCP on loopback, as clean as the direct path: no loss, no gaps.
+    expect(from).toEqual({ address: '127.0.0.1', protocol: 'tcp' });
+    expectClean(pcm);
     expect(relay.changed.candidates).toBeGreaterThan(0);
     await stop(e);
   }, 60_000);
