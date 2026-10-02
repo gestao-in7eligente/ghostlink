@@ -57,13 +57,13 @@ describe('electron-vite build', () => {
     for (const module of ['node:sqlite', '@peculiar/x509', 'reflect-metadata']) expect(main, module).not.toContain(module);
   });
 
-  it.each(['index', 'splash', 'drawOverlay'])('emits the sandboxed %s preload as CommonJS that only requires electron', (name) => {
+  it.each(['index', 'splash', 'drawOverlay', 'toast'])('emits the sandboxed %s preload as CommonJS that only requires electron', (name) => {
     const preload = read(`preload/${name}.cjs`);
     expect(preload).not.toMatch(/^\s*(import|export)\s/m);
     expect([...preload.matchAll(/require\("([^"]+)"\)/g)].map((m) => m[1])).toEqual(['electron']);
   });
 
-  it.each(['index', 'splash', 'drawOverlay'])('emits a renderer page (%s.html) that app:// can serve under the CSP: relative assets, no inline script', (name) => {
+  it.each(['index', 'splash', 'drawOverlay', 'toast'])('emits a renderer page (%s.html) that app:// can serve under the CSP: relative assets, no inline script', (name) => {
     const html = read(`renderer/${name}.html`);
     expect(html).toMatch(new RegExp(`<script type="module" crossorigin src="\\./assets/${name}-[\\w-]+\\.js"></script>`));
     expect(html).not.toMatch(/<script(?![^>]*\ssrc=)[^>]*>/);
@@ -78,6 +78,11 @@ describe('electron-vite build', () => {
   it("keeps the pencil overlay's page off the main window bundle (it shares only the stroke painter)", () => {
     expect(read('renderer/index.html')).not.toMatch(/drawOverlay/);
     expect(read('renderer/drawOverlay.html')).not.toMatch(/assets\/index-/);
+  });
+
+  it("keeps the notification cards' page off the main window bundle", () => {
+    expect(read('renderer/index.html')).not.toMatch(/toast/);
+    expect(read('renderer/toast.html')).not.toMatch(/assets\/index-/);
   });
 
   it('ships the noise suppressors as files under app:// (script-src allows no data: URLs)', () => {

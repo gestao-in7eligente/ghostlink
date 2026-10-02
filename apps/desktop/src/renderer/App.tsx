@@ -20,10 +20,21 @@ import { IdentityLocked } from './screens/IdentityLocked.js';
 import { Join } from './screens/Join.js';
 import { Onboarding } from './screens/Onboarding.js';
 import { DM_CONV_ID } from './features/dm/dmModel.js';
+import { useFriendsTabRequest } from './features/friends/friendsTab.js';
 import { useConnectionStore } from './stores/connection.js';
 import { useDmStore } from './stores/dm.js';
 import { useSavedListStore } from './stores/savedList.js';
 import { useSettingsStore } from './stores/settings.js';
+
+/** Leaves the server on screen for the Home screen (a voice call there goes on). */
+function goHome(): void {
+  const { welcome, state } = useConnectionStore.getState();
+  if (welcome === null || state === 'idle') return;
+  void window.ghostlink.servers
+    .disconnect()
+    .catch(() => undefined)
+    .then(() => useConnectionStore.getState().dispatch({ type: 'left' }));
+}
 
 export function App() {
   const t = useT();
@@ -67,22 +78,25 @@ export function App() {
     };
   }, [attempt]);
 
-  // A direct-message notification was clicked: its conversation opens on the Home screen. From a server
-  // the app goes Home; a voice call there goes on (chamada-continua §1).
-  useEffect(
-    () =>
-      window.ghostlink.onOpenChannel(({ channelId }) => {
-        if (!DM_CONV_ID.test(channelId)) return;
-        useDmStore.getState().select(channelId);
-        const { welcome, state } = useConnectionStore.getState();
-        if (welcome === null || state === 'idle') return;
-        void window.ghostlink.servers
-          .disconnect()
-          .catch(() => undefined)
-          .then(() => useConnectionStore.getState().dispatch({ type: 'left' }));
-      }),
-    [],
-  );
+  // A direct-message notification was clicked: its conversation opens on the Home screen. A friend
+  // request's: the Friends page on "Pendentes". From a server the app goes Home; a voice call there
+  // goes on (chamada-continua §1).
+  useEffect(() => {
+    const offChannel = window.ghostlink.onOpenChannel(({ channelId }) => {
+      if (!DM_CONV_ID.test(channelId)) return;
+      useDmStore.getState().select(channelId);
+      goHome();
+    });
+    const offRequests = window.ghostlink.onOpenFriendRequests(() => {
+      useFriendsTabRequest.getState().request('pending');
+      useDmStore.getState().select(null);
+      goHome();
+    });
+    return () => {
+      offChannel();
+      offRequests();
+    };
+  }, []);
   useHostStatusSync(attempt);
   useDeepLinkSync(attempt);
   useLayoutWiring();

@@ -20,7 +20,7 @@ describe('preload bridge', () => {
     expect(Object.keys(electron.exposed)).toEqual(['ghostlink']);
     expect(electron.exposed.ghostlink).toBe(api);
     expect(Object.keys(api).sort()).toEqual([
-      'app', 'attachments', 'deepLink', 'dm', 'draw', 'friends', 'host', 'identity', 'join', 'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onPtt', 'onServerEvent', 'profile', 'ptt', 'railway', 'screen', 'server', 'serverUpdates', 'servers', 'settings', 'updates',
+      'app', 'attachments', 'deepLink', 'dm', 'draw', 'friends', 'host', 'identity', 'join', 'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onOpenFriendRequests', 'onPtt', 'onServerEvent', 'profile', 'ptt', 'railway', 'screen', 'server', 'serverUpdates', 'servers', 'settings', 'updates',
     ]);
     expect(Object.keys(api.host).sort()).toEqual(['copyText', 'firewall', 'fixFirewall', 'invite', 'join', 'logs', 'recoverOwnership', 'restart', 'start', 'status', 'stop']);
     expect(Object.keys(api.app).sort()).toEqual(['copyText', 'info', 'openExternal']);
@@ -29,7 +29,7 @@ describe('preload bridge', () => {
     expect(Object.keys(api.identity).sort()).toEqual(['create', 'delete', 'exportBackup', 'importBackup', 'pickBackup', 'replaceKeepingBackup', 'retry', 'status']);
     expect(Object.keys(api.ptt)).toEqual(['configure']);
     expect(Object.keys(api.join).sort()).toEqual(['connect', 'parse', 'probe']);
-    expect(Object.keys(api.servers).sort()).toEqual(['checkExit', 'connect', 'delete', 'disconnect', 'leave', 'list', 'remove', 'setCall']);
+    expect(Object.keys(api.servers).sort()).toEqual(['checkExit', 'connect', 'delete', 'disconnect', 'leave', 'list', 'remove', 'setCall', 'setNotify']);
     expect(Object.keys(api.settings).sort()).toEqual(['get', 'set']);
     expect(Object.keys(api.dm).sort()).toEqual(['attach', 'conversations', 'edit', 'fetchFile', 'hide', 'history', 'onEvent', 'open', 'read', 'remove', 'saveFile', 'send', 'typing']);
     expect(Object.keys(api.friends).sort()).toEqual(['accept', 'add', 'block', 'dismiss', 'newCode', 'onChange', 'remove', 'rename', 'setAvailable', 'setInbox', 'state']);
@@ -46,6 +46,7 @@ describe('preload bridge', () => {
   const overlayStroke = { id: `${'a'.repeat(32)}:s1`, color: '#ff6b6b', label: 'Bia', points: [[0.5, 0.5]] as [number, number][], end: true };
   const hostConfig = { name: 'Casa', port: 7700, joinMode: 'invite' as const, maxMembers: 100 };
   const bytes = new Uint8Array([1, 2, 3]);
+  const chatNote = { server: 'Casa', channel: 'geral', author: 'Ana', body: 'b', serverIcon: null, channelId: 'c' };
   it.each<[string, () => Promise<unknown>, string, unknown[]]>([
     ['app.info', () => api.app.info(), IPC.appInfo, []],
     ['identity.status', () => api.identity.status(), IPC.identityStatus, []],
@@ -70,6 +71,7 @@ describe('preload bridge', () => {
     ['servers.delete', () => api.servers.delete('s1'), IPC.serversDelete, ['s1']],
     ['servers.setCall', () => api.servers.setCall('s1'), IPC.serversSetCall, ['s1']],
     ['servers.setCall null', () => api.servers.setCall(null), IPC.serversSetCall, [null]],
+    ['servers.setNotify', () => api.servers.setNotify('s1', 'all'), IPC.serversSetNotify, ['s1', 'all']],
     ['host.status', () => api.host.status(), IPC.hostStatus, []],
     ['host.start', () => api.host.start(hostConfig), IPC.hostStart, [hostConfig]],
     ['host.stop', () => api.host.stop(), IPC.hostStop, []],
@@ -86,7 +88,7 @@ describe('preload bridge', () => {
     ['app.copyText', () => api.app.copyText('abc'), IPC.appCopyText, ['abc']],
     ['server.request', () => api.server.request('msg.send', { a: 1 }), IPC.serverRequest, ['msg.send', { a: 1 }]],
     ['server.request for a server', () => api.server.request('msg.send', { a: 1 }, 'srv-1'), IPC.serverRequest, ['msg.send', { a: 1 }, 'srv-1']],
-    ['notifications.show', () => api.notifications.show({ title: 't', body: 'b', channelId: 'c' }), IPC.notificationsShow, [{ title: 't', body: 'b', channelId: 'c' }]],
+    ['notifications.show', () => api.notifications.show(chatNote), IPC.notificationsShow, [chatNote]],
     ['updates.state', () => api.updates.state(), IPC.updatesState, []],
     ['updates.setAutoCheck', () => api.updates.setAutoCheck(false), IPC.updatesSetAutoCheck, [false]],
     ['updates.checkNow', () => api.updates.checkNow(), IPC.updatesCheckNow, []],
@@ -168,6 +170,12 @@ describe('preload bridge', () => {
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.deepLink);
     api.onOpenChannel(() => {});
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.openChannel);
+    const opened: unknown[] = [];
+    api.onOpenFriendRequests((...args: unknown[]) => opened.push(args));
+    const [friendsChannel, friendsListener] = electron.ipcRenderer.on.mock.calls.at(-1)!;
+    expect(friendsChannel).toBe(IPC_EVENTS.openFriendRequests);
+    (friendsListener as (e: unknown, p: unknown) => void)({ sender: 'SECRET' }, null);
+    expect(opened).toEqual([[]]);
     api.updates.onState(() => {});
     expect(electron.ipcRenderer.on.mock.calls.at(-1)![0]).toBe(IPC_EVENTS.updates);
     api.onPtt(() => {});

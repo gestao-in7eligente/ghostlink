@@ -73,6 +73,7 @@ export const api: GhostlinkApi = {
     leave: (id, deleteMyMessages) => invoke(IPC.serversLeave, id, deleteMyMessages),
     delete: (id) => invoke(IPC.serversDelete, id),
     setCall: (serverId) => invoke(IPC.serversSetCall, serverId),
+    setNotify: (id, mode) => invoke(IPC.serversSetNotify, id, mode),
   },
   host: {
     status: () => invoke(IPC.hostStatus),
@@ -98,6 +99,7 @@ export const api: GhostlinkApi = {
   },
   notifications: { show: (n) => invoke(IPC.notificationsShow, n) },
   onOpenChannel: (cb) => subscribe<OpenChannelEvent>(IPC_EVENTS.openChannel, cb),
+  onOpenFriendRequests: (cb) => subscribe<unknown>(IPC_EVENTS.openFriendRequests, () => cb()),
   updates: {
     state: () => invoke(IPC.updatesState),
     setAutoCheck: (enabled) => invoke(IPC.updatesSetAutoCheck, enabled),

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ProtocolError, toBase64Url } from '@ghostlink/shared';
@@ -94,6 +94,30 @@ describe('SavedServersStore', () => {
     expect(s.remove(a.id)).toBe(true);
     expect(s.remove(a.id)).toBe(false);
     expect(SavedServersStore.load(dir.path).list()).toEqual([]);
+  });
+
+  it("keeps each server's notification mode, writing down only what is not the default (v0.4.2)", () => {
+    const s = store();
+    const a = s.upsert({ serverKeyId: KEY_A, name: 'A', addresses: ['10.0.0.1'], nickname: 'x' });
+    expect(a.notify).toBeUndefined(); // "Só @menções"
+    expect(s.setNotify(a.id, 'mentions')).toBe(false);
+    expect(s.setNotify(a.id, 'all')).toBe(true);
+    expect(s.setNotify(a.id, 'all')).toBe(false);
+    expect(s.setNotify('nope', 'none')).toBe(false);
+    // A later join of the same server keeps it, like the icon.
+    s.setIcon(a.id, 'ab'.repeat(32));
+    expect(s.upsert({ serverKeyId: KEY_A, name: 'A', addresses: ['10.0.0.2'], nickname: 'x' })).toMatchObject({ notify: 'all', iconHash: 'ab'.repeat(32) });
+    expect(SavedServersStore.load(dir.path).get(a.id)?.notify).toBe('all');
+    expect(s.setNotify(a.id, 'mentions')).toBe(true);
+    expect(JSON.parse(readFileSync(join(dir.path, SERVERS_FILE), 'utf8')).servers[0]).not.toHaveProperty('notify');
+  });
+
+  it("reads an unknown notification mode (a newer app's) as the default, keeping the server", () => {
+    writeFileSync(
+      join(dir.path, SERVERS_FILE),
+      JSON.stringify({ version: 1, servers: [{ id: 'x', name: 'A', addresses: ['10.0.0.1:7700'], serverKeyId: KEY_A, nickname: 'x', addedAt: 1, notify: 'loud' }] }),
+    );
+    expect(store().get('x')?.notify).toBeUndefined();
   });
 
   it('hands out copies, not its internal state', () => {

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { LIMITS, ProtocolError, avatarHashSchema, formatHostPort, parseHostPort, sanitizeLabel } from '@ghostlink/shared';
-import type { SavedServer } from '../shared/ipcTypes.js';
+import { DEFAULT_NOTIFY_MODE, NOTIFY_MODES, type NotifyMode, type SavedServer } from '../shared/ipcTypes.js';
 import { readJsonFile, writeJsonAtomic } from './files.js';
 
 export type { SavedServer } from '../shared/ipcTypes.js';
@@ -24,6 +24,8 @@ const savedServerSchema = z.object({
   addedAt: z.number().int().nonnegative(),
   // A damaged hash is no icon, not a damaged file.
   iconHash: avatarHashSchema.optional().catch(undefined),
+  // v0.4.2; an unknown mode (a newer app's) reads as the default.
+  notify: z.enum(NOTIFY_MODES).optional().catch(undefined),
 });
 
 const fileSchema = z.object({ version: z.literal(1), servers: z.array(savedServerSchema).max(1000) });
@@ -94,6 +96,7 @@ export class SavedServersStore {
       nickname: input.nickname,
       addedAt: existing?.addedAt ?? this.#now(),
       ...(existing?.iconHash === undefined ? {} : { iconHash: existing.iconHash }),
+      ...(existing?.notify === undefined ? {} : { notify: existing.notify }),
     };
     const next = existing ? this.#servers.map((s) => (s === existing ? entry : s)) : [...this.#servers, entry];
     this.#save(next);
@@ -109,6 +112,19 @@ export class SavedServersStore {
     if (!existing || (existing.iconHash ?? null) === hash) return false;
     const { iconHash: _previous, ...rest } = existing;
     const entry: SavedServer = hash === null ? rest : { ...rest, iconHash: hash };
+    this.#save(this.#servers.map((s) => (s === existing ? entry : s)));
+    return true;
+  }
+
+  /**
+   * Which of the saved server `id`'s messages raise a notification. The default is not written down
+   * (the entry looks as it always did). Returns true when it changed (and was written).
+   */
+  setNotify(id: string, mode: NotifyMode): boolean {
+    const existing = this.#servers.find((s) => s.id === id);
+    if (!existing || (existing.notify ?? DEFAULT_NOTIFY_MODE) === mode) return false;
+    const { notify: _previous, ...rest } = existing;
+    const entry: SavedServer = mode === DEFAULT_NOTIFY_MODE ? rest : { ...rest, notify: mode };
     this.#save(this.#servers.map((s) => (s === existing ? entry : s)));
     return true;
   }

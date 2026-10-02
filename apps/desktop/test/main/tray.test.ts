@@ -123,8 +123,9 @@ describe('renderTrayIcon', () => {
 describe('AppTray', () => {
   function make(locale: { current: 'pt-BR' | 'en' } = { current: 'pt-BR' }) {
     const calls = { open: 0, quit: 0 };
-    const tray = new AppTray({ locale: () => locale.current, onOpen: () => calls.open++, onQuit: () => calls.quit++, platform: 'win32' });
-    return { tray, calls };
+    const notices: string[] = [];
+    const tray = new AppTray({ locale: () => locale.current, onOpen: () => calls.open++, onQuit: () => calls.quit++, notice: (text) => notices.push(text) });
+    return { tray, calls, notices };
   }
   const labels = (i = 0) => electron.trays[i]!.menu!.items.map((item) => item.label ?? '—');
 
@@ -169,12 +170,11 @@ describe('AppTray', () => {
     expect(labels()).toEqual(['Open GhostLink', '—', 'Quit GhostLink']);
   });
 
-  it('shows the first-hide notice as a balloon on Windows', () => {
-    const { tray } = make();
+  it("hands the first-hide notice to the notifier (GhostLink's card on Windows, never a balloon)", () => {
+    const { tray, notices } = make();
     tray.show();
     tray.notifyKeptRunning();
-    expect(electron.trays[0]!.balloons).toEqual([
-      expect.objectContaining({ title: 'GhostLink', content: 'O GhostLink continua rodando na bandeja. Para sair, use o ícone perto do relógio.' }),
-    ]);
+    expect(notices).toEqual(['O GhostLink continua rodando na bandeja. Para sair, use o ícone perto do relógio.']);
+    expect(electron.trays[0]!.balloons).toEqual([]);
   });
 });

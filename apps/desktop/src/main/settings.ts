@@ -23,6 +23,8 @@ const fileSchema = z.object({
   /** v0.3.2, optional: files written before have neither (and an older app drops them). */
   closeToTray: z.boolean().optional(),
   trayNoticeShown: z.boolean().optional(),
+  /** v0.4.2, optional like the two above. */
+  desktopNotifications: z.boolean().optional(),
 });
 type SettingsFile = z.infer<typeof fileSchema>;
 
@@ -59,7 +61,7 @@ export class SettingsStore {
     const file = readJsonFile<SettingsFile>(path, fileSchema, () => ({ version: 1, locale: localeFromSystem(systemLocale), nickname: '' }));
     return new SettingsStore(
       path,
-      { locale: file.locale, nickname: file.nickname, closeToTray: file.closeToTray ?? true },
+      { locale: file.locale, nickname: file.nickname, closeToTray: file.closeToTray ?? true, desktopNotifications: file.desktopNotifications ?? true },
       file.trayNoticeShown ?? legacyTrayNoticeShown(userDataDir),
     );
   }
@@ -83,6 +85,10 @@ export class SettingsStore {
     if (patch.closeToTray !== undefined) {
       if (typeof patch.closeToTray !== 'boolean') throw new ProtocolError('BAD_REQUEST', 'closeToTray must be a boolean');
       next.closeToTray = patch.closeToTray;
+    }
+    if (patch.desktopNotifications !== undefined) {
+      if (typeof patch.desktopNotifications !== 'boolean') throw new ProtocolError('BAD_REQUEST', 'desktopNotifications must be a boolean');
+      next.desktopNotifications = patch.desktopNotifications;
     }
     this.#write(next, this.#trayNoticeShown);
     this.#settings = next;

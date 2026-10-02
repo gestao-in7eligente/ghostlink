@@ -66,8 +66,6 @@ export const chat = {
   'chat.mentionKind.user': 'membro',
   'chat.mentionKind.role': 'cargo',
   'chat.mentionKind.everyone': 'todos no canal',
-  'chat.notification.mention': '{name} mencionou você em #{channel}',
-  'chat.notification.reply': '{name} respondeu você em #{channel}',
   'chat.link.title': 'Abrir link externo',
   'chat.link.message': 'Este link vai abrir no seu navegador. Confira o endereço antes de continuar.',
   'chat.link.open': 'Abrir link',

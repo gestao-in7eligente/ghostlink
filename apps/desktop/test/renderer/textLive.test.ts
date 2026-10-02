@@ -143,8 +143,8 @@ describe('live text between two apps (server + main + renderer reducers)', () =>
     ana.sync();
     expect(readMark(ana.state.channels, geral).mentionCount).toBe(1);
     const last = ana.state.messages.logs[geral]!.items.at(-1)!;
-    const note = notificationFor(ana.state, last, (k, v) => translate('pt-BR', k, v));
-    expect(note).toEqual({ title: 'Bia mencionou você em #geral', body: '@Ana olha isso', channelId: geral });
+    const note = notificationFor(ana.state, last, (k, v) => translate('pt-BR', k, v), 'mentions');
+    expect(note).toEqual({ server: ana.state.server.name, channel: 'geral', author: 'Bia', body: '@Ana olha isso', serverIcon: null, channelId: geral });
 
     // Ana reads the channel: the mention count goes back to 0.
     const read = await ana.request<{ readState: { channelId: string; lastReadMessageId: number; mentionCount: number } }>('channel.read', { channelId: geral, messageId: last.id });
@@ -162,7 +162,7 @@ describe('live text between two apps (server + main + renderer reducers)', () =>
     expect(replied.content).toBe('Vi!');
     expect(replied.replyTo).toMatchObject({ id: last.id, deleted: false });
     expect(bia.state.messages.logs[geral]!.items.find((m) => m.id === last.id)!.reactions).toEqual([{ emoji: '👍', userIds: [anaId] }]);
-    expect(notificationFor(bia.state, replied, (k, v) => translate('pt-BR', k, v))?.title).toBe('Ana respondeu você em #geral');
+    expect(notificationFor(bia.state, replied, (k, v) => translate('pt-BR', k, v), 'mentions')).toMatchObject({ author: 'Ana', body: 'Vi!', channel: 'geral' });
   });
 
   it('a private channel created by the owner never reaches a plain member', async () => {

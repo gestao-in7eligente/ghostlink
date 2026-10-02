@@ -32,7 +32,20 @@ export interface Settings {
   nickname: string;
   /** "Ao fechar, manter na bandeja" (on by default): the X hides the window instead of quitting. */
   closeToTray: boolean;
+  /**
+   * "Mostrar notificações na área de trabalho" (v0.4.2): the cards of messages, direct messages and
+   * friend requests. Main always says it; absent (an older or partial copy) reads as on.
+   */
+  desktopNotifications?: boolean;
 }
+
+/**
+ * What a saved server's channel messages raise (notifications spec §1): every message, only mentions
+ * of me (a role of mine, @todos) and replies to me (the default), or nothing.
+ */
+export const NOTIFY_MODES = ['all', 'mentions', 'none'] as const;
+export type NotifyMode = (typeof NOTIFY_MODES)[number];
+export const DEFAULT_NOTIFY_MODE: NotifyMode = 'mentions';
 
 export interface SavedServer {
   id: string;
@@ -43,6 +56,8 @@ export interface SavedServer {
   addedAt: number;
   /** The server icon's hash as last seen (welcome, server.updated); absent: initials (spec 2026-10-01-icone-do-servidor). */
   iconHash?: string;
+  /** Which of its messages raise a notification, chosen on this computer; absent: DEFAULT_NOTIFY_MODE. */
+  notify?: NotifyMode;
 }
 
 /**
@@ -77,10 +92,22 @@ export interface BackupPickResult {
   fileName: string | null;
 }
 
-/** A desktop notification for a mention or a reply (spec §11.1 item 8). */
+/**
+ * A desktop notification for a channel message (spec 2026-10-02-notificacoes-design.md §1): the card's
+ * "Servidor ➜ #canal", "Autor: texto" and the server's icon. The renderer decides which messages
+ * deserve one (the server's NotifyMode); main cleans and bounds every text.
+ */
 export interface ChatNotification {
-  title: string;
+  /** The server's name. */
+  server: string;
+  /** The channel's name, without the '#'. */
+  channel: string;
+  /** Who wrote it. */
+  author: string;
+  /** The message as one line of plain text ("enviou um arquivo" for files alone). */
   body: string;
+  /** The server icon's hash (app://ghostlink/_avatar/<hash>), or null: the server's initials. */
+  serverIcon: string | null;
   channelId: string;
 }
 
@@ -180,6 +207,8 @@ export interface GhostlinkApi {
      * a switch to another server or to the Home screen (chamada-continua §2).
      */
     setCall(serverId: string | null): Promise<void>;
+    /** Which of this saved server's messages raise a notification (its right-click menu). */
+    setNotify(id: string, mode: NotifyMode): Promise<void>;
   };
   host: HostApi;
   onConnectionState(cb: (s: ConnectionStateEvent) => void): () => void;
@@ -197,6 +226,8 @@ export interface GhostlinkApi {
   server: { request<T = unknown>(type: string, payload?: unknown, serverId?: string): Promise<T> };
   notifications: { show(n: ChatNotification): Promise<boolean> };
   onOpenChannel(cb: (e: OpenChannelEvent) => void): () => void;
+  /** A friend request's notification was clicked: Home > Amigos > Pendentes. */
+  onOpenFriendRequests(cb: () => void): () => void;
   updates: UpdatesApi;
   ptt: { configure(config: PttConfig): Promise<PttStatus> };
   onPtt(cb: (e: PttEvent) => void): () => void;
@@ -260,6 +291,7 @@ export const IPC = {
   serversLeave: 'ghostlink:servers.leave',
   serversDelete: 'ghostlink:servers.delete',
   serversSetCall: 'ghostlink:servers.setCall',
+  serversSetNotify: 'ghostlink:servers.setNotify',
   hostStatus: 'ghostlink:host.status',
   hostStart: 'ghostlink:host.start',
   hostStop: 'ghostlink:host.stop',
@@ -336,6 +368,7 @@ export const IPC_EVENTS = {
   dm: 'ghostlink:event.dm',
   serverUpdates: 'ghostlink:event.serverUpdates',
   attachmentProgress: 'ghostlink:event.attachmentProgress',
+  openFriendRequests: 'ghostlink:event.openFriendRequests',
 } as const;
 
 /** Arguments and result of every invoke channel; main's handlers and the preload are both typed from it. */
@@ -367,6 +400,7 @@ export interface IpcContract {
   [IPC.serversLeave]: { args: [id: string, deleteMyMessages: boolean]; result: void };
   [IPC.serversDelete]: { args: [id: string]; result: { at: number } };
   [IPC.serversSetCall]: { args: [serverId: string | null]; result: void };
+  [IPC.serversSetNotify]: { args: [id: string, mode: NotifyMode]; result: void };
   [IPC.hostStatus]: { args: []; result: HostStatus };
   [IPC.hostStart]: { args: [config: HostConfig]; result: HostStartResult };
   [IPC.hostStop]: { args: []; result: HostStatus };

@@ -17,6 +17,7 @@ import type {
   ConnState,
   ConnectionStateEvent,
   JoinConnectRequest,
+  NotifyMode,
   ProbeResult,
   RendererWelcome,
   SavedServer,
@@ -195,6 +196,12 @@ export class ClientController {
 
   list(): SavedServer[] {
     return this.#deps.servers.list();
+  }
+
+  /** Which of a saved server's messages raise a notification (its menu in the rail); NOT_FOUND for an unknown id. */
+  setNotify(id: string, mode: NotifyMode): void {
+    if (!this.#deps.servers.get(id)) throw new ProtocolError('NOT_FOUND');
+    this.#deps.servers.setNotify(id, mode);
   }
 
   /** The saved-server id on screen, or null (Host mode leaves it before a stop). */
