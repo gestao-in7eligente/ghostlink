@@ -8,6 +8,7 @@ import { dm } from './dm.en.js';
 import { draw } from './draw.en.js';
 import { friends } from './friends.en.js';
 import { integration } from './integration.en.js';
+import { notifications } from './notifications.en.js';
 import { owner } from './owner.en.js';
 import { profile } from './profile.en.js';
 import { railway } from './railway.en.js';
@@ -164,4 +165,5 @@ export const messages: Record<keyof typeof ptBR, string> = {
   ...attachments,
   ...tray,
   ...bots,
+  ...notifications,
 };

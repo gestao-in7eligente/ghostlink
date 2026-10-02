@@ -11,6 +11,7 @@ import { dm } from './dm.pt-BR.js';
 import { draw } from './draw.pt-BR.js';
 import { friends } from './friends.pt-BR.js';
 import { integration } from './integration.pt-BR.js';
+import { notifications } from './notifications.pt-BR.js';
 import { owner } from './owner.pt-BR.js';
 import { profile } from './profile.pt-BR.js';
 import { railway } from './railway.pt-BR.js';
@@ -164,4 +165,5 @@ export const messages = {
   ...attachments,
   ...tray,
   ...bots,
+  ...notifications,
 } as const;

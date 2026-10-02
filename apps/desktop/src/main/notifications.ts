@@ -1,4 +1,6 @@
-import type { ChatNotification, OpenChannelEvent } from '../shared/ipcTypes.js';
+import type { ChatNotification, Locale, OpenChannelEvent } from '../shared/ipcTypes.js';
+import { notifications as notificationsEn } from '../renderer/i18n/notifications.en.js';
+import { notifications as notificationsPtBR } from '../renderer/i18n/notifications.pt-BR.js';
 import type { DmNotification } from './p2p/dm.js';
 
 const TITLE_MAX = 64;
@@ -10,6 +12,14 @@ export const MAX_LIVE_NOTIFICATIONS = 20;
 export function notificationText(raw: string, max: number): string {
   const clean = raw.replace(/\p{Cc}|\p{Cf}/gu, ' ').replace(/\s+/gu, ' ').trim();
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+}
+
+type NotificationsKey = keyof typeof notificationsPtBR;
+
+/** The notifications' texts come from the renderer's catalogs (pure data), as the tray's do. */
+export function notificationsText(locale: Locale, key: NotificationsKey, vars: Readonly<Record<string, string>> = {}): string {
+  const template: string = (locale === 'pt-BR' ? notificationsPtBR : notificationsEn)[key];
+  return template.replace(/\{(\w+)\}/g, (match, name: string) => (Object.hasOwn(vars, name) ? vars[name]! : match));
 }
 
 export interface NativeNotification {

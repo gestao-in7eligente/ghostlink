@@ -1,0 +1,157 @@
+/* GhostLink's notification cards (main/toasts.ts): the app's palette and font on a transparent
+   window, like its menus. @import is inlined by Vite into this page's own stylesheet, so the main
+   window's bundle stays as it is. The window is the stack plus an 8 px margin (TOAST_MARGIN) where
+   the shadow falls; cards are 320×80 (TOAST_SIZE), 8 px apart (TOAST_GAP). */
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/latin-600.css';
+@import '../styles/tokens.css';
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+/* The newest card at the bottom: the stack grows upwards. */
+.stack {
+  box-sizing: border-box;
+  height: 100%;
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.card {
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 320px;
+  height: 80px;
+  padding: 0 12px;
+  overflow: hidden;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-sm);
+  /* --shadow (a 40 px blur) would be cut off by the 8 px margin: this one fades out inside it. */
+  box-shadow: 0 2px 6px rgb(0 0 0 / 40%);
+  cursor: pointer;
+  animation: enter 150ms ease-out;
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation: none;
+  }
+}
+
+.picture {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.pictureImage,
+.ghost {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pictureImage {
+  object-fit: cover;
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* "Servidor ➜ #canal": one line, clear of the × button. */
+.title {
+  margin: 0;
+  padding-right: 18px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-bright);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+/* "Autor: texto", up to two lines. */
+.body {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 17px;
+}
+
+.author {
+  color: var(--link);
+  font-weight: 600;
+}
+
+.close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.close:hover {
+  color: var(--text-bright);
+}
+
+.closeIcon {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
