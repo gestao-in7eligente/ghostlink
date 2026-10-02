@@ -4,7 +4,6 @@ import { engineProblem, formatShortCode, friendName, friendsForTab, newerSnapsho
 
 const friend = (key: string, over: Partial<Friend> = {}): Friend => ({
   key,
-  userId: key.padEnd(32, '0'),
   shortCode: `${key.toUpperCase()}AAAAAAA`.slice(0, 8),
   nickname: key,
   localName: null,

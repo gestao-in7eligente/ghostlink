@@ -11,11 +11,6 @@ export type FriendState = 'pending_out' | 'pending_in' | 'friend' | 'blocked';
 export interface Friend {
   /** The friend key: base64url of the 32-byte Ed25519 public key. The row's id. */
   key: string;
-  /**
-   * hex(SHA-256(friend key))[0:32]: a server's member id computed over this key (the server's
-   * userIdFromPublicKey). The profile card looks a member up by it (spec 2026-10-02-cartao-de-perfil §3).
-   */
-  userId: string;
   /** The first 8 characters of the person's code after "GLF1-" (dashes removed), to compare out of band. */
   shortCode: string;
   /** The nickname the person announced, as last seen; '' before the first contact. */
