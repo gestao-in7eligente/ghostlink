@@ -95,6 +95,8 @@ export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
   // Bots (v0.4.0; settings v0.4.2): managing them (MANAGE_SERVER) and using their slash commands. A bot's photo goes
   // through profile.setBotAvatar; commands.set and the interaction answers are the bots' own.
   'bot.create', 'bot.regenerate', 'bot.delete', 'bot.list', 'bot.get', 'bot.update', 'interaction.invoke',
+  // The Ghost DJ's panel (v0.5.1): its state, the equalizer, the volume and pause/resume/skip/stop.
+  'dj.state', 'dj.eq', 'dj.volume', 'dj.control',
   'ping',
 ]);
 

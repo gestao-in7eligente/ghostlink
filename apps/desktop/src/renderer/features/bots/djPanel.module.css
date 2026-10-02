@@ -1,0 +1,292 @@
+/* The Ghost DJ's panel on its page (v0.5.1): "Tocando agora" and the equalizer, in GhostLink's palette. */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sidebar);
+}
+
+/* ---- what plays ---- */
+
+.track {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.cover {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.trackText,
+.nothing {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
+.paused {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.clock {
+  min-width: 40px;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.bar {
+  flex: 1;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--bg-3);
+}
+
+.fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.4s linear;
+}
+
+/* ---- pause, skip, stop and the volume ---- */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-panel-button);
+  border-radius: 50%;
+  background: var(--bg-panel-button);
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
+.control:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.control:disabled {
+  color: var(--text-ghost);
+  cursor: default;
+  opacity: 0.6;
+}
+
+.volume {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 180px;
+  margin-left: var(--space-2);
+  color: var(--text-icon);
+}
+
+.range {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.volumeValue {
+  min-width: 28px;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- up next ---- */
+
+.next {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.nextTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.nextList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
+.nextList li {
+  min-width: 0;
+}
+
+.nextName {
+  color: var(--text);
+}
+
+.nextBy {
+  margin-left: 8px;
+  color: var(--text-faint);
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+/* ---- the equalizer ---- */
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.preset,
+.custom {
+  padding: 6px 12px;
+  border: 1px solid var(--border-panel-button);
+  border-radius: 999px;
+  background: var(--bg-panel-button);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.preset {
+  cursor: pointer;
+}
+
+.preset:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.preset[aria-pressed='true'],
+.custom {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.preset:disabled {
+  cursor: default;
+}
+
+.preset:disabled:not([aria-pressed='true']) {
+  color: var(--text-ghost);
+}
+
+.bands {
+  display: flex;
+  justify-content: space-around;
+  gap: var(--space-3);
+  padding: var(--space-3) 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-chat);
+}
+
+.band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 56px;
+}
+
+.gain {
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A vertical slider: the minimum at the bottom (writing-mode, Chromium 124+). */
+.vertical {
+  height: 140px;
+  margin: 0;
+  accent-color: var(--accent);
+  writing-mode: vertical-lr;
+  direction: rtl;
+}
+
+.freq {
+  color: var(--text-faint);
+  font-size: 12px;
+}
