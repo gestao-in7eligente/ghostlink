@@ -1,6 +1,8 @@
-# GhostLink — Página do bot
+# GhostLink — Página do bot (mockup)
 
 Desenho aprovado pelo dono em 2026-10-02 ("Ao clicar no bot, deve abrir uma página tipo um dashboard com o que ele faz… tipo a aba de Geral, que abre o chat"). Complementa [`2026-10-02-bots-design.md`](2026-10-02-bots-design.md).
+
+**Escopo desta versão (dono, 2026-10-02: "Deixe sem opções funcionais. Deixe apenas em mockup"):** só a tela, no app. A navegação (clicar no bot abre a página como um canal) funciona; o topo e a lista de comandos usam o que o app já recebe (nome, foto, online, comandos); **Sobre, Atividade e Gerenciar são mockup** — textos e números de exemplo fixos e botões desativados com o título "Em breve". **Nada no servidor muda**; as seções "Servidor" e os testes de servidor abaixo ficam para quando o dono pedir a versão funcional.
 
 ## Comportamento
 
