@@ -85,7 +85,7 @@ describe('syncServerUpdate', () => {
     let listener: ((u: ManagedServerUpdate) => void) | null = null;
     const off = vi.fn();
     const api = {
-      app: { info: vi.fn(async () => ({ version: '0.2.2', platform: 'win32' as const, locale: 'pt-BR' })), openExternal: vi.fn(), copyText: vi.fn() },
+      app: { info: vi.fn(async () => ({ version: '0.2.2', platform: 'win32' as const, locale: 'pt-BR' })), openExternal: vi.fn(), copyText: vi.fn(), showWindow: vi.fn() },
       serverUpdates: {
         state: vi.fn(async () => managed('waiting')),
         updateNow: vi.fn(),
@@ -107,7 +107,7 @@ describe('syncServerUpdate', () => {
 
   it('a server main does not manage is null, and an unknown one stays undefined', async () => {
     const api = {
-      app: { info: async () => ({ version: '0.2.2', platform: 'win32' as const, locale: 'pt-BR' }), openExternal: vi.fn(), copyText: vi.fn() },
+      app: { info: async () => ({ version: '0.2.2', platform: 'win32' as const, locale: 'pt-BR' }), openExternal: vi.fn(), copyText: vi.fn(), showWindow: vi.fn() },
       serverUpdates: { state: vi.fn(async () => null), updateNow: vi.fn(), onState: () => () => {} },
     };
     syncServerUpdate(api, KEY_ID);

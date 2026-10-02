@@ -345,6 +345,7 @@ async function start(): Promise<BrowserWindow | null> {
       }),
       copyText: (text) => clipboard.writeText(text),
     },
+    showWindow: () => revealWindow(window),
     updates: updater,
     releaseNotes,
     ptt,

@@ -169,6 +169,8 @@ export interface GhostlinkApi {
     /** Opens an http(s) link in the browser after a confirmation dialog; false when refused or cancelled. */
     openExternal(url: string): Promise<boolean>;
     copyText(text: string): Promise<void>;
+    /** Brings the main window to the front: restored, shown (also from the tray) and focused (the call's mini window, v0.4.4). */
+    showWindow(): Promise<void>;
   };
   identity: {
     status(): Promise<IdentityStatus>;
@@ -267,6 +269,7 @@ export const IPC = {
   appInfo: 'ghostlink:app.info',
   appOpenExternal: 'ghostlink:app.openExternal',
   appCopyText: 'ghostlink:app.copyText',
+  appShowWindow: 'ghostlink:app.showWindow',
   serverRequest: 'ghostlink:server.request',
   notificationsShow: 'ghostlink:notifications.show',
   identityStatus: 'ghostlink:identity.status',
@@ -376,6 +379,7 @@ export interface IpcContract {
   [IPC.appInfo]: { args: []; result: AppInfo };
   [IPC.appOpenExternal]: { args: [url: string]; result: boolean };
   [IPC.appCopyText]: { args: [text: string]; result: void };
+  [IPC.appShowWindow]: { args: []; result: void };
   [IPC.serverRequest]: { args: [type: string, payload?: unknown, serverId?: string]; result: unknown };
   [IPC.notificationsShow]: { args: [notification: ChatNotification]; result: boolean };
   [IPC.identityStatus]: { args: []; result: IdentityStatus };

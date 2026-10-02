@@ -9,6 +9,7 @@ describe('IPC channel names (contract §5)', () => {
       'ghostlink:app.copyText',
       'ghostlink:app.info',
       'ghostlink:app.openExternal',
+      'ghostlink:app.showWindow',
       'ghostlink:attachments.save',
       'ghostlink:attachments.upload',
       'ghostlink:deepLink.take',

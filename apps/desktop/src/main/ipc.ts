@@ -41,6 +41,8 @@ export interface IpcDeps {
   deepLinks?: Pick<DeepLinks, 'take'>;
   /** Confirmed external links and the clipboard (Text track). */
   shell: { openExternal(url: string): Promise<boolean>; copyText(text: string): void };
+  /** Brings the main window to the front (the call's mini window's ⤢, v0.4.4). */
+  showWindow?(): void;
   notifications: { show(n: ChatNotification): boolean };
   updates: Pick<Updater, 'state' | 'setAutoCheck' | 'checkNow' | 'restart'>;
   /** The notes of the new version the updater found (Updates page, v0.2.3). */
@@ -127,6 +129,7 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   [IPC.appInfo]: z.tuple([]),
   [IPC.appOpenExternal]: z.tuple([z.string().min(1).max(2048)]),
   [IPC.appCopyText]: z.tuple([z.string().max(8192)]),
+  [IPC.appShowWindow]: z.tuple([]),
   [IPC.serverRequest]: z.union([
     z.tuple([requestTypeSchema]),
     z.tuple([requestTypeSchema, requestPayloadSchema]),
@@ -205,6 +208,7 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     [IPC.appInfo]: () => deps.appInfo(),
     [IPC.appOpenExternal]: (url) => deps.shell.openExternal(url),
     [IPC.appCopyText]: (text) => deps.shell.copyText(text),
+    [IPC.appShowWindow]: () => deps.showWindow?.(),
     [IPC.serverRequest]: (type, payload, serverId) => controller.request(type, payload ?? {}, serverId),
     [IPC.notificationsShow]: (n) => deps.notifications.show(n),
     [IPC.identityStatus]: () => identity.status,
