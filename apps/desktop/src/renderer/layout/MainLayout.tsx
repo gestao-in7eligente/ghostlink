@@ -3,6 +3,7 @@ import type { RendererWelcome } from '../../shared/ipcTypes.js';
 import { BotPage } from '../features/bots/BotPage.js';
 import { ChatView } from '../features/chat/ChatView.js';
 import { MemberList } from '../features/members/MemberList.js';
+import { ProfileCardHost } from '../features/profileCard/ProfileCard.js';
 import { InviteDialog } from '../features/server-settings/InviteDialog.js';
 import { LeaveDialog } from '../features/server-settings/LeaveDialog.js';
 import { ServerSettings } from '../features/server-settings/ServerSettings.js';
@@ -83,6 +84,8 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
         <MemberList />
       </aside>
       <UserPanel ref={panelRef} onSettings={() => setDialog('user')} onVoiceSettings={() => setDialog('voice')} onDisconnect={() => void disconnect()} />
+      {/* Spec 2026-10-02-cartao-de-perfil: a member's card, from a message's author or the member list. */}
+      <ProfileCardHost />
 
       {dialog === 'invite' && <InviteDialog onClose={() => setDialog(null)} />}
       {dialog === 'settings' && <ServerSettings onClose={() => setDialog(null)} />}

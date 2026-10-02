@@ -6,6 +6,7 @@ import { groupMembers, type MemberGroup } from '../../stores/members.js';
 import { memberRoles } from '../../stores/server.js';
 import { useTextStore } from '../../stores/text.js';
 import { BotTag } from '../bots/BotParts.js';
+import { useProfileCardStore } from '../profileCard/profileCardStore.js';
 import { MemberMenu } from './MemberMenu.js';
 import m from './members.module.css';
 
@@ -46,7 +47,15 @@ export function MemberList() {
                   roles={memberRoles(roles, member.roleIds)}
                   isSelf={member.userId === selfId}
                   isOwner={member.userId === ownerId}
-                  onMenu={(anchor) => setMenu({ userId: member.userId, anchor })}
+                  onCard={(row) => {
+                    // The card opens to the left of the member list (spec 2026-10-02-cartao-de-perfil §1).
+                    setMenu(null);
+                    useProfileCardStore.getState().open(member.userId, row.getBoundingClientRect(), 'left', row);
+                  }}
+                  onMenu={(anchor) => {
+                    useProfileCardStore.getState().close();
+                    setMenu({ userId: member.userId, anchor });
+                  }}
                 />
               ))}
             </ul>
@@ -58,17 +67,20 @@ export function MemberList() {
   );
 }
 
+/** A click (or Enter) opens the person's profile card; the right click, the menu key or Shift+F10 their menu. */
 function MemberRow({
   member,
   roles,
   isSelf,
   isOwner,
+  onCard,
   onMenu,
 }: {
   member: Member;
   roles: Role[];
   isSelf: boolean;
   isOwner: boolean;
+  onCard: (row: HTMLElement) => void;
   onMenu: (anchor: MenuAnchor) => void;
 }) {
   const t = useT();
@@ -79,9 +91,9 @@ function MemberRow({
     .filter(Boolean)
     .join(', ');
 
-  const openAt = (e: MouseEvent<HTMLButtonElement>) => {
+  const onContextMenu = (e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    onMenu(e.type === 'contextmenu' ? { x: e.clientX, y: e.clientY } : e.currentTarget.getBoundingClientRect());
+    onMenu({ x: e.clientX, y: e.clientY });
   };
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
     if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
@@ -95,10 +107,11 @@ function MemberRow({
       <button
         type="button"
         className={member.online ? m.row : `${m.row} ${m.offline}`}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-label={describe}
-        onClick={openAt}
-        onContextMenu={openAt}
+        data-profile-trigger
+        onClick={(e) => onCard(e.currentTarget)}
+        onContextMenu={onContextMenu}
         onKeyDown={onKeyDown}
       >
         <Avatar size={32} name={member.nickname} hash={member.avatar} self={isSelf} online={member.online} />

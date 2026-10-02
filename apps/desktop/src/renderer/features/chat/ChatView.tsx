@@ -14,6 +14,7 @@ import { useSettingsStore } from '../../stores/settings.js';
 import { MAX_ATTACHMENTS, type TrayLimits } from '../attachments/attachmentModel.js';
 import a from '../attachments/attachments.module.css';
 import { DropOverlay, useFileDrop, useTray } from '../attachments/filePicking.js';
+import { useProfileCardStore } from '../profileCard/profileCardStore.js';
 import { deleteMessage, dropMessage, loadHistory, markRead, retryMessage, toggleReaction } from './actions.js';
 import c from './chat.module.css';
 import { Composer } from './Composer.js';
@@ -138,8 +139,8 @@ function OpenChannel({ channel }: { channel: Channel }) {
       name: (id) => memberName({ members }, id, t('chat.formerMember')),
       author: (id, authorBot) => {
         const member = Object.hasOwn(members.byId, id) ? members.byId[id]! : undefined;
-        if (member) return { name: member.nickname, bot: member.bot };
-        return { name: authorBot ? t('bots.deletedBot') : t('chat.formerMember'), bot: authorBot };
+        if (member) return { name: member.nickname, bot: member.bot, member: true };
+        return { name: authorBot ? t('bots.deletedBot') : t('chat.formerMember'), bot: authorBot, member: false };
       },
       avatar: (id) => (id !== null && Object.hasOwn(members.byId, id) ? members.byId[id]!.avatar : null),
       plain: (content) => plainContent({ members, server }, content, t),
@@ -155,6 +156,8 @@ function OpenChannel({ channel }: { channel: Channel }) {
       onRetry: (p) => void retryMessage(p.channelId, p.clientMsgId),
       onDrop: (p) => dropMessage(p.channelId, p.clientMsgId),
       onDismiss: (local) => dispatchText({ type: 'bots.dismiss', channelId: local.channelId, kind: local.kind, id: local.id }),
+      // The card opens to the right of the name or picture (spec 2026-10-02-cartao-de-perfil §1).
+      onProfile: (userId, opener) => useProfileCardStore.getState().open(userId, opener.getBoundingClientRect(), 'right', opener),
     }),
     [t, locale, selfId, canManageMessages, canReact, md, members, server, myRoleIds, highlight],
   );

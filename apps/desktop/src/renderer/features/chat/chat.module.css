@@ -196,6 +196,32 @@
   white-space: nowrap;
 }
 
+/* A member's name and picture open their profile card (spec 2026-10-02-cartao-de-perfil). */
+.authorButton {
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.authorButton:hover {
+  text-decoration: underline;
+}
+
+.avatarButton {
+  align-self: start;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+
 .stamp {
   flex-shrink: 0;
   color: var(--text-faint);
