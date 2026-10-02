@@ -3,8 +3,9 @@ import { SquareSlash } from 'lucide-react';
 import { useT } from '../../i18n/index.js';
 import { Avatar } from '../../layout/primitives.js';
 import { useTextStore } from '../../stores/text.js';
+import type { BotProfileView } from '../../stores/textState.js';
 import c from '../chat/chat.module.css';
-import { BotTag } from './BotParts.js';
+import { BotDescription, BotTag, CreatedLine, SeenLine } from './BotParts.js';
 import { isBot } from './botsModel.js';
 import g from './botPage.module.css';
 
@@ -15,15 +16,22 @@ export function useBotCommands(botId: string): readonly BotCommand[] {
   return useTextStore((s) => (Object.hasOwn(s.bots.commands, botId) ? s.bots.commands[botId]! : NO_COMMANDS));
 }
 
+/** A bot's profile from the bots store; null on a server without the bot's settings (before 0.4.2). */
+export function useBotProfile(botId: string): BotProfileView | null {
+  return useTextStore((s) => (s.bots.profiles !== null && Object.hasOwn(s.bots.profiles, botId) ? s.bots.profiles[botId]! : null));
+}
+
 /**
  * The bot's page (bot page spec), in the center in place of the chat when the bot is selected in
- * BOTS: its photo, name, BOT tag and state, and the slash commands it registered. Only what the
- * app already receives; the settings (the bot's menu, "Configurações") hold the rest.
+ * BOTS: its photo, name, BOT tag and state, its description, who created it and when it was last
+ * seen (servers with the bot's settings), and the slash commands it registered. The settings
+ * (the bot's menu, "Configurações") hold the rest.
  */
 export function BotPage({ botId }: { botId: string }) {
   const t = useT();
   const bot = useTextStore((s) => (Object.hasOwn(s.members.byId, botId) ? s.members.byId[botId] : undefined));
   const commands = useBotCommands(botId);
+  const profile = useBotProfile(botId);
   // The reducer closes the page when the bot leaves; this covers the frame in between.
   if (!isBot(bot)) return null;
   const status = bot.online ? t('layout.online') : t('members.statusOffline');
@@ -52,9 +60,19 @@ export function BotPage({ botId }: { botId: string }) {
                   <span className={bot.online ? `${g.statusDot} ${g.statusOn}` : g.statusDot} aria-hidden="true" />
                   {status}
                 </p>
+                {profile && !bot.online && <SeenLine online={false} lastSeenAt={profile.lastSeenAt} className={g.meta} />}
+                {profile && profile.createdAt !== null && <CreatedLine createdBy={profile.createdBy} createdAt={profile.createdAt} className={g.meta} />}
               </div>
             </div>
           </section>
+          {profile && profile.description !== '' && (
+            <section aria-labelledby="bot-page-about">
+              <h2 id="bot-page-about" className={g.sectionTitle}>
+                {t('bots.page.about')}
+              </h2>
+              <BotDescription text={profile.description} />
+            </section>
+          )}
           <section aria-labelledby="bot-page-commands">
             <h2 id="bot-page-commands" className={g.sectionTitle}>
               {t('bots.page.commands')} — {commands.length}

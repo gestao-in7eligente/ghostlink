@@ -3,29 +3,24 @@ import { EllipsisVertical, KeyRound, Plus, Settings, Trash2 } from 'lucide-react
 import { FEATURE_BOTS, PERMISSIONS, has, type Member } from '@ghostlink/shared';
 import { useT } from '../../i18n/index.js';
 import l from '../../layout/layout.module.css';
-import { Avatar, ConfirmDialog, Menu, MenuItem, MenuSeparator, type MenuAnchor } from '../../layout/primitives.js';
+import { Avatar, Menu, MenuItem, MenuSeparator, type MenuAnchor } from '../../layout/primitives.js';
 import { useConnectionStore } from '../../stores/connection.js';
 import { centerView } from '../../stores/channels.js';
 import { myPermissions } from '../../stores/server.js';
 import { dispatchText, useTextStore } from '../../stores/text.js';
-import { deleteBot, regenerateBotCode } from './botActions.js';
-import { AddBotDialog, BotCodeDialog } from './BotDialogs.js';
+import { AddBotDialog, DeleteBotDialog, RegenerateBotDialog } from './BotDialogs.js';
 import { BotSettings } from './BotSettings.js';
 import { serverBots, showBotsSection } from './botsModel.js';
 import b from './bots.module.css';
 
-type Dialog =
-  | { kind: 'create' }
-  | { kind: 'settings'; botId: string }
-  | { kind: 'regenerate' | 'delete'; bot: Member }
-  | { kind: 'code'; name: string; code: string };
+type Dialog = { kind: 'create' } | { kind: 'settings'; botId: string } | { kind: 'regenerate' | 'delete'; bot: Member };
 
 /**
  * BOTS in the server's sidebar, above "CANAIS DE TEXTO" (bots spec §3): each bot with its photo
  * and online dot; a click opens its page in the center, selected like a channel (bot page spec).
  * Whoever has MANAGE_SERVER sees "Adicionar bot" and each bot's menu (right click or ⋮):
- * "Configurações" (the bot's settings, a mockup for now), then "Gerar novo código" and "Excluir
- * bot", both confirmed. Hidden when the server has no bots and the person cannot create one.
+ * "Configurações" (the bot's settings), then "Gerar novo código" and "Excluir bot", both
+ * confirmed. Hidden when the server has no bots and the person cannot create one.
  */
 export function BotsSection() {
   const t = useT();
@@ -97,31 +92,10 @@ export function BotsSection() {
         </Menu>
       )}
 
-      {dialog?.kind === 'create' && <AddBotDialog onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'create' && <AddBotDialog onClose={closeDialog} />}
       {dialog?.kind === 'settings' && <BotSettings botId={dialog.botId} onClose={closeDialog} />}
-      {dialog?.kind === 'code' && <BotCodeDialog name={dialog.name} code={dialog.code} onClose={() => setDialog(null)} />}
-      {dialog?.kind === 'regenerate' && (
-        <ConfirmDialog
-          title={t('bots.regenerate.title', { name: dialog.bot.nickname })}
-          body={t('bots.regenerate.body')}
-          confirmLabel={t('bots.regenerate')}
-          onConfirm={async () => {
-            const code = await regenerateBotCode(dialog.bot.userId);
-            setDialog({ kind: 'code', name: dialog.bot.nickname, code });
-          }}
-          // After a success the code screen has taken its place: only a cancel closes it here.
-          onClose={() => setDialog((d) => (d?.kind === 'regenerate' ? null : d))}
-        />
-      )}
-      {dialog?.kind === 'delete' && (
-        <ConfirmDialog
-          title={t('bots.delete.title', { name: dialog.bot.nickname })}
-          body={t('bots.delete.body')}
-          confirmLabel={t('bots.delete')}
-          onConfirm={() => deleteBot(dialog.bot.userId)}
-          onClose={() => setDialog(null)}
-        />
-      )}
+      {dialog?.kind === 'regenerate' && <RegenerateBotDialog bot={dialog.bot} onClose={closeDialog} />}
+      {dialog?.kind === 'delete' && <DeleteBotDialog bot={dialog.bot} onClose={closeDialog} />}
     </section>
   );
 }

@@ -2,7 +2,8 @@
 // sidebar's BOTS section (name and photo); the test starts @ghostlink/discord-compat's example
 // bot (examples/ping-bot, a discord.js-style bot) with the one-time connection code; Ana types "/",
 // picks /ping and sees "Pong!" under "Ana usou /ping". Clicking the bot opens its page with /ping
-// (bot page spec), its menu's "Configurações" the settings tabs, and #geral brings the chat back.
+// (bot page spec), its menu's "Configurações" the settings (a description saved there shows on the
+// page; the activity lists the /ping), and #geral brings the chat back.
 // With the `private` chip set to Sim the answer is only hers ("Só você pode ver isto ·
 // Dispensar"); with `slow` it comes after thinking. Then "Gerar novo código" disconnects the bot
 // and "Excluir bot" removes it. Run with `npm run test:e2e` (builds the app first; the package is
@@ -207,19 +208,30 @@ describe.skipIf(!binary)('GhostLink bots: Ana adds a bot, the example bot connec
     const settings = ana.page.getByRole('dialog', { name: 'Configurações de Hermes' });
     await settings.waitFor();
     expect(await settings.getByRole('tab').allTextContents()).toEqual(['Visão geral', 'Comandos', 'Atividade (7 dias)', 'Permissões', 'Código de conexão', 'Excluir bot']);
-    await settings.locator('[data-preview]').waitFor();
+    // Visão geral: the server's data (bot.get); a description saved here shows on the bot's page.
+    await settings.locator('[data-bot-created]').getByText(/^Criado por Ana em /).waitFor({ timeout: 10_000 });
+    await settings.locator('[data-bot-seen]').getByText('Online').waitFor();
+    await settings.getByLabel('Descrição').fill('Responde **/ping** com Pong!');
+    await settings.getByRole('button', { name: 'Salvar' }).click();
+    await settings.getByText('Salvo.').waitFor({ timeout: 10_000 });
     await ana.page.waitForTimeout(150);
     await ana.page.screenshot({ path: shot('settings-overview') });
     await settings.getByRole('tab', { name: 'Comandos' }).click();
     await settings.locator('[data-bot-command="ping"]').waitFor();
+    // Atividade: Ana's /ping, answered.
     await settings.getByRole('tab', { name: 'Atividade (7 dias)' }).click();
-    await settings.getByText('Mensagens hoje: 12').waitFor();
+    await settings.locator('[data-bot-usage="ping"]').getByText('1', { exact: true }).waitFor({ timeout: 10_000 });
+    await settings.locator('[data-bot-use="ping"]').getByText('Respondeu').waitFor();
     await ana.page.waitForTimeout(150);
     await ana.page.screenshot({ path: shot('settings-activity') });
+    // Permissões: the bot sees and speaks in #geral.
+    await settings.getByRole('tab', { name: 'Permissões' }).click();
+    await settings.locator('[data-bot-channel="geral"]').getByRole('img', { name: 'Sim' }).first().waitFor({ timeout: 10_000 });
     await settings.getByRole('tab', { name: 'Excluir bot' }).click();
-    expect(await settings.getByRole('button', { name: 'Excluir bot' }).isDisabled()).toBe(true);
+    expect(await settings.getByRole('button', { name: 'Excluir bot' }).isEnabled()).toBe(true);
     await ana.page.keyboard.press('Escape');
     await settings.waitFor({ state: 'detached' });
+    await page.locator('[data-bot-description]').getByText('/ping').waitFor({ timeout: 10_000 });
 
     await textChannel(ana.page, 'geral').click();
     await composer(ana.page).waitFor();

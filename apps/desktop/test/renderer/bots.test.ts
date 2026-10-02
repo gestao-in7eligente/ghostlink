@@ -2,7 +2,17 @@
 // which commands a channel offers, and the interaction lines only this app shows.
 import { describe, expect, it } from 'vitest';
 import type { BotCommand } from '@ghostlink/shared';
-import { channelCommands, serverBots, showBotsSection } from '../../src/renderer/features/bots/botsModel.js';
+import {
+  botRoleChoices,
+  channelCommands,
+  refreshesBotSettings,
+  seenText,
+  serverBots,
+  showBotsSection,
+  timeAgo,
+  toggledRole,
+} from '../../src/renderer/features/bots/botsModel.js';
+import { translate, type Translate } from '../../src/renderer/i18n/index.js';
 import {
   addChip,
   chipEditor,
@@ -19,7 +29,7 @@ import {
 import { buildRows } from '../../src/renderer/features/chat/grouping.js';
 import { channelLocals } from '../../src/renderer/stores/bots.js';
 import { centerView } from '../../src/renderer/stores/channels.js';
-import { ADMIN_ROLE, BOB, GERAL, ME, SECRET, VOICE, channel, ev, member, message, run, snapshot, start } from './textFixtures.js';
+import { ADMIN_ROLE, BOB, CAROL, FANS_ROLE, GERAL, ME, MOD_ROLE, NOW, OWNER, SECRET, VOICE, channel, ev, member, message, run, snapshot, start } from './textFixtures.js';
 
 const BOT = 'e'.repeat(32);
 const OTHER_BOT = 'f'.repeat(32);
@@ -194,5 +204,77 @@ describe('the bots store', () => {
 
     state = run(state, { type: 'bots.dismiss', channelId: GERAL, kind: 'ephemeral', id: 'I2' }, { type: 'bots.dismiss', channelId: GERAL, kind: 'failed', id: 'I3' });
     expect(channelLocals(state.bots, GERAL)).toEqual([]);
+  });
+
+  it("keeps each bot's profile: the welcome's, bot.updated, a bot created meanwhile, its last connection", () => {
+    const members = [member(ME, 'Eu'), member(BOT, 'Zeca', { bot: true })];
+    let state = start({ ...snapshot({ members }), botProfiles: [{ botId: BOT, description: 'Oi', createdBy: OWNER, createdAt: 5, lastSeenAt: 7 }] });
+    expect(state.bots.profiles).toEqual({ [BOT]: { description: 'Oi', createdBy: OWNER, createdAt: 5, lastSeenAt: 7 } });
+    state = run(state, ev({ t: 'bot.updated', botId: BOT, description: 'Novo' }), ev({ t: 'presence', userId: BOT, online: false }, NOW + 1));
+    expect(state.bots.profiles![BOT]).toEqual({ description: 'Novo', createdBy: OWNER, createdAt: 5, lastSeenAt: NOW + 1 });
+    // A bot created after the welcome starts with what its member says; a person gets no profile.
+    state = run(state, ev({ t: 'member.joined', member: member(OTHER_BOT, 'Ana Bot', { bot: true, joinedAt: 42 }) }), ev({ t: 'member.joined', member: member(CAROL, 'Carol') }));
+    expect(state.bots.profiles![OTHER_BOT]).toEqual({ description: '', createdBy: null, createdAt: 42, lastSeenAt: null });
+    expect(Object.keys(state.bots.profiles!)).toEqual([BOT, OTHER_BOT]);
+    // Nothing that changes nothing.
+    expect(run(state, ev({ t: 'bot.updated', botId: BOT, description: 'Novo' }), ev({ t: 'presence', userId: BOB, online: true })).bots).toBe(state.bots);
+    // A server before 0.4.2: no profiles, whatever arrives.
+    const old = run(start(snapshot({ members })), ev({ t: 'bot.updated', botId: BOT, description: 'x' }), ev({ t: 'member.joined', member: member(OTHER_BOT, 'Ana Bot', { bot: true }) }));
+    expect(old.bots.profiles).toBeNull();
+  });
+});
+
+describe("the bot's settings", () => {
+  const pt: Translate = (key, vars) => translate('pt-BR', key, vars);
+
+  it('says when something happened, in the app\'s language, and how the bot is connected', () => {
+    const now = 1_800_000_000_000;
+    expect(timeAgo(now, now, 'pt-BR')).toBe('agora');
+    expect(timeAgo(now + 5_000, now, 'en')).toBe('now');
+    expect(timeAgo(now - 5 * 60_000, now, 'pt-BR')).toBe('há 5 minutos');
+    expect(timeAgo(now - 2 * 3_600_000 - 1, now, 'en')).toBe('2 hours ago');
+    expect(timeAgo(now - 26 * 3_600_000, now, 'pt-BR')).toBe('ontem');
+    expect(seenText(pt, true, null, now, 'pt-BR')).toBe('Online');
+    expect(seenText(pt, false, undefined, now, 'pt-BR')).toBe('Offline');
+    expect(seenText(pt, false, null, now, 'pt-BR')).toBe('Nunca conectou');
+    expect(seenText(pt, false, now - 3 * 60_000, now, 'pt-BR')).toBe('Visto por último há 3 minutos');
+  });
+
+  it('loads again after events about this bot, roles, channels or a reconnect, and not after others', () => {
+    for (const event of [
+      { t: 'bot.updated', d: { botId: BOT, description: '' } },
+      { t: 'commands.updated', d: { botId: BOT, commands: [] } },
+      { t: 'member.updated', d: { member: { userId: BOT } } },
+      { t: 'presence', d: { userId: BOT, online: false } },
+      { t: 'role.updated', d: {} },
+      { t: 'channel.created', d: {} },
+      { t: 'welcome', d: {} },
+    ]) {
+      expect(refreshesBotSettings(event, BOT), event.t).toBe(true);
+    }
+    for (const event of [
+      { t: 'bot.updated', d: { botId: OTHER_BOT } },
+      { t: 'member.updated', d: { member: { userId: BOB } } },
+      { t: 'member.updated', d: null },
+      { t: 'presence', d: { userId: BOB } },
+      { t: 'msg.new', d: {} },
+    ]) {
+      expect(refreshesBotSettings(event, BOT), event.t).toBe(false);
+    }
+  });
+
+  it("lists the bot's roles and the ones I may give it, each one I may change as a checkbox", () => {
+    const withRoles = (mine: string[], bots: string[]) =>
+      start(snapshot({ members: [member(ME, 'Eu', { roleIds: mine }), member(BOT, 'Zeca', { bot: true, roleIds: bots })] }));
+    const summary = (state: ReturnType<typeof withRoles>) => botRoleChoices(state, BOT).map((c) => `${c.role.name}:${c.checked ? 'x' : '-'}${c.editable ? 'e' : ''}`);
+    // Mods (MANAGE_ROLES, position 2) may give Fãs (1), not Admin (3) nor Mods itself.
+    expect(summary(withRoles([MOD_ROLE], []))).toEqual(['Fãs:-e']);
+    expect(summary(withRoles([MOD_ROLE], [FANS_ROLE]))).toEqual(['Fãs:xe']);
+    // A bot above me: its roles are shown, none can be changed.
+    expect(summary(withRoles([MOD_ROLE], [ADMIN_ROLE, FANS_ROLE]))).toEqual(['Admin:x', 'Fãs:x']);
+    // Without MANAGE_ROLES: only what it has.
+    expect(summary(withRoles([FANS_ROLE], []))).toEqual([]);
+    expect(toggledRole([FANS_ROLE], MOD_ROLE)).toEqual([FANS_ROLE, MOD_ROLE]);
+    expect(toggledRole([FANS_ROLE, MOD_ROLE], FANS_ROLE)).toEqual([MOD_ROLE]);
   });
 });
