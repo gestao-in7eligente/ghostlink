@@ -2,12 +2,19 @@ import { describe, expect, it } from 'vitest';
 import {
   BOT_LIMITS,
   FEATURE_BOTS,
+  FEATURE_BOT_SETTINGS,
   avatarClearSchema,
   avatarUploadBeginSchema,
   botCommandsSchemaClient,
   botCreateResultSchemaClient,
   botCreateSchema,
+  botGetResultSchemaClient,
+  botGetSchema,
   botHelloSchema,
+  botSetDescriptionSchema,
+  botUpdateResultSchemaClient,
+  botUpdateSchema,
+  botUpdatedEventSchemaClient,
   botsWelcomeSchemaClient,
   commandsSetSchema,
   formatBotConnectionCode,
@@ -68,6 +75,19 @@ describe('bots contract', () => {
     expect(botHelloSchema.safeParse({ ...hello, inviteCode: 'ABCDEFGHJK' }).success).toBe(false);
     expect(botHelloSchema.safeParse({ ...hello, publicKey: KEY }).success).toBe(false);
     expect(helloSchema.safeParse({ ...hello, publicKey: KEY, nickname: 'x', locale: 'en' }).success).toBe(false);
+  });
+
+  it("the bot's settings: bot.get, bot.update (something to change) and bot.setDescription are strict, 1000 characters at most", () => {
+    expect(FEATURE_BOT_SETTINGS).toBe('botSettings');
+    expect(botGetSchema.parse({ botId: BOT })).toEqual({ botId: BOT });
+    expect(botGetSchema.safeParse({ botId: 'x' }).success).toBe(false);
+    expect(botUpdateSchema.parse({ botId: BOT, description: '' })).toEqual({ botId: BOT, description: '' });
+    expect(botUpdateSchema.parse({ botId: BOT, name: 'Hermes' })).toEqual({ botId: BOT, name: 'Hermes' });
+    for (const bad of [{ botId: BOT }, { botId: BOT, name: '' }, { botId: BOT, description: 'x'.repeat(1001) }, { botId: BOT, name: 'H', avatar: null }]) {
+      expect(botUpdateSchema.safeParse(bad).success, JSON.stringify(bad).slice(0, 60)).toBe(false);
+    }
+    expect(botSetDescriptionSchema.parse({ description: 'x'.repeat(1000) }).description).toHaveLength(1000);
+    expect(botSetDescriptionSchema.safeParse({ description: 'x', botId: BOT }).success).toBe(false);
   });
 
   it('bot.create takes a name; a bot photo and its clear take an optional botId', () => {
@@ -151,6 +171,26 @@ describe('bots contract', () => {
       expect(interactionCreateEventSchemaClient.parse(create)).toEqual(create);
       const eph = { id: CHANNEL, interactionId: CHANNEL, channelId: CHANNEL, botId: BOT, command: 'ping', content: 'só você', createdAt: 1, editedAt: null };
       expect(interactionEphemeralEventSchemaClient.parse(eph)).toEqual(eph);
+    });
+
+    it("read the bot's settings, tolerating a field gone wrong, and a welcome with or without botProfiles", () => {
+      const bot = { userId: BOT, name: 'Hermes', avatar: null, createdBy: USER, createdAt: 5, description: 'Oi', lastSeenAt: null, online: true };
+      const got = {
+        bot,
+        usage: [{ command: 'ping', count: 2 }],
+        recent: [{ userId: USER, command: 'ping', channelId: CHANNEL, at: 9, answered: true }],
+        messagesLast24h: 3,
+        channels: [{ channelId: CHANNEL, view: true, send: false }],
+      };
+      expect(botGetResultSchemaClient.parse(got)).toEqual(got);
+      expect(botGetResultSchemaClient.parse({ ...got, bot: { ...bot, description: 7, lastSeenAt: 'x' }, usage: 'nope', messagesLast24h: -1 })).toEqual({
+        ...got, bot: { ...bot, description: '', lastSeenAt: null }, usage: [], messagesLast24h: 0,
+      });
+      expect(botUpdateResultSchemaClient.parse({ bot }).bot).toEqual(bot);
+      expect(botUpdatedEventSchemaClient.parse({ botId: BOT, description: 'Novo' })).toEqual({ botId: BOT, description: 'Novo' });
+      const profile = { botId: BOT, description: 'Oi', createdBy: USER, createdAt: 5, lastSeenAt: 8 };
+      expect(botsWelcomeSchemaClient.parse({ botCommands: [], botProfiles: [profile] })).toEqual({ botCommands: [], botProfiles: [profile] });
+      expect(botsWelcomeSchemaClient.parse({ botCommands: [], botProfiles: 'old' }).botProfiles).toBeUndefined();
     });
   });
 });
