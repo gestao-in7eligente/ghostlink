@@ -105,4 +105,15 @@ export const voice: Record<keyof typeof voicePt, string> = {
   'voice.key.space': 'Space',
   'voice.key.left': 'Left {key}',
   'voice.key.right': 'Right {key}',
+
+  // The call's mini window while I share my screen (v0.4.4, spec 2026-10-02-janelinha-da-chamada).
+  'voice.callWindow.label': 'Call mini window',
+  'voice.callWindow.presenting': 'You are presenting',
+  'voice.callWindow.backToApp': 'Back to GhostLink',
+  'voice.callWindow.close': 'Close this window (sharing goes on)',
+  'voice.callWindow.people': 'Who is in the call',
+  'voice.callWindow.morePeople': '{count} more in the call',
+  'voice.callWindow.draw': 'Let others draw on my screen',
+  'voice.callWindow.stop': 'Stop sharing',
+  'voice.callWindow.leave': 'Leave call',
 };
