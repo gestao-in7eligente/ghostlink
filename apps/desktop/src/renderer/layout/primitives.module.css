@@ -284,6 +284,22 @@
   background: var(--danger-strong);
 }
 
+/* A submenu's item ("Cargos ›"): it stays highlighted while its submenu is open. */
+.menuSub {
+  display: flex;
+  flex-direction: column;
+}
+
+.menuItemOpen {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.menuChevron {
+  flex-shrink: 0;
+  margin-right: -4px;
+}
+
 .menuLabel {
   flex: 1;
   display: flex;
@@ -337,6 +353,29 @@
 .checkOn {
   border-color: var(--accent);
   background: var(--accent);
+}
+
+/* A moderator's checkbox ("Silenciar voz no servidor") is red when ticked. */
+.menuDanger .checkOn {
+  border-color: var(--danger-strong);
+  background: var(--danger-strong);
+}
+
+/* On the highlighted item the box turns white, its tick in the item's color, so it stays visible. */
+.menuItem:hover:not([aria-disabled='true']) .check,
+.menuItem:focus-visible .check {
+  border-color: var(--accent-ink);
+}
+
+.menuItem:hover:not([aria-disabled='true']) .checkOn,
+.menuItem:focus-visible .checkOn {
+  background: var(--accent-ink);
+  color: var(--accent);
+}
+
+.menuDanger:hover:not([aria-disabled='true']) .checkOn,
+.menuDanger:focus-visible .checkOn {
+  color: var(--danger-strong);
 }
 
 .radio {
