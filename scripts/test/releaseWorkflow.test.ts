@@ -70,10 +70,11 @@ describe('release.yml trigger and supply chain (spec §15)', () => {
     expect(job('version').permissions).toEqual({ contents: 'read' });
     expect(job('windows').permissions).toEqual({ contents: 'read' });
     expect(job('server').permissions).toEqual({ contents: 'read' });
+    expect(job('compat').permissions).toEqual({ contents: 'read' });
     expect(job('sign').permissions).toEqual({ contents: 'read', 'id-token': 'write' });
     expect(job('publish').permissions).toEqual({ contents: 'write' });
     expect(job('image').permissions).toEqual({ contents: 'read', packages: 'write', 'id-token': 'write' });
-    expect(Object.keys(workflow.jobs).sort()).toEqual(['image', 'publish', 'server', 'sign', 'version', 'windows']);
+    expect(Object.keys(workflow.jobs).sort()).toEqual(['compat', 'image', 'publish', 'server', 'sign', 'version', 'windows']);
   });
 
   it('never leaves a token in .git/config and never caches dependencies', () => {
@@ -121,8 +122,8 @@ describe('release.yml builds', () => {
   it('checks the tag against the package versions first, and everything depends on it', () => {
     expect(runOf(job('version'))).toContain('node scripts/release-version.mjs "$TAG" >> "$GITHUB_OUTPUT"');
     expect(job('version').outputs).toEqual({ version: '${{ steps.version.outputs.version }}' });
-    for (const name of ['windows', 'server']) expect(job(name).needs).toBe('version');
-    expect(job('sign').needs).toEqual(['version', 'windows', 'server']);
+    for (const name of ['windows', 'server', 'compat']) expect(job(name).needs).toBe('version');
+    expect(job('sign').needs).toEqual(['version', 'windows', 'server', 'compat']);
     expect(job('image').needs).toEqual(['version', 'sign']);
     expect(job('publish').needs).toEqual(['version', 'sign', 'image']);
   });
@@ -152,6 +153,26 @@ describe('release.yml builds', () => {
     expect(run).toContain('dist/cli.js" version)" = "${VERSION}"');
     const upload = server.steps.find((s) => s.uses?.startsWith('actions/upload-artifact@'))!;
     expect(upload.with).toMatchObject({ name: 'release-server', path: 'release/', 'if-no-files-found': 'error' });
+  });
+
+  it("packs the bots' discord.js compatibility package and installs it as a bot would (bots spec §4)", () => {
+    const compat = job('compat');
+    expect(compat['runs-on']).toBe('ubuntu-latest');
+    const run = runOf(compat);
+    expect(run).toMatch(/for attempt in 1 2 3; do\s+npm ci && exit 0/);
+    // prepack builds dist/; the file name carries the version, so a package.json behind the tag fails here.
+    expect(run).toContain('npm pack -w @ghostlink/discord-compat --pack-destination release');
+    expect(run).toContain('test -f "release/ghostlink-discord-compat-${VERSION}.tgz"');
+    expect(run).toContain('npm install "$GITHUB_WORKSPACE/release/ghostlink-discord-compat-${VERSION}.tgz"');
+    // Both entry points, CommonJS and ESM, load from the installed tarball with this version.
+    expect(run).toContain(`test "$(node -p "require('@ghostlink/discord-compat').version")" = "\${VERSION}"`);
+    expect(run).toMatch(/node --input-type=module -e "import \{ version, Client \} from '@ghostlink\/discord-compat';/);
+    const order = ['npm pack', 'test -f', 'npm install'].map((c) => run.indexOf(c));
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // A release-* artifact: the sign job signs it, lists it in checksums-sha256.txt, and publish attaches it.
+    const upload = compat.steps.find((s) => s.uses?.startsWith('actions/upload-artifact@'))!;
+    expect(upload.with).toMatchObject({ name: 'release-compat', path: 'release/', 'if-no-files-found': 'error' });
+    expect(compat.environment).toBeUndefined();
   });
 });
 
