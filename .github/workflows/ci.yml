@@ -119,3 +119,23 @@ jobs:
             apps/desktop/dist/GhostLink-*-mac-*.dmg
           if-no-files-found: error
           retention-days: 7
+
+  # The server image builds on every pull request, as the release builds it (no push): a broken
+  # Dockerfile shows up before the merge, not after the tag.
+  image:
+    name: Server image builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The Docker CLI of the runner only: no third-party build action.
+      - name: Build the image
+        run: docker build -f apps/server/docker/Dockerfile -t ghostlink-server:ci .
+      - name: Smoke test the image
+        run: |
+          docker run --rm --entrypoint node ghostlink-server:ci /opt/ghostlink/dist/cli.js version
+          # The Ghost DJ: ffmpeg and its LiveKit audio add-on are in the image.
+          docker run --rm --entrypoint node ghostlink-server:ci /opt/ghostlink/dist/cli.js ghost-dj
