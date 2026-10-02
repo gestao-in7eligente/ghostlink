@@ -73,13 +73,16 @@ export function StreamView({ userId, size, onFocus, onShowAll }: { userId: strin
         <span className={s.streamName}>{name}</span>
       </div>
       <DrawLayer sharerId={userId} interactive={size !== 'compact'} />
+      {size !== 'compact' && onShowAll && (
+        // Top-left, apart from the bottom bar: at narrow widths the bar reaches the name label.
+        <div className={s.streamCorner}>
+          <button type="button" className={s.streamIcon} aria-label={t('voice.screen.showAll')} title={t('voice.screen.showAll')} onClick={onShowAll}>
+            <LayoutGrid size={18} aria-hidden="true" />
+          </button>
+        </div>
+      )}
       {size !== 'compact' && (
         <div className={s.streamBar}>
-          {onShowAll && (
-            <button type="button" className={s.streamIcon} aria-label={t('voice.screen.showAll')} title={t('voice.screen.showAll')} onClick={onShowAll}>
-              <LayoutGrid size={18} aria-hidden="true" />
-            </button>
-          )}
           <StreamVolume userId={userId} />
           <PencilButton sharerId={userId} className={s.streamIcon} />
           <button

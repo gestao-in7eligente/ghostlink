@@ -568,8 +568,22 @@ button.tile {
 }
 .stream:hover .streamBar,
 .stream:focus-within .streamBar,
-.stream:fullscreen .streamBar {
+.stream:fullscreen .streamBar,
+.stream:hover .streamCorner,
+.stream:focus-within .streamCorner,
+.stream:fullscreen .streamCorner {
   opacity: 1;
+}
+/* "Voltar para a grade": top-left over the picture, shown with the bar. */
+.streamCorner {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  border-radius: 8px;
+  background: var(--overlay);
+  opacity: 0;
+  transition: opacity 120ms ease;
 }
 .streamIcon {
   display: inline-grid;
@@ -1086,7 +1100,8 @@ button.tile {
   .skeletonLine {
     animation: none;
   }
-  .streamBar {
+  .streamBar,
+  .streamCorner {
     transition: none;
   }
 }
