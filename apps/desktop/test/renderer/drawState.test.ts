@@ -8,7 +8,7 @@ const ANA = 'a'.repeat(32);
 const BIA = 'b'.repeat(32);
 const SHARING = { quality: '1080p30', content: 'motion', audio: false, name: 'Tela 1' } as unknown as VoiceView['sharing'];
 
-const person = (userId: string, screen = false): VoiceParticipant => ({ userId, muted: false, deafened: false, camera: false, screen, serverMuted: false });
+const person = (userId: string, screen = false): VoiceParticipant => ({ userId, muted: false, deafened: false, camera: false, screen, serverMuted: false, serverDeafened: false });
 
 /** Bia's view: in VC1 with Ana, who shares; Bia watches her. */
 function bia(over: Partial<VoiceView> = {}): VoiceView {

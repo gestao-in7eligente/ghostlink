@@ -3,7 +3,8 @@ import { VOICE_LIMITS, voiceIdentity, voiceRoomName, voiceSourcesFor, type Voice
 
 /** The complete LiveKit permission block (spec §6), for tokens and every updateParticipant. */
 export interface LivekitPermission {
-  canSubscribe: true;
+  /** false while a moderator keeps the user deafened (voice.moderate `deafen`). */
+  canSubscribe: boolean;
   canPublish: boolean;
   canPublishData: false;
   canPublishSources: TrackSource[];
@@ -19,15 +20,16 @@ const SOURCE: Readonly<Record<VoiceSource, TrackSource>> = {
 };
 
 /**
- * `livekitPermission(user, channel, { serverMuted })` from spec §6, given the user's
- * effective bits in the channel. An EMPTY canPublishSources with canPublish: true would
- * mean "every source" to LiveKit, so canPublish is true only when the list is non-empty.
+ * `livekitPermission(user, channel, { serverMuted, serverDeafened })` from spec §6, given the
+ * user's effective bits in the channel. An EMPTY canPublishSources with canPublish: true would
+ * mean "every source" to LiveKit, so canPublish is true only when the list is non-empty. A
+ * server deafen takes every subscription away (LiveKit drops the ones in place).
  * Always pass the whole block to updateParticipant: LiveKit overwrites every field.
  */
-export function livekitPermission(bits: number, opts: { serverMuted: boolean }): LivekitPermission {
+export function livekitPermission(bits: number, opts: { serverMuted: boolean; serverDeafened?: boolean }): LivekitPermission {
   const canPublishSources = voiceSourcesFor(bits, opts).map((s) => SOURCE[s]);
   return {
-    canSubscribe: true,
+    canSubscribe: opts.serverDeafened !== true,
     canPublish: canPublishSources.length > 0,
     canPublishData: false,
     canPublishSources,

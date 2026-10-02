@@ -130,7 +130,7 @@ describe('the voice store’s camera', () => {
   });
 
   it('who else has a camera comes from voice.state (`camera` per person)', () => {
-    const p = { userId: BIA, muted: false, deafened: false, camera: true, screen: false, serverMuted: false };
+    const p = { userId: BIA, muted: false, deafened: false, camera: true, screen: false, serverMuted: false, serverDeafened: false };
     const s = voiceReducer(initialVoiceState, { type: 'serverEvent', event: { t: 'voice.state', d: { channelId: 'VC1', participants: [p] } } as never });
     expect(s.channels.VC1).toEqual([p]);
   });

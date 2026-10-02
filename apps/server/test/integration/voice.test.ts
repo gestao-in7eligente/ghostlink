@@ -4,7 +4,7 @@ import { connect as tlsConnect, type TLSSocket } from 'node:tls';
 import { TrackSource } from 'livekit-server-sdk';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { PERMISSIONS, type ResErr, type ResOk, type VoiceChannelState } from '@ghostlink/shared';
+import { FEATURE_VOICE_SERVER_DEAFEN, PERMISSIONS, type ResErr, type ResOk, type VoiceChannelState } from '@ghostlink/shared';
 import type { Logger } from '../../src/logger.js';
 import { createVoiceModule, type VoiceModule, type VoiceModuleOptions } from '../../src/voice/index.js';
 import { withDb } from '../helpers/db.js';
@@ -82,7 +82,7 @@ interface JoinRes {
   iceServers: unknown[];
 }
 
-function claimsOf(jwt: string): { sub: string; video: { room: string; canPublish: boolean; canPublishSources?: string[] } } {
+function claimsOf(jwt: string): { sub: string; video: { room: string; canSubscribe?: boolean; canPublish: boolean; canPublishSources?: string[] } } {
   return JSON.parse(Buffer.from(jwt.split('.')[1]!, 'base64url').toString('utf8'));
 }
 
@@ -359,7 +359,7 @@ describe('voice.state from webhooks, with per-recipient audience (spec §5.3, §
     s.text.setBits(bob.identity.userId, 'SECRET', P.VIEW_CHANNEL);
     ok(await alice.request('voice.join', { channelId: 'SECRET' }));
     s.backend!.join('ch_SECRET', `u_${alice.identity.userId}`);
-    const expected = { channelId: 'SECRET', participants: [{ userId: alice.identity.userId, muted: false, deafened: false, camera: false, screen: false, serverMuted: false }] };
+    const expected = { channelId: 'SECRET', participants: [{ userId: alice.identity.userId, muted: false, deafened: false, camera: false, screen: false, serverMuted: false, serverDeafened: false }] };
     expect(await nextState(alice, 'SECRET')).toEqual(expected);
     expect(await nextState(bob, 'SECRET')).toEqual(expected);
     await noEvent(eve, 'voice.state');
@@ -437,6 +437,35 @@ describe('voice.moderate (spec §5.2, §8.3)', () => {
     ok(await mod.request('voice.moderate', { userId: targetId, action: 'unmute' }));
     expect(s.backend!.updates(`u_${targetId}`).at(-1)!.canPublishSources).toContain(2);
     expect((await nextState(target, 'VC1')).participants[0]!.serverMuted).toBe(false);
+  });
+
+  it('deafen needs MUTE_MEMBERS and hierarchy, tells everyone, and takes every subscription away until undeafen', async () => {
+    const s = await setup();
+    const { mod, target } = await inVoice(s);
+    const targetId = target.identity.userId;
+    const watcher = await s.client('watcher');
+    expect(watcher.welcome!.features).toContain(FEATURE_VOICE_SERVER_DEAFEN);
+    const deafen = () => mod.request('voice.moderate', { userId: targetId, action: 'deafen' });
+    expect(code(await deafen())).toBe('FORBIDDEN');
+    s.text.setBits(mod.identity.userId, 'VC1', s.text.defaultBits | P.MOVE_MEMBERS);
+    expect(code(await deafen())).toBe('FORBIDDEN');
+    s.text.setBits(mod.identity.userId, 'VC1', s.text.defaultBits | P.MUTE_MEMBERS);
+    expect(code(await deafen())).toBe('HIERARCHY');
+    s.text.positions.set(mod.identity.userId, 5);
+    ok(await deafen());
+
+    // LiveKit drops their subscriptions; the microphone stays (a deafen is not a mute).
+    const cut = s.backend!.updates(`u_${targetId}`).at(-1)!;
+    expect(cut).toMatchObject({ canSubscribe: false, canPublishData: false, canUpdateMetadata: false, hidden: false });
+    expect(cut.canPublishSources).toContain(2 /* TrackSource.MICROPHONE */);
+    for (const c of [target, watcher]) expect((await nextState(c, 'VC1')).participants[0]).toMatchObject({ userId: targetId, serverDeafened: true, serverMuted: false });
+    // A new token keeps it, and they cannot undo it themselves.
+    expect(claimsOf(ok<JoinRes>(await target.request('voice.join', { channelId: 'VC1' })).token).video.canSubscribe).toBe(false);
+    expect(code(await target.request('voice.moderate', { userId: targetId, action: 'undeafen' }))).toBe('FORBIDDEN');
+
+    ok(await mod.request('voice.moderate', { userId: targetId, action: 'undeafen' }));
+    expect(s.backend!.updates(`u_${targetId}`).at(-1)!.canSubscribe).toBe(true);
+    for (const c of [target, watcher]) expect((await nextState(c, 'VC1')).participants[0]!.serverDeafened).toBe(false);
   });
 
   it('nobody acts on the owner or on themselves', async () => {

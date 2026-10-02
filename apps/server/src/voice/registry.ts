@@ -18,6 +18,7 @@ export class VoiceRegistry {
   readonly #rooms = new Map<string, Map<string, Present>>();
   readonly #self = new Map<string, { muted: boolean; deafened: boolean }>();
   readonly #serverMuted = new Set<string>();
+  readonly #serverDeafened = new Set<string>();
 
   // ---- assignment (what the /rtc proxy allows) ----
 
@@ -62,7 +63,18 @@ export class VoiceRegistry {
     return this.#channelsOf(userId);
   }
 
-  /** The user went offline for good: drop everything but a server mute (it outlives a reconnect). */
+  isServerDeafened(userId: string): boolean {
+    return this.#serverDeafened.has(userId);
+  }
+
+  setServerDeafened(userId: string, deafened: boolean): string[] {
+    if (deafened === this.#serverDeafened.has(userId)) return [];
+    if (deafened) this.#serverDeafened.add(userId);
+    else this.#serverDeafened.delete(userId);
+    return this.#channelsOf(userId);
+  }
+
+  /** The user went offline for good: drop everything but a server mute or deafen (they outlive a reconnect). */
   forget(userId: string): string[] {
     this.#assigned.delete(userId);
     this.#self.delete(userId);
@@ -185,6 +197,7 @@ export class VoiceRegistry {
         camera: kinds.has('camera'),
         screen: kinds.has('screen_share'),
         serverMuted: this.#serverMuted.has(userId),
+        serverDeafened: this.#serverDeafened.has(userId),
       });
     }
     participants.sort((a, b) => (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));

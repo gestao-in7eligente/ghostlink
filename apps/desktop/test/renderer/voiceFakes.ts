@@ -188,6 +188,7 @@ export const participant = (userId: string, extra: Partial<VoiceParticipant> = {
   camera: false,
   screen: false,
   serverMuted: false,
+  serverDeafened: false,
   ...extra,
 });
 
