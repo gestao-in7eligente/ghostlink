@@ -55,6 +55,9 @@ export interface MessageRow {
   mention_users: string;
   mention_roles: string;
   mention_everyone: number;
+  interaction_id: string | null;
+  interaction_user_id: string | null;
+  interaction_command: string | null;
 }
 
 export interface UserRow {
@@ -174,6 +177,11 @@ export class TextRepo {
     return this.db.get('SELECT 1 AS x FROM users WHERE id = ? AND removed_at IS NULL', userId) !== undefined;
   }
 
+  /** A bot account, current or deleted (bots spec §2). */
+  isBot(userId: string): boolean {
+    return this.db.get('SELECT 1 AS x FROM users WHERE id = ? AND is_bot = 1', userId) !== undefined;
+  }
+
   memberIds(): string[] {
     return this.db.all<{ id: string }>('SELECT id FROM users WHERE removed_at IS NULL').map((r) => r.id);
   }
@@ -185,17 +193,25 @@ export class TextRepo {
   }
 
   member(userId: string, online: boolean): Member | null {
-    const u = this.db.get<{ id: string; nickname: string; joined_at: number; avatar_file_id: string | null }>(
-      'SELECT id, nickname, joined_at, avatar_file_id FROM users WHERE id = ? AND removed_at IS NULL',
+    const u = this.db.get<{ id: string; nickname: string; joined_at: number; avatar_file_id: string | null; is_bot: number }>(
+      'SELECT id, nickname, joined_at, avatar_file_id, is_bot FROM users WHERE id = ? AND removed_at IS NULL',
       userId,
     );
     if (!u) return null;
-    return { userId: u.id, nickname: u.nickname, roleIds: this.roleIdsOf(u.id), online, joinedAt: Number(u.joined_at), avatar: u.avatar_file_id ?? null };
+    return {
+      userId: u.id,
+      nickname: u.nickname,
+      roleIds: this.roleIdsOf(u.id),
+      online,
+      joinedAt: Number(u.joined_at),
+      avatar: u.avatar_file_id ?? null,
+      bot: u.is_bot === 1,
+    };
   }
 
   members(isOnline: (userId: string) => boolean): Member[] {
-    const users = this.db.all<{ id: string; nickname: string; joined_at: number; avatar_file_id: string | null }>(
-      'SELECT id, nickname, joined_at, avatar_file_id FROM users WHERE removed_at IS NULL ORDER BY nickname_norm',
+    const users = this.db.all<{ id: string; nickname: string; joined_at: number; avatar_file_id: string | null; is_bot: number }>(
+      'SELECT id, nickname, joined_at, avatar_file_id, is_bot FROM users WHERE removed_at IS NULL ORDER BY nickname_norm',
     );
     const roleRows = this.db.all<{ user_id: string; role_id: string }>(
       `SELECT ur.user_id, ur.role_id FROM user_roles ur JOIN roles r ON r.id = ur.role_id
@@ -214,6 +230,7 @@ export class TextRepo {
       online: isOnline(u.id),
       joinedAt: Number(u.joined_at),
       avatar: u.avatar_file_id ?? null,
+      bot: u.is_bot === 1,
     }));
   }
 
@@ -288,18 +305,29 @@ export class TextRepo {
     return this.db.get('SELECT 1 AS x FROM files WHERE message_id = ? LIMIT 1', messageId) !== undefined;
   }
 
+  /** Which of these users are bots (current or deleted). */
+  botsAmong(userIds: readonly string[]): Set<string> {
+    if (userIds.length === 0) return new Set();
+    return new Set(
+      this.db
+        .all<{ id: string }>('SELECT id FROM users WHERE is_bot = 1 AND id IN (SELECT value FROM json_each(?))', JSON.stringify([...new Set(userIds)]))
+        .map((r) => r.id),
+    );
+  }
+
   toMessages(rows: readonly MessageRow[]): Message[] {
     const ids = rows.map((r) => Number(r.id));
     const reactions = this.reactionsOf(ids);
     const attachments = this.attachmentsOf(ids);
-    return rows.map((r) => this.#toMessage(r, reactions.get(Number(r.id)) ?? [], attachments.get(Number(r.id)) ?? []));
+    const bots = this.botsAmong(rows.map((r) => r.user_id));
+    return rows.map((r) => this.#toMessage(r, reactions.get(Number(r.id)) ?? [], attachments.get(Number(r.id)) ?? [], bots.has(r.user_id)));
   }
 
   toMessage(row: MessageRow): Message {
     return this.toMessages([row])[0]!;
   }
 
-  #toMessage(r: MessageRow, reactions: Reaction[], attachments: Attachment[]): Message {
+  #toMessage(r: MessageRow, reactions: Reaction[], attachments: Attachment[], authorBot: boolean): Message {
     let replyTo: Message['replyTo'] = null;
     if (r.reply_to_id !== null) {
       const target = this.message(Number(r.reply_to_id));
@@ -332,6 +360,11 @@ export class TextRepo {
       mentions,
       clientMsgId: r.client_msg_id,
       attachments,
+      authorBot,
+      interaction:
+        r.interaction_id !== null && r.interaction_user_id !== null && r.interaction_command !== null
+          ? { id: r.interaction_id, userId: r.interaction_user_id, command: r.interaction_command }
+          : null,
     };
   }
 

@@ -1,3 +1,4 @@
+import { BOT_LIMITS } from '@ghostlink/shared';
 import { SlidingWindowLimiter } from '../ratelimit/limiter.js';
 
 /**
@@ -70,6 +71,12 @@ export class TextLimiters {
    * A bucket of its own, so editing never blocks sending.
    */
   readonly msgEdit: TokenBucket;
+  /**
+   * A bot's messages and edits, interaction answers included (bots spec §2): the members'
+   * numbers times BOT_LIMITS.messageRateMultiplier (twice the burst, twice the refill rate).
+   */
+  readonly botMsgSend: TokenBucket;
+  readonly botMsgEdit: TokenBucket;
   readonly typing: SlidingWindowLimiter;
   readonly react: SlidingWindowLimiter;
   readonly profile: SlidingWindowLimiter;
@@ -78,6 +85,9 @@ export class TextLimiters {
   constructor(limits: TextRateLimits, now: () => number) {
     this.msgSend = new TokenBucket(limits.msgSendBurst, limits.msgSendRefillMs, now);
     this.msgEdit = new TokenBucket(limits.msgSendBurst, limits.msgSendRefillMs, now);
+    const x = BOT_LIMITS.messageRateMultiplier;
+    this.botMsgSend = new TokenBucket(limits.msgSendBurst * x, limits.msgSendRefillMs / x, now);
+    this.botMsgEdit = new TokenBucket(limits.msgSendBurst * x, limits.msgSendRefillMs / x, now);
     this.typing = new SlidingWindowLimiter(limits.typingPerWindow, limits.typingWindowMs, now);
     this.react = new SlidingWindowLimiter(limits.reactPerWindow, limits.reactWindowMs, now);
     this.profile = new SlidingWindowLimiter(limits.profilePerWindow, limits.profileWindowMs, now);
@@ -87,6 +97,8 @@ export class TextLimiters {
   sweep(): void {
     this.msgSend.sweep();
     this.msgEdit.sweep();
+    this.botMsgSend.sweep();
+    this.botMsgEdit.sweep();
     this.typing.sweep();
     this.react.sweep();
     this.profile.sweep();

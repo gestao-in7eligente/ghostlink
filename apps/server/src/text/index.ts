@@ -1,5 +1,6 @@
 import { CHAT_LIMITS, type TextWelcome } from '@ghostlink/shared';
 import type { ModuleContext, RequestContext, RequestHandler, ServerModule, SessionInfo } from '../modules.js';
+import { createBotTextApi, type BotTextApi } from './bots.js';
 import { TextCore, TextEmitter, type TextEvents } from './core.js';
 import { channelHandlers } from './handlers/channels.js';
 import { memberHandlers } from './handlers/members.js';
@@ -12,6 +13,7 @@ import { seedDefaults } from './seed.js';
 
 export type { TextEventMap, TextEventName, TextEvents } from './core.js';
 export type { TextRateLimits } from './rateLimit.js';
+export type { BotTextApi } from './bots.js';
 
 export const TEXT_MODULE_NAME = 'text';
 
@@ -44,6 +46,8 @@ export interface TextModule extends ServerModule {
   serverPermissions(userId: string): number;
   /** Sends `server.updated` as stored now to every member, as server.update does (the server icon). */
   announceServer(): void;
+  /** For the bots module (bots spec §2): bot members and their messages. Usable after init. */
+  readonly bots: BotTextApi;
 }
 
 export interface TextModuleOptions {
@@ -117,6 +121,7 @@ export function createTextModule(opts: TextModuleOptions = {}): TextModule {
     handlers,
     events,
     voiceAccess,
+    bots: createBotTextApi(need),
 
     announceMember(userId) {
       const c = need();

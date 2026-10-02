@@ -131,6 +131,8 @@ const transferOwnership: Handler = (core, ctx, payload) => {
   if (!core.access.isOwner(ctx.userId)) throw new ProtocolError('FORBIDDEN');
   if (p.userId === ctx.userId) throw new ProtocolError('BAD_REQUEST', 'already the owner');
   if (!core.access.subject(p.userId).isMember) throw new ProtocolError('NOT_FOUND');
+  // A bot is never the owner (bots spec §2): it has no identity to sign in with.
+  if (core.repo.isBot(p.userId)) throw new ProtocolError('BAD_REQUEST', 'a bot cannot own the server');
   const { db } = core;
   let adminId = db.get<{ id: string }>('SELECT id FROM roles WHERE system_tag = ?', ADMIN_SYSTEM_TAG)?.id;
   const created = adminId === undefined;
