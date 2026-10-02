@@ -1,0 +1,231 @@
+/* The profile card (spec 2026-10-02-cartao-de-perfil): Discord's user popout in GhostLink's colors. */
+
+.card {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-hover) transparent;
+  position: fixed;
+  /* Over the layout, under the menus it opens (110). */
+  z-index: 105;
+  width: 340px;
+  max-height: calc(100vh - var(--titlebar-h) - 16px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--border-panel);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  outline: none;
+  animation: pop 120ms ease-out;
+}
+
+/* The banner and the picture that hangs over its edge. */
+.top {
+  position: relative;
+  height: 108px;
+}
+
+.banner {
+  height: 60px;
+  background: var(--accent);
+}
+
+.more {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 45%);
+  color: var(--accent-ink);
+  cursor: pointer;
+}
+
+.more:hover,
+.more[aria-expanded='true'] {
+  background: rgb(0 0 0 / 70%);
+}
+
+/* A ring in the card's color around the 80 px photo, and a bigger presence dot. */
+.picture {
+  position: absolute;
+  top: 16px;
+  left: 10px;
+  display: inline-grid;
+  padding: 6px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  --dot-ring: var(--bg-raised);
+  --dot-size: 24px;
+  --dot-ring-width: 5px;
+  --dot-offset: 0px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px 16px;
+}
+
+.nameLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.name {
+  margin: 0;
+  min-width: 0;
+  color: var(--text-bright);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.heading {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+.value {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 18px;
+}
+
+/* Role chips: the role's color in the dot; whoever may take the role sees the × on hover. */
+.roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 24px;
+  padding: 0 8px 0 6px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.chipName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chipDot,
+.chipRemove {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--role, var(--text-faint));
+}
+
+.chipRemove {
+  color: transparent;
+  cursor: pointer;
+}
+
+.chip:hover .chipRemove,
+.chipRemove:focus-visible {
+  color: rgb(0 0 0 / 80%);
+}
+
+.addRole {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.addRole:hover,
+.addRole[aria-expanded='true'] {
+  background: var(--bg-selected);
+  color: var(--text-bright);
+}
+
+/* "Conversar com @Nome": the message box's colors. */
+.message {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border-composer);
+  border-radius: 8px;
+  background: var(--bg-composer);
+  color: var(--text-strong);
+  font-size: 14px;
+}
+
+.message::placeholder {
+  color: var(--text-placeholder);
+}
+
+.message:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.message[aria-busy='true'] {
+  opacity: 0.6;
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation: none;
+  }
+}

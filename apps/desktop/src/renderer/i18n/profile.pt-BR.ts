@@ -20,4 +20,13 @@ export const profile = {
   'serverIcon.change': 'Alterar ícone',
   'serverIcon.remove': 'Remover ícone',
   'serverIcon.hint': 'Aparece para todos no trilho de servidores e no cabeçalho. PNG, JPEG, WebP ou GIF, até 10 MB; GIFs animados continuam animados. Sem ícone, as iniciais do nome.',
+
+  // The profile card (v0.4.2, spec 2026-10-02-cartao-de-perfil).
+  'profileCard.label': 'Perfil de {name}',
+  'profileCard.more': 'Mais opções',
+  'profileCard.memberSince': 'Membro desde',
+  'profileCard.removeRole': 'Tirar o cargo {role}',
+  'profileCard.addRole': 'Adicionar cargo',
+  'profileCard.addRoleTo': 'Cargos para dar a {name}',
+  'profileCard.copyId': 'Copiar ID do usuário',
 } as const;

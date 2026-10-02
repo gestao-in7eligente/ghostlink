@@ -48,15 +48,16 @@
   object-fit: cover;
 }
 
+/* A bigger picture (the profile card's) sets --dot-size, --dot-ring-width and --dot-offset. */
 .dot {
   position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 12px;
-  height: 12px;
+  right: var(--dot-offset, -1px);
+  bottom: var(--dot-offset, -1px);
+  width: var(--dot-size, 12px);
+  height: var(--dot-size, 12px);
   border-radius: 50%;
   background: var(--text-ghost);
-  border: 2.5px solid var(--dot-ring, var(--bg-sidebar));
+  border: var(--dot-ring-width, 2.5px) solid var(--dot-ring, var(--bg-sidebar));
 }
 
 .dotOn {
