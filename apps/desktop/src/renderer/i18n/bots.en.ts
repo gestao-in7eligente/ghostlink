@@ -106,6 +106,9 @@ export const bots: Record<keyof typeof botsPt, string> = {
   'bots.settings.createdOn': 'Created on {date}',
   'bots.settings.lastSeen': 'Last seen {ago}',
   'bots.settings.neverConnected': 'Never connected',
+  // A system bot (the Ghost DJ, v0.5.0): the server's own, with no code and no delete.
+  'bots.settings.system': 'System bot',
+  'bots.settings.systemHint': 'Created by the server itself: it has no connection code and cannot be deleted.',
   'bots.settings.photoHint': 'The bot can also send its own photo when it connects.',
   'bots.activity.messages24h': 'Messages in the last 24 h',
   'bots.activity.noUses': 'No command was used in the last 7 days.',

@@ -6,11 +6,19 @@ import type { Locale } from '../../../shared/ipcTypes.js';
 import type { Translate } from '../../i18n/index.js';
 import { byNickname } from '../../stores/members.js';
 import { canActOnMember, manageableRoles, myPermissions, rolesByPosition, subjectOf } from '../../stores/server.js';
-import type { MembersState, ServerState } from '../../stores/textState.js';
+import type { BotsState, MembersState, ServerState } from '../../stores/textState.js';
 import type { SlashCommand, SlashEntry } from './slashModel.js';
 
 export function isBot<M extends Pick<Member, 'bot'>>(member: M | undefined): member is M {
   return member?.bot === true;
+}
+
+/**
+ * The server's own bot (the Ghost DJ, v0.5.0): it has no connection code and cannot be deleted, so
+ * its menu and settings leave those out. Older servers have none (no profile says so).
+ */
+export function isSystemBot(profiles: BotsState['profiles'], botId: string): boolean {
+  return profiles !== null && Object.hasOwn(profiles, botId) && profiles[botId]!.system;
 }
 
 /** The site's guide to connecting a bot (the code in GHOSTLINK_BOT, the discord.js import swap). */

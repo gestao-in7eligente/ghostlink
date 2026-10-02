@@ -27,7 +27,7 @@ import { getBot, setBotPhoto, updateBot } from './botActions.js';
 import { DeleteBotDialog, RegenerateBotDialog } from './BotDialogs.js';
 import { CommandList, useBotCommands } from './BotPage.js';
 import { BotTag, CreatedLine, SeenLine, fill, useNow } from './BotParts.js';
-import { botRoleChoices, botsGuideUrl, isBot, nameOf, refreshesBotSettings, seenText, timeAgo, toggledRole } from './botsModel.js';
+import { botRoleChoices, botsGuideUrl, isBot, isSystemBot, nameOf, refreshesBotSettings, seenText, timeAgo, toggledRole } from './botsModel.js';
 import g from './botPage.module.css';
 import b from './bots.module.css';
 
@@ -91,8 +91,8 @@ function useBotData(botId: string, enabled: boolean): BotData {
 /**
  * The bot's settings (the bot's menu, "Configurações", bot page spec), in the server settings'
  * full-size dialog: Visão geral (photo, name, description), Comandos, Atividade (7 dias),
- * Permissões (where it sees and speaks, and its roles), Código de conexão and Excluir bot. For
- * MANAGE_SERVER. A server without the bot's settings (before 0.4.2) shows what the app knows and
+ * Permissões (where it sees and speaks, and its roles), Código de conexão and Excluir bot (neither
+ * for the server's own bot, the Ghost DJ: "Bot do sistema" instead). For MANAGE_SERVER. A server without the bot's settings (before 0.4.2) shows what the app knows and
  * "Atualize o servidor para editar" where the server's data is needed.
  */
 export function BotSettings({ botId, onClose }: { botId: string; onClose: () => void }) {
@@ -105,6 +105,8 @@ export function BotSettings({ botId, onClose }: { botId: string; onClose: () => 
   const data = useBotData(botId, supported && canManage && isBot(bot));
   const [active, setActive] = useState<string>('overview');
   const [dialog, setDialog] = useState<'regenerate' | 'delete' | null>(null);
+  const systemProfile = useTextStore((st) => isSystemBot(st.bots.profiles, botId));
+  const system = systemProfile || data.data?.bot.system === true;
   const gone = !isBot(bot) || !canManage;
 
   // The bot was deleted meanwhile, or the person can no longer manage the server: nothing to show.
@@ -114,14 +116,19 @@ export function BotSettings({ botId, onClose }: { botId: string; onClose: () => 
   if (!isBot(bot)) return null;
 
   const content: Record<BotSettingsTab, () => ReactNode> = {
-    overview: () => <OverviewTab bot={bot} data={data} supported={supported} />,
+    overview: () => <OverviewTab bot={bot} data={data} supported={supported} system={system} />,
     commands: () => <CommandsTab botId={bot.userId} />,
     activity: () => <ActivityTab data={data} supported={supported} />,
     permissions: () => <PermissionsTab bot={bot} data={data} supported={supported} />,
     code: () => <CodeTab bot={bot} data={data} onRegenerate={() => setDialog('regenerate')} />,
     delete: () => <DeleteTab onDelete={() => setDialog('delete')} />,
   };
-  const tabs: SettingsTab[] = TABS.map((id) => ({ id, label: t(`bots.settings.tab.${id}`), content: content[id], danger: id === 'delete' }));
+  const tabs: SettingsTab[] = TABS.filter((id) => !system || (id !== 'code' && id !== 'delete')).map((id) => ({
+    id,
+    label: t(`bots.settings.tab.${id}`),
+    content: content[id],
+    danger: id === 'delete',
+  }));
   const select = (id: string) => {
     setActive(id);
     // Uses and messages send no event here: the numbers are fetched again each time the tab opens.
@@ -167,7 +174,7 @@ function Loaded({ data, children }: { data: BotData; children: (got: BotGetResul
 
 // ---- Visão geral ----
 
-function OverviewTab({ bot, data, supported }: { bot: Member; data: BotData; supported: boolean }) {
+function OverviewTab({ bot, data, supported, system }: { bot: Member; data: BotData; supported: boolean; system: boolean }) {
   const t = useT();
   const nameId = useId();
   const descriptionId = useId();
@@ -219,6 +226,11 @@ function OverviewTab({ bot, data, supported }: { bot: Member; data: BotData; sup
           </p>
           {info && <CreatedLine createdBy={info.createdBy} createdAt={info.createdAt} />}
           <SeenLine online={bot.online} lastSeenAt={info ? info.lastSeenAt : undefined} />
+          {system && (
+            <p className={s.hint} data-bot-system>
+              <strong>{t('bots.settings.system')}</strong> · {t('bots.settings.systemHint')}
+            </p>
+          )}
           <button type="button" className={p.button} onClick={() => input.current?.click()} disabled={picking.opening} data-bot-photo-change>
             {t('bots.create.photoChange')}
           </button>

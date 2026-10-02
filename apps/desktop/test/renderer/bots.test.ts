@@ -5,6 +5,7 @@ import type { BotCommand } from '@ghostlink/shared';
 import {
   botRoleChoices,
   channelCommands,
+  isSystemBot,
   refreshesBotSettings,
   seenText,
   serverBots,
@@ -206,15 +207,25 @@ describe('the bots store', () => {
     expect(channelLocals(state.bots, GERAL)).toEqual([]);
   });
 
+  it("knows the server's own bot (the Ghost DJ) from its profile", () => {
+    const members = [member(ME, 'Eu'), member(BOT, 'Ghost DJ', { bot: true }), member(OTHER_BOT, 'Zeca', { bot: true })];
+    const profile = { description: '', createdBy: null, createdAt: 5, lastSeenAt: null };
+    const state = start({ ...snapshot({ members }), botProfiles: [{ botId: BOT, ...profile, system: true }, { botId: OTHER_BOT, ...profile, system: false }] });
+    expect(isSystemBot(state.bots.profiles, BOT)).toBe(true);
+    expect(isSystemBot(state.bots.profiles, OTHER_BOT)).toBe(false);
+    // A server before 0.4.2 has no profiles: no system bot.
+    expect(isSystemBot(start(snapshot({ members })).bots.profiles, BOT)).toBe(false);
+  });
+
   it("keeps each bot's profile: the welcome's, bot.updated, a bot created meanwhile, its last connection", () => {
     const members = [member(ME, 'Eu'), member(BOT, 'Zeca', { bot: true })];
-    let state = start({ ...snapshot({ members }), botProfiles: [{ botId: BOT, description: 'Oi', createdBy: OWNER, createdAt: 5, lastSeenAt: 7 }] });
-    expect(state.bots.profiles).toEqual({ [BOT]: { description: 'Oi', createdBy: OWNER, createdAt: 5, lastSeenAt: 7 } });
+    let state = start({ ...snapshot({ members }), botProfiles: [{ botId: BOT, description: 'Oi', createdBy: OWNER, createdAt: 5, lastSeenAt: 7, system: false }] });
+    expect(state.bots.profiles).toEqual({ [BOT]: { description: 'Oi', createdBy: OWNER, createdAt: 5, lastSeenAt: 7, system: false } });
     state = run(state, ev({ t: 'bot.updated', botId: BOT, description: 'Novo' }), ev({ t: 'presence', userId: BOT, online: false }, NOW + 1));
-    expect(state.bots.profiles![BOT]).toEqual({ description: 'Novo', createdBy: OWNER, createdAt: 5, lastSeenAt: NOW + 1 });
+    expect(state.bots.profiles![BOT]).toEqual({ description: 'Novo', createdBy: OWNER, createdAt: 5, lastSeenAt: NOW + 1, system: false });
     // A bot created after the welcome starts with what its member says; a person gets no profile.
     state = run(state, ev({ t: 'member.joined', member: member(OTHER_BOT, 'Ana Bot', { bot: true, joinedAt: 42 }) }), ev({ t: 'member.joined', member: member(CAROL, 'Carol') }));
-    expect(state.bots.profiles![OTHER_BOT]).toEqual({ description: '', createdBy: null, createdAt: 42, lastSeenAt: null });
+    expect(state.bots.profiles![OTHER_BOT]).toEqual({ description: '', createdBy: null, createdAt: 42, lastSeenAt: null, system: false });
     expect(Object.keys(state.bots.profiles!)).toEqual([BOT, OTHER_BOT]);
     // Nothing that changes nothing.
     expect(run(state, ev({ t: 'bot.updated', botId: BOT, description: 'Novo' }), ev({ t: 'presence', userId: BOB, online: true })).bots).toBe(state.bots);

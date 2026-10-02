@@ -10,7 +10,7 @@ import { myPermissions } from '../../stores/server.js';
 import { dispatchText, useTextStore } from '../../stores/text.js';
 import { AddBotDialog, DeleteBotDialog, RegenerateBotDialog } from './BotDialogs.js';
 import { BotSettings } from './BotSettings.js';
-import { serverBots, showBotsSection } from './botsModel.js';
+import { isSystemBot, serverBots, showBotsSection } from './botsModel.js';
 import b from './bots.module.css';
 
 type Dialog = { kind: 'create' } | { kind: 'settings'; botId: string } | { kind: 'regenerate' | 'delete'; bot: Member };
@@ -20,7 +20,8 @@ type Dialog = { kind: 'create' } | { kind: 'settings'; botId: string } | { kind:
  * and online dot; a click opens its page in the center, selected like a channel (bot page spec).
  * Whoever has MANAGE_SERVER sees "Adicionar bot" and each bot's menu (right click or ⋮):
  * "Configurações" (the bot's settings), then "Gerar novo código" and "Excluir bot", both
- * confirmed. Hidden when the server has no bots and the person cannot create one.
+ * confirmed (not for the server's own bot, the Ghost DJ). Hidden when the server has no bots and
+ * the person cannot create one.
  */
 export function BotsSection() {
   const t = useT();
@@ -33,6 +34,7 @@ export function BotsSection() {
   const [menu, setMenu] = useState<{ botId: string; anchor: MenuAnchor } | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const closeDialog = useCallback(() => setDialog(null), []);
+  const menuSystem = useTextStore((s) => menu !== null && isSystemBot(s.bots.profiles, menu.botId));
 
   if (!showBotsSection({ bots: bots.length, canManage, supported })) return null;
   const canAdd = canManage && supported;
@@ -82,13 +84,17 @@ export function BotsSection() {
           <MenuItem onSelect={() => pick('settings')} icon={<Settings size={16} aria-hidden="true" />}>
             {t('bots.settings')}
           </MenuItem>
-          <MenuItem onSelect={() => pick('regenerate')} icon={<KeyRound size={16} aria-hidden="true" />}>
-            {t('bots.regenerate')}
-          </MenuItem>
-          <MenuSeparator />
-          <MenuItem danger onSelect={() => pick('delete')} icon={<Trash2 size={16} aria-hidden="true" />}>
-            {t('bots.delete')}
-          </MenuItem>
+          {!menuSystem && (
+            <>
+              <MenuItem onSelect={() => pick('regenerate')} icon={<KeyRound size={16} aria-hidden="true" />}>
+                {t('bots.regenerate')}
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem danger onSelect={() => pick('delete')} icon={<Trash2 size={16} aria-hidden="true" />}>
+                {t('bots.delete')}
+              </MenuItem>
+            </>
+          )}
         </Menu>
       )}
 
