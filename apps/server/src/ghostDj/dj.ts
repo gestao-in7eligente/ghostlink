@@ -20,7 +20,7 @@ export interface DjTrack {
 /** What the DJ needs from voice (voice/module.ts). */
 export interface DjVoice {
   readonly available: boolean;
-  joinLocal(userId: string, channelId: string): Promise<{ url: string; token: string }>;
+  joinLocal(userId: string, channelId: string): Promise<{ url: string; token: string; icePort: number | null }>;
   leaveLocal(userId: string): Promise<void>;
   /** The voice channel the user is in (or joining), or null. */
   channelOf(userId: string): string | null;
@@ -381,11 +381,11 @@ export class GhostDj {
 
   async #connect(voiceChannelId: string, textChannelId: string): Promise<Session> {
     const botId = this.#d.bot.botId;
-    const { url, token } = await this.#d.voice.joinLocal(botId, voiceChannelId);
+    const { url, token, icePort } = await this.#d.voice.joinLocal(botId, voiceChannelId);
     let output: AudioOutput | null = null;
     try {
       output = await this.#d.createOutput();
-      await output.connect(url, token);
+      await output.connect(url, token, icePort);
     } catch (e) {
       await output?.close().catch(() => undefined);
       await this.#d.voice.leaveLocal(botId).catch(() => undefined);
