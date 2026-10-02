@@ -310,6 +310,7 @@ export const IPC = {
   profileSetAvatar: 'ghostlink:profile.setAvatar',
   profileClearAvatar: 'ghostlink:profile.clearAvatar',
   profileSetServerIcon: 'ghostlink:profile.setServerIcon',
+  profileSetBotAvatar: 'ghostlink:profile.setBotAvatar',
   attachmentsUpload: 'ghostlink:attachments.upload',
   attachmentsSave: 'ghostlink:attachments.save',
   screenSources: 'ghostlink:screen.sources',
@@ -416,6 +417,7 @@ export interface IpcContract {
   [IPC.profileSetAvatar]: { args: [bytes: Uint8Array]; result: AvatarInfo };
   [IPC.profileClearAvatar]: { args: []; result: null };
   [IPC.profileSetServerIcon]: { args: [serverId: string, bytes: Uint8Array]; result: AvatarInfo };
+  [IPC.profileSetBotAvatar]: { args: [serverId: string, botId: string, bytes: Uint8Array]; result: AvatarInfo };
   [IPC.attachmentsUpload]: { args: [uploadId: string, serverId: string, channelId: string, name: string, bytes: Uint8Array]; result: UploadResult };
   [IPC.attachmentsSave]: { args: [src: string, name: string]; result: SaveResult };
   [IPC.screenSources]: { args: []; result: ScreenSource[] };

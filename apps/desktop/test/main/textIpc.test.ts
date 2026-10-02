@@ -45,7 +45,23 @@ describe('server.request (generic renderer → server requests)', () => {
     expect(await invoke(IPC.serverRequest, TOP, 'bans.list')).toEqual({ ok: true, value: { type: 'bans.list', payload: {} } });
   });
 
-  it.each([...FORBIDDEN_REQUEST_TYPES, 'res', 'error', 'welcome', 'challenge', 'msg.new', 'voice.state', 'upload.begin', 'files.url', 'a'.repeat(64)])(
+  it.each([
+    ...FORBIDDEN_REQUEST_TYPES,
+    'res',
+    'error',
+    'welcome',
+    'challenge',
+    'msg.new',
+    'voice.state',
+    'upload.begin',
+    'files.url',
+    // A bot's own requests: never from a person's app.
+    'commands.set',
+    'interaction.respond',
+    'interaction.edit',
+    'interaction.followup',
+    'a'.repeat(64),
+  ])(
     'refuses %s: only the client requests of spec §5.2 get through',
     async (type) => {
       expect(await invoke(IPC.serverRequest, TOP, type, {})).toEqual({ ok: false, code: 'BAD_REQUEST' });
@@ -58,6 +74,7 @@ describe('server.request (generic renderer → server requests)', () => {
       expect(RENDERER_REQUEST_TYPES.has(t), t).toBe(true);
     }
     for (const t of ['voice.join', 'voice.leave', 'voice.selfState', 'voice.moderate', 'ping']) expect(RENDERER_REQUEST_TYPES.has(t), t).toBe(true);
+    for (const t of ['bot.create', 'bot.regenerate', 'bot.delete', 'bot.list', 'interaction.invoke']) expect(RENDERER_REQUEST_TYPES.has(t), t).toBe(true);
     for (const t of FORBIDDEN_REQUEST_TYPES) expect(RENDERER_REQUEST_TYPES.has(t)).toBe(false);
   });
 

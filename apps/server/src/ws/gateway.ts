@@ -180,7 +180,7 @@ export class Gateway {
     }
     const meta = getMeta(this.#deps.db);
     const welcome: WelcomePayload & Record<string, unknown> = {
-      self: { userId: session.userId, nickname: session.nickname, isOwner: session.isOwner },
+      self: { userId: session.userId, nickname: session.nickname, isOwner: session.isOwner, ...(session.bot ? { bot: true } : {}) },
       sessionId: session.sessionId,
       serverTime: this.#deps.now(),
       server: { name: meta.name, version: this.#deps.version, joinMode: meta.joinMode, serverKeyId: this.#deps.serverKeyId },

@@ -13,6 +13,7 @@ import {
   msgSendSchema,
   typingSchema,
   type Message,
+  type MessageInteraction,
   type MessageMentions,
 } from '@ghostlink/shared';
 import type { RequestContext } from '../../modules.js';
@@ -146,6 +147,72 @@ const history: Handler = (core, ctx, payload) => {
   return { messages: page.reverse(), hasMore };
 };
 
+/** The msg.send / msg.edit buckets of this author: a bot's are twice a member's (bots spec §2). */
+export function messageBuckets(core: TextCore, userId: string) {
+  return core.repo.isBot(userId)
+    ? { send: core.limiters.botMsgSend, edit: core.limiters.botMsgEdit }
+    : { send: core.limiters.msgSend, edit: core.limiters.msgEdit };
+}
+
+export interface NewMessage {
+  channel: ChannelRow;
+  /** The author's bits in the channel (for @everyone and role mentions). */
+  bits: number;
+  authorId: string;
+  /** Already cleaned. */
+  text: string;
+  replyTo?: number | null;
+  clientMsgId?: string | null;
+  fileIds?: readonly string[];
+  interaction?: MessageInteraction | null;
+}
+
+/**
+ * Stores a message (mentions, files, the author's read state) in one transaction, then sends
+ * `msg.new` to the channel's audience. The caller checked permissions, the rate limit and the
+ * reply target.
+ */
+export function postMessage(core: TextCore, m: NewMessage): Message {
+  const mentions = resolveMentions(core, m.authorId, m.bits, m.channel, m.text);
+  const id = core.db.tx(() => {
+    const { lastInsertRowid } = core.db.run(
+      `INSERT INTO messages (channel_id, user_id, content, reply_to_id, created_at, client_msg_id,
+         interaction_id, interaction_user_id, interaction_command) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      m.channel.id, m.authorId, m.text, m.replyTo ?? null, core.now(), m.clientMsgId ?? null,
+      m.interaction?.id ?? null, m.interaction?.userId ?? null, m.interaction?.command ?? null,
+    );
+    writeMentions(core, lastInsertRowid, mentions);
+    linkAttachments(core, lastInsertRowid, m.authorId, m.channel.id, m.fileIds ?? []);
+    // Your own message is read by definition.
+    core.db.run(
+      `INSERT INTO read_states (user_id, channel_id, last_read_message_id) VALUES (?, ?, ?)
+       ON CONFLICT (user_id, channel_id) DO UPDATE SET last_read_message_id = excluded.last_read_message_id`,
+      m.authorId, m.channel.id, lastInsertRowid,
+    );
+    return lastInsertRowid;
+  });
+  const message = core.repo.toMessage(core.repo.message(id)!);
+  core.broadcastChannel(m.channel, { t: 'msg.new', d: { message } });
+  return message;
+}
+
+/**
+ * Replaces a live message's text (mentions re-resolved) and sends `msg.updated` when it
+ * changed. The caller checked authorship and the rate limit.
+ */
+export function editMessageText(core: TextCore, row: MessageRow, channel: ChannelRow, bits: number, text: string): Message {
+  if (text !== row.content) {
+    const mentions = resolveMentions(core, row.user_id, bits, channel, text);
+    core.db.tx(() => {
+      core.db.run('UPDATE messages SET content = ?, edited_at = ? WHERE id = ?', text, core.now(), row.id);
+      writeMentions(core, Number(row.id), mentions);
+    });
+  }
+  const message = core.repo.toMessage(core.repo.message(Number(row.id))!);
+  if (text !== row.content) core.broadcastChannel(channel, { t: 'msg.updated', d: { message } });
+  return message;
+}
+
 const send: Handler = (core, ctx, payload) => {
   const p = msgSendSchema.parse(payload);
   const actor = core.member(ctx.userId);
@@ -162,31 +229,14 @@ const send: Handler = (core, ctx, payload) => {
     if (existing.channel_id !== channel.id || existing.deleted_at !== null) throw new ProtocolError('BAD_REQUEST', 'clientMsgId reused');
     return { message: core.repo.toMessage(existing) };
   }
-  if (!core.limiters.msgSend.take(ctx.userId)) throw new ProtocolError('RATE_LIMITED');
+  if (!messageBuckets(core, ctx.userId).send.take(ctx.userId)) throw new ProtocolError('RATE_LIMITED');
 
   if (p.replyTo !== undefined) {
     const target = core.repo.message(p.replyTo);
     // A reply must quote a live message of the same channel (spec §5.3).
     if (!target || target.channel_id !== channel.id || target.deleted_at !== null) throw new ProtocolError('NOT_FOUND');
   }
-  const mentions = resolveMentions(core, ctx.userId, bits, channel, text);
-  const id = core.db.tx(() => {
-    const { lastInsertRowid } = core.db.run(
-      'INSERT INTO messages (channel_id, user_id, content, reply_to_id, created_at, client_msg_id) VALUES (?, ?, ?, ?, ?, ?)',
-      channel.id, ctx.userId, text, p.replyTo ?? null, core.now(), p.clientMsgId,
-    );
-    writeMentions(core, lastInsertRowid, mentions);
-    linkAttachments(core, lastInsertRowid, ctx.userId, channel.id, fileIds);
-    // Your own message is read by definition.
-    core.db.run(
-      `INSERT INTO read_states (user_id, channel_id, last_read_message_id) VALUES (?, ?, ?)
-       ON CONFLICT (user_id, channel_id) DO UPDATE SET last_read_message_id = excluded.last_read_message_id`,
-      ctx.userId, channel.id, lastInsertRowid,
-    );
-    return lastInsertRowid;
-  });
-  const message = core.repo.toMessage(core.repo.message(id)!);
-  core.broadcastChannel(channel, { t: 'msg.new', d: { message } });
+  const message = postMessage(core, { channel, bits, authorId: ctx.userId, text, replyTo: p.replyTo ?? null, clientMsgId: p.clientMsgId, fileIds });
   return { message };
 };
 
@@ -196,18 +246,9 @@ const edit: Handler = (core, ctx, payload) => {
   const { row, channel, bits } = visibleMessage(core, actor, p.id);
   if (row.user_id !== ctx.userId) throw new ProtocolError('FORBIDDEN');
   const text = content(p.content, core.repo.hasAttachments(Number(row.id)));
-  if (text !== row.content) {
-    // Only a real change is broadcast, so only a real change is counted.
-    if (!core.limiters.msgEdit.take(ctx.userId)) throw new ProtocolError('RATE_LIMITED');
-    const mentions = resolveMentions(core, ctx.userId, bits, channel, text);
-    core.db.tx(() => {
-      core.db.run('UPDATE messages SET content = ?, edited_at = ? WHERE id = ?', text, core.now(), row.id);
-      writeMentions(core, Number(row.id), mentions);
-    });
-  }
-  const message = core.repo.toMessage(core.repo.message(Number(row.id))!);
-  if (text !== row.content) core.broadcastChannel(channel, { t: 'msg.updated', d: { message } });
-  return { message };
+  // Only a real change is broadcast, so only a real change is counted.
+  if (text !== row.content && !messageBuckets(core, ctx.userId).edit.take(ctx.userId)) throw new ProtocolError('RATE_LIMITED');
+  return { message: editMessageText(core, row, channel, bits, text) };
 };
 
 const remove: Handler = (core, ctx, payload) => {

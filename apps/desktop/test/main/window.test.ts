@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applicationMenuTemplate, mainWindowOptions } from '../../src/main/window.js';
+import { APP_ID } from '@ghostlink/shared';
+import { appUserModelId, applicationMenuTemplate, mainWindowOptions } from '../../src/main/window.js';
 
 const PRELOAD = 'C:\\app\\out\\preload\\index.cjs';
 
@@ -54,5 +55,12 @@ describe('applicationMenuTemplate', () => {
 
   it("leaves Electron's default menu alone in development", () => {
     for (const platform of ['win32', 'darwin', 'linux'] as const) expect(applicationMenuTemplate({ packaged: false, platform })).toBeUndefined();
+  });
+});
+
+describe('appUserModelId', () => {
+  it('uses the installed app ID only when packaged, a separate one for development and tests', () => {
+    expect(appUserModelId(true)).toBe(APP_ID);
+    expect(appUserModelId(false)).toBe(`${APP_ID}.dev`);
   });
 });

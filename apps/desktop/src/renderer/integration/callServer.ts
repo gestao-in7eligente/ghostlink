@@ -35,8 +35,8 @@ export function followCallServer(): () => void {
   const offConnection = useConnectionStore.subscribe((c, prev) => {
     const call = callServerId(useVoiceStore.getState());
     if (call === null || prev.welcome?.serverId !== call || c.welcome?.serverId === call) return;
-    const { server, channels, messages, members } = useTextStore.getState();
-    if (server.serverId === call) useCallTextStore.setState({ text: { server, channels, messages, members } });
+    const { server, channels, messages, members, bots } = useTextStore.getState();
+    if (server.serverId === call) useCallTextStore.setState({ text: { server, channels, messages, members, bots } });
   });
 
   // ...then the call connection's events keep it live (a reconnect's welcome replaces it, spec §13).

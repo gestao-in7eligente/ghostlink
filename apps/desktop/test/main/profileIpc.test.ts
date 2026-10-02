@@ -69,7 +69,7 @@ describe('profile IPC (spec 2026-10-01 §3)', () => {
     ['an ArrayBuffer', [webp().buffer]],
     ['an extra argument', [webp(), 'extra']],
   ])('validates setAvatar’s argument before main sees it: %s', async (_label, args) => {
-    const profile = { avatar: vi.fn(), setAvatar: vi.fn(), clearAvatar: vi.fn(), setServerIcon: vi.fn() };
+    const profile = { avatar: vi.fn(), setAvatar: vi.fn(), clearAvatar: vi.fn(), setServerIcon: vi.fn(), setBotAvatar: vi.fn() };
     wire(profile);
     expect(await invoke(IPC.profileSetAvatar, TOP, ...args)).toEqual({ ok: false, code: 'BAD_REQUEST' });
     expect(profile.setAvatar).not.toHaveBeenCalled();
@@ -81,7 +81,7 @@ describe('profile IPC (spec 2026-10-01 §3)', () => {
   });
 
   it('refuses other frames and origins before touching the store', async () => {
-    const profile = { avatar: vi.fn(), setAvatar: vi.fn(), clearAvatar: vi.fn(), setServerIcon: vi.fn() };
+    const profile = { avatar: vi.fn(), setAvatar: vi.fn(), clearAvatar: vi.fn(), setServerIcon: vi.fn(), setBotAvatar: vi.fn() };
     wire(profile);
     const iframe = { url: 'app://ghostlink/index.html', parent: TOP };
     const elsewhere = { url: 'https://evil.example/', parent: null };

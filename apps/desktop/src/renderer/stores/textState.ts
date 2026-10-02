@@ -1,6 +1,6 @@
 // State and actions of the text stores (spec §11.2): server, channels, messages and
 // members. Each store has a pure slice reducer; stores/text.ts combines them.
-import type { AttachmentKind, Channel, JoinMode, Member, Message, ReadState, Role } from '@ghostlink/shared';
+import type { AttachmentKind, BotCommand, Channel, JoinMode, Member, Message, ReadState, Role } from '@ghostlink/shared';
 import type { AppErrorCode } from '../../shared/appErrors.js';
 import type { TextEvent, TextSnapshot } from '../features/chat/events.js';
 
@@ -87,11 +87,42 @@ export interface MembersState {
   byId: Readonly<Record<string, Member>>;
 }
 
+/**
+ * A line about an interaction that only this app shows (bots spec §3), placed right after the
+ * channel's message `afterId`: the bot "pensando…" (a defer), an answer only I see, or "O bot não
+ * respondeu".
+ */
+export type BotLocal =
+  | { kind: 'thinking'; id: string; channelId: string; botId: string; userId: string; command: string; ephemeral: boolean; afterId: number }
+  | {
+      kind: 'ephemeral';
+      /** The answer's own id: the interaction's for the answer itself, a new one per follow-up. */
+      id: string;
+      interactionId: string;
+      channelId: string;
+      botId: string;
+      userId: string;
+      command: string;
+      content: string;
+      createdAt: number;
+      editedAt: number | null;
+      afterId: number;
+    }
+  | { kind: 'failed'; id: string; channelId: string; botId: string; userId: string; command: string; afterId: number };
+
+export interface BotsState {
+  /** botId → its slash commands. */
+  commands: Readonly<Record<string, readonly BotCommand[]>>;
+  /** channelId → its interaction lines, oldest first. */
+  locals: Readonly<Record<string, readonly BotLocal[]>>;
+}
+
 export interface TextState {
   server: ServerState;
   channels: ChannelsState;
   messages: MessagesState;
   members: MembersState;
+  bots: BotsState;
 }
 
 export type TextAction =
@@ -116,7 +147,9 @@ export type TextAction =
   | { type: 'message.upsert'; message: Message }
   /** A read mark: optimistic (mentionCount 0) or the server's answer to channel.read. */
   | { type: 'read'; readState: ReadState }
-  | { type: 'typing.prune'; now: number };
+  | { type: 'typing.prune'; now: number }
+  /** "Dispensar" on an answer only I see, or on "O bot não respondeu". */
+  | { type: 'bots.dismiss'; channelId: string; kind: BotLocal['kind']; id: string };
 
 /** True when the message pings `userId`: a direct mention, @everyone, or one of their roles. */
 export function mentionsUser(message: Pick<Message, 'mentions'>, userId: string, roleIds: readonly string[]): boolean {

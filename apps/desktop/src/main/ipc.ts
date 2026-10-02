@@ -87,6 +87,9 @@ export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
   'voice.join', 'voice.leave', 'voice.selfState', 'voice.moderate',
   // The pencil on shared screens (v0.2.3)
   'screen.draw', 'screen.drawAllow',
+  // Bots (v0.4.0): managing them (MANAGE_SERVER) and using their slash commands. A bot's photo goes
+  // through profile.setBotAvatar; commands.set and the interaction answers are the bots' own.
+  'bot.create', 'bot.regenerate', 'bot.delete', 'bot.list', 'interaction.invoke',
   'ping',
 ]);
 

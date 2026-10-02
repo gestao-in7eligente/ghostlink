@@ -1,6 +1,15 @@
 // The main window's options and the application menu, as plain data (tested without Electron).
 import type { BrowserWindowConstructorOptions, MenuItemConstructorOptions, NativeImage } from 'electron';
-import { APP_NAME } from '@ghostlink/shared';
+import { APP_ID, APP_NAME } from '@ghostlink/shared';
+
+/**
+ * The Windows AppUserModelID: the installed app's own, or a separate one for development and
+ * test runs, whose Start-menu shortcut (Electron creates one to show toasts) must never stand in
+ * for the installed app's and give its taskbar button Electron's icon.
+ */
+export function appUserModelId(packaged: boolean): string {
+  return packaged ? APP_ID : `${APP_ID}.dev`;
+}
 
 /** The system buttons over the page's title bar: --bg-rail and --text-icon (tokens.css). */
 export const TITLE_BAR = { color: '#2c2d32', symbolColor: '#c5c6ca', height: 32 } as const;

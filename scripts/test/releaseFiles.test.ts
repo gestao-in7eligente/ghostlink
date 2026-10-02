@@ -73,7 +73,7 @@ describe('releaseVersionFromTag', () => {
 
   it('refuses a release without notes', () => {
     const root = tempDir();
-    for (const dir of ['', 'apps/desktop', 'apps/server', 'packages/shared']) {
+    for (const dir of ['', 'apps/desktop', 'apps/server', 'packages/shared', 'packages/discord-compat']) {
       mkdirSync(join(root, dir), { recursive: true });
       writeFileSync(join(root, dir, 'package.json'), '{"version":"1.2.3"}');
     }

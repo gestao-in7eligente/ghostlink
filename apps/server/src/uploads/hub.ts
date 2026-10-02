@@ -22,7 +22,7 @@ export interface UploadPurposeHandler {
    * upload.begin, after the schema and the open-token check: permissions, limits and the
    * purpose's own rate limit (ProtocolError). Returns what the token carries and adds to the answer.
    */
-  begin(ctx: RequestContext, payload: UploadBegin): { attachment?: AttachmentGrant; answer?: Omit<UploadBeginResult, 'uploadToken'> };
+  begin(ctx: RequestContext, payload: UploadBegin): { attachment?: AttachmentGrant; botId?: string; answer?: Omit<UploadBeginResult, 'uploadToken'> };
   /** True while the grant may still be used (checked before the body and again before finish). Synchronous. */
   canApply(grant: UploadGrant): boolean;
   /**
@@ -77,6 +77,7 @@ export class UploadHub {
       size: p.size,
       sha256: p.sha256,
       ...(extra.attachment ? { attachment: extra.attachment } : {}),
+      ...(extra.botId ? { botId: extra.botId } : {}),
     });
     return { uploadToken, ...extra.answer };
   }

@@ -13,14 +13,14 @@ Every GhostLink release is built by GitHub Actions from the public source and pu
 | `checksums-sha256.txt.sigstore.json` | A **Sigstore (cosign)** signature: the checksums file came from this repository's `release.yml` workflow, for that tag. |
 | `<file>.ed25519` | An **Ed25519** signature with GhostLink's release key. It is the same one the app checks before updating itself and that `install.sh` checks on a VPS. |
 
-Download the file you want to check and the verification files from the [release page](https://github.com/gestao-in7eligente/ghostlink/releases/latest). In the examples, replace `0.3.3` with the version you downloaded.
+Download the file you want to check and the verification files from the [release page](https://github.com/gestao-in7eligente/ghostlink/releases/latest). In the examples, replace `0.4.0` with the version you downloaded.
 
 ## 1. Checksums with Sigstore (cosign)
 
 With [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) installed:
 
 ```bash
-VERSION=0.3.3
+VERSION=0.4.0
 cosign verify-blob checksums-sha256.txt \
   --bundle checksums-sha256.txt.sigstore.json \
   --certificate-identity "https://github.com/gestao-in7eligente/ghostlink/.github/workflows/release.yml@refs/tags/v${VERSION}" \
@@ -33,7 +33,7 @@ sha256sum --ignore-missing -c checksums-sha256.txt
 On Windows (PowerShell), compare the installer's hash with its line in `checksums-sha256.txt`:
 
 ```powershell
-$file = 'GhostLink-Setup-0.3.3.exe'
+$file = 'GhostLink-Setup-0.4.0.exe'
 $expected = (Get-Content .\checksums-sha256.txt | Where-Object { $_.EndsWith("  $file") }).Split(' ')[0]
 (Get-FileHash ".\$file" -Algorithm SHA256).Hash.ToLower() -eq $expected   # must print True
 ```
@@ -58,7 +58,7 @@ sha256sum --ignore-missing -c checksums-sha256.txt
 
 OpenSSL must print `Signature Verified Successfully`, and `sha256sum` must print `OK` for every file you downloaded. The signed list ties each file to its name, and the name to its version, so an older file cannot pass for a newer one. The app checks the same before it updates itself, and refuses any version that is not newer than the one installed.
 
-Each file also has its own signature, checked the same way (`-in GhostLink-Setup-0.3.3.exe -sigfile GhostLink-Setup-0.3.3.exe.ed25519`). On its own, it proves that the release key signed those bytes, but not which version they are.
+Each file also has its own signature, checked the same way (`-in GhostLink-Setup-0.4.0.exe -sigfile GhostLink-Setup-0.4.0.exe.ed25519`). On its own, it proves that the release key signed those bytes, but not which version they are.
 
 The key is also in the source code, in `packages/shared/src/release.ts` (`RELEASE_PUBLIC_KEY`, base64url). The private key exists only in a protected GitHub environment, used only by version tags and after manual approval.
 

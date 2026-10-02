@@ -11,6 +11,8 @@ export interface ProfileIpcDeps {
   clearAvatar(): Promise<null>;
   /** The server icon (spec 2026-10-01-icone-do-servidor). */
   setServerIcon(serverId: string, bytes: Uint8Array): Promise<AvatarInfo>;
+  /** A bot's photo (bots spec §3). */
+  setBotAvatar(serverId: string, botId: string, bytes: Uint8Array): Promise<AvatarInfo>;
 }
 
 const imageBytes = z.instanceof(Uint8Array).refine((b) => b.byteLength > 0 && b.byteLength <= AVATAR_LIMITS.maxBytes);
@@ -21,6 +23,7 @@ export const PROFILE_IPC_ARG_SCHEMAS: { readonly [C in ProfileIpcChannel]: z.Zod
   [IPC.profileSetAvatar]: z.tuple([imageBytes]),
   [IPC.profileClearAvatar]: z.tuple([]),
   [IPC.profileSetServerIcon]: z.tuple([z.string().min(1).max(64), imageBytes]),
+  [IPC.profileSetBotAvatar]: z.tuple([z.string().min(1).max(64), z.string().regex(/^[0-9a-f]{32}$/), imageBytes]),
 };
 
 type ProfileHandlers = { [C in ProfileIpcChannel]: (...args: IpcArgs<C>) => IpcReturn<C> | Promise<IpcReturn<C>> };
@@ -35,5 +38,6 @@ export function createProfileIpcHandlers(deps: ProfileIpcDeps | undefined): Prof
     [IPC.profileSetAvatar]: (bytes) => profile().setAvatar(bytes),
     [IPC.profileClearAvatar]: () => profile().clearAvatar(),
     [IPC.profileSetServerIcon]: (serverId, bytes) => profile().setServerIcon(serverId, bytes),
+    [IPC.profileSetBotAvatar]: (serverId, botId, bytes) => profile().setBotAvatar(serverId, botId, bytes),
   };
 }

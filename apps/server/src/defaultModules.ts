@@ -1,4 +1,5 @@
 import { createAvatarsModule } from './avatars/index.js';
+import { createBotsModule } from './bots/index.js';
 import { createServerDeleteModule } from './deletion/index.js';
 import { createFilesModule } from './files/index.js';
 import type { ServerModule } from './modules.js';
@@ -17,6 +18,16 @@ export function defaultModules(): ServerModule[] {
   // Text first: voice reads channels and permissions from it (VoiceAccess), avatars announces members through it.
   // Files after avatars: it registers the `attachment` purpose with the avatars module's upload hub.
   // After voice: the pencil (screenDraw) reads voice's rooms, and status reports whether anyone is in a call.
+  // Bots after text: bot members, their messages and interaction answers go through it (TextModule.bots).
   // serverDelete last: it may close a session from its onSessionOpened, after every other module saw it open.
-  return [createTextModule(), createVoiceModule(), createAvatarsModule(), createFilesModule(), createScreenDrawModule(), createStatusModule(), createServerDeleteModule()];
+  return [
+    createTextModule(),
+    createVoiceModule(),
+    createAvatarsModule(),
+    createFilesModule(),
+    createBotsModule(),
+    createScreenDrawModule(),
+    createStatusModule(),
+    createServerDeleteModule(),
+  ];
 }

@@ -115,7 +115,8 @@ export async function admit(req: AdmissionRequest, deps: AdmissionDeps): Promise
 
       if (inviteCode !== null && !consumeInviteTx(db, inviteCode, now)) throw new Rejected('INVITE_INVALID');
       if (!wantsOwner) {
-        const active = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users WHERE removed_at IS NULL');
+        // Bots do not take a member's place (bots spec §2; BOT_LIMITS.maxBots caps them).
+        const active = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users WHERE removed_at IS NULL AND is_bot = 0');
         if (Number(active?.n ?? 0) >= current.maxMembers) throw new Rejected('SERVER_FULL');
         if (!existing && !deps.newIdentities.peek(req.ipKey)) throw new Rejected('RATE_LIMITED');
       }

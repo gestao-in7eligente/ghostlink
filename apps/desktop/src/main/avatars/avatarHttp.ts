@@ -100,6 +100,16 @@ export async function uploadAvatar(server: AvatarServer, bytes: Uint8Array, opts
   return result.data.avatar;
 }
 
+/**
+ * A bot's photo (MANAGE_SERVER, bots spec §2): the photo's path with `botId`. Resolves with the hash
+ * the server now holds for that bot.
+ */
+export async function uploadBotAvatar(server: AvatarServer, botId: string, bytes: Uint8Array, opts: AvatarHttpOptions = {}): Promise<string> {
+  const result = uploadResultSchema.safeParse(await uploadImage(server, bytes, 'avatar', opts, botId));
+  if (!result.success) throw new ProtocolError('BAD_REQUEST', 'invalid upload answer');
+  return result.data.avatar;
+}
+
 /** The same path for the server's icon (MANAGE_SERVER). Resolves with the icon's hash as the server now holds it. */
 export async function uploadServerIcon(server: AvatarServer, bytes: Uint8Array, opts: AvatarHttpOptions = {}): Promise<string> {
   const result = iconUploadResultSchema.safeParse(await uploadImage(server, bytes, 'icon', opts));
@@ -108,8 +118,8 @@ export async function uploadServerIcon(server: AvatarServer, bytes: Uint8Array, 
 }
 
 /** upload.begin, then POST /upload; the JSON of a 200 answer. */
-async function uploadImage(server: AvatarServer, bytes: Uint8Array, purpose: 'avatar' | 'icon', opts: AvatarHttpOptions): Promise<unknown> {
-  const begin: UploadBegin = { purpose, size: bytes.byteLength, sha256: sha256Hex(bytes) };
+async function uploadImage(server: AvatarServer, bytes: Uint8Array, purpose: 'avatar' | 'icon', opts: AvatarHttpOptions, botId?: string): Promise<unknown> {
+  const begin: UploadBegin = purpose === 'avatar' && botId !== undefined ? { purpose, size: bytes.byteLength, sha256: sha256Hex(bytes), botId } : { purpose, size: bytes.byteLength, sha256: sha256Hex(bytes) };
   const answer = uploadBeginResultSchema.safeParse(await server.request('upload.begin', begin));
   if (!answer.success) throw new ProtocolError('BAD_REQUEST', 'invalid upload.begin answer');
   const res = await pinnedRequest(server, {

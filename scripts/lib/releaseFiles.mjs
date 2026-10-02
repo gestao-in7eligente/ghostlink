@@ -12,7 +12,8 @@ import { SIGNATURE_SUFFIX, publicKeyFromRaw, verifyBytes } from './releaseKey.mj
 export const CHECKSUMS_FILE = 'checksums-sha256.txt';
 /** Stable versions only (no leading zeros); pre-release tags are not published by release.yml. */
 const VERSION = /^(?:0|[1-9][0-9]{0,5})\.(?:0|[1-9][0-9]{0,5})\.(?:0|[1-9][0-9]{0,5})$/;
-const PACKAGE_JSONS = ['package.json', 'apps/desktop/package.json', 'apps/server/package.json', 'packages/shared/package.json'];
+// The bots' package too: its .tgz is named after its own version (release.yml, compat job).
+const PACKAGE_JSONS = ['package.json', 'apps/desktop/package.json', 'apps/server/package.json', 'packages/shared/package.json', 'packages/discord-compat/package.json'];
 
 /**
  * The version a release tag publishes. The tag must be `v<X.Y.Z>`, every workspace package.json

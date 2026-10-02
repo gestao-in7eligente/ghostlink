@@ -24,6 +24,7 @@ function sidebarPt(): DefaultTheme.SidebarItem[] {
         { text: 'Numa VPS', link: '/hospedar-em-vps' },
       ],
     },
+    { text: 'Bots', items: [{ text: 'Bots com discord.js', link: '/bots' }] },
     {
       text: 'Segurança',
       items: [
@@ -52,6 +53,7 @@ function sidebarEn(): DefaultTheme.SidebarItem[] {
         { text: 'On a VPS', link: '/en/host-on-vps' },
       ],
     },
+    { text: 'Bots', items: [{ text: 'Bots with discord.js', link: '/en/bots' }] },
     {
       text: 'Security',
       items: [

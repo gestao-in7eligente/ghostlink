@@ -13,6 +13,7 @@ function install(stored: AvatarInfo | null = A) {
     setAvatar: vi.fn(async () => B),
     clearAvatar: vi.fn(async () => null),
     setServerIcon: vi.fn(async () => B),
+    setBotAvatar: vi.fn(async () => B),
   };
   (globalThis as { window?: unknown }).window = { ghostlink: { profile: api } };
 }

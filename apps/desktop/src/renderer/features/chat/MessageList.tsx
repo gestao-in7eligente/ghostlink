@@ -4,6 +4,7 @@ import { ArrowDown } from 'lucide-react';
 import type { Channel } from '@ghostlink/shared';
 import { useT } from '../../i18n/index.js';
 import { channelLog } from '../../stores/messages.js';
+import { channelLocals } from '../../stores/bots.js';
 import { useTextStore } from '../../stores/text.js';
 import type { ChannelLog } from '../../stores/textState.js';
 import { attachmentsHeight } from '../attachments/attachmentModel.js';
@@ -23,11 +24,12 @@ const START_PX = 12;
 function estimate(row: Row | undefined): number {
   if (!row) return 120;
   if (row.kind === 'date') return 44;
+  if (row.kind === 'bot') return row.local.kind === 'ephemeral' ? 96 + Math.ceil(row.local.content.length / 90) * 22 : 96;
   const content = row.kind === 'message' ? row.message.content : row.pending.content;
   const lines = Math.max(1, Math.ceil(content.length / 90)) + (content.match(/\n/g)?.length ?? 0);
   const extra =
     row.kind === 'message'
-      ? (row.message.replyTo ? 22 : 0) + (row.message.reactions.length > 0 ? 34 : 0) + attachmentsHeight(row.message.attachments)
+      ? (row.message.replyTo || row.message.interaction ? 22 : 0) + (row.message.reactions.length > 0 ? 34 : 0) + attachmentsHeight(row.message.attachments)
       : (row.pending.files?.length ?? 0) * 58;
   return (row.head ? 34 : 4) + lines * 22 + extra;
 }
@@ -57,7 +59,8 @@ export function MessageList({
   const t = useT();
   const log = useTextStore((s) => channelLog(s.messages, channel.id));
   const selfId = useTextStore((s) => s.server.selfId);
-  const rows = useMemo(() => buildRows(log?.items ?? EMPTY, log?.pending ?? EMPTY, selfId), [log?.items, log?.pending, selfId]);
+  const locals = useTextStore((s) => channelLocals(s.bots, channel.id));
+  const rows = useMemo(() => buildRows(log?.items ?? EMPTY, log?.pending ?? EMPTY, selfId, locals), [log?.items, log?.pending, selfId, locals]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const [atBottom, setAtBottom] = useState(true);

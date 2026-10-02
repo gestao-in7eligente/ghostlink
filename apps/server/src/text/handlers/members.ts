@@ -31,7 +31,7 @@ export const KICK_REJOIN_BLOCK_MS = 10 * 60_000;
  * session closes with `code` (no presence grace), everyone learns
  * `member.left`, and other modules get `membership.removed` (voice disconnects).
  */
-function finishRemoval(core: TextCore, userId: string, reason: MemberLeftReason, code: ErrorCode | null): void {
+export function finishRemoval(core: TextCore, userId: string, reason: MemberLeftReason, code: ErrorCode | null): void {
   core.knownMembers.delete(userId);
   if (code !== null) core.ctx.sessions.closeUser(userId, code);
   core.broadcastAll({ t: 'member.left', d: { userId, reason } });
@@ -39,7 +39,7 @@ function finishRemoval(core: TextCore, userId: string, reason: MemberLeftReason,
 }
 
 /** Membership data that ends with the membership. Call inside db.tx. */
-function dropMembership(core: TextCore, userId: string): void {
+export function dropMembership(core: TextCore, userId: string): void {
   core.db.run('DELETE FROM user_roles WHERE user_id = ?', userId);
   core.db.run('DELETE FROM read_states WHERE user_id = ?', userId);
   core.db.run('DELETE FROM mentions WHERE user_id = ?', userId);

@@ -26,6 +26,19 @@ export interface HelloPayload {
   client: string;
 }
 
+/**
+ * A bot's `hello` (spec 2026-10-02-bots-design.md §2): the connection token's secret in place of
+ * an identity. No challenge follows; the server answers `welcome` (self.bot = true) or closes
+ * with BAD_BOT_TOKEN. No password, invite or setup code. `botHelloSchema` (schemas.ts) checks it.
+ */
+export interface BotHelloPayload {
+  protocol: number;
+  /** b64url of the 32-byte secret, the `token` of the connection code (bots.ts). */
+  bot: string;
+  client: string;
+  locale?: string;
+}
+
 export interface ChallengePayload {
   nonce: string; // b64url 32B
   serverKeyId: string;
@@ -36,7 +49,8 @@ export interface AuthProofPayload {
 }
 
 export interface WelcomePayload {
-  self: { userId: string; nickname: string; isOwner: boolean };
+  /** `bot` is true only in a bot's session (bots.ts); absent otherwise. */
+  self: { userId: string; nickname: string; isOwner: boolean; bot?: boolean };
   sessionId: string;
   serverTime: number; // ms epoch
   server: { name: string; version: string; joinMode: JoinMode; serverKeyId: string };

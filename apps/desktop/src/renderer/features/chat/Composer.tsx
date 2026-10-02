@@ -8,6 +8,8 @@ import { textState, useTextStore } from '../../stores/text.js';
 import type { TrayLimits, TrayRejection } from '../attachments/attachmentModel.js';
 import { AttachmentTray } from '../attachments/AttachmentTray.js';
 import { TrayNotice, pastedFiles, useFilePicker, type PickedFile, type TrayFile } from '../attachments/filePicking.js';
+import { BotTag } from '../bots/BotParts.js';
+import { useSlashCommands } from '../bots/useSlashCommands.js';
 import { editMessage, resetTyping, sendMessage, sendTyping } from './actions.js';
 import c from './chat.module.css';
 import { useComposerStore } from './composerStore.js';
@@ -36,7 +38,8 @@ export interface ComposerFiles {
 /**
  * The message box (owner's UI reference): +, emoji, code, text, counter and "Enviar". The "+"
  * picks files (anexos §1), as do a drop on the chat and Ctrl+V of an image; they wait in the
- * tray above the box, and the text is optional when there are files.
+ * tray above the box, and the text is optional when there are files. A "/" at the start offers
+ * the bots' slash commands, and a picked one takes the text's place (bots spec §3).
  */
 export function Composer({
   channel,
@@ -159,6 +162,25 @@ export function Composer({
   // Nothing to send yet: no text and (outside an edit) no file in the tray.
   const idle = length === 0 && (edit !== null || files.items.length === 0);
 
+  const slash = useSlashCommands({
+    channel,
+    canSend,
+    editing: edit !== null,
+    text,
+    caret,
+    t,
+    setText: (next) => {
+      setText(next);
+      setPicked([]);
+      setCaret(next.length);
+      requestAnimationFrame(() => {
+        area.current?.focus();
+        area.current?.setSelectionRange(next.length, next.length);
+      });
+    },
+    onSent,
+  });
+
   const query = canSend ? mentionQueryAt(text, caret) : null;
   const suggestions = useMemo(() => {
     if (!query || dismissed === query.start) return [];
@@ -258,6 +280,7 @@ export function Composer({
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) return;
+    if (slash.onTextKeyDown(e)) return;
     if (open) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -295,8 +318,14 @@ export function Composer({
   const replyMessage = reply ? channelLog(textState().messages, channel.id)?.items.find((m) => m.id === reply.messageId) : undefined;
   const placeholder = canSend ? t('chat.placeholder', { channel: channel.name }) : t('chat.readOnly');
 
+  // The text box's list: the mentions, or the bots' commands.
+  const listOpen = open || slash.open;
+  const listRef = slash.open ? slash.listId : listId;
+  const listActive = slash.open ? slash.active : active;
+
   return (
     <div className={c.composerWrap}>
+      {slash.picker}
       {open && (
         <ul id={listId} className={c.mentions} role="listbox" aria-label={t('chat.mentionSuggestions')}>
           {suggestions.map((s, i) => (
@@ -313,7 +342,7 @@ export function Composer({
               onMouseEnter={() => setSelected(i)}
             >
               <span className={c.mentionName}>{s.display}</span>
-              <span className={c.mentionKind}>{t(`chat.mentionKind.${s.kind}`)}</span>
+              {s.kind === 'user' && members.byId[s.id]?.bot ? <BotTag t={t} /> : <span className={c.mentionKind}>{t(`chat.mentionKind.${s.kind}`)}</span>}
             </li>
           ))}
         </ul>
@@ -359,51 +388,56 @@ export function Composer({
             <Code size={20} aria-hidden="true" />
           </button>
         </div>
-        <textarea
-          ref={area}
-          className={c.input}
-          rows={1}
-          value={text}
-          placeholder={placeholder}
-          aria-label={placeholder}
-          disabled={!canSend}
-          maxLength={CHAT_LIMITS.messageMaxLength * 2}
-          spellCheck
-          role="combobox"
-          aria-expanded={open}
-          aria-controls={open ? listId : undefined}
-          aria-activedescendant={open ? `${listId}-${active}` : undefined}
-          aria-autocomplete="list"
-          onChange={(e) => {
-            const value = e.target.value;
-            const at = e.target.selectionStart;
-            setText(value);
-            setCaret(at);
-            setSelected(0);
-            // A dismissed suggestion list stays closed only while that same @query is being typed.
-            setDismissed((d) => (d !== null && mentionQueryAt(value, at)?.start === d ? d : null));
-            setError(null);
-            if (value.trim() !== '' && !edit) sendTyping(channel.id);
-          }}
-          onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-        />
-        <span className={tooLong ? `${c.counter} ${c.counterOver}` : c.counter} aria-live="polite">
-          {length}/{CHAT_LIMITS.messageMaxLength}
-        </span>
+        {slash.box ?? (
+          <textarea
+            ref={area}
+            className={c.input}
+            rows={1}
+            value={text}
+            placeholder={placeholder}
+            aria-label={placeholder}
+            disabled={!canSend}
+            maxLength={CHAT_LIMITS.messageMaxLength * 2}
+            spellCheck
+            role="combobox"
+            aria-expanded={listOpen}
+            aria-controls={listOpen ? listRef : undefined}
+            aria-activedescendant={listOpen ? `${listRef}-${listActive}` : undefined}
+            aria-autocomplete="list"
+            onChange={(e) => {
+              const value = e.target.value;
+              const at = e.target.selectionStart;
+              setText(value);
+              setCaret(at);
+              setSelected(0);
+              // A dismissed suggestion list stays closed only while that same @query is being typed.
+              setDismissed((d) => (d !== null && mentionQueryAt(value, at)?.start === d ? d : null));
+              setError(null);
+              if (value.trim() !== '' && !edit) sendTyping(channel.id);
+            }}
+            onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+          />
+        )}
+        {!slash.draft && (
+          <span className={tooLong ? `${c.counter} ${c.counterOver}` : c.counter} aria-live="polite">
+            {length}/{CHAT_LIMITS.messageMaxLength}
+          </span>
+        )}
         <button
           type="button"
-          className={idle ? `${c.send} ${c.sendIdle}` : c.send}
-          disabled={!canSend || busy || tooLong}
-          aria-disabled={idle || undefined}
-          onClick={() => void submit()}
+          className={idle && !slash.draft ? `${c.send} ${c.sendIdle}` : c.send}
+          disabled={slash.draft ? slash.busy : !canSend || busy || tooLong}
+          aria-disabled={(idle && !slash.draft) || undefined}
+          onClick={() => (slash.draft ? slash.submit() : void submit())}
         >
           <SendHorizontal size={16} aria-hidden="true" />
           {edit ? t('serverSettings.save') : t('chat.send')}
         </button>
       </div>
-      {error && (
+      {slash.footer}
+      {error && !slash.draft && (
         <p className={c.composerError} role="alert">
           {errorMessage(t, error)}
         </p>

@@ -1,5 +1,6 @@
-# Release pipeline (spec §15). A protected v<X.Y.Z> tag builds the Windows installer and the VPS
-# server package, then, after a maintainer approves the `release` environment:
+# Release pipeline (spec §15). A protected v<X.Y.Z> tag builds the Windows installer, the VPS
+# server package and the bots' discord.js compatibility package (ghostlink-discord-compat-<X.Y.Z>.tgz,
+# bots spec §4), then, after a maintainer approves the `release` environment:
 #   - every file gets a detached Ed25519 signature (<file>.ed25519) from the release key, which
 #     exists only as that environment's secret and never meets an npm install;
 #   - checksums-sha256.txt covers all files and is signed with Ed25519 and with Sigstore (cosign keyless);
@@ -155,9 +156,58 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  compat:
+    name: Bot package (discord.js compatibility)
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.x
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            npm ci && exit 0
+            echo "::warning::npm ci failed (attempt ${attempt} of 3), retrying in 20 s"
+            sleep 20
+          done
+          exit 1
+      # prepack builds dist/ (ESM, CommonJS and types); bots install the .tgz from the release, never from npm.
+      - name: Package
+        run: |
+          mkdir release
+          npm pack -w @ghostlink/discord-compat --pack-destination release
+          test -f "release/ghostlink-discord-compat-${VERSION}.tgz"
+      - name: Smoke test the package as a bot installs it
+        run: |
+          mkdir "$RUNNER_TEMP/bot"
+          cd "$RUNNER_TEMP/bot"
+          npm init -y > /dev/null
+          npm install "$GITHUB_WORKSPACE/release/ghostlink-discord-compat-${VERSION}.tgz"
+          test "$(node -p "require('@ghostlink/discord-compat').version")" = "${VERSION}"
+          test "$(node --input-type=module -e "import { version, Client } from '@ghostlink/discord-compat'; console.log(typeof Client === 'function' ? version : 'broken')")" = "${VERSION}"
+      - name: Upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-compat
+          path: release/
+          if-no-files-found: error
+          retention-days: 3
+
   sign:
     name: Sign
-    needs: [version, windows, server]
+    needs: [version, windows, server, compat]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Required reviewer + v* tags only: the release key is released to this job after approval.

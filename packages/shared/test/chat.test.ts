@@ -171,6 +171,8 @@ describe('client schemas (lenient)', () => {
       { id: ROLE, name: 'foto.png', size: 1234, kind: 'image', mime: 'image/png', width: 640, height: 480 },
       { id: 'B'.repeat(26), name: 'nota.pdf', size: 99, kind: 'file', mime: 'application/pdf' },
     ],
+    authorBot: false,
+    interaction: null,
   };
 
   it('keeps known fields and drops unknown ones', () => {
@@ -188,12 +190,12 @@ describe('client schemas (lenient)', () => {
   it('parses a channel and a member', () => {
     const channel = { id: ROLE, name: 'geral', type: 'text', topic: '', position: 0, private: false, allowedRoleIds: [], userLimit: 0, lastMessageId: 0 };
     expect(channelSchemaClient.parse(channel)).toEqual(channel);
-    const member = { userId: USER, nickname: 'Ana', roleIds: [], online: true, joinedAt: 1, avatar: 'a'.repeat(64) };
+    const member = { userId: USER, nickname: 'Ana', roleIds: [], online: true, joinedAt: 1, avatar: 'a'.repeat(64), bot: false };
     expect(memberSchemaClient.parse(member)).toEqual(member);
   });
 
   it('reads a member without a photo, or with a broken one, as initials', () => {
-    const member = { userId: USER, nickname: 'Ana', roleIds: [], online: true, joinedAt: 1 };
+    const member = { userId: USER, nickname: 'Ana', roleIds: [], online: true, joinedAt: 1, bot: false };
     // A server before 0.2.2 sends no avatar key.
     expect(memberSchemaClient.parse(member)).toEqual({ ...member, avatar: null });
     expect(memberSchemaClient.parse({ ...member, avatar: '../etc/passwd' })).toEqual({ ...member, avatar: null });

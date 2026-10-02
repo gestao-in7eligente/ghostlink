@@ -3,7 +3,12 @@
 // parse, or whose type is unknown, is ignored (spec §5.1).
 import { z } from 'zod';
 import {
+  botCommandsSchemaClient,
+  botsWelcomeSchemaClient,
   channelSchemaClient,
+  interactionEphemeralEventSchemaClient,
+  interactionFailedEventSchemaClient,
+  interactionThinkingEventSchemaClient,
   memberSchemaClient,
   messageSchemaClient,
   reactionSchemaClient,
@@ -11,8 +16,13 @@ import {
   roleSchemaClient,
   serverInfoSchemaClient,
   textWelcomeSchemaClient,
+  type BotCommand,
+  type BotCommands,
   type Channel,
   type Envelope,
+  type InteractionEphemeralEvent,
+  type InteractionFailedEvent,
+  type InteractionThinkingEvent,
   type JoinMode,
   type Member,
   type MemberLeftReason,
@@ -41,7 +51,12 @@ export type TextEvent =
   | { t: 'role.created'; role: Role }
   | { t: 'role.updated'; role: Role }
   | { t: 'role.deleted'; id: string }
-  | { t: 'server.updated'; server: ServerInfo };
+  | { t: 'server.updated'; server: ServerInfo }
+  // Bots (bots spec §2, §3)
+  | { t: 'commands.updated'; botId: string; commands: BotCommand[] }
+  | ({ t: 'interaction.thinking' } & InteractionThinkingEvent)
+  | ({ t: 'interaction.ephemeral' } & InteractionEphemeralEvent)
+  | ({ t: 'interaction.failed' } & InteractionFailedEvent);
 
 export type TextEventType = TextEvent['t'];
 
@@ -114,6 +129,22 @@ const EVENT_PARSERS: { readonly [T in TextEventType]: (d: unknown) => Extract<Te
     const p = serverInfoSchemaClient.safeParse(d);
     return p.success ? { t: 'server.updated', server: p.data } : null;
   },
+  'commands.updated': (d) => {
+    const p = botCommandsSchemaClient.safeParse(d);
+    return p.success ? { t: 'commands.updated', botId: p.data.botId, commands: p.data.commands } : null;
+  },
+  'interaction.thinking': (d) => {
+    const p = interactionThinkingEventSchemaClient.safeParse(d);
+    return p.success ? { t: 'interaction.thinking', ...p.data } : null;
+  },
+  'interaction.ephemeral': (d) => {
+    const p = interactionEphemeralEventSchemaClient.safeParse(d);
+    return p.success ? { t: 'interaction.ephemeral', ...p.data } : null;
+  },
+  'interaction.failed': (d) => {
+    const p = interactionFailedEventSchemaClient.safeParse(d);
+    return p.success ? { t: 'interaction.failed', ...p.data } : null;
+  },
 };
 
 /** The text event carried by an envelope, or null for anything else (unknown, malformed, or another module's). */
@@ -128,6 +159,8 @@ export interface TextSnapshot {
   self: { userId: string; nickname: string; isOwner: boolean };
   server: { name: string; joinMode: JoinMode; version: string };
   text: TextWelcome;
+  /** Every bot's slash commands (servers before 0.4.0: none). */
+  botCommands?: readonly BotCommands[];
 }
 
 /** Builds the snapshot; module keys ride along on the welcome object (main/connection.ts keeps them). */
@@ -137,5 +170,6 @@ export function snapshotFromWelcome(welcome: RendererWelcome): TextSnapshot {
     self: { ...welcome.self },
     server: { name: welcome.server.name, joinMode: welcome.server.joinMode, version: welcome.server.version },
     text: textWelcomeSchemaClient.parse(welcome),
+    botCommands: botsWelcomeSchemaClient.parse(welcome).botCommands,
   };
 }

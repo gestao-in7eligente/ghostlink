@@ -136,6 +136,11 @@ function OpenChannel({ channel }: { channel: Channel }) {
       canReact,
       md,
       name: (id) => memberName({ members }, id, t('chat.formerMember')),
+      author: (id, authorBot) => {
+        const member = Object.hasOwn(members.byId, id) ? members.byId[id]! : undefined;
+        if (member) return { name: member.nickname, bot: member.bot };
+        return { name: authorBot ? t('bots.deletedBot') : t('chat.formerMember'), bot: authorBot };
+      },
       avatar: (id) => (id !== null && Object.hasOwn(members.byId, id) ? members.byId[id]!.avatar : null),
       plain: (content) => plainContent({ members, server }, content, t),
       fileUrl: (fileId) => (server.serverId === null ? null : serverFileUrl(server.serverId, fileId)),
@@ -149,6 +154,7 @@ function OpenChannel({ channel }: { channel: Channel }) {
       onJumpTo: (id) => setHighlight(id),
       onRetry: (p) => void retryMessage(p.channelId, p.clientMsgId),
       onDrop: (p) => dropMessage(p.channelId, p.clientMsgId),
+      onDismiss: (local) => dispatchText({ type: 'bots.dismiss', channelId: local.channelId, kind: local.kind, id: local.id }),
     }),
     [t, locale, selfId, canManageMessages, canReact, md, members, server, myRoleIds, highlight],
   );

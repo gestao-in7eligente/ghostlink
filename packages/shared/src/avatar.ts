@@ -34,6 +34,8 @@ export const avatarUploadBeginSchema = z.strictObject({
   purpose: z.literal('avatar'),
   size: z.number().int().min(1).max(AVATAR_LIMITS.maxBytes),
   sha256: avatarHashSchema,
+  /** A bot's photo, set by someone with MANAGE_SERVER (bots spec §2); absent: my own photo. */
+  botId: z.string().regex(/^[0-9a-f]{32}$/).optional(),
 });
 /**
  * `upload.begin` for the server's icon (MANAGE_SERVER, spec 2026-10-01-icone-do-servidor): an
@@ -54,8 +56,8 @@ export interface IconUploadResult {
   icon: string;
 }
 
-/** `avatar.clear`: back to initials. */
-export const avatarClearSchema = z.strictObject({});
+/** `avatar.clear`: back to initials; with `botId` (MANAGE_SERVER), that bot's photo. */
+export const avatarClearSchema = z.strictObject({ botId: z.string().regex(/^[0-9a-f]{32}$/).optional() });
 
 /** `server.iconClear` (MANAGE_SERVER): the server goes back to its initials. */
 export const serverIconClearSchema = z.strictObject({});

@@ -3,9 +3,11 @@ import {
   PROTOCOL,
   ProtocolError,
   authProofSchema,
+  botHelloSchema,
   buildAuthMessage,
   fromBase64Url,
   helloSchema,
+  isBotHello,
   negotiateProtocol,
   normalizeNickname,
   type Envelope,
@@ -21,6 +23,7 @@ import type { Logger } from '../logger.js';
 import type { SlidingWindowLimiter } from '../ratelimit/limiter.js';
 import { ConnectionClosedError, type Connection } from '../ws/connection.js';
 import { admit } from './admission.js';
+import { admitBot, findBotByToken } from './botAuth.js';
 import type { ChallengeStore } from './challenges.js';
 import { isWeakPublicKey, userIdFromPublicKey, verifyAuthSignature } from './identity.js';
 
@@ -31,6 +34,8 @@ export interface AuthedSession {
   isOwner: boolean;
   fileToken: string;
   locale: string;
+  /** A bot's session (bots spec §2): welcome.self.bot. */
+  bot?: boolean;
 }
 
 export interface HandshakeDeps {
@@ -58,6 +63,38 @@ export class HandshakeFailed extends Error {
     super(code);
     this.name = 'HandshakeFailed';
   }
+}
+
+type Fail = (code: ErrorCode, opts: { counts: boolean; extra?: ErrorEventExtra }) => HandshakeFailed;
+
+/**
+ * A bot's hello (bots spec §2): the token instead of an identity, so no challenge. Every bot
+ * hello is a guess at a secret: the per-IP auth-failure limit applies before the check, and a
+ * wrong token counts toward it. Straight to the welcome on success.
+ */
+function botHandshake(conn: Connection, deps: HandshakeDeps, payload: unknown, fail: Fail): AuthedSession {
+  const parsed = botHelloSchema.safeParse(payload);
+  if (!parsed.success) throw fail('BAD_REQUEST', { counts: true });
+  const hello = parsed.data;
+  if (!negotiateProtocol(hello.protocol, PROTOCOL)) {
+    throw fail('PROTOCOL_UNSUPPORTED', { counts: false, extra: { min: PROTOCOL.min, max: PROTOCOL.max } });
+  }
+  if (!deps.authFailures.peek(conn.ipKey)) throw fail('RATE_LIMITED', { counts: false });
+  const botId = findBotByToken(deps.db, hello.bot);
+  if (botId === null) throw fail('BAD_BOT_TOKEN', { counts: true });
+  const result = admitBot(deps.db, botId, deps.now());
+  if (!result.ok) throw fail(result.code, { counts: result.countsAsFailure, extra: result.extra });
+  conn.clearDeadline();
+  conn.state = 'authenticated';
+  return {
+    userId: result.user.id,
+    sessionId: randomBytes(16).toString('base64url'),
+    nickname: result.user.nickname,
+    isOwner: false,
+    fileToken: randomBytes(32).toString('base64url'),
+    locale: hello.locale ?? 'en',
+    bot: true,
+  };
 }
 
 /**
@@ -92,6 +129,7 @@ export async function runHandshake(conn: Connection, deps: HandshakeDeps): Promi
   conn.setDeadline(deps.limits.helloTimeoutMs, () => fail('BAD_REQUEST', { counts: true }));
   const helloEnvelope = await next();
   if (helloEnvelope.t !== 'hello') throw fail('BAD_REQUEST', { counts: true });
+  if (isBotHello(helloEnvelope.d)) return botHandshake(conn, deps, helloEnvelope.d, fail);
   const parsed = helloSchema.safeParse(helloEnvelope.d);
   if (!parsed.success) throw fail('BAD_REQUEST', { counts: true });
   const hello: HelloPayload = parsed.data;

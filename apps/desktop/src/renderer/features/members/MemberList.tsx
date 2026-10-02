@@ -5,6 +5,7 @@ import { Avatar, type MenuAnchor } from '../../layout/primitives.js';
 import { groupMembers, type MemberGroup } from '../../stores/members.js';
 import { memberRoles } from '../../stores/server.js';
 import { useTextStore } from '../../stores/text.js';
+import { BotTag } from '../bots/BotParts.js';
 import { MemberMenu } from './MemberMenu.js';
 import m from './members.module.css';
 
@@ -74,7 +75,7 @@ function MemberRow({
   const shown = roles.slice(0, MAX_BADGES);
   const hidden = roles.length - shown.length;
   const status = member.online ? t('layout.online') : t('members.statusOffline');
-  const describe = [member.nickname, status, isSelf ? t('members.you') : null, isOwner ? t('members.owner') : null, ...roles.map((r) => r.name)]
+  const describe = [member.nickname, member.bot ? t('bots.tag') : null, status, isSelf ? t('members.you') : null, isOwner ? t('members.owner') : null, ...roles.map((r) => r.name)]
     .filter(Boolean)
     .join(', ');
 
@@ -104,6 +105,7 @@ function MemberRow({
         <span className={m.text}>
           <span className={m.nameLine}>
             <span className={m.name}>{member.nickname}</span>
+            {member.bot && <BotTag t={t} />}
             {isSelf && <span className={`${m.badge} ${m.badgeAccent}`}>{t('members.you')}</span>}
             {isOwner && <span className={`${m.badge} ${m.badgeAccent}`}>{t('members.owner')}</span>}
             {shown.map((r) => {
