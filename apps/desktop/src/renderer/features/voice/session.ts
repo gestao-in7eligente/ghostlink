@@ -242,8 +242,9 @@ export class VoiceSession {
   }
 
   /**
-   * "Assistir": subscribes that person's screen and its sound (spec §8.4). The watched set
-   * lives in the store and is re-applied on every TrackPublished, also after a reconnect.
+   * "Assistir" after "Parar de assistir": subscribes that person's screen and its sound again.
+   * Every screen in my call is subscribed without a click (owner, 2026-10-02); the ones I stopped
+   * watching live in the store and are left out on every TrackPublished, also after a reconnect.
    */
   watch(userId: string): void {
     const state = this.#deps.getState();
@@ -252,8 +253,10 @@ export class VoiceSession {
     for (const [pub, p] of this.#screenPublications(userId)) this.#maybeSubscribe(pub, p);
   }
 
-  /** "Parar de assistir": unsubscribes both; the picture goes away at once. */
+  /** "Parar de assistir": unsubscribes both until that share ends; the picture goes away at once. */
   unwatch(userId: string): void {
+    const state = this.#deps.getState();
+    if (!this.#room || state.call.status === 'idle' || userId === state.selfUserId) return;
     this.#deps.dispatch({ type: 'watch', userId, watching: false });
     this.#deps.video.remote(userId, null);
     for (const [pub] of this.#screenPublications(userId)) pub.setSubscribed(false);
@@ -395,7 +398,7 @@ export class VoiceSession {
           return;
         }
         // A screen that arrives after "Parar de assistir" is on its way out: not shown.
-        if (!wantsSubscription(pub.source, track.kind, userId, this.#deps.getState().watching)) return;
+        if (!wantsSubscription(pub.source, track.kind, userId, this.#deps.getState().unwatched)) return;
         if (track.kind === Track.Kind.Video) {
           this.#deps.video.remote(userId, track);
         } else {
@@ -415,11 +418,12 @@ export class VoiceSession {
         if (userId && pub.source === Track.Source.Microphone) this.#deps.dispatch({ type: 'subscribed', userId, subscribed: false });
       })
       .on(RoomEvent.TrackUnpublished, (pub: RemoteTrackPublication, participant: RemoteParticipant) => {
-        // Stopped sharing while still in the room: no longer watched. Someone who left (or
-        // is coming back through a reconnect) was removed from the room first, and stays watched.
+        // Stopped sharing while still in the room: that share is over, so "Parar de assistir" is
+        // forgotten and the next one is watched. Someone coming back through a reconnect was
+        // removed from the room first, and stays as they were (voice.state forgets who left).
         if (!mine() || pub.source !== Track.Source.ScreenShare || room.remoteParticipants.get(participant.identity) !== participant) return;
         const userId = userIdOf(participant);
-        if (userId) this.#deps.dispatch({ type: 'watch', userId, watching: false });
+        if (userId) this.#deps.dispatch({ type: 'watch', userId, watching: true });
       })
       .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
         // LiveKit took my screen off the air (the capture ended, or VIDEO was taken away).
@@ -469,9 +473,9 @@ export class VoiceSession {
       });
   }
 
-  /** Microphones and cameras always; a screen and its sound while watched (spec §8.4). */
+  /** Microphones and cameras always; a screen and its sound unless I stopped watching it. */
   #maybeSubscribe(pub: TrackPublication, participant: Pick<Participant, 'identity'>): void {
-    if (wantsSubscription(pub.source, pub.kind, userIdOf(participant), this.#deps.getState().watching)) (pub as RemoteTrackPublication).setSubscribed(true);
+    if (wantsSubscription(pub.source, pub.kind, userIdOf(participant), this.#deps.getState().unwatched)) (pub as RemoteTrackPublication).setSubscribed(true);
   }
 
   /** Everything I take in my room again (after a server deafen ends). */

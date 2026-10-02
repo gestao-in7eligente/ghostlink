@@ -1,5 +1,5 @@
 // The pencil on shared screens end to end (spec 2026-10-01-lapis-na-tela-design.md §5): two built
-// app instances. Ana hosts and shares her first screen, Bia joins by invite and watches; Bia turns
+// app instances. Ana hosts and shares her first screen, Bia joins by invite and sees it; Bia turns
 // the pencil on and drags across the stream: her canvas shows the stroke at once, and Ana receives
 // it on the overlay over her real monitor and on her own preview. Ana turns "Permitir desenhos"
 // off and Bia's pencil goes away (the server refuses a stroke too); when Ana stops sharing, the
@@ -137,7 +137,7 @@ describe.skipIf(!binary)('the pencil: Bia draws on the screen Ana shares', () =>
     await ana.page.locator('[data-screen-sharing]').waitFor({ timeout: 20_000 });
 
     await voiceRow(bia.page, sala, 'Ana').locator('[data-screen-live-badge]').waitFor({ timeout: 30_000 });
-    await bia.page.locator(`[data-screen-watch="${anaId}"]`).click();
+    // Watched without a click (owner, 2026-10-02): the picture plays in Ana's stream tile.
     await expect
       .poll(async () => bia.page.evaluate(`document.querySelector('video[data-screen-video="${anaId}"]')?.videoWidth ?? 0`), { timeout: 30_000 })
       .toBeGreaterThan(0);
@@ -256,7 +256,7 @@ describe.skipIf(!binary)('the pencil: Bia draws on the screen Ana shares', () =>
     console.log(`[draw e2e] Bia's window ${JSON.stringify(biaWindow.bounds)}, overlay ${JSON.stringify((await overlayWindow(ana))?.bounds)}`);
 
     await voiceRow(bia.page, sala, 'Ana').locator('[data-screen-live-badge]').waitFor({ timeout: 30_000 });
-    await bia.page.locator(`[data-screen-watch="${anaId}"]`).click();
+    // Watched without a click (owner, 2026-10-02): the picture plays in Ana's stream tile.
     await expect
       .poll(async () => bia.page.evaluate(`document.querySelector('video[data-screen-video="${anaId}"]')?.videoWidth ?? 0`), { timeout: 30_000 })
       .toBeGreaterThan(0);

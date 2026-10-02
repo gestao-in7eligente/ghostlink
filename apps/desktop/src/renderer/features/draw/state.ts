@@ -6,7 +6,7 @@ import { FEATURE_SCREEN_DRAW, screenDrawWelcomeSchemaClient } from '@ghostlink/s
 import type { VoiceState } from '../voice/state.js';
 
 /** What the pencil reads from the voice store. */
-export type VoiceView = Pick<VoiceState, 'selfUserId' | 'call' | 'channels' | 'watching' | 'sharing'>;
+export type VoiceView = Pick<VoiceState, 'selfUserId' | 'call' | 'channels' | 'unwatched' | 'sharing'>;
 
 export interface DrawState {
   /** The server relays strokes (`screenDraw` in welcome.features, spec §1). */
@@ -40,7 +40,7 @@ export function canDraw(d: Pick<DrawState, 'available' | 'off'>, v: VoiceView, s
   if (!d.available || !channelId || v.call.status !== 'connected' || !v.selfUserId) return false;
   if (d.off.includes(shareKey(channelId, sharerId))) return false;
   if (sharerId === v.selfUserId) return v.sharing !== null;
-  return v.watching.includes(sharerId) && sharing(v, channelId, sharerId);
+  return !v.unwatched.includes(sharerId) && sharing(v, channelId, sharerId);
 }
 
 /** Whether drawing is on for my own share (the "Permitir desenhos" switch). */

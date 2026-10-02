@@ -9,7 +9,7 @@ Desenho aprovado pelo dono em 2026-10-01. Detalha e muda a seção "Tela" da spe
 | Onde | Nos canais de voz dos servidores. Nas chamadas de DM dos amigos entra quando elas existirem. |
 | Quem pode | Quem tem a permissão `VIDEO` no canal. Ela já vem ligada para `@todos`, e o servidor já libera as fontes `SCREEN_SHARE` e `SCREEN_SHARE_AUDIO` no token de quem a tem. Nada muda no servidor. |
 | Som | **Imagem e som do PC.** Muda a spec principal, que deixava o áudio do sistema de fora. O som é o do sistema **sem o áudio do próprio GhostLink** (§4), para quem assiste não ouvir a chamada de novo. |
-| Quem recebe | Só quem clica em **Assistir** (spec principal §8.4). Cada pessoa assistindo é uma cópia a mais saindo do servidor de quem hospeda. |
+| Quem recebe | **Todos na chamada, sem clicar** (mudança do dono em 2026-10-02, v0.4.6: "ao compartilhar tela deve mostrar no quadrado e não apenas quando clica em assistir"). Quem não quiser clica em **Parar de assistir**. Cada pessoa assistindo é uma cópia a mais saindo do servidor de quem hospeda. |
 | Qualidade | 720p30, **1080p30 (padrão)** ou 1080p60, com simulcast de 2 camadas. |
 | Lançamento | Desenvolvido na branch `v0.2-screen`, a partir da `main`. Sai numa versão própria (v0.2.1), antes dos amigos, e depois é mesclado na `v0.3-friends`. |
 
@@ -52,14 +52,14 @@ Medido em 2026-10-01 neste PC (Electron 44.4.5, Windows 11): com `audio: 'loopba
 ## 5. Assistir
 
 - **Selo:** quem transmite aparece com "AO VIVO" na lista do canal de voz (o `voice.state` já traz `screen` por pessoa).
-- **No palco de voz,** cada transmissão vira um quadro com o nome e o botão **Assistir**.
-- **Assistir** assina as publicações `ScreenShare` e `ScreenShareAudio` daquela pessoa (`setSubscribed(true)`). **Parar de assistir** desassina as duas.
-  - O conjunto do que a pessoa está assistindo fica no estado local e é reaplicado em `TrackPublished`, inclusive depois de uma reconexão (spec principal §8.4).
-- **Assistindo:**
-  - o vídeo grande, com **tela cheia**;
+- **No palco de voz,** cada transmissão vira um quadro na grade, ao lado dos quadros das pessoas, **já com a imagem** (v0.4.6). O app assina as publicações `ScreenShare` e `ScreenShareAudio` de todo mundo na chamada (`setSubscribed(true)`) assim que aparecem, e também as que já existiam quando eu entrei.
+- **Clicar no quadro** mostra a transmissão grande, com as outras pessoas numa fileira embaixo; **Voltar para a grade** desfaz.
+- **No quadro e na transmissão grande:**
+  - **tela cheia**;
   - o **volume da transmissão** (0–200%), separado do volume da voz daquela pessoa e salvo do mesmo jeito;
-  - **Parar de assistir**.
-- **Várias transmissões ao mesmo tempo:** aparecem em grade, e clicar numa foca nela.
+  - **Parar de assistir**: desassina as duas publicações e o quadro volta a mostrar o nome e o botão **Assistir**, que assina de novo.
+- **Parar de assistir vale só para aquela transmissão.** O conjunto de quem eu parei de assistir fica no estado local e é respeitado em `TrackPublished`, inclusive depois de uma reconexão. Quando a pessoa para de transmitir (ou sai da chamada, segundo o `voice.state`), ela sai do conjunto, e a próxima transmissão dela aparece sozinha de novo.
+- **Várias transmissões ao mesmo tempo:** cada uma no seu quadro da grade, e clicar numa mostra ela grande.
 - A qualidade recebida se adapta ao tamanho do quadro e à conexão (`adaptiveStream` e simulcast, que o app já usa).
 
 ## 6. Presets
@@ -95,7 +95,7 @@ Sem preset explícito o LiveKit limita a tela a 15 fps.
 | Fontes e escolha | `apps/desktop/src/main/screenPicker.ts` | `listSources()`, a escolha com validade de 10 s, o handler de `setDisplayMediaRequestHandler`. Testável sem Electron (dependências injetadas). |
 | IPC | `screen.sources`, `screen.choose` em `shared/ipcTypes.ts`, preload e `main/ipc.ts` | Esquemas zod estritos (`sourceId` no formato do `desktopCapturer`, `audio` booleano). |
 | Publicar | `renderer/features/voice/screenShare.ts` | Criar as faixas com os presets e a restrição de som, conferir `deviceId`, publicar, parar, reagir ao fim da captura. |
-| Assistir | `renderer/features/voice/` (sessão e estado) | Assinar e desassinar, reaplicar depois de reconexões, volume da transmissão. |
+| Assistir | `renderer/features/voice/` (sessão e estado) | Assinar sem clique, Parar de assistir e Assistir, respeitar depois de reconexões, volume da transmissão. |
 | Interface | `renderer/features/voice/` | Seletor, botão e selo no painel, quadros no palco, tela cheia. |
 | Textos | `renderer/i18n/voice.*.ts` | pt-BR e en. |
 
@@ -106,6 +106,6 @@ Sem preset explícito o LiveKit limita a tela a 15 fps.
   - o handler que recusa sem escolha ou com origem errada;
   - a montagem das opções de captura e publicação por preset;
   - a decisão de descartar o som quando o `deviceId` não é `loopbackWithoutChrome`;
-  - a reaplicação do "assistindo" depois de reconexão.
-- **e2e** (Playwright `_electron`, dispositivos falsos): Ana hospeda, Bia entra, as duas entram na voz. Ana abre o seletor e escolhe a primeira tela. Bia vê o selo, clica em Assistir e recebe vídeo com quadros decodificados; ela para e a assinatura sai. O seletor próprio dispensa o `GHOSTLINK_E2E_PICK` da spec principal.
+  - a assinatura sem clique (também das transmissões que já existiam ao entrar), e o "parei de assistir" respeitado depois de reconexão e esquecido quando a transmissão termina.
+- **e2e** (Playwright `_electron`, dispositivos falsos): Ana hospeda, Bia entra, as duas entram na voz. Ana abre o seletor e escolhe a primeira tela. Bia vê o selo e, sem clicar, recebe vídeo com quadros decodificados no quadro da Ana; um clique mostra grande; ela para de assistir, a assinatura sai e o botão Assistir volta; Assistir traz a imagem de novo. O seletor próprio dispensa o `GHOSTLINK_E2E_PICK` da spec principal.
 - **Manual** (`docs/checklist-teste.md`): um jogo com som durante uma chamada, e quem assiste ouve o jogo e não ouve a própria chamada de volta; 1080p60; Windows 10 transmitindo só a imagem com o aviso.

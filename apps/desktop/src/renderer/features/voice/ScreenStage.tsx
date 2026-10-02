@@ -1,6 +1,7 @@
-// Screens on the voice stage (spec 2026-10-01 §5): a tile per live person with "Assistir";
-// a watched stream large with fullscreen, its volume and "Parar de assistir"; several in a
-// grid, and a click focuses one. Also the share button's logic, shared with the panel.
+// Screens on the voice stage (spec 2026-10-01 §5): each live screen plays in its tile without a
+// click (owner, 2026-10-02), with fullscreen, its volume and "Parar de assistir"; a click shows it
+// large; one I stopped watching is a tile with "Assistir". Also the share button's logic, shared
+// with the panel.
 import { Eye, LayoutGrid, Maximize, Minimize, Monitor } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { PERMISSIONS, has } from '@ghostlink/shared';
@@ -36,7 +37,7 @@ export function useScreenShareButton(channelId: string) {
   };
 }
 
-/** A watched stream: the video, its name and LIVE badge, and (unless compact) the controls. */
+/** A watched stream (in its tile, large, or compact in the strip): the video, its name and LIVE badge, and (unless compact) the controls. */
 export function StreamView({ userId, size, onFocus, onShowAll }: { userId: string; size: 'large' | 'grid' | 'compact'; onFocus?: () => void; onShowAll?: () => void }) {
   const t = useT();
   const directory = useVoiceDirectory();
@@ -72,13 +73,16 @@ export function StreamView({ userId, size, onFocus, onShowAll }: { userId: strin
         <span className={s.streamName}>{name}</span>
       </div>
       <DrawLayer sharerId={userId} interactive={size !== 'compact'} />
+      {size !== 'compact' && onShowAll && (
+        // Top-left, apart from the bottom bar: at narrow widths the bar reaches the name label.
+        <div className={s.streamCorner}>
+          <button type="button" className={s.streamIcon} aria-label={t('voice.screen.showAll')} title={t('voice.screen.showAll')} onClick={onShowAll}>
+            <LayoutGrid size={18} aria-hidden="true" />
+          </button>
+        </div>
+      )}
       {size !== 'compact' && (
         <div className={s.streamBar}>
-          {onShowAll && (
-            <button type="button" className={s.streamIcon} aria-label={t('voice.screen.showAll')} title={t('voice.screen.showAll')} onClick={onShowAll}>
-              <LayoutGrid size={18} aria-hidden="true" />
-            </button>
-          )}
           <StreamVolume userId={userId} />
           <PencilButton sharerId={userId} className={s.streamIcon} />
           <button
@@ -100,7 +104,7 @@ export function StreamView({ userId, size, onFocus, onShowAll }: { userId: strin
   );
 }
 
-/** Someone live I am not watching: their name, the LIVE badge and "Assistir". */
+/** Someone live I stopped watching ("Parar de assistir"): their name, the LIVE badge and "Assistir". */
 export function StreamTile({ userId }: { userId: string }) {
   const t = useT();
   const directory = useVoiceDirectory();
