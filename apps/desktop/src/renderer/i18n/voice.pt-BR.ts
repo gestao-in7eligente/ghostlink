@@ -108,10 +108,10 @@ export const voice = {
   // The call's mini window while I share my screen (v0.4.4, spec 2026-10-02-janelinha-da-chamada).
   'voice.callWindow.label': 'Janelinha da chamada',
   'voice.callWindow.presenting': 'Você está apresentando',
+  'voice.callWindow.screen': 'Sua tela compartilhada',
+  'voice.callWindow.waiting': 'Carregando a sua tela…',
   'voice.callWindow.backToApp': 'Voltar ao GhostLink',
   'voice.callWindow.close': 'Fechar esta janela (o compartilhamento continua)',
-  'voice.callWindow.people': 'Quem está na chamada',
-  'voice.callWindow.morePeople': 'Mais {count} na chamada',
   'voice.callWindow.draw': 'Deixar os outros desenharem na minha tela',
   'voice.callWindow.stop': 'Parar de compartilhar',
   'voice.callWindow.leave': 'Sair da chamada',
