@@ -1,13 +1,14 @@
 /**
  * `client.application`: the bot as an application, and its slash commands
- * (`client.application.commands.set([...])` → GhostLink's `commands.set`, bots spec §2, §4).
+ * (`client.application.commands.set([...])` → GhostLink's `commands.set`, bots spec §2, §4), and
+ * its description (`client.application.edit({ description })` → `bot.setDescription`, bot page spec).
  */
 import { botCommandSchemaClient, type BotCommand } from '@ghostlink/shared';
 import { Collection } from './collection.js';
 import type { Client } from './client.js';
 import { TO_DISCORD, toGhostLinkCommand, type ApplicationCommandDataResolvable } from './commands.js';
 import { ApplicationCommandType, type ApplicationCommandOptionType } from './enums.js';
-import { unsupportedMembers } from './errors.js';
+import { GhostLinkUnsupported, unsupportedMembers } from './errors.js';
 
 /** A command option as discord.js's ApplicationCommand shows it (camelCase). */
 export interface ApplicationCommandOption {
@@ -97,6 +98,13 @@ export class ApplicationCommandManager {
 }
 unsupportedMembers(ApplicationCommandManager.prototype, 'ApplicationCommandManager', ['create', 'edit', 'delete', 'permissions', 'resolve', 'resolveId']);
 
+/** What discord.js's `application.edit()` takes; GhostLink keeps only `description`. */
+export interface ClientApplicationEditOptions {
+  /** The bot's "Sobre" on its page in the app: up to 1000 characters, chat markdown. */
+  description?: string;
+  [option: string]: unknown;
+}
+
 /** `client.application`: the bot, as an application. `id` is the bot's user id. */
 export class ClientApplication {
   declare readonly client: Client;
@@ -113,8 +121,27 @@ export class ClientApplication {
   get name(): string {
     return this.client._selfName();
   }
+
+  /**
+   * Sets the bot's description, shown on its page in the app (GhostLink `bot.setDescription`).
+   * Any other field (icon, cover image, flags, install settings…) throws GhostLinkUnsupported
+   * before anything is sent.
+   */
+  async edit(options: ClientApplicationEditOptions): Promise<this> {
+    if (typeof options !== 'object' || options === null) throw new TypeError('application.edit takes an object');
+    for (const [key, value] of Object.entries(options)) {
+      if (key !== 'description' && value !== undefined) {
+        throw new GhostLinkUnsupported(`ClientApplication.edit({ ${key} })`, 'GhostLink keeps only the description');
+      }
+    }
+    const { description } = options;
+    if (description === undefined) return this;
+    if (typeof description !== 'string') throw new TypeError('description must be a string');
+    await this.client._request('bot.setDescription', { description });
+    return this;
+  }
 }
 unsupportedMembers(ClientApplication.prototype, 'ClientApplication', [
   'fetch', 'owner', 'description', 'icon', 'iconURL', 'coverURL', 'flags', 'approximateGuildCount', 'botPublic', 'botRequireCodeGrant',
-  'emojis', 'entitlements', 'edit', 'fetchRoleConnectionMetadataRecords', 'editRoleConnectionMetadataRecords', 'fetchSKUs',
+  'emojis', 'entitlements', 'fetchRoleConnectionMetadataRecords', 'editRoleConnectionMetadataRecords', 'fetchSKUs',
 ]);
