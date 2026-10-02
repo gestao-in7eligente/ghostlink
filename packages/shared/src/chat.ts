@@ -85,6 +85,16 @@ export interface ReplyPreview {
   deleted: boolean;
 }
 
+/**
+ * A bot message that answers a slash command (bots spec §2): "<userId> used /<command>".
+ * `id` is the interaction's, so the app can replace its "thinking…" line with this message.
+ */
+export interface MessageInteraction {
+  id: string;
+  userId: string;
+  command: string;
+}
+
 export interface Message {
   id: number;
   channelId: string;
@@ -98,6 +108,10 @@ export interface Message {
   clientMsgId: string | null;
   /** In the order they were sent; empty without files (spec 2026-10-01-anexos §2). */
   attachments: Attachment[];
+  /** The author is (or was, for a deleted bot) a bot (bots spec §2). */
+  authorBot: boolean;
+  /** Set on a bot's public answer to a slash command; null otherwise. */
+  interaction: MessageInteraction | null;
 }
 
 export interface ReadState {
@@ -114,6 +128,8 @@ export interface Member {
   joinedAt: number;
   /** The profile photo's SHA-256 (hex), or null: initials (spec 2026-10-01-foto-de-perfil). */
   avatar: string | null;
+  /** A bot account, created by the server (bots spec §2); shown with the BOT tag. */
+  bot: boolean;
 }
 
 export interface ServerSettings {
@@ -351,6 +367,12 @@ export const messageSchemaClient: z.ZodType<Message> = z.object({
   clientMsgId: z.string().max(64).nullable().catch(null),
   // Servers before attachments send none.
   attachments: z.array(attachmentSchemaClient).max(CHAT_LIMITS.maxAttachments).catch([]),
+  // Servers before 0.4.0 have no bots.
+  authorBot: z.boolean().catch(false),
+  interaction: z
+    .object({ id: idClient, userId: idClient, command: z.string().max(64) })
+    .nullable()
+    .catch(null),
 });
 
 export const readStateSchemaClient: z.ZodType<ReadState> = z.object({
@@ -367,6 +389,8 @@ export const memberSchemaClient: z.ZodType<Member> = z.object({
   joinedAt: z.number().catch(0),
   // Servers before 0.2.2 send no photo: initials.
   avatar: z.string().regex(/^[0-9a-f]{64}$/).nullable().catch(null),
+  // Servers before 0.4.0 have no bots.
+  bot: z.boolean().catch(false),
 });
 
 // Servers before attachments send no limits: the defaults they had in the database.

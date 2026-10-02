@@ -19,3 +19,4 @@ export * from './ownerStatus.js';
 export * from './serverDelete.js';
 export * from './attachments.js';
 export * from './upload.js';
+export * from './bots.js';

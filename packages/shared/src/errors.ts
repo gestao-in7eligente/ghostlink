@@ -6,6 +6,9 @@ export const ERROR_CODES = [
   'CHANNEL_FULL', 'FILE_TOO_LARGE', 'IMAGE_TOO_LARGE', 'QUOTA_EXCEEDED', 'BAD_ATTACHMENT', 'OWNER_MUST_TRANSFER',
   // Deleting a server (serverDelete.ts): offline until the deadline (the error event carries `at`), then erased.
   'SERVER_DELETING', 'SERVER_DELETED',
+  // Bots (bots.ts, spec 2026-10-02-bots-design.md §2): a bot hello with an unknown or replaced
+  // connection token; an interaction.invoke to a bot with no session.
+  'BAD_BOT_TOKEN', 'BOT_OFFLINE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
