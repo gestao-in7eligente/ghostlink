@@ -5,7 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { release } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { APP_ID, APP_NAME, DEFAULT_PORT } from '@ghostlink/shared';
+import { APP_NAME, DEFAULT_PORT } from '@ghostlink/shared';
 import { IPC_EVENTS, type Locale, type Platform, type ServerEventMessage } from '../shared/ipcTypes.js';
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges, type AppRoutes } from './appProtocol.js';
 import { createAttachments } from './attachments/index.js';
@@ -43,7 +43,7 @@ import { UpdateSplash } from './updateSplash.js';
 import { Updater, createUpdaterBackend, type StartupOutcome } from './updater.js';
 import { createReleaseFileFetcher } from './updaterSignature.js';
 import { loadWin32WindowApi } from './win32Window.js';
-import { applicationMenuTemplate, mainWindowOptions } from './window.js';
+import { appUserModelId, applicationMenuTemplate, mainWindowOptions } from './window.js';
 
 const smoke = process.env.GHOSTLINK_SMOKE === '1';
 // 0. Before anything can fail: a closed console pipe is never fatal, and uncaught errors are
@@ -128,7 +128,9 @@ async function start(): Promise<BrowserWindow | null> {
   const servers = SavedServersStore.load(userData);
   // Windows shows toasts (and routes their clicks) only for a known AppUserModelID. Set before the
   // first window (the update splash), so it shares the taskbar button with the main window.
-  if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
+  // Development and test runs use their own ID: Electron creates a Start-menu "Electron.lnk" for the
+  // ID it toasts under, and one sharing the installed app's ID gave its taskbar button Electron's icon.
+  if (process.platform === 'win32') app.setAppUserModelId(appUserModelId(app.isPackaged));
 
   // The update state reaches the page once the main window exists (the renderer also asks for it on load).
   let target: BrowserWindow | null = null;
