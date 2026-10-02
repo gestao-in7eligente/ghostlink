@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RendererWelcome } from '../../shared/ipcTypes.js';
+import { BotPage } from '../features/bots/BotPage.js';
 import { ChatView } from '../features/chat/ChatView.js';
 import { MemberList } from '../features/members/MemberList.js';
 import { InviteDialog } from '../features/server-settings/InviteDialog.js';
@@ -10,6 +11,7 @@ import { deletionMessage } from '../features/serverDelete/serverDeleteModel.js';
 import { DeleteServerDialog } from '../features/serverDelete/ServerExitDialogs.js';
 import { ServerUpdateNotice } from '../features/serverUpdate/ServerUpdateNotice.js';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
+import { centerView } from '../stores/channels.js';
 import { useConnectionStore } from '../stores/connection.js';
 import { useSettingsStore } from '../stores/settings.js';
 import { useTextStore } from '../stores/text.js';
@@ -27,7 +29,7 @@ type Dialog = SidebarDialog | 'user' | 'voice' | null;
 
 /**
  * The main screen (spec §11.1 item 4, owner's UI reference): server rail, channel
- * sidebar with the user panel, the chat (or the voice stage) and the member list.
+ * sidebar with the user panel, the chat (or the voice stage, or a bot's page) and the member list.
  */
 export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onLeave: () => void }) {
   const t = useT();
@@ -36,6 +38,8 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
   const [dialog, setDialog] = useState<Dialog>(null);
   const [leaving, setLeaving] = useState(false);
   const stageId = useTextStore((s) => s.channels.stageId);
+  const botPageId = useTextStore((s) => s.channels.botPageId);
+  const view = centerView({ stageId, botPageId });
   const VoiceStage = useLayoutSlots((s) => s.VoiceStage);
   const shellRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -62,8 +66,11 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
       <main className={l.center}>
         {/* Leave/delete spec §3: the owner's red band while the server waits for its erase. */}
         <DeletionBanner serverId={welcome.serverId} />
-        {stageId !== null && VoiceStage ? (
+        {view === 'stage' && stageId !== null && VoiceStage ? (
           <VoiceStage channelId={stageId} onOpenSettings={() => setDialog('voice')} />
+        ) : view === 'bot' && botPageId !== null ? (
+          // Bot page spec: the bot selected in BOTS, like a channel.
+          <BotPage botId={botPageId} />
         ) : (
           <>
             {/* Spec 2026-10-01 §5: only the owner sees it, when the server is behind the app. */}
