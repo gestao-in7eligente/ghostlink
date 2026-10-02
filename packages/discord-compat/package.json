@@ -1,6 +1,6 @@
 {
   "name": "@ghostlink/discord-compat",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "private": true,
   "description": "Run a discord.js v14 bot on a GhostLink server: change the import and the token.",
   "license": "GPL-3.0-or-later",
