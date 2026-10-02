@@ -533,8 +533,8 @@ export function createVoiceModule(opts: VoiceModuleOptions = {}): VoiceModule {
     }
     if (p.action === 'deafen' || p.action === 'undeafen') {
       broadcast(registry.setServerDeafened(p.userId, p.action === 'deafen'));
-      // Enforced by LiveKit: canSubscribe false drops every subscription, and the client cannot
-      // take one again until it is true (their client subscribes again by itself then).
+      // Enforced by LiveKit: canSubscribe false stops what they receive at once and refuses new
+      // subscriptions until it is true again (their client subscribes again by itself then).
       await syncPermission(p.userId);
       return {};
     }

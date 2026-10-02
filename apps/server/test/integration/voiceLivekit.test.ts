@@ -5,6 +5,7 @@ import { connect as tlsConnect } from 'node:tls';
 import {
   AudioFrame,
   AudioSource,
+  AudioStream,
   LocalAudioTrack,
   Room,
   RoomEvent,
@@ -173,6 +174,53 @@ describe.skipIf(!binary)('voice with the real LiveKit', () => {
     await expect.poll(async () => (await e.rs.listParticipants('ch_VC1'))[0]?.permission?.canPublishSources, { timeout: 10_000 }).toContain(TrackSource.MICROPHONE);
     await publishMicrophone(room);
     await expect.poll(() => e.voice.registry.hasMicrophone(ana.identity.userId), { timeout: 10_000 }).toBe(true);
+  });
+
+  it('a server deafen cuts the sound in place and refuses new subscriptions until undeafen', async () => {
+    const e = await env();
+    const ana = await e.client('ana');
+    const bia = await e.client('bia');
+    const mod = await e.client('mod');
+    e.text.setBits(mod.identity.userId, 'VC1', e.text.defaultBits | P.MUTE_MEMBERS);
+    e.text.positions.set(mod.identity.userId, 5);
+    const listener = await participant(e, ok<{ token: string }>(await ana.request('voice.join', { channelId: 'VC1' })).token);
+    const speaker = await participant(e, ok<{ token: string }>(await bia.request('voice.join', { channelId: 'VC1' })).token);
+    // Ana hears Bia's tone while frames with sound reach her.
+    let heardAt = 0;
+    listener.on(RoomEvent.TrackSubscribed, (track) => {
+      void (async () => {
+        for await (const frame of new AudioStream(track)) if (frame.data.some((v) => Math.abs(v) > 2_000)) heardAt = Date.now();
+      })().catch(() => {});
+    });
+    const hearing = () => Date.now() - heardAt < 300;
+    // Subscriptions by hand, as the app makes them (autoSubscribe off).
+    const subscribe = () => {
+      for (const p of listener.remoteParticipants.values()) for (const pub of p.trackPublications.values()) pub.setSubscribed(true);
+    };
+    const source = new AudioSource(48_000, 1);
+    const options = new TrackPublishOptions();
+    options.source = RtcTrackSource.SOURCE_MICROPHONE;
+    await speaker.localParticipant!.publishTrack(LocalAudioTrack.createAudioTrack('mic', source), options);
+    const tone = Int16Array.from({ length: 480 }, (_, i) => Math.round(8_000 * Math.sin((2 * Math.PI * 440 * i) / 48_000)));
+    let speaking = true;
+    void (async () => {
+      while (speaking) await source.captureFrame(new AudioFrame(tone, 48_000, 1, 480));
+    })().catch(() => {});
+    try {
+      await expect.poll(() => (subscribe(), hearing()), { timeout: 15_000 }).toBe(true);
+
+      ok(await mod.request('voice.moderate', { userId: ana.identity.userId, action: 'deafen' }));
+      await expect.poll(async () => (await e.rs.listParticipants('ch_VC1')).find((p) => p.identity === `u_${ana.identity.userId}`)?.permission?.canSubscribe, { timeout: 10_000 }).toBe(false);
+      await expect.poll(hearing, { timeout: 10_000 }).toBe(false);
+      subscribe();
+      await new Promise((r) => setTimeout(r, 1_500));
+      expect(hearing()).toBe(false);
+
+      ok(await mod.request('voice.moderate', { userId: ana.identity.userId, action: 'undeafen' }));
+      await expect.poll(() => (subscribe(), hearing()), { timeout: 15_000 }).toBe(true);
+    } finally {
+      speaking = false;
+    }
   });
 
   it('a server mute before the user reaches LiveKit is applied when they arrive, though their token allows the microphone', async () => {
