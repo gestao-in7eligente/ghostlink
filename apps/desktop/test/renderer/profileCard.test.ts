@@ -1,11 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DmConversation, DmMessage } from '../../src/shared/dmTypes.js';
-import type { Friend, FriendsSnapshot } from '../../src/shared/friendsTypes.js';
 import type { TextSnapshot } from '../../src/renderer/features/chat/events.js';
-import { averageColor, cardRoles, formatMemberSince, friendOf, nextRoleIds, placeCard, type CardRoles } from '../../src/renderer/features/profileCard/profileCardModel.js';
-import { changeRole, copyUserId, messageFriend, useProfileCardStore } from '../../src/renderer/features/profileCard/profileCardStore.js';
+import { averageColor, cardRoles, formatMemberSince, nextRoleIds, placeCard, type CardRoles } from '../../src/renderer/features/profileCard/profileCardModel.js';
+import { changeRole, copyUserId, useProfileCardStore } from '../../src/renderer/features/profileCard/profileCardStore.js';
 import { initialConnection, useConnectionStore } from '../../src/renderer/stores/connection.js';
-import { useDmStore } from '../../src/renderer/stores/dm.js';
 import { initialText, useTextStore } from '../../src/renderer/stores/text.js';
 import { ADMIN_ROLE, BOB, CAROL, FANS_ROLE, ME, MOD_ROLE, OWNER, member, snapshot, start, welcomeWithText } from './textFixtures.js';
 
@@ -101,33 +98,6 @@ describe('the roles on the card: × and (+) only for who may manage them (spec �
 });
 
 describe('the rest of the card', () => {
-  const friend = (userId: string, state: Friend['state']): Friend => ({
-    key: `key-${userId}`,
-    userId,
-    shortCode: 'ABCDEFGH',
-    nickname: 'x',
-    localName: null,
-    state,
-    online: false,
-    since: 1,
-  });
-
-  it('"Conversar com" only for a friend (spec §3)', () => {
-    const friends: FriendsSnapshot = {
-      revision: 1,
-      running: true,
-      available: true,
-      code: null,
-      inboxEnabled: true,
-      friends: [friend(BOB, 'friend'), friend(CAROL, 'pending_out'), friend(OWNER, 'blocked')],
-    };
-    expect(friendOf(friends, BOB)?.key).toBe(`key-${BOB}`);
-    expect(friendOf(friends, CAROL)).toBeNull();
-    expect(friendOf(friends, OWNER)).toBeNull();
-    expect(friendOf(friends, ME)).toBeNull();
-    expect(friendOf(null, BOB)).toBeNull();
-  });
-
   it('"MEMBRO DESDE" in the app\'s language; nothing when the server did not say', () => {
     const at = Date.UTC(2026, 9, 2, 12);
     expect(formatMemberSince(at, 'pt-BR')).toBe('2 de out. de 2026');
@@ -138,27 +108,10 @@ describe('the rest of the card', () => {
 
 // ---- the store and the card's buttons ----
 
-const CONV = 'c'.repeat(32);
-const FRIEND_KEY = 'K'.repeat(43);
-
-function conversation(): DmConversation {
-  return { id: CONV, kind: 'dm', peer: FRIEND_KEY, lastTs: null, lastText: null, unread: 0, hidden: false };
-}
-
-function sent(text: string): DmMessage {
-  return { id: 'e'.repeat(32), conv: CONV, author: 'M'.repeat(43), mine: true, ts: 1, text, replyTo: null, editedAt: null, deleted: false, delivered: false, attachments: [] };
-}
-
 function fakeApi() {
   return {
     app: { copyText: vi.fn(async (_text: string) => undefined) },
     server: { request: vi.fn(async (_type: string, _payload?: unknown, _serverId?: string): Promise<unknown> => ({})) },
-    servers: { disconnect: vi.fn(async () => undefined) },
-    dm: {
-      open: vi.fn(async (_key: string) => conversation()),
-      send: vi.fn(async (_conv: string, text: string, _replyTo: string | null) => sent(text)),
-      history: vi.fn(async () => [] as DmMessage[]),
-    },
   };
 }
 
@@ -172,7 +125,6 @@ beforeEach(() => {
   useTextStore.setState(initialText);
   useTextStore.getState().dispatch({ type: 'reset', snapshot: snapshot() });
   useProfileCardStore.setState({ card: null });
-  useDmStore.setState({ conversations: [], logs: {}, typing: {}, drafts: {}, selected: null, loadError: null });
   useConnectionStore.setState({ ...initialConnection, state: 'connected', serverId: 'srv-1', welcome: welcomeWithText() });
 });
 
@@ -234,25 +186,5 @@ describe('what the card\'s buttons do', () => {
   it('a refused role change rejects with the server\'s code (shown on one line)', async () => {
     api.server.request.mockRejectedValue(new Error('HIERARCHY'));
     await expect(changeRole(member(BOB, 'Bob'), FANS_ROLE, true)).rejects.toThrow('HIERARCHY');
-  });
-
-  it('Enter in "Conversar com @Nome" sends the text to the friend\'s conversation and opens it on Home', async () => {
-    await messageFriend(FRIEND_KEY, '  oi, tudo bem?  ');
-    expect(api.dm.open).toHaveBeenCalledWith(FRIEND_KEY);
-    expect(api.dm.send).toHaveBeenCalledWith(CONV, 'oi, tudo bem?', null);
-    expect(useDmStore.getState().selected).toBe(CONV);
-    expect(useDmStore.getState().conversations).toEqual([conversation()]);
-    // The server leaves the screen (a call there goes on): the Home screen shows the conversation.
-    expect(api.servers.disconnect).toHaveBeenCalledOnce();
-    expect(useConnectionStore.getState()).toMatchObject({ state: 'idle', welcome: null });
-  });
-
-  it('sends nothing for an empty text, and stays on the server when sending fails', async () => {
-    await messageFriend(FRIEND_KEY, '   ');
-    expect(api.dm.open).not.toHaveBeenCalled();
-    api.dm.send.mockRejectedValue(new Error('NOT_FRIEND'));
-    await expect(messageFriend(FRIEND_KEY, 'oi')).rejects.toThrow('NOT_FRIEND');
-    expect(api.servers.disconnect).not.toHaveBeenCalled();
-    expect(useConnectionStore.getState().state).toBe('connected');
   });
 });

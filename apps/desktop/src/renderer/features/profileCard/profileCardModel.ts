@@ -1,7 +1,6 @@
 // The profile card (spec 2026-10-02-cartao-de-perfil): what it shows and where it goes, pure so
 // it is tested without a DOM.
 import { PERMISSIONS, has, type Member, type Role } from '@ghostlink/shared';
-import type { Friend, FriendsSnapshot } from '../../../shared/friendsTypes.js';
 import { canActOnMember, manageableRoles, memberRoles, myPermissions } from '../../stores/server.js';
 import type { TextState } from '../../stores/textState.js';
 
@@ -81,11 +80,6 @@ export function nextRoleIds(roleIds: readonly string[], roleId: string, give: bo
 }
 
 // ---- the rest of the card ----
-
-/** The person is my friend (spec §3): only then the card offers "Conversar com @Nome". */
-export function friendOf(snapshot: FriendsSnapshot | null, userId: string): Friend | null {
-  return snapshot?.friends.find((f) => f.state === 'friend' && f.userId === userId) ?? null;
-}
 
 /** "MEMBRO DESDE": "2 de out. de 2026" / "Oct 2, 2026"; null when the server did not say. */
 export function formatMemberSince(joinedAt: number, locale: string): string | null {

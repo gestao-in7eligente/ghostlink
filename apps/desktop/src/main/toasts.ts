@@ -121,6 +121,7 @@ export interface ToastWindow {
   isVisible(): boolean;
   isDestroyed(): boolean;
   destroy(): void;
+  getMediaSourceId(): string;
   loadURL(url: string): Promise<void>;
   once(event: 'closed', listener: () => void): unknown;
   webContents: {
@@ -227,6 +228,12 @@ export class ToastStack {
     if (!this.#hovered) this.#count(entry);
     this.#render();
     return true;
+  }
+
+  /** The cards' window as desktopCapturer names it, so the screen-share picker leaves it out; null without one. */
+  mediaSourceId(): string | null {
+    const window = this.#window;
+    return window === null || window.isDestroyed() ? null : window.getMediaSourceId();
   }
 
   /** The app is quitting (or its window closed): no more cards, the window goes. */

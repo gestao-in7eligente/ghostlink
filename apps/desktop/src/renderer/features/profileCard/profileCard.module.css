@@ -185,31 +185,6 @@
   color: var(--text-bright);
 }
 
-/* "Conversar com @Nome": the message box's colors. */
-.message {
-  width: 100%;
-  height: 40px;
-  padding: 0 12px;
-  border: 1px solid var(--border-composer);
-  border-radius: 8px;
-  background: var(--bg-composer);
-  color: var(--text-strong);
-  font-size: 14px;
-}
-
-.message::placeholder {
-  color: var(--text-placeholder);
-}
-
-.message:focus {
-  border-color: var(--accent);
-  outline: none;
-}
-
-.message[aria-busy='true'] {
-  opacity: 0.6;
-}
-
 .error {
   margin: 0;
   color: var(--danger);

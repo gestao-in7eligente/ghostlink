@@ -5,6 +5,8 @@ import { ScreenPicker, type CapturerSource, type DisplayMediaRequest, type Displ
 const APP = 'app://ghostlink';
 /** BrowserWindow.getMediaSourceId() of GhostLink's own window, as measured: the "1" marks this process. */
 const OWN = 'window:4196598:1';
+/** The notification cards' window (spec 2026-10-02-notificacoes): GhostLink's too, never offered. */
+const TOAST = 'window:4196602:1';
 
 function image(png: string | null) {
   return { isEmpty: () => png === null, toDataURL: () => `data:image/png;base64,${png ?? ''}` };
@@ -15,6 +17,7 @@ const SOURCES: CapturerSource[] = [
   { id: 'window:133240:0', name: 'Navegador', thumbnail: image('bmF2'), appIcon: image('aWNvbg') },
   { id: 'screen:0:0', name: 'Tela cheia', thumbnail: image('dGVsYQ'), appIcon: null },
   { id: OWN, name: 'GhostLink', thumbnail: image('Z2hvc3Q'), appIcon: image('Z2hvc3Q') },
+  { id: TOAST, name: 'GhostLink', thumbnail: image('Y2FyZA'), appIcon: image('Z2hvc3Q') },
   { id: 'window:67284:0', name: 'Jogo', thumbnail: image(null), appIcon: image(null) },
   { id: 'screen:1:0', name: 'Tela 2', thumbnail: image('dGVsYTI'), appIcon: null },
   { id: 'tab:1:2', name: 'Not a desktop source', thumbnail: image('eA'), appIcon: null },
@@ -26,7 +29,7 @@ const REQUEST: DisplayMediaRequest = { securityOrigin: 'app://ghostlink/', audio
 function setup(sources: CapturerSource[] = SOURCES) {
   let now = 50_000;
   const getSources = vi.fn(async () => sources);
-  const picker = new ScreenPicker({ getSources, now: () => now, appOrigin: APP, ownMediaSourceId: () => OWN });
+  const picker = new ScreenPicker({ getSources, now: () => now, appOrigin: APP, ownMediaSourceIds: () => [OWN, TOAST] });
   return { picker, getSources, advance: (ms: number) => void (now += ms) };
 }
 
@@ -128,7 +131,7 @@ describe('ScreenPicker.handleRequest (spec §3)', () => {
 
   it('answers the dev server origin in development', async () => {
     const getSources = vi.fn(async () => SOURCES);
-    const picker = new ScreenPicker({ getSources, now: () => 0, appOrigin: 'http://localhost:5173', ownMediaSourceId: () => null });
+    const picker = new ScreenPicker({ getSources, now: () => 0, appOrigin: 'http://localhost:5173', ownMediaSourceIds: () => [] });
     picker.choose({ sourceId: 'screen:0:0', audio: false });
     expect(await answer(picker, { ...REQUEST, securityOrigin: 'http://localhost:5173/' })).toEqual({ video: { id: 'screen:0:0', name: 'Tela cheia' } });
   });

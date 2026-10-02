@@ -286,7 +286,7 @@ async function start(): Promise<BrowserWindow | null> {
     getSources: (opts) => desktopCapturer.getSources(opts),
     now: () => Date.now(),
     appOrigin,
-    ownMediaSourceId: () => (window.isDestroyed() ? null : window.getMediaSourceId()),
+    ownMediaSourceIds: () => [window.isDestroyed() ? null : window.getMediaSourceId(), toasts.mediaSourceId()].filter((id) => id !== null),
   });
   // The pencil over the shared monitor (pencil spec §4): it opens over the screen main handed over,
   // or follows the shared window (Windows: koffi is imported with the first one).

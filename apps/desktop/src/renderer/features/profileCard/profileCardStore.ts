@@ -3,8 +3,6 @@
 import { create } from 'zustand';
 import type { Member } from '@ghostlink/shared';
 import type { GhostlinkApi } from '../../../shared/ipcTypes.js';
-import { useConnectionStore } from '../../stores/connection.js';
-import { applyOwn, useDmStore } from '../../stores/dm.js';
 import { textState } from '../../stores/text.js';
 import { setMemberRoles } from '../chat/actions.js';
 import { nextRoleIds, type CardRect, type CardSide } from './profileCardModel.js';
@@ -64,26 +62,3 @@ export async function changeRole(member: Pick<Member, 'userId' | 'roleIds'>, rol
   await setMemberRoles(member.userId, nextRoleIds(member.roleIds, roleId, give));
 }
 
-/**
- * "Conversar com @Nome" (spec §2 item 6): the text goes to the conversation with that friend,
- * opened like the Friends page's "Mensagem", and the app then shows it on the Home screen.
- * Rejects with the code when nothing was sent.
- */
-export async function messageFriend(friendKey: string, text: string): Promise<void> {
-  const content = text.trim();
-  if (content === '') return;
-  await useDmStore.getState().open(friendKey);
-  const conversation = useDmStore.getState().conversations.find((c) => c.kind === 'dm' && c.peer === friendKey);
-  if (!conversation) throw new Error('INTERNAL');
-  applyOwn(await ghostlink().dm.send(conversation.id, content, null));
-  useDmStore.getState().select(conversation.id);
-  await goHome();
-}
-
-/** From the server on screen to the Home screen, as a direct-message notification's click does; a call there goes on. */
-export async function goHome(): Promise<void> {
-  const { welcome, state } = useConnectionStore.getState();
-  if (welcome === null || state === 'idle') return;
-  await ghostlink().servers.disconnect().catch(() => undefined);
-  useConnectionStore.getState().dispatch({ type: 'left' });
-}

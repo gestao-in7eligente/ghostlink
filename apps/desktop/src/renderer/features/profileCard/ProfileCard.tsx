@@ -2,11 +2,9 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSP
 import { createPortal } from 'react-dom';
 import { AtSign, Ellipsis, IdCard, Plus, X } from 'lucide-react';
 import { roleColorHex, type Member } from '@ghostlink/shared';
-import { DM_TEXT_MAX } from '../../../shared/dmTypes.js';
 import { avatarUrl } from '../../../shared/profileTypes.js';
 import { DEFAULT_LOCALE, errorCodeOf, errorMessage, useT } from '../../i18n/index.js';
 import { Avatar, Menu, MenuItem, primitives as p } from '../../layout/primitives.js';
-import { useFriendsStore } from '../../stores/friends.js';
 import { avatarHashFor, useMyAvatar } from '../../stores/profile.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import { useTextStore } from '../../stores/text.js';
@@ -15,8 +13,8 @@ import { useComposerStore } from '../chat/composerStore.js';
 import { userCandidate } from '../chat/mentions.js';
 import m from '../members/members.module.css';
 import s from './profileCard.module.css';
-import { CARD_MARGIN, averageColor, cardRoles, formatMemberSince, friendOf, placeCard } from './profileCardModel.js';
-import { changeRole, copyUserId, messageFriend, useProfileCardStore, type OpenCard } from './profileCardStore.js';
+import { CARD_MARGIN, averageColor, cardRoles, formatMemberSince, placeCard } from './profileCardModel.js';
+import { changeRole, copyUserId, useProfileCardStore, type OpenCard } from './profileCardStore.js';
 
 /**
  * The open profile card, if any (spec 2026-10-02-cartao-de-perfil). One for the whole server
@@ -91,14 +89,13 @@ function useBannerBackground(hash: string | null): string {
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 type CardMenu = { kind: 'more' | 'roles'; anchor: DOMRect } | null;
-type CardError = { where: 'roles' | 'message'; code: string } | null;
+type CardError = { where: 'roles'; code: string } | null;
 
 function ProfileCard({ card, member }: { card: OpenCard; member: Member }) {
   const t = useT();
   const locale = useSettingsStore((st) => st.settings?.locale ?? DEFAULT_LOCALE);
   const server = useTextStore((st) => st.server);
   const members = useTextStore((st) => st.members);
-  const friends = useFriendsStore((st) => st.snapshot);
   const ref = useRef<HTMLDivElement>(null);
   const rolesHeading = useId();
   const sinceHeading = useId();
@@ -106,22 +103,15 @@ function ProfileCard({ card, member }: { card: OpenCard; member: Member }) {
   const [menu, setMenu] = useState<CardMenu>(null);
   const [error, setError] = useState<CardError>(null);
   const [busy, setBusy] = useState(false);
-  const [text, setText] = useState('');
 
   const isSelf = member.userId === server.selfId;
   const isOwner = server.ownerId !== null && member.userId === server.ownerId;
   const roles = useMemo(() => cardRoles({ server, members }, member), [server, members, member]);
-  const friend = isSelf ? null : friendOf(friends, member.userId);
   const mine = useMyAvatar(isSelf);
   const banner = useBannerBackground(avatarHashFor(isSelf, member.avatar, mine));
   const since = formatMemberSince(member.joinedAt, locale);
   const close = () => useProfileCardStore.getState().close();
 
-  // Home keeps the friends list in step only while it is on screen: ask main again as the card opens.
-  useEffect(() => {
-    if (!isSelf && !member.bot) void useFriendsStore.getState().load();
-    // Once per card.
-  }, []);
 
   // Beside the name or row, inside the window, and again whenever the card changes size.
   useLayoutEffect(() => {
@@ -213,20 +203,7 @@ function ProfileCard({ card, member }: { card: OpenCard; member: Member }) {
     }
   };
 
-  const send = async () => {
-    if (friend === null || busy || text.trim() === '') return;
-    setBusy(true);
-    setError(null);
-    try {
-      await messageFriend(friend.key, text);
-      close();
-    } catch (e) {
-      setError({ where: 'message', code: errorCodeOf(e) });
-      setBusy(false);
-    }
-  };
-
-  const errorLine = (where: 'roles' | 'message') =>
+  const errorLine = (where: 'roles') =>
     error?.where === where && (
       <p className={s.error} role="alert">
         {errorMessage(t, error.code)}
@@ -321,30 +298,6 @@ function ProfileCard({ card, member }: { card: OpenCard; member: Member }) {
           </section>
         )}
 
-        {friend !== null && (
-          <>
-            <input
-              className={s.message}
-              value={text}
-              maxLength={DM_TEXT_MAX}
-              placeholder={t('dm.placeholder', { name: member.nickname })}
-              aria-label={t('dm.placeholder', { name: member.nickname })}
-              readOnly={busy}
-              aria-busy={busy}
-              spellCheck
-              onChange={(e) => {
-                setText(e.target.value);
-                if (error?.where === 'message') setError(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
-                e.preventDefault();
-                void send();
-              }}
-            />
-            {errorLine('message')}
-          </>
-        )}
       </div>
 
       {menu?.kind === 'more' && (

@@ -71,6 +71,9 @@ class FakeWindow extends Emitter implements ToastWindow {
     this.visible = false;
     this.emit('closed');
   }
+  getMediaSourceId() {
+    return 'window:4242:0';
+  }
   loadURL(url: string) {
     this.url = url;
     return Promise.resolve();

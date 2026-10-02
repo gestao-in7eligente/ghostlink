@@ -45,8 +45,8 @@ export interface ScreenPickerDeps {
   now(): number;
   /** app://ghostlink, or the dev server origin in development. */
   appOrigin: string;
-  /** The main window's BrowserWindow.getMediaSourceId(), left out of the list; null once it is gone. */
-  ownMediaSourceId(): string | null;
+  /** GhostLink's own windows (BrowserWindow.getMediaSourceId(): the main window, the notification cards), left out of the list. */
+  ownMediaSourceIds(): readonly string[];
 }
 
 /** A choice and when it was made. */
@@ -116,12 +116,12 @@ export class ScreenPicker {
     return choice.audio && request.audioRequested ? { video, audio: 'loopback' } : { video };
   }
 
-  /** Screens and windows with a well-formed id, without GhostLink's own window. */
+  /** Screens and windows with a well-formed id, without GhostLink's own windows. */
   private capturable(sources: CapturerSource[]): { source: CapturerSource; kind: ScreenSourceKind }[] {
-    const own = this.deps.ownMediaSourceId();
+    const own = this.deps.ownMediaSourceIds();
     return sources.flatMap((source) => {
       const kind = sourceKind(source.id);
-      return kind && source.id !== own ? [{ source, kind }] : [];
+      return kind && !own.includes(source.id) ? [{ source, kind }] : [];
     });
   }
 }
