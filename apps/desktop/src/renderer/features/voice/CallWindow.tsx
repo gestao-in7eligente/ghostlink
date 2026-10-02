@@ -1,111 +1,40 @@
 // The call's mini window while I share my screen (spec 2026-10-02-janelinha-da-chamada-design.md),
 // like Google Meet's picture-in-picture while presenting: "● Você está apresentando" and the
-// channel (⤢ back to GhostLink, ✕ closes only this window), the camera of whoever speaks (or
-// their photo), the people in the call, and the microphone, camera, "Parar de compartilhar",
-// pencil and leave buttons. It opens with my share and closes when the share or the call ends.
+// channel (⤢ back to GhostLink, ✕ closes only this window), my shared screen as the others see it
+// (owner, 2026-10-02: "deve mostrar a tela compartilhada e não usuários"), and the microphone,
+// camera, "Parar de compartilhar", pencil and leave buttons. It opens with my share and closes when the share or the call ends.
 // React draws it into a popup of this page (callWindowPopup.ts), so the stores and video tracks
 // are the call's own: no second connection.
 import { Maximize2, Mic, MicOff, MonitorX, Pencil, Volume2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useShallow } from 'zustand/react/shallow';
 import { APP_NAME } from '@ghostlink/shared';
 import { useT } from '../../i18n/index.js';
-import { Avatar } from '../../layout/primitives.js';
 import { setAllowDrawing, useDrawRuntime } from '../draw/runtime.js';
 import { ownShareAllowed, useDrawStore } from '../draw/state.js';
-import { CameraIcon, CameraVideo, useCameraButton } from './CameraParts.js';
-import { useCameraTracks } from './cameraStore.js';
-import { CallWindowLifecycle, NO_FEATURED_MEMORY, chooseFeatured, peopleRow } from './callWindowModel.js';
+import { CameraIcon, useCameraButton } from './CameraParts.js';
+import { CallWindowLifecycle } from './callWindowModel.js';
 import { openCallPopup, type CallPopup } from './callWindowPopup.js';
 import { HangUpIcon } from './parts.js';
+import { TrackVideo } from './screenParts.js';
+import { useScreenTracks } from './screenStore.js';
 import { leaveVoice, stopScreenShare, toggleMute, useCallDirectory } from './runtime.js';
-import { isSpeaking, participantsOf, selfVoice, useVoiceStore, type VoiceState } from './state.js';
+import { selfVoice, useVoiceStore, type VoiceState } from './state.js';
 import c from './callWindow.module.css';
-
-const NONE: string[] = [];
 
 /** The channel of my live share, or null: the window is wanted only then. */
 function sharingChannel(v: VoiceState): string | null {
   return v.sharing !== null && v.call.status !== 'idle' ? v.call.channelId : null;
 }
 
-/** Who speaks now in the call, loudest first (LiveKit's order), me while my microphone is open. */
-function speakersOf(v: VoiceState, channelId: string): string[] {
-  const here = participantsOf(v, channelId).map((p) => p.userId);
-  const list = v.speaking.filter((u) => here.includes(u));
-  const self = v.selfUserId;
-  if (self !== null && here.includes(self) && !list.includes(self) && isSpeaking(v, self)) list.push(self);
-  return list.length === 0 ? NONE : list;
-}
-
-/** A person's photo from the call's server (mine is my global one), with the green ring while they speak. */
-function Photo({ userId, size, speaking }: { userId: string; size: number; speaking: boolean }) {
-  const directory = useCallDirectory();
-  const self = useVoiceStore((v) => v.selfUserId === userId);
-  return (
-    <span className={speaking ? `${c.photo} ${c.photoSpeaking}` : c.photo} style={{ width: size, height: size }} data-speaking={speaking || undefined}>
-      <Avatar size={size} name={directory.displayName(userId)} hash={directory.avatar(userId)} self={self} />
-    </span>
-  );
-}
-
-/** The video area: the camera of whoever speaks, else their photo (chooseFeatured). */
-function FeaturedView({ channelId }: { channelId: string }) {
+/** The video area: my shared screen as the others get it (the share's self-preview track). */
+function ScreenPreview() {
   const t = useT();
-  const directory = useCallDirectory();
-  const participants = useVoiceStore(useShallow((v) => participantsOf(v, channelId).map((p) => p.userId)));
-  const withCamera = useVoiceStore(useShallow((v) => participantsOf(v, channelId).filter((p) => p.camera).map((p) => p.userId)));
-  const speaking = useVoiceStore(useShallow((v) => speakersOf(v, channelId)));
-  const self = useVoiceStore((v) => v.selfUserId);
-  const remote = useCameraTracks((st) => st.remote);
-  const local = useCameraTracks((st) => st.local);
-  // Mine is there while it is open; someone else's while the server says it is on and its track arrived.
-  const cameras = participants.filter((u) => (u === self ? local !== null : withCamera.includes(u) && Object.hasOwn(remote, u)));
-  const memory = useRef(NO_FEATURED_MEMORY);
-  const { featured, memory: next } = chooseFeatured({ participants, speaking, cameras, self }, memory.current);
-  memory.current = next;
-  if (!featured) return <div className={c.stage} />;
-  const isSelf = featured.userId === self;
-  const track = featured.camera ? (isSelf ? local : (remote[featured.userId] ?? null)) : null;
-  const className = [c.stage, featured.camera && featured.speaking && c.stageSpeaking].filter(Boolean).join(' ');
+  const track = useScreenTracks((st) => st.local);
   return (
-    <div className={className} data-call-window-featured={featured.userId} data-camera={featured.camera || undefined}>
-      <Photo userId={featured.userId} size={88} speaking={featured.speaking && !featured.camera} />
-      {track && <CameraVideo key={featured.userId} track={track} userId={featured.userId} mirrored={isSelf} />}
-      <span className={c.stageName}>
-        {directory.displayName(featured.userId)}
-        {isSelf && ` (${t('voice.you')})`}
-      </span>
+    <div className={c.stage} data-call-window-screen="">
+      {track ? <TrackVideo track={track} className={c.screen} label={t('voice.callWindow.screen')} /> : <span className={c.waiting}>{t('voice.callWindow.waiting')}</span>}
     </div>
-  );
-}
-
-/** Up to six photos with the speaking ring, then "+N". */
-function People({ channelId }: { channelId: string }) {
-  const t = useT();
-  const directory = useCallDirectory();
-  const participants = useVoiceStore(useShallow((v) => participantsOf(v, channelId).map((p) => p.userId)));
-  const speaking = useVoiceStore(useShallow((v) => speakersOf(v, channelId)));
-  const { shown, more } = peopleRow(participants);
-  return (
-    <ul className={c.people} aria-label={t('voice.callWindow.people')}>
-      {shown.map((u) => (
-        <li key={u} className={c.person} title={directory.displayName(u)} data-user={u}>
-          <Photo userId={u} size={28} speaking={speaking.includes(u)} />
-          <span className={c.srOnly}>
-            {directory.displayName(u)}
-            {speaking.includes(u) && `, ${t('voice.speaking')}`}
-          </span>
-        </li>
-      ))}
-      {more > 0 && (
-        <li className={c.more} title={t('voice.callWindow.morePeople', { count: more })}>
-          <span aria-hidden="true">+{more}</span>
-          <span className={c.srOnly}>{t('voice.callWindow.morePeople', { count: more })}</span>
-        </li>
-      )}
-    </ul>
   );
 }
 
@@ -202,8 +131,7 @@ export function CallWindowView({ channelId, onClose }: { channelId: string; onCl
           <X size={16} aria-hidden="true" />
         </button>
       </header>
-      <FeaturedView channelId={channelId} />
-      <People channelId={channelId} />
+      <ScreenPreview />
       <div className={c.controls}>
         <div className={c.group}>
           <MicButton />

@@ -11,9 +11,8 @@ Aprovado pelo dono em 2026-10-02, a partir de um print da janelinha do Google Me
 ## 2. Conteúdo (paleta do GhostLink)
 
 1. **Faixa**: "● Você está apresentando" e o nome do canal de voz.
-2. **Vídeo**: a câmera de quem está falando (a última pessoa que falou com a câmera ligada, eu inclusive); sem nenhuma câmera ligada, a foto grande de quem fala, com o anel verde.
-3. **Quem está na chamada**: fotos pequenas (até 6, depois "+N") com o anel verde de quem está falando.
-4. **Botões**: microfone e câmera (os mesmos da barra da chamada), **Parar de compartilhar** (fecha a janelinha), **lápis** (deixa ou não os outros desenharem na minha tela, o mesmo controle de hoje) e **sair da chamada** (vermelho).
+2. **Vídeo**: a **minha tela compartilhada**, como quem assiste a recebe (a prévia do próprio compartilhamento). Mudança do dono em 2026-10-02 (v0.4.5): "deve mostrar a tela compartilhada e não usuários"; a câmera de quem fala e a fileira de fotos saíram.
+3. **Botões**: microfone e câmera (os mesmos da barra da chamada), **Parar de compartilhar** (fecha a janelinha), **lápis** (deixa ou não os outros desenharem na minha tela, o mesmo controle de hoje) e **sair da chamada** (vermelho).
 
 ## 3. Como
 
@@ -24,4 +23,4 @@ Aprovado pelo dono em 2026-10-02, a partir de um print da janelinha do Google Me
 ## 4. Testes (enxutos)
 
 - Main: só o popup permitido abre, com as opções certas; fica fora do seletor e protegido da captura.
-- Renderer: quem aparece no vídeo (falando com câmera; sem câmera, a foto); abre e fecha com o compartilhamento.
+- Renderer: abre e fecha com o compartilhamento; o vídeo é a prévia da minha tela.
