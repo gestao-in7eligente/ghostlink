@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AtSign, Gavel, UserMinus } from 'lucide-react';
+import { AtSign, Gavel, IdCard, UserMinus } from 'lucide-react';
 import { PERMISSIONS, has, roleColorHex, type Member } from '@ghostlink/shared';
 import { errorCodeOf, errorMessage, useT } from '../../i18n/index.js';
 import { ConfirmDialog, Menu, MenuCheckbox, MenuHeading, MenuItem, MenuSeparator, primitives as p, type MenuAnchor } from '../../layout/primitives.js';
@@ -10,8 +10,9 @@ import { useTextStore } from '../../stores/text.js';
 import { banMember, kickMember, setMemberRoles } from '../chat/actions.js';
 import { useComposerStore } from '../chat/composerStore.js';
 import { userCandidate } from '../chat/mentions.js';
+import { copyUserId } from '../profileCard/profileCardStore.js';
 
-/** A member's context menu: mention, roles, kick and ban (spec §11.1 item 4), per permission and hierarchy. */
+/** A member's context menu: mention, roles, kick, ban (spec §11.1 item 4, per permission and hierarchy) and "Copiar ID do usuário". */
 export function MemberMenu({ member, anchor, onClose }: { member: Member; anchor: MenuAnchor; onClose: () => void }) {
   const t = useT();
   const server = useTextStore((st) => st.server);
@@ -95,6 +96,16 @@ export function MemberMenu({ member, anchor, onClose }: { member: Member; anchor
           {t('members.banName', { name: member.nickname })}
         </MenuItem>
       )}
+      <MenuSeparator />
+      <MenuItem
+        icon={<IdCard size={16} aria-hidden="true" />}
+        onSelect={() => {
+          void copyUserId(member.userId).catch(() => undefined);
+          onClose();
+        }}
+      >
+        {t('profileCard.copyId')}
+      </MenuItem>
     </Menu>
   );
 }

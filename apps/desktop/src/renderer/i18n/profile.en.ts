@@ -20,4 +20,12 @@ export const profile: Record<keyof typeof profilePt, string> = {
   'serverIcon.change': 'Change icon',
   'serverIcon.remove': 'Remove icon',
   'serverIcon.hint': 'Everyone sees it in the server rail and the header. PNG, JPEG, WebP or GIF, up to 10 MB; animated GIFs stay animated. Without one, the name’s initials.',
+
+  'profileCard.label': '{name}’s profile',
+  'profileCard.more': 'More options',
+  'profileCard.memberSince': 'Member since',
+  'profileCard.removeRole': 'Remove the {role} role',
+  'profileCard.addRole': 'Add role',
+  'profileCard.addRoleTo': 'Roles to give {name}',
+  'profileCard.copyId': 'Copy user ID',
 };

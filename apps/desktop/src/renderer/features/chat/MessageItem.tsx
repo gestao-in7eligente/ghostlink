@@ -23,8 +23,11 @@ export interface MessageEnv {
   md: MarkdownContext;
   /** A member's nickname, or "ex-membro". */
   name(userId: string | null): string;
-  /** The author's name and whether it is a bot: a member's, or "bot excluído" / "ex-membro" (`authorBot` from the message). */
-  author(userId: string, authorBot: boolean): { name: string; bot: boolean };
+  /**
+   * The author's name and whether it is a bot: a member's, or "bot excluído" / "ex-membro" (`authorBot`
+   * from the message). `member`: still in the server, so the name and picture open their profile card.
+   */
+  author(userId: string, authorBot: boolean): { name: string; bot: boolean; member: boolean };
   /** A member's photo hash, or null (initials). */
   avatar(userId: string | null): string | null;
   /** Message text without markup, mentions shown as names (reply previews). */
@@ -44,6 +47,8 @@ export interface MessageEnv {
   onDrop(pending: PendingMessage): void;
   /** "Dispensar" on an interaction line only I see (bots spec §3). */
   onDismiss(local: BotLocal): void;
+  /** A click on an author's name or picture: their profile card, beside `opener` (spec 2026-10-02-cartao-de-perfil). */
+  onProfile(userId: string, opener: HTMLElement): void;
 }
 
 function Content({ content, everyone, md }: { content: string; everyone: boolean; md: MarkdownContext }) {
@@ -60,15 +65,41 @@ function uploadViews(files: readonly PendingFile[]): UploadView[] {
   return files.map((f) => ({ id: f.id, name: f.name, size: f.size, kind: f.kind, progress: f.progress, done: f.fileId !== null }));
 }
 
-function Header({ name, at, env, bot = false }: { name: string; at: number; env: MessageEnv; bot?: boolean }) {
+/** `userId`: a member's, whose name opens their profile card; null for someone no longer in the server. */
+function Header({ name, at, env, bot = false, userId }: { name: string; at: number; env: MessageEnv; bot?: boolean; userId: string | null }) {
   return (
     <div className={c.msgHeader}>
-      <span className={c.author}>{name}</span>
+      {userId === null ? (
+        <span className={c.author}>{name}</span>
+      ) : (
+        <button type="button" className={`${c.author} ${c.authorButton}`} aria-haspopup="dialog" data-profile-trigger onClick={(e) => env.onProfile(userId, e.currentTarget)}>
+          {name}
+        </button>
+      )}
       {bot && <BotTag t={env.t} />}
       <time className={c.stamp} dateTime={new Date(at).toISOString()} title={formatFull(at, env.locale)}>
         {formatStamp(at, env.locale)}
       </time>
     </div>
+  );
+}
+
+/** The author's picture. For a member, a click opens their card too (Tab reaches it through the name). */
+function AuthorAvatar({ authorId, name, member, env }: { authorId: string; name: string; member: boolean; env: MessageEnv }) {
+  const avatar = <Avatar size={40} name={name} hash={env.avatar(authorId)} self={authorId === env.selfId} />;
+  if (!member) return avatar;
+  return (
+    <button
+      type="button"
+      className={c.avatarButton}
+      tabIndex={-1}
+      aria-haspopup="dialog"
+      aria-label={env.t('profileCard.label', { name })}
+      data-profile-trigger
+      onClick={(e) => env.onProfile(authorId, e.currentTarget)}
+    >
+      {avatar}
+    </button>
   );
 }
 
@@ -175,11 +206,12 @@ export const MessageRow = memo(function MessageRow({ row, env }: { row: Row; env
 
   if (row.kind === 'pending') {
     const p = row.pending;
+    const member = env.author(env.selfId, false).member;
     return (
       <div className={[c.msg, row.head ? c.msgHead : '', c.msgPending].filter(Boolean).join(' ')} role="article">
-        {row.head ? <Avatar size={40} name={env.name(env.selfId)} hash={env.avatar(env.selfId)} self /> : <span className={c.gutter} />}
+        {row.head ? <AuthorAvatar authorId={env.selfId} name={env.name(env.selfId)} member={member} env={env} /> : <span className={c.gutter} />}
         <div className={c.msgBody}>
-          {row.head && <Header name={env.name(env.selfId)} at={p.createdAt} env={env} />}
+          {row.head && <Header name={env.name(env.selfId)} at={p.createdAt} env={env} userId={member ? env.selfId : null} />}
           {(p.content !== '' || !p.files?.length) && (
             <div className={c.content}>
               <Content content={p.content} everyone={false} md={env.md} />
@@ -210,14 +242,14 @@ export const MessageRow = memo(function MessageRow({ row, env }: { row: Row; env
       {m.replyTo && <ReplyPreview message={m} env={env} />}
       {m.interaction && <UsedCommand userId={m.interaction.userId} command={m.interaction.command} env={env} />}
       {row.head ? (
-        <Avatar size={40} name={author.name} hash={env.avatar(m.authorId)} self={m.authorId === env.selfId} />
+        <AuthorAvatar authorId={m.authorId} name={author.name} member={author.member} env={env} />
       ) : (
         <time className={c.gutter} dateTime={new Date(m.createdAt).toISOString()} title={formatFull(m.createdAt, env.locale)}>
           {formatTime(m.createdAt, env.locale)}
         </time>
       )}
       <div className={c.msgBody}>
-        {row.head && <Header name={author.name} at={m.createdAt} env={env} bot={author.bot} />}
+        {row.head && <Header name={author.name} at={m.createdAt} env={env} bot={author.bot} userId={author.member ? m.authorId : null} />}
         {(m.content !== '' || m.attachments.length === 0) && (
           <div className={c.content}>
             <Content content={m.content} everyone={m.mentions.everyone} md={env.md} />
