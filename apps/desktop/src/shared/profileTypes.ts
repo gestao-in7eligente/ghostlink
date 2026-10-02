@@ -22,6 +22,11 @@ export interface ProfileApi {
    * `server.iconClear` (a plain request) takes it away.
    */
   setServerIcon(serverId: string, bytes: Uint8Array): Promise<AvatarInfo>;
+  /**
+   * A bot's photo on a connected server (MANAGE_SERVER; bots spec §3, "Adicionar bot"), with the
+   * photo's checks. Resolves once the server holds it; `member.updated` then tells everyone.
+   */
+  setBotAvatar(serverId: string, botId: string, bytes: Uint8Array): Promise<AvatarInfo>;
 }
 
 /** Where the renderer loads any photo from; main's app:// handler serves it from the cache or fetches it (spec §3). */

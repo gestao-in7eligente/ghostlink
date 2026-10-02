@@ -35,7 +35,7 @@ export function channel(id: string, name: string, position: number, extra: Parti
 }
 
 export function member(userId: string, nickname: string, extra: Partial<Member> = {}): Member {
-  return { userId, nickname, roleIds: [], online: true, joinedAt: 1, avatar: null, ...extra };
+  return { userId, nickname, roleIds: [], online: true, joinedAt: 1, avatar: null, bot: false, ...extra };
 }
 
 let nextClient = 0;
@@ -52,6 +52,8 @@ export function message(id: number, extra: Partial<Message> = {}): Message {
     mentions: { users: [], roles: [], everyone: false },
     clientMsgId: `c${++nextClient}`,
     attachments: [],
+    authorBot: false,
+    interaction: null,
     ...extra,
   };
 }
@@ -76,6 +78,7 @@ export function snapshot(extra: Partial<TextSnapshot['text']> = {}, serverId = '
       serverSettings: { ownerId: OWNER, maxMembers: 100, hasPassword: false, uploadLimitMb: 25, storageQuotaMb: 10_240, icon: null },
       ...extra,
     },
+    botCommands: [],
   };
 }
 

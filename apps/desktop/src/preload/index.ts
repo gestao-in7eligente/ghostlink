@@ -151,6 +151,7 @@ export const api: GhostlinkApi = {
     setAvatar: (bytes) => invoke(IPC.profileSetAvatar, bytes),
     clearAvatar: () => invoke(IPC.profileClearAvatar),
     setServerIcon: (serverId, bytes) => invoke(IPC.profileSetServerIcon, serverId, bytes),
+    setBotAvatar: (serverId, botId, bytes) => invoke(IPC.profileSetBotAvatar, serverId, botId, bytes),
   },
   attachments: {
     upload: (uploadId, serverId, channelId, name, bytes) => invoke(IPC.attachmentsUpload, uploadId, serverId, channelId, name, bytes),

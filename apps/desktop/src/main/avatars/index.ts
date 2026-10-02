@@ -1,14 +1,14 @@
 // Profile photos in main (spec 2026-10-01 §3, §4): my photo, the cache of others', the sync
 // with the connected server and the app://ghostlink/_avatar route, wired together for index.ts.
 import { join } from 'node:path';
-import { FEATURE_SERVER_ICON } from '@ghostlink/shared';
+import { FEATURE_BOTS, FEATURE_SERVER_ICON } from '@ghostlink/shared';
 import { AppError, toAppErrorCode } from '../../shared/appErrors.js';
 import type { AvatarInfo } from '../../shared/profileTypes.js';
 import type { ActiveSession } from '../controller.js';
 import type { ProfileIpcDeps } from '../profileIpc.js';
 import { checkMyAvatar } from './avatarBytes.js';
 import { AvatarCache } from './avatarCache.js';
-import { clearAvatar, downloadAvatar, uploadAvatar, uploadServerIcon, type AvatarHttpOptions } from './avatarHttp.js';
+import { clearAvatar, downloadAvatar, uploadAvatar, uploadBotAvatar, uploadServerIcon, type AvatarHttpOptions } from './avatarHttp.js';
 import { AvatarRoute } from './avatarRoute.js';
 import { AvatarStore } from './avatarStore.js';
 import { AvatarSync } from './avatarSync.js';
@@ -78,6 +78,20 @@ export function createAvatars(opts: AvatarsOptions): Avatars {
           opts.warn(`[avatars] could not keep the server icon: ${toAppErrorCode(e)}`);
         }
         const held = await uploadServerIcon(target, bytes, opts.http);
+        return { hash: held, mime: info.mime };
+      },
+      // A bot's photo (bots spec §3): the same checks and cache, sent as the bot's avatar.
+      setBotAvatar: async (serverId, botId, bytes): Promise<AvatarInfo> => {
+        const info = checkMyAvatar(bytes);
+        const target = opts.sessionOf?.(serverId) ?? null;
+        if (target === null) throw new AppError('CONNECTION_LOST', 'not connected to that server');
+        if (!target.welcome.features.includes(FEATURE_BOTS)) throw new AppError('SERVER_OUTDATED', 'the server has no bots');
+        try {
+          cache.put(info.hash, bytes);
+        } catch (e) {
+          opts.warn(`[avatars] could not keep the bot photo: ${toAppErrorCode(e)}`);
+        }
+        const held = await uploadBotAvatar(target, botId, bytes, opts.http);
         return { hash: held, mime: info.mime };
       },
     },

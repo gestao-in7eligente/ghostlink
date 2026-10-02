@@ -1,6 +1,7 @@
 import { host } from './en/host.js';
 import { identity } from './en/identity.js';
 import { attachments } from './attachments.en.js';
+import { bots } from './bots.en.js';
 import { camera } from './camera.en.js';
 import { chat } from './chat.en.js';
 import { dm } from './dm.en.js';
@@ -162,4 +163,5 @@ export const messages: Record<keyof typeof ptBR, string> = {
   ...serverDelete,
   ...attachments,
   ...tray,
+  ...bots,
 };
