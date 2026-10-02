@@ -21,6 +21,8 @@ export interface UploadGrant {
   readonly expiresAt: number;
   /** Purpose 'attachment' only. */
   readonly attachment?: AttachmentGrant;
+  /** Purpose 'avatar' only: the bot whose photo this is (MANAGE_SERVER), not the uploader's own. */
+  readonly botId?: string;
 }
 
 /** A token is valid this long after upload.begin. */

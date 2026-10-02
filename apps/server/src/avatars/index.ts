@@ -40,8 +40,8 @@ export interface AvatarsModuleOptions {
 
 const UPLOAD_IDLE_MS = 60_000;
 
-/** The limiter's key: a person's photo changes and their icon changes are counted apart. */
-const changeKey = (purpose: 'avatar' | 'icon', userId: string): string => (purpose === 'icon' ? `icon:${userId}` : userId);
+/** The limiter's key: a person's photo changes, their icon changes and a bot's photo changes are counted apart. */
+const changeKey = (purpose: 'avatar' | 'icon' | 'bot', userId: string): string => (purpose === 'avatar' ? userId : `${purpose}:${userId}`);
 const SWEEP_INTERVAL_MS = 60_000;
 const CHANGES_WINDOW_MS = 60_000;
 
@@ -85,6 +85,10 @@ export function createAvatarsModule(opts: AvatarsModuleOptions = {}): AvatarsMod
   };
 
   const managesServer = (s: State, userId: string): boolean => isMember(s, userId) && has(s.text.serverPermissions(userId), PERMISSIONS.MANAGE_SERVER);
+
+  /** A bot's photo (bots spec §2): someone with MANAGE_SERVER, for a bot that is a member. */
+  const managesBot = (s: State, userId: string, botId: string): boolean =>
+    managesServer(s, userId) && s.ctx.db.get('SELECT 1 AS x FROM users WHERE id = ? AND is_bot = 1 AND removed_at IS NULL', botId) !== undefined;
 
   const serverIcon = (s: State): string | null =>
     s.ctx.db.get<{ h: string | null }>('SELECT icon_file_id AS h FROM server_meta WHERE id = 1')?.h ?? null;
@@ -137,14 +141,20 @@ export function createAvatarsModule(opts: AvatarsModuleOptions = {}): AvatarsMod
       'upload.begin': (ctx, payload) => need().hub.begin(ctx, payload),
 
       'avatar.clear': (ctx, payload) => {
-        avatarClearSchema.parse(payload ?? {});
+        const p = avatarClearSchema.parse(payload ?? {});
         const s = need();
-        requireMember(s, ctx.userId);
-        if (!s.changes.hit(changeKey('avatar', ctx.userId))) throw new ProtocolError('RATE_LIMITED');
-        const changed = s.ctx.db.run('UPDATE users SET avatar_file_id = NULL WHERE id = ? AND avatar_file_id IS NOT NULL', ctx.userId).changes > 0;
+        if (p.botId !== undefined) {
+          if (!managesBot(s, ctx.userId, p.botId)) throw new ProtocolError('FORBIDDEN');
+          if (!s.changes.hit(changeKey('bot', p.botId))) throw new ProtocolError('RATE_LIMITED');
+        } else {
+          requireMember(s, ctx.userId);
+          if (!s.changes.hit(changeKey('avatar', ctx.userId))) throw new ProtocolError('RATE_LIMITED');
+        }
+        const target = p.botId ?? ctx.userId;
+        const changed = s.ctx.db.run('UPDATE users SET avatar_file_id = NULL WHERE id = ? AND avatar_file_id IS NOT NULL', target).changes > 0;
         if (changed) {
           cleanUp(s);
-          s.text.announceMember(ctx.userId);
+          s.text.announceMember(target);
         }
         return {};
       },
@@ -184,7 +194,12 @@ export function createAvatarsModule(opts: AvatarsModuleOptions = {}): AvatarsMod
           store,
           fileToken: (sessionId) => ctx.sessions.fileToken(sessionId),
           canApply: (grant) =>
-            ctx.sessions.fileToken(grant.sessionId) !== null && (grant.purpose === 'icon' ? managesServer(s, grant.userId) : isMember(s, grant.userId)),
+            ctx.sessions.fileToken(grant.sessionId) !== null &&
+            (grant.purpose === 'icon'
+              ? managesServer(s, grant.userId)
+              : grant.botId !== undefined
+                ? managesBot(s, grant.userId, grant.botId)
+                : isMember(s, grant.userId)),
           apply: (grant): AvatarUploadResult | IconUploadResult => {
             if (grant.purpose === 'icon') {
               ctx.db.run('UPDATE server_meta SET icon_file_id = ? WHERE id = 1', grant.sha256);
@@ -192,9 +207,10 @@ export function createAvatarsModule(opts: AvatarsModuleOptions = {}): AvatarsMod
               text.announceServer();
               return { icon: grant.sha256 };
             }
-            ctx.db.run('UPDATE users SET avatar_file_id = ? WHERE id = ? AND removed_at IS NULL', grant.sha256, grant.userId);
+            const target = grant.botId ?? grant.userId;
+            ctx.db.run('UPDATE users SET avatar_file_id = ? WHERE id = ? AND removed_at IS NULL', grant.sha256, target);
             cleanUp(s);
-            text.announceMember(grant.userId);
+            text.announceMember(target);
             return { avatar: grant.sha256 };
           },
           inUse: (hash) =>
@@ -204,7 +220,13 @@ export function createAvatarsModule(opts: AvatarsModuleOptions = {}): AvatarsMod
       uploads.register('avatar', {
         stagingDir: store.dir,
         maxBytes: () => AVATAR_LIMITS.maxBytes,
-        begin: (rctx) => {
+        begin: (rctx, payload) => {
+          const botId = payload.purpose === 'avatar' ? payload.botId : undefined;
+          if (botId !== undefined) {
+            if (!managesBot(s, rctx.userId, botId)) throw new ProtocolError('FORBIDDEN');
+            if (!s.changes.hit(changeKey('bot', botId))) throw new ProtocolError('RATE_LIMITED');
+            return { botId };
+          }
           requireMember(s, rctx.userId);
           if (!s.changes.hit(changeKey('avatar', rctx.userId))) throw new ProtocolError('RATE_LIMITED');
           return {};

@@ -50,7 +50,7 @@ Put a feature's payload and event types, its server-side strict schemas and its 
 
 Migrations are numbered SQL files in `src/db/migrations/NNN_name.sql`, one transaction each. `loadMigrations()` refuses gaps.
 
-- The Text track owns `002_*.sql`; `003_server_delete.sql` adds `server_meta.deleting_at` and `deleted_at` (the `serverDelete` module, `src/deletion/`); `004_files.sql` adds the `files` table (attachments).
+- The Text track owns `002_*.sql`; `003_server_delete.sql` adds `server_meta.deleting_at` and `deleted_at` (the `serverDelete` module, `src/deletion/`); `004_files.sql` adds the `files` table (attachments); `005_bots.sql` adds `users.is_bot`, the `bots` table and the `messages.interaction_*` columns (the `bots` module).
 - Any other track that needs tables takes the next free number when it merges, and renumbers its file if another track merged first, so the numbering stays contiguous.
 - Never edit a migration that has already been merged. Use `STRICT` tables, as `001_init.sql` does.
 
@@ -63,6 +63,15 @@ Put tests next to the existing ones in `apps/server/test` (and `test/integration
 - `upload.begin` and `POST /upload` belong to the avatars module, which runs them for every purpose through an `UploadHub` (`src/uploads/`): the strict union schema, the single-use 60 s token bound to its session (at most 3 open), the cut at the declared size, the SHA-256 check, and the body streamed into a temp file. A purpose registers itself once, in its module's `init`, with `ctx.getModule<AvatarsModule>('avatars').uploads.register(purpose, handler)`: the handler checks permissions and limits in `begin`, re-checks them in `canApply`, and in `finish` moves the temp file into place (or deletes it) and answers. Add the purpose's schema to `uploadBeginSchema` in `packages/shared/src/upload.ts`.
 - The avatars module registers `avatar` (any member, the photo in `users.avatar_file_id`) and `icon` (MANAGE_SERVER, the server icon in `server_meta.icon_file_id`, announced with `server.updated`, cleared by `server.iconClear`). Both are images kept in `data/avatars/` and served by the signed `GET /avatars/<hash>`; a file nobody points at is deleted.
 - The `files` module (`src/files/`, spec 2026-10-01-anexos-design.md §2) registers `attachment`, serves the signed `GET /files/<fileId>` and keeps the bytes in `data/files/`. The text module links files to messages in `msg.send`, puts them in `Message.attachments` and deletes their rows with the message (then emits `messages.deleted`) or the channel (cascade); the files module then deletes the bytes no row references, and every minute the uploads no message used within 1 h.
+
+## Bots
+
+`src/bots/` (spec 2026-10-02-bots-design.md §2), registered after text:
+
+- A bot is a member (`users.is_bot = 1`) with a 19-byte `public_key` marker instead of an identity; `bots` keeps only the SHA-256 of its connection token. `bot.create` / `bot.regenerate` / `bot.delete` / `bot.list` need MANAGE_SERVER; regenerating and deleting close the bot's session with `BAD_BOT_TOKEN`. Deleting marks the member removed (messages stay, `authorBot: true`) and frees the name. Bots do not count toward `max_members`.
+- The handshake (`auth/handshake.ts`, `auth/botAuth.ts`) takes a `hello` with `bot: <token>` straight to the welcome (`self.bot: true`): the per-IP auth-failure limit applies first, a wrong token counts toward it, and bans, kicks and server deletion apply as for members.
+- Bot messages and edits use the text module's bot buckets (twice the member limit). The bots module reaches members, channels and messages only through `TextModule.bots` (`src/text/bots.ts`).
+- `commands.set` (bots only) stores JSON in `bots.commands` and sends `commands.updated`; the welcome carries `botCommands`. Interactions live in memory (`src/bots/interactions.ts`): `interaction.create` to the bot alone, 3 s for the first answer, then 15 min for edits and follow-ups. Ephemeral answers go to the invoker's sessions only and are never stored.
 
 ## Deleting the server
 

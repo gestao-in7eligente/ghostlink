@@ -10,7 +10,7 @@ import {
 } from '@ghostlink/shared';
 import type { ServerModule, StartServerOptions } from '../../src/index.js';
 import { createTextModule, type TextModule, type TextModuleOptions } from '../../src/text/index.js';
-import { connectRaw, makeIdentity, startTestServer, type TestServer } from '../helpers/testClient.js';
+import { connectRaw, makeIdentity, startTestServer, type RawClient, type TestServer } from '../helpers/testClient.js';
 
 /** A test client that keeps every event in order, so tests can assert both presence and absence. */
 export interface TextClient {
@@ -75,16 +75,19 @@ export async function joinServer(server: TestServer['server'], opts: JoinOptions
     return { error: (m.d as { code: ErrorCode }).code };
   }
   if (m.t !== 'welcome') throw new Error(`unexpected ${m.t}`);
-  const welcome = m.d as Record<string, unknown>;
+  return { client: wrapClient(raw, m.d as Record<string, unknown>, { userId: identity.userId, seed: identity.seed, nickname }) };
+}
 
+/** A TextClient over a socket that just received its welcome (a person's or a bot's). */
+export function wrapClient(raw: RawClient, welcome: Record<string, unknown>, who: { userId: string; seed: Uint8Array; nickname: string }): TextClient {
   const events: Envelope[] = [];
   const pending = new Map<number, (r: { ok: boolean; d?: unknown; error?: { code: ErrorCode } }) => void>();
   const listeners = new Set<() => void>();
   let nextId = 1;
   const client: TextClient = {
-    userId: identity.userId,
-    seed: identity.seed,
-    nickname,
+    userId: who.userId,
+    seed: who.seed,
+    nickname: who.nickname,
     welcome,
     text: textWelcomeSchemaClient.parse(welcome),
     events,
@@ -157,7 +160,7 @@ export async function joinServer(server: TestServer['server'], opts: JoinOptions
       for (const l of [...listeners]) l();
     }
   })();
-  return { client };
+  return client;
 }
 
 export interface TextFixture {
