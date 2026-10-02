@@ -391,6 +391,16 @@ export function MenuCheckbox({ children, checked, onToggle, disabled = false, co
   );
 }
 
+/** One choice of a few (role="menuitemradio"): a round mark shows the chosen one. */
+export function MenuRadio({ children, checked, onSelect }: { children: ReactNode; checked: boolean; onSelect: () => void }) {
+  return (
+    <button type="button" role="menuitemradio" aria-checked={checked} className={p.menuItem} tabIndex={-1} onClick={onSelect}>
+      <span className={p.menuLabel}>{children}</span>
+      <span className={checked ? `${p.radio} ${p.radioOn}` : p.radio} aria-hidden="true" />
+    </button>
+  );
+}
+
 export function MenuSeparator() {
   return <div className={p.menuSeparator} role="separator" />;
 }
