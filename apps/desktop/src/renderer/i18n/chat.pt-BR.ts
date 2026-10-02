@@ -246,6 +246,10 @@ export const chat = {
   'perm.MOVE_MEMBERS.desc': 'Mover ou desconectar pessoas dos canais de voz.',
   'perm.ADMINISTRATOR': 'Administrador',
   'perm.ADMINISTRATOR.desc': 'Todas as permissões e acesso a todos os canais. Dê com cuidado.',
+  // A ghostlink://channel/… link of a server not in my list (v0.5.0, spec 2026-10-02-menu-do-canal).
+  'channelLink.unknownTitle': 'Você não está nesse servidor',
+  'channelLink.unknownBody': 'Esse link é de um canal de um servidor que não está na sua lista. Peça um convite a alguém de lá.',
+  'channelLink.ok': 'Entendi',
 } as const;
 
 /** Keys that read the same in both languages on purpose ("Online" is used as is in Portuguese). */

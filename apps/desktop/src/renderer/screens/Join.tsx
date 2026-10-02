@@ -3,10 +3,16 @@ import { formatFingerprint } from '@ghostlink/shared';
 import type { RendererWelcome, SavedServer } from '../../shared/ipcTypes.js';
 import { ErrorLine, Screen } from '../components/Screen.js';
 import ui from '../components/ui.module.css';
+import { requestChannel } from '../features/channelMenu/channelRequest.js';
 import { errorCodeOf, errorMessage, useT } from '../i18n/index.js';
 import { ServerIcon } from '../layout/primitives.js';
 import { useSettingsStore } from '../stores/settings.js';
-import { buildConnectRequest, initialJoin, joinReducer, savedServerFor, type JoinAction, type JoinState } from './joinFlow.js';
+import { buildConnectRequest, initialJoin, joinReducer, savedServerFor, type JoinAction, type JoinState, type JoinTarget } from './joinFlow.js';
+
+/** An invite made with "Convite para o canal" opens that channel with the server's welcome. */
+function openInvitedChannel(target: JoinTarget | null): void {
+  if (target?.channelId !== undefined) requestChannel(target.serverKeyId, target.channelId);
+}
 
 /** The server CLI command that prints the setup code (spec §10); shown verbatim, never translated. */
 const SETUP_CODE_COMMAND = 'ghostlink-server setup-code';
@@ -116,6 +122,7 @@ export function Join({
     try {
       const welcome = await api.join.connect(buildConnectRequest(next));
       dispatch({ type: 'joined' });
+      openInvitedChannel(next.target);
       onJoined(welcome);
     } catch (e) {
       dispatch({ type: 'failed', code: errorCodeOf(e) });
@@ -162,6 +169,7 @@ export function Join({
     try {
       const welcome = await api.join.connect(request);
       dispatch({ type: 'joined' });
+      openInvitedChannel(next.target);
       onJoined(welcome);
     } catch (e) {
       dispatch({ type: 'failed', code: errorCodeOf(e) });

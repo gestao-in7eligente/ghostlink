@@ -14,6 +14,7 @@ import {
 } from '@ghostlink/shared';
 import { AppError, toAppErrorCode, type AppErrorCode } from '../shared/appErrors.js';
 import type {
+  ChannelPrefsPatch,
   ConnState,
   ConnectionStateEvent,
   JoinConnectRequest,
@@ -202,6 +203,12 @@ export class ClientController {
   setNotify(id: string, mode: NotifyMode): void {
     if (!this.#deps.servers.get(id)) throw new ProtocolError('NOT_FOUND');
     this.#deps.servers.setNotify(id, mode);
+  }
+
+  /** One of a saved server's text channels' choices here (the channel menu); NOT_FOUND for an unknown id. */
+  setChannel(id: string, channelId: string, patch: ChannelPrefsPatch): void {
+    if (!this.#deps.servers.get(id)) throw new ProtocolError('NOT_FOUND');
+    this.#deps.servers.setChannel(id, channelId, patch);
   }
 
   /** The saved-server id on screen, or null (Host mode leaves it before a stop). */

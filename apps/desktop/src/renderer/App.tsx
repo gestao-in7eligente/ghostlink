@@ -3,6 +3,7 @@ import type { AppErrorCode } from '../shared/appErrors.js';
 import type { IdentityStatus, RendererWelcome } from '../shared/ipcTypes.js';
 import { ErrorLine, Screen } from './components/Screen.js';
 import ui from './components/ui.module.css';
+import { ChannelLinkNotice } from './features/channelMenu/ChannelLinkNotice.js';
 import { HostIndicator } from './features/host/HostIndicator.js';
 import { HostScreens } from './features/host/HostScreens.js';
 import { useHostStatusSync } from './features/host/useHostStatusSync.js';
@@ -171,6 +172,7 @@ export function App() {
       <HostScreens onJoined={joined} />
       <CreateServerScreens onJoined={joined} />
       {identityDialogs}
+      <ChannelLinkNotice />
     </>
   );
   if (deepLink) {

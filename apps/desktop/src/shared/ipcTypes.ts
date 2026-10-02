@@ -47,6 +47,30 @@ export const NOTIFY_MODES = ['all', 'mentions', 'none'] as const;
 export type NotifyMode = (typeof NOTIFY_MODES)[number];
 export const DEFAULT_NOTIFY_MODE: NotifyMode = 'mentions';
 
+/**
+ * One text channel's own choices on this computer (channel menu, spec 2026-10-02-menu-do-canal §2):
+ * its notification mode, over the server's, and "Silenciar canal" (no notification at all).
+ */
+export interface ChannelPrefs {
+  /** Absent: the server's mode ("Padrão do servidor"). */
+  notify?: NotifyMode;
+  /** Muted until this time (ms epoch), or null until I unmute it; absent: not muted. */
+  mutedUntil?: number | null;
+}
+
+/** A change to one channel's choices; absent fields stay as they are. */
+export interface ChannelPrefsPatch {
+  /** null: back to the server's mode. */
+  notify?: NotifyMode | null;
+  /** A time (ms epoch) or null (until I unmute it) mutes the channel; false unmutes it. */
+  mutedUntil?: number | null | false;
+  /** "Fixe o Canal no Topo" (true) and "Desafixar do topo" (false). */
+  pinned?: boolean;
+}
+
+/** Channel choices kept per saved server, and pinned channels: at most this many each. */
+export const MAX_CHANNEL_PREFS = 500;
+
 export interface SavedServer {
   id: string;
   name: string;
@@ -58,7 +82,21 @@ export interface SavedServer {
   iconHash?: string;
   /** Which of its messages raise a notification, chosen on this computer; absent: DEFAULT_NOTIFY_MODE. */
   notify?: NotifyMode;
+  /** Its text channels' own notification modes and mutes, by channel id (v0.5.0); absent: none. */
+  channels?: Record<string, ChannelPrefs>;
+  /** Text channels pinned to the top of its channel list on this computer, in pin order (v0.5.0). */
+  pinned?: string[];
 }
+
+/** A ghostlink://channel/<serverKeyId>/<channelId> link ("Copiar link" in the channel menu, v0.5.0). */
+export interface ChannelLinkTarget {
+  kind: 'channel';
+  serverKeyId: string;
+  channelId: string;
+}
+
+/** What a ghostlink:// link brings to the page (spec §12): an invite, or a channel of a saved server. */
+export type DeepLink = ParsedJoinInput | ChannelLinkTarget;
 
 /**
  * The welcome as the renderer sees it: never the fileToken (spec §3.1), plus the saved
@@ -211,6 +249,8 @@ export interface GhostlinkApi {
     setCall(serverId: string | null): Promise<void>;
     /** Which of this saved server's messages raise a notification (its right-click menu). */
     setNotify(id: string, mode: NotifyMode): Promise<void>;
+    /** One of its text channels' choices on this computer: notifications, mute, pin (the channel menu). */
+    setChannel(id: string, channelId: string, patch: ChannelPrefsPatch): Promise<void>;
   };
   host: HostApi;
   onConnectionState(cb: (s: ConnectionStateEvent) => void): () => void;
@@ -218,8 +258,8 @@ export interface GhostlinkApi {
   onServerEvent(cb: (e: Envelope, serverId: string) => void): () => void;
   onHostStatus(cb: (s: HostStatus) => void): () => void;
   /** spec §12: a ghostlink:// link that arrived before the page listened (then null). */
-  deepLink: { take(): Promise<ParsedJoinInput | null> };
-  onDeepLink(cb: (link: ParsedJoinInput) => void): () => void;
+  deepLink: { take(): Promise<DeepLink | null> };
+  onDeepLink(cb: (link: DeepLink) => void): () => void;
   /**
    * A client request of spec §5.2. With `serverId` it goes to that saved server's connection
    * (on screen or the call's), and is refused when neither is that server; without it, to the
@@ -295,6 +335,7 @@ export const IPC = {
   serversDelete: 'ghostlink:servers.delete',
   serversSetCall: 'ghostlink:servers.setCall',
   serversSetNotify: 'ghostlink:servers.setNotify',
+  serversSetChannel: 'ghostlink:servers.setChannel',
   hostStatus: 'ghostlink:host.status',
   hostStart: 'ghostlink:host.start',
   hostStop: 'ghostlink:host.stop',
@@ -390,7 +431,7 @@ export interface IpcContract {
   [IPC.identityPickBackup]: { args: []; result: BackupPickResult };
   [IPC.identityImportBackup]: { args: [password: string, replace: boolean]; result: IdentityStatus };
   [IPC.identityDelete]: { args: []; result: IdentityStatus };
-  [IPC.deepLinkTake]: { args: []; result: ParsedJoinInput | null };
+  [IPC.deepLinkTake]: { args: []; result: DeepLink | null };
   [IPC.settingsGet]: { args: []; result: Settings };
   [IPC.settingsSet]: { args: [patch: Partial<Settings>]; result: Settings };
   [IPC.joinParse]: { args: [input: string]; result: ParsedJoinInput };
@@ -405,6 +446,7 @@ export interface IpcContract {
   [IPC.serversDelete]: { args: [id: string]; result: { at: number } };
   [IPC.serversSetCall]: { args: [serverId: string | null]; result: void };
   [IPC.serversSetNotify]: { args: [id: string, mode: NotifyMode]; result: void };
+  [IPC.serversSetChannel]: { args: [id: string, channelId: string, patch: ChannelPrefsPatch]; result: void };
   [IPC.hostStatus]: { args: []; result: HostStatus };
   [IPC.hostStart]: { args: [config: HostConfig]; result: HostStartResult };
   [IPC.hostStop]: { args: []; result: HostStatus };

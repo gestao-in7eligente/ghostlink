@@ -4,6 +4,7 @@
 // as the server's mode says (its menu in the rail), and a notification click opens its channel.
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { DEFAULT_NOTIFY_MODE, type NotifyMode, type RendererWelcome } from '../../shared/ipcTypes.js';
+import { takeChannelRequest } from '../features/channelMenu/channelRequest.js';
 import { parseTextEvent, snapshotFromWelcome } from '../features/chat/events.js';
 import { notificationFor } from '../features/chat/notify.js';
 import { useT } from '../i18n/index.js';
@@ -43,6 +44,9 @@ export function useTextSync(welcome: RendererWelcome): void {
     const kept = takeCallText(welcome.serverId);
     if (kept) useTextStore.setState(kept);
     else dispatchText({ type: 'reset', snapshot: snapshotFromWelcome(welcome) });
+    // An invite to a channel, or a channel link (channel menu §2): that channel opens, when I can see it.
+    const channelId = takeChannelRequest(welcome.server.serverKeyId);
+    if (channelId !== null) dispatchText({ type: 'select', channelId });
   }, [welcome]);
 
   useLayoutEffect(

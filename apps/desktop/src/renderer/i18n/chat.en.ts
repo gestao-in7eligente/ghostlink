@@ -247,4 +247,7 @@ export const chat: Record<keyof typeof ptBR, string> = {
   'perm.MOVE_MEMBERS.desc': 'Move or disconnect people from voice channels.',
   'perm.ADMINISTRATOR': 'Administrator',
   'perm.ADMINISTRATOR.desc': 'Every permission and access to every channel. Give it with care.',
+  'channelLink.unknownTitle': "You're not in that server",
+  'channelLink.unknownBody': 'This link is for a channel of a server that is not in your list. Ask someone there for an invite.',
+  'channelLink.ok': 'Got it',
 };
