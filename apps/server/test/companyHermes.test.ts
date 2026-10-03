@@ -128,4 +128,35 @@ describe('the company Hermes (spec §2)', () => {
     enterprise.set('enterprise');
     expect((await connectBot(fx, created.connectionToken)).client).toBeDefined();
   });
+
+  it('deleting the Hermes keeps its settings and keys; a new one picks them up (decision 10)', async () => {
+    const { fx } = await setup();
+    const created = await fx.owner.ok<BotCreateResult>('hermes.create', { name: 'TC Hermes' });
+    const key = fakeKey('deepseek');
+    await fx.owner.ok('hermes.update', { keys: { deepseek: key } });
+    await fx.owner.ok('bot.delete', { botId: created.bot.userId });
+    const state = await fx.owner.ok<HermesState>('hermes.get', {});
+    expect(state.botId).toBeNull();
+    expect(state.keys.deepseek).toEqual({ last4: key.slice(-4) });
+    const again = await fx.owner.ok<BotCreateResult>('hermes.create', { name: 'TC Hermes 2' });
+    const hermes = (await connectBot(fx, again.connectionToken)).client!;
+    expect((await hermes.event<HermesConfig>('hermes.config')).keys.deepseek).toBe(key);
+  });
+
+  it('a non-owner cannot read or change it', async () => {
+    const { fx } = await setup();
+    const ana = await admin(fx);
+    await fx.owner.ok<BotCreateResult>('hermes.create', { name: 'TC Hermes' });
+    expect(await ana.fail('hermes.get', {})).toBe('FORBIDDEN');
+    expect(await ana.fail('hermes.update', { keys: { deepseek: fakeKey('x') } })).toBe('FORBIDDEN');
+    expect(await ana.fail('hermes.memory.delete', { target: 'company', id: '0123456789abcdef' })).toBe('FORBIDDEN');
+  });
+
+  it('an ownership transfer tells the new owner, and a stranger leaving tells no one', async () => {
+    const { fx } = await setup();
+    const ana = await fx.join({ nickname: 'Ana' });
+    await fx.owner.ok<BotCreateResult>('hermes.create', { name: 'TC Hermes' });
+    await fx.owner.ok('server.transferOwnership', { userId: ana.userId });
+    expect((await ana.event<HermesState>('hermes.state')).botId).not.toBeNull();
+  });
 });

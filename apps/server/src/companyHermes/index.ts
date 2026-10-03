@@ -40,6 +40,9 @@ interface State {
 
 export function createCompanyHermesModule(): CompanyHermesModule {
   let state: State | null = null;
+  /** The last known company-Hermes bot id and owner id: a removal or a transfer only matters for these. */
+  let lastBot: string | null = null;
+  let lastOwner: string | null = null;
   const need = (): State => {
     if (!state) throw new Error('the companyHermes module is not initialized');
     return state;
@@ -81,8 +84,10 @@ export function createCompanyHermesModule(): CompanyHermesModule {
 
   /** `hermes.state` to the owner's sessions (the settings open there follow it live). */
   const announce = (s: State): void => {
+    lastBot = s.store.load().botId;
     const owner = ownerId(s);
     if (owner === null) return;
+    lastOwner = owner;
     const sessions = sessionsOf(s, owner);
     if (sessions.length === 0) return;
     const d = stateOf(s);
@@ -168,7 +173,20 @@ export function createCompanyHermesModule(): CompanyHermesModule {
         announce(s);
       });
       // The company Hermes deleted: its bot_id is NULL now; the owner's panel follows.
-      c.getModule<TextModule>(TEXT_MODULE_NAME).events.on('membership.removed', () => announce(s));
+      lastBot = s.store.load().botId;
+      lastOwner = ownerId(s);
+      const text = c.getModule<TextModule>(TEXT_MODULE_NAME);
+      text.events.on('membership.removed', ({ userId }) => {
+        if (userId === lastBot) announce(s);
+      });
+      // An ownership transfer: the new owner's open apps learn the state.
+      text.events.on('access.changed', () => {
+        const owner = ownerId(s);
+        if (owner === lastOwner) return;
+        const first = lastOwner === null; // the server's first owner, not a transfer
+        lastOwner = owner;
+        if (!first) announce(s);
+      });
     },
 
     welcome: (session) => {
