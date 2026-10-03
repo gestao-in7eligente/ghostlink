@@ -226,3 +226,151 @@
   color: var(--text-faint);
   font-size: 14px;
 }
+
+/* ---- the page's tabs (spec 2026-10-03 pagina larga e abas): the friends page's pills ---- */
+
+.pageTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pageTab {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-icon);
+  font-size: 16px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pageTab:hover {
+  background: var(--bg-input);
+  color: var(--text-strong);
+}
+
+.pageTabSelected,
+.pageTabSelected:hover {
+  background: var(--bg-selected);
+  color: var(--text-strong);
+}
+
+.pagePanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.skillsPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.skillsBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.skillsSearch {
+  flex: 1;
+  min-width: 160px;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 4px;
+  outline: none;
+  background: var(--bg-input);
+  color: var(--text-strong);
+  font-size: 14px;
+}
+
+.skillsSearch::placeholder {
+  color: var(--text-soft);
+}
+
+.segment {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.segmentButton {
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-icon);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.segmentButton:hover {
+  background: var(--bg-input);
+  color: var(--text-strong);
+}
+
+.segmentOn,
+.segmentOn:hover {
+  background: var(--bg-selected);
+  color: var(--text-strong);
+}
+
+.skillGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 760px) {
+  .skillGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.skillCard {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-sidebar);
+}
+
+.skillCardOff {
+  opacity: 0.5;
+}
+
+.skillOffTag {
+  margin-left: 8px;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.skillDescriptionClamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}

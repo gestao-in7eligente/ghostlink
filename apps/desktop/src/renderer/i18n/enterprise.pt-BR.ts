@@ -113,6 +113,16 @@ export const enterprise = {
   'hermes.page.memoryCompany.other': '{n} itens sobre a empresa',
   'hermes.page.memoryPeople': '{n} sobre as pessoas',
   'hermes.page.memoryNone': 'O Hermes ainda não informou a memória.',
+  'hermes.page.tabs': 'Seções do Hermes',
+  'hermes.page.tab.overview': 'Visão geral',
+  'hermes.page.tab.access': 'Acesso',
+  'hermes.page.skillsSearch': 'Buscar skill',
+  'hermes.page.filter': 'Mostrar skills',
+  'hermes.page.filter.on': 'Ligadas',
+  'hermes.page.filter.all': 'Todas',
+  'hermes.page.skillOff': 'desligada',
+  'hermes.page.skillsNoMatch': 'Nenhuma skill encontrada.',
+  'hermes.page.manageSkills': 'Gerenciar skills',
   'hermes.page.open': 'Abrir',
 };
 
