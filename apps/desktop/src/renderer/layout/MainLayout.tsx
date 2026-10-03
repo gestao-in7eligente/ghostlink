@@ -8,6 +8,8 @@ import { InviteDialog } from '../features/server-settings/InviteDialog.js';
 import { LeaveDialog } from '../features/server-settings/LeaveDialog.js';
 import { ServerSettings } from '../features/server-settings/ServerSettings.js';
 import { DeletionBanner, useServerDeleteSync } from '../features/serverDelete/DeletionBanner.js';
+import { EnterpriseBanner } from '../features/enterprise/EnterpriseBanner.js';
+import { useEnterpriseSync } from '../stores/enterprise.js';
 import { deletionMessage } from '../features/serverDelete/serverDeleteModel.js';
 import { DeleteServerDialog } from '../features/serverDelete/ServerExitDialogs.js';
 import { ServerUpdateNotice } from '../features/serverUpdate/ServerUpdateNotice.js';
@@ -37,6 +39,7 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
   const t = useT();
   useTextSync(welcome);
   useServerDeleteSync(welcome);
+  useEnterpriseSync();
   const [dialog, setDialog] = useState<Dialog>(null);
   /** The channel the invite or the settings are about (the channel menu), or null: the whole server. */
   const [dialogChannel, setDialogChannel] = useState<string | null>(null);
@@ -78,6 +81,7 @@ export function MainLayout({ welcome, onLeave }: { welcome: RendererWelcome; onL
       <main className={l.center}>
         {/* Leave/delete spec §3: the owner's red band while the server waits for its erase. */}
         <DeletionBanner serverId={welcome.serverId} />
+        <EnterpriseBanner />
         {view === 'stage' && stageId !== null && VoiceStage ? (
           <VoiceStage channelId={stageId} onOpenSettings={() => setDialog('voice')} />
         ) : view === 'bot' && botPageId !== null ? (

@@ -25,6 +25,12 @@ export const CRYPTO_LABELS = {
  */
 export const OWNER_STATUS_LABEL = 'ghostlink-owner-status-v1';
 
+/**
+ * Domain label of an Enterprise license signature (license.ts). Outside CRYPTO_LABELS, which is
+ * frozen, but just as fixed: every license ever issued is signed over it.
+ */
+export const LICENSE_LABEL = 'ghostlink-license-v1';
+
 export const LIMITS = {
   maxPayloadBytes: 256 * 1024,
   helloTimeoutMs: 5_000,

@@ -98,6 +98,8 @@ export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
   // The Ghost DJ's panel (v0.5.1): its state, the equalizer, the volume and pause/resume/skip/stop;
   // the owner's YouTube cookies (v0.5.2).
   'dj.state', 'dj.eq', 'dj.volume', 'dj.control', 'dj.cookies.set', 'dj.cookies.clear',
+  // Enterprise (v0.6.0): the owner's license, and the company Hermes's settings. hermes.report is the Hermes's own.
+  'enterprise.license.set', 'hermes.create', 'hermes.get', 'hermes.update', 'hermes.memory.delete',
   'ping',
 ]);
 

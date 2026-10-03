@@ -21,3 +21,6 @@ export * from './attachments.js';
 export * from './upload.js';
 export * from './bots.js';
 export * from './ghostDj.js';
+export * from './license.js';
+export * from './enterprise.js';
+export * from './companyHermes.js';

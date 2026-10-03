@@ -41,6 +41,14 @@ export interface BotTextApi {
    */
   setOnline(userId: string, online: boolean): void;
   /**
+   * Takes a system bot out of the member list while it must not exist (the Ghost DJ in an
+   * Enterprise server): like a removal (member.left, offline, voice ends), but its roles stay for
+   * its return. Nothing when it is not a member.
+   */
+  park(userId: string): void;
+  /** Brings a parked bot back: member.joined, online. */
+  unpark(userId: string): void;
+  /**
    * Ends a membership: `update` runs in the same transaction as the removal of roles, read
    * states and mentions (messages stay), then the session closes with `closeWith` and everyone
    * learns `member.left`.
@@ -131,6 +139,24 @@ export function createBotTextApi(need: () => TextCore): BotTextApi {
       if (online) core.online.add(userId);
       else core.online.delete(userId);
       core.broadcastAll({ t: 'presence', d: { userId, online } }, userId);
+    },
+
+    park: (userId) => {
+      const core = need();
+      if (!core.repo.isMember(userId)) return;
+      core.db.run('UPDATE users SET removed_at = ? WHERE id = ? AND removed_at IS NULL', core.now(), userId);
+      core.online.delete(userId);
+      finishRemoval(core, userId, 'left', null);
+    },
+
+    unpark: (userId) => {
+      const core = need();
+      core.db.run('UPDATE users SET removed_at = NULL, rejoin_blocked_until = NULL WHERE id = ?', userId);
+      const member = core.repo.member(userId, true);
+      if (!member) return;
+      core.knownMembers.add(userId);
+      core.online.add(userId);
+      core.broadcastAll({ t: 'member.joined', d: { member } }, userId);
     },
 
     removeMember: (userId, update, closeWith) => {

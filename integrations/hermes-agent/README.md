@@ -44,7 +44,28 @@ Comandos do Hermes vão com menção: `@Hermes /new`.
 
 A conexão é TLS presa à chave do servidor (o `pin` do código): se a chave não bater, nada é enviado, nem o token. O código de conexão é um segredo: guarde só na variável.
 
+## Hermes da empresa (servidor Enterprise)
+
+**Só vale se quem opera o Hermes ligar `GHOSTLINK_COMPANY=true`.** Sem isso o plugin ignora todo evento `hermes.*` e nunca manda `hermes.report`: nenhum servidor consegue mexer nas chaves, no `config.yaml`, nas regras de acesso nem ler a memória desse Hermes.
+
+Num servidor GhostLink Enterprise, o bot marcado como "Hermes da empresa" recebe do GhostLink, a cada conexão, as configurações que o dono mexe nas configurações do bot. O plugin aplica assim:
+
+| O que o GhostLink manda | Onde o plugin grava |
+|---|---|
+| Chaves de IA (DeepSeek, OpenRouter) | Só na memória do processo do gateway (`DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`). Nunca em arquivo, nunca em log, nunca no relatório. O GhostLink manda de novo a cada conexão. |
+| Modelo principal e reserva | `config.yaml`: `model.provider` e `model.default`; a reserva em `fallback_providers` (ou em `fallback_model`, se o arquivo usa o formato antigo). |
+| Skills ligadas e desligadas | `config.yaml`: `skills.disabled` (a skill `hermes-agent` nunca é desligada). |
+| Cargos e canais com acesso | Só na memória do plugin. O dono sempre pode falar com o Hermes; nos canais liberados ele responde só quando mencionado ou quando respondem a ele. |
+| Apagar um item da memória | `memories/MEMORY.md` e `USER.md`, com o mesmo bloqueio que o Hermes usa. |
+
+Antes de cada escrita o plugin guarda uma cópia do arquivo em `$HERMES_HOME/ghostlink/backups` (as 5 mais novas; as cópias nunca têm chaves). Se um arquivo do Hermes estiver num formato que o plugin não conhece, ele não aplica nada e avisa "versão do Hermes não suportada" no painel.
+
+- Se o `.env` do próprio Hermes (`$HERMES_HOME/.env`) tiver uma dessas chaves, ela vale mais que a do GhostLink. O painel avisa; remova a chave do `.env`.
+- `GHOSTLINK_COMPANY_RESTART=s6` reinicia o gateway depois de uma mudança de modelo. Só para um Hermes que lê o `config.yaml` apenas na partida; por padrão não é preciso, porque o Hermes lê tudo a cada mensagem.
+- Mudanças feitas no painel com o Hermes desconectado chegam quando ele reconectar. Se a licença Enterprise do servidor vencer, o Hermes tenta de novo a cada 2 minutos.
+
 ## Testes
 
 - `test/ghostlink-client.test.ts`: o cliente Python contra um servidor GhostLink real (precisa de Python com `aiohttp` e `cryptography`; `GHOSTLINK_TEST_PYTHON` escolhe o interpretador).
+- `test/company_check.py`: o código do Hermes da empresa (`ghostlink/company.py`) numa pasta de teste, sem Hermes nem rede (precisa de `aiohttp` e `ruamel.yaml`).
 - `test/adapter_check.py`: o adaptador dentro de uma instalação do Hermes (`python adapter_check.py ghostlink`).

@@ -19,11 +19,14 @@ Everyone else is ignored: Hermes's gateway denies users no allowlist names (defa
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
+import os
 import re
 import secrets
 import time
+from pathlib import Path
 from typing import Any, Dict, Optional, Set
 
 from gateway.config import Platform, PlatformConfig
@@ -37,6 +40,7 @@ from gateway.platforms.base import BasePlatformAdapter, SendResult, resolve_chan
 from gateway.platforms.event import MessageEvent, MessageType
 from gateway.platforms.helpers import MessageDeduplicator
 
+from .company import CompanyAgent, CompanyHome, check_key, company_enabled, ignored_hermes_event, restart_gateway_s6
 from .client import FATAL_CODES, GhostLinkBotClient, GhostLinkError, parse_connection_code
 
 logger = logging.getLogger(__name__)
@@ -106,6 +110,14 @@ def validate_ghostlink_config(config: PlatformConfig) -> bool:
         return False
 
 
+def _hermes_home() -> Path:
+    try:
+        from hermes_constants import get_hermes_home
+        return Path(get_hermes_home())
+    except Exception:
+        return Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
+
+
 class GhostLinkAdapter(BasePlatformAdapter):
     """Gateway adapter for one GhostLink server, as its bot member."""
 
@@ -125,6 +137,8 @@ class GhostLinkAdapter(BasePlatformAdapter):
         self._roles: Dict[str, str] = {}  # role id -> name
         self._last_typing: Dict[str, float] = {}
         self._dedup = MessageDeduplicator()
+        self._company: Optional[CompanyAgent] = None
+        self._company_watch: Optional[asyncio.Task] = None
 
     # --- settings ---
 
@@ -134,7 +148,10 @@ class GhostLinkAdapter(BasePlatformAdapter):
     def _role_authorized(self, user_id: str) -> bool:
         """The owner (unless GHOSTLINK_ALLOW_OWNER=false) and members of GHOSTLINK_ALLOWED_ROLES pass as
         adapter-verified role auth, like Discord's allowed roles; GHOSTLINK_ALLOWED_USERS goes through
-        Hermes's own allowlist."""
+        Hermes's own allowlist. In the company Hermes (an Enterprise server) GhostLink's roles decide."""
+        company = self._company
+        if company is not None and company.active:
+            return company.allows(user_id, self._owner_id, list((self._members.get(user_id) or {}).get("roleIds") or []))
         if _truthy(self._setting("allow_owner", "GHOSTLINK_ALLOW_OWNER", "true"), True) and user_id == self._owner_id:
             return True
         wanted = _name_set(self._setting("allowed_roles", "GHOSTLINK_ALLOWED_ROLES"))
@@ -151,6 +168,9 @@ class GhostLinkAdapter(BasePlatformAdapter):
 
     def _addressed(self, channel_id: str, addressed: bool) -> bool:
         """GHOSTLINK_ALLOWED_CHANNELS first, then the mention gate (off in free-response channels)."""
+        company = self._company
+        if company is not None and company.active:  # spec §2: only when mentioned or replied to
+            return addressed and company.listens_in(channel_id)
         allowed = _name_set(self._setting("allowed_channels", "GHOSTLINK_ALLOWED_CHANNELS"))
         if allowed and not self._channel_in(channel_id, allowed):
             return False
@@ -179,14 +199,24 @@ class GhostLinkAdapter(BasePlatformAdapter):
             self._set_fatal_error("ghostlink_bad_code", f"GHOSTLINK_BOT: {exc}", retryable=False)
             return False
         client = GhostLinkBotClient(code, on_event=self._on_event, on_welcome=self._apply_welcome, on_fatal=self._on_fatal)
+        # Before start(): the first hermes.config arrives right after the welcome.
+        # Only when the operator opted in (GHOSTLINK_COMPANY=true); otherwise hermes.* events are ignored.
+        self._company = CompanyAgent(
+            CompanyHome(_hermes_home()), request=lambda t, d: client.request(t, d), check_key=check_key,
+            restart=restart_gateway_s6 if os.environ.get("GHOSTLINK_COMPANY_RESTART") == "s6" else None,
+        ) if company_enabled(self._setting("company", "GHOSTLINK_COMPANY", "")) else None
         try:
             await client.start()
         except GhostLinkError as exc:
             logger.error("GhostLink: could not connect to %s: %s", code.address, exc)
             if exc.code in FATAL_CODES:
                 self._set_fatal_error(f"ghostlink_{exc.code.lower()}", str(exc), retryable=False)
+            elif exc.code == "ENTERPRISE_REQUIRED":
+                self._set_fatal_error("ghostlink_enterprise_required", str(exc), retryable=True)
             return False
         self._client = client
+        if self._company is not None:
+            self._company_watch = asyncio.create_task(self._company.watch(), name="ghostlink-company")
         self._mark_connected()
         self._wire_plugin_handlers(None)
         logger.info("GhostLink: connected to %s (%s) as %s, %d text channels",
@@ -195,6 +225,11 @@ class GhostLinkAdapter(BasePlatformAdapter):
 
     async def disconnect(self) -> None:
         client, self._client = self._client, None
+        watch, self._company_watch = self._company_watch, None
+        if watch is not None:
+            watch.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await watch
         if client is not None:
             await client.close()
         self._mark_disconnected()
@@ -222,6 +257,11 @@ class GhostLinkAdapter(BasePlatformAdapter):
     # --- events ---
 
     async def _on_event(self, t: str, d: Dict[str, Any]) -> None:
+        if ignored_hermes_event(self._company is not None, t):
+            logger.debug("GhostLink: %s ignored (GHOSTLINK_COMPANY is not on)", t)
+            return
+        if self._company is not None and await self._company.on_event(t, d):
+            return
         if t == "msg.new":
             await self._on_message(d.get("message"))
         elif t in ("member.joined", "member.updated"):
@@ -272,6 +312,8 @@ class GhostLinkAdapter(BasePlatformAdapter):
         replied_to_me = bool(reply and reply.get("authorId") == self._self_id)
         if not self._addressed(channel_id, mentioned or replied_to_me):
             return
+        if self._company is not None and not self._company.permits(author, self._owner_id, list((self._members.get(author) or {}).get("roleIds") or []), channel_id, mentioned or replied_to_me):
+            return  # the company Hermes: only the panel's access rule
         text = self._readable(text.replace(f"<@{self._self_id}>", " ")).strip()
         for attachment in message.get("attachments") or []:
             if isinstance(attachment, dict):

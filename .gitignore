@@ -10,6 +10,7 @@ coverage/
 apps/desktop/resources/livekit/
 
 # local data and secrets
+*.pem
 .data/
 *.db
 *.db-wal

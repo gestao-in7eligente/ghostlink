@@ -16,7 +16,8 @@ import { Avatar, ErrorText, primitives as p } from '../../layout/primitives.js';
 import s from '../../layout/settings.module.css';
 import { SettingsShell, type SettingsTab } from '../../layout/SettingsShell.js';
 import { useConnectionStore } from '../../stores/connection.js';
-import { everyoneRole, myPermissions } from '../../stores/server.js';
+import { useEnterpriseStore } from '../../stores/enterprise.js';
+import { everyoneRole, isOwner, myPermissions } from '../../stores/server.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import { useTextStore } from '../../stores/text.js';
 import { setMemberRoles } from '../chat/actions.js';
@@ -26,6 +27,7 @@ import { IMAGE_ACCEPT, usePickedImage } from '../profile/usePickedImage.js';
 import { getBot, setBotPhoto, updateBot } from './botActions.js';
 import { DeleteBotDialog, RegenerateBotDialog } from './BotDialogs.js';
 import { CommandList, useBotCommands } from './BotPage.js';
+import { hermesSettingsTabs } from './hermes/HermesTabs.js';
 import { BotTag, CreatedLine, SeenLine, fill, useNow } from './BotParts.js';
 import { botRoleChoices, botsGuideUrl, isBot, isSystemBot, nameOf, refreshesBotSettings, seenText, timeAgo, toggledRole } from './botsModel.js';
 import g from './botPage.module.css';
@@ -107,6 +109,9 @@ export function BotSettings({ botId, onClose }: { botId: string; onClose: () => 
   const [dialog, setDialog] = useState<'regenerate' | 'delete' | null>(null);
   const systemProfile = useTextStore((st) => isSystemBot(st.bots.profiles, botId));
   const system = systemProfile || data.data?.bot.system === true;
+  // The company Hermes (Enterprise): its own tabs. Owner only: a former owner may still hold a stale state.
+  const companyHermes = useEnterpriseStore((st) => st.hermes?.botId === botId);
+  const owner = useTextStore((st) => isOwner(st.server));
   const gone = !isBot(bot) || !canManage;
 
   // The bot was deleted meanwhile, or the person can no longer manage the server: nothing to show.
@@ -123,12 +128,14 @@ export function BotSettings({ botId, onClose }: { botId: string; onClose: () => 
     code: () => <CodeTab bot={bot} data={data} onRegenerate={() => setDialog('regenerate')} />,
     delete: () => <DeleteTab onDelete={() => setDialog('delete')} />,
   };
-  const tabs: SettingsTab[] = TABS.filter((id) => !system || (id !== 'code' && id !== 'delete')).map((id) => ({
+  const hideDanger = system;
+  const tabs: SettingsTab[] = TABS.filter((id) => !hideDanger || (id !== 'code' && id !== 'delete')).map((id) => ({
     id,
     label: t(`bots.settings.tab.${id}`),
     content: content[id],
     danger: id === 'delete',
   }));
+  if (companyHermes && owner) tabs.splice(1, 0, ...hermesSettingsTabs(t));
   const select = (id: string) => {
     setActive(id);
     // Uses and messages send no event here: the numbers are fetched again each time the tab opens.

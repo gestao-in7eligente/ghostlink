@@ -1,0 +1,44 @@
+.badge {
+  flex-shrink: 0;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--text-bright);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+.banner {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 6px var(--space-4);
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+  text-align: center;
+}
+
+.bannerIcon {
+  flex-shrink: 0;
+}
+
+.bannerText {
+  margin: 0;
+  min-width: 0;
+}
+
+.license {
+  min-height: 96px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}

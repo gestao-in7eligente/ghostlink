@@ -2,9 +2,9 @@
 // server checks every request again (spec §6).
 import { PERMISSIONS, has, type Channel } from '@ghostlink/shared';
 
-export type ServerSettingsTab = 'overview' | 'channels' | 'roles' | 'members' | 'invites' | 'bans' | 'transfer';
+export type ServerSettingsTab = 'overview' | 'channels' | 'roles' | 'members' | 'invites' | 'bans' | 'enterprise' | 'transfer';
 
-export function settingsTabs(bits: number, isOwner: boolean): ServerSettingsTab[] {
+export function settingsTabs(bits: number, isOwner: boolean, opts: { enterprise?: boolean } = {}): ServerSettingsTab[] {
   const tabs: ServerSettingsTab[] = [];
   if (has(bits, PERMISSIONS.MANAGE_SERVER)) tabs.push('overview');
   if (has(bits, PERMISSIONS.MANAGE_CHANNELS)) tabs.push('channels');
@@ -12,6 +12,7 @@ export function settingsTabs(bits: number, isOwner: boolean): ServerSettingsTab[
   if (has(bits, PERMISSIONS.MANAGE_ROLES) || has(bits, PERMISSIONS.KICK_MEMBERS) || has(bits, PERMISSIONS.BAN_MEMBERS)) tabs.push('members');
   if (has(bits, PERMISSIONS.CREATE_INVITES) || has(bits, PERMISSIONS.MANAGE_SERVER)) tabs.push('invites');
   if (has(bits, PERMISSIONS.BAN_MEMBERS)) tabs.push('bans');
+  if (isOwner && opts.enterprise === true) tabs.push('enterprise');
   if (isOwner) tabs.push('transfer');
   return tabs;
 }

@@ -106,6 +106,17 @@ describe('ci.yml jobs', () => {
     expect(fetch).toBeLessThan(runIndex(test, 'npm test'));
   });
 
+  it('gives the Hermes plugin tests a Python with its packages pinned as Hermes pins them (Linux)', () => {
+    const test = workflow.jobs.test!;
+    const index = test.steps.findIndex((s) => s.name === 'Python for the Hermes plugin tests');
+    expect(index).toBeGreaterThan(0);
+    const step = test.steps[index]!;
+    expect(step.if).toBe("runner.os == 'Linux'");
+    expect(step.run).toMatch(/aiohttp==3\.14\.3 cryptography==50\.0\.1 ruamel\.yaml==0\.18\.16/);
+    expect(step.run).toMatch(/GHOSTLINK_TEST_PYTHON=.*>> "\$GITHUB_ENV"/);
+    expect(index).toBeLessThan(runIndex(test, 'npm test'));
+  });
+
   it('packages on Windows and macOS, then smoke tests the package', () => {
     const pack = workflow.jobs.package!;
     expect(pack.strategy.matrix.os).toEqual(['windows-latest', 'macos-latest']);

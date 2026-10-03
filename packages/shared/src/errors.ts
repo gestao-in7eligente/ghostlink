@@ -9,6 +9,10 @@ export const ERROR_CODES = [
   // Bots (bots.ts, spec 2026-10-02-bots-design.md §2): a bot hello with an unknown or replaced
   // connection token; an interaction.invoke to a bot with no session.
   'BAD_BOT_TOKEN', 'BOT_OFFLINE',
+  // Enterprise (spec 2026-10-02-enterprise-e-hermes-da-empresa-design.md §1): a change that needs an
+  // Enterprise server (the company Hermes is refused at a normal one with it too); a license that is
+  // not one, is forged or is for another server; a license past its 7 days of grace.
+  'ENTERPRISE_REQUIRED', 'LICENSE_INVALID', 'LICENSE_EXPIRED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
