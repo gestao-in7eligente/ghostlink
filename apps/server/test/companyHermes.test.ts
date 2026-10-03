@@ -1,7 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
+  HERMES_PROVIDERS,
   PERMISSIONS,
+  apiEnvVarProblem,
+  ProtocolError,
   PROTOCOL,
   parseBotConnectionCode,
   type BotCreateResult,
@@ -12,6 +15,8 @@ import {
   type HermesState,
   type HermesView,
 } from '@ghostlink/shared';
+import { checkApisChange } from '../src/companyHermes/apis.js';
+import type { HermesRecord } from '../src/companyHermes/store.js';
 import { createAvatarsModule } from '../src/avatars/index.js';
 import { createBotsModule } from '../src/bots/index.js';
 import { createCompanyHermesModule } from '../src/companyHermes/index.js';
@@ -370,5 +375,43 @@ describe('the API tab (spec 2026-10-03-aba-api-e-sites §1)', () => {
     await fx.owner.ok('hermes.update', { apis: thirty });
     expect(await fx.owner.fail('hermes.update', { keys: { 'openai-api': fakeKey('openai') } })).toBe('BAD_REQUEST');
     expect((await fx.owner.ok<HermesState>('hermes.get', {})).apis).toHaveLength(30);
+  });
+});
+
+describe('checkApisChange (unit)', () => {
+  const record = (apis: { envVar: string; name: string; value: string }[]): HermesRecord => ({
+    botId: null,
+    keys: Object.fromEntries(HERMES_PROVIDERS.map((p) => [p, null])) as HermesRecord['keys'],
+    apis,
+    settings: null as never,
+    version: 0,
+    report: null,
+    reportAt: null,
+    viewerRoleId: null,
+  });
+  const refused = (envVar: string) => {
+    try {
+      checkApisChange(record([]), { apis: { [envVar]: { name: 'x', value: fakeKey('x') } } });
+    } catch (e) {
+      return e instanceof ProtocolError && e.code === 'BAD_REQUEST';
+    }
+    return false;
+  };
+
+  it('a deny list beats an allowed ending; a denied suffix is not a substring match', () => {
+    for (const name of ['HERMES_API_KEY', 'GHOSTLINK_BOT_TOKEN', 'SSL_CERT_KEY']) {
+      expect(apiEnvVarProblem(name), name).toBe('reserved');
+      expect(refused(name), name).toBe(true);
+    }
+    // Contract: _PROXY is a denied suffix only at the very end, so this name (it ends in _TOKEN) is allowed.
+    expect(apiEnvVarProblem('MY_PROXY_TOKEN')).toBeNull();
+    expect(refused('MY_PROXY_TOKEN')).toBe(false);
+  });
+
+  it('refuses growth past 30 keys but still lets a store over the limit delete or replace', () => {
+    const over = record(Array.from({ length: 32 }, (_, i) => ({ envVar: `API_${i}_KEY`, name: `API ${i}`, value: fakeKey(String(i)) })));
+    expect(() => checkApisChange(over, { apis: { NEW_API_KEY: { name: 'Nova', value: fakeKey('n') } } })).toThrow(ProtocolError);
+    expect(checkApisChange(over, { apis: { API_0_KEY: null } })).toEqual({ API_0_KEY: null });
+    expect(checkApisChange(over, { apis: { API_1_KEY: { value: fakeKey('r') } } })).toEqual({ API_1_KEY: { name: 'API 1', value: expect.any(String) } });
   });
 });

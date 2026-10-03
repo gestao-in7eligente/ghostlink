@@ -22,6 +22,7 @@ export function checkApisChange(current: HermesRecord, p: Pick<HermesUpdatePaylo
     ...HERMES_PROVIDERS.filter((x) => current.keys[x] !== null).map((x) => HERMES_PROVIDER_ENV[x]),
     ...current.apis.map((a) => a.envVar),
   ]);
+  const before = saved.size;
   for (const provider of HERMES_PROVIDERS) {
     const value = p.keys?.[provider];
     if (value === null) saved.delete(HERMES_PROVIDER_ENV[provider]);
@@ -46,6 +47,7 @@ export function checkApisChange(current: HermesRecord, p: Pick<HermesUpdatePaylo
       saved.add(envVar);
     }
   }
-  if (saved.size > HERMES_LIMITS.maxApis) throw new ProtocolError('BAD_REQUEST', 'too many keys');
+  // Only growth is refused: a store already over the limit can still delete its way back.
+  if (saved.size > HERMES_LIMITS.maxApis && saved.size > before) throw new ProtocolError('BAD_REQUEST', 'too many keys');
   return out;
 }

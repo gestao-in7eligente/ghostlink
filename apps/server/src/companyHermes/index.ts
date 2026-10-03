@@ -236,8 +236,8 @@ export function createCompanyHermesModule(): CompanyHermesModule {
         if (!role) throw new ProtocolError('NOT_FOUND');
         if (Number(role.is_default) === 1) throw new ProtocolError('BAD_REQUEST', 'the viewer role cannot be @everyone');
       }
-      // The viewer role is GhostLink's alone: changing only it sends the Hermes nothing.
       const apis = checkApisChange(s.store.load(), change);
+      // The viewer role is GhostLink's alone: changing only it sends the Hermes nothing.
       const forHermes = change.keys !== undefined || apis !== undefined || change.models !== undefined || change.disabledSkills !== undefined || change.access !== undefined;
       s.ctx.db.tx(() => {
         if (forHermes) s.store.update({ keys: change.keys, apis, models: change.models, disabledSkills: change.disabledSkills, access: change.access });
