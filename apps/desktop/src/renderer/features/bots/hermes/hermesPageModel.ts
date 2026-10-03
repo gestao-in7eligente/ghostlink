@@ -1,9 +1,9 @@
 // The company Hermes's page (spec 2026-10-03-pagina-do-hermes-da-empresa-design.md §2): the blocks
 // shown on the bot's page, built from the server's view and the roles and channels this app knows.
-import type { Channel, HermesModelInUse, HermesProvider, HermesView, HermesViewSkill, Role } from '@ghostlink/shared';
+import type { Channel, HermesModelInUse, HermesProvider, HermesState, HermesView, HermesViewSkill, Role } from '@ghostlink/shared';
 import { sortedChannels } from '../../../stores/channels.js';
 import { rolesByPosition } from '../../../stores/server.js';
-import { PROVIDER_NAMES } from './hermesModel.js';
+import { PROVIDER_NAMES, skillEnabled } from './hermesModel.js';
 
 export interface HermesPageBlocks {
   /** 1. Situação e modelo. "Provedor · modelo". */
@@ -50,4 +50,44 @@ export function hermesPageBlocks(view: HermesView, known: { roles: Readonly<Reco
     roles: rolesByPosition(known.roles).filter((r) => !r.isDefault && roleIds.includes(r.id)).map((r) => r.name),
     memory: view.memory,
   };
+}
+
+export type HermesPageTab = 'overview' | 'skills' | 'access' | 'memory' | 'commands';
+
+/** The tabs under the badge: Memória is the owner's only. */
+export function hermesPageTabs(owner: boolean): HermesPageTab[] {
+  return owner ? ['overview', 'skills', 'access', 'memory', 'commands'] : ['overview', 'skills', 'access', 'commands'];
+}
+
+export interface SkillRow {
+  name: string;
+  description: string;
+  enabled: boolean;
+}
+
+/**
+ * The Skills tab's rows. The owner has the full state, so the off ones show too; everyone else has
+ * the ones on. null: the Hermes never reported.
+ */
+export function pageSkillRows(view: HermesView, state: HermesState | null): SkillRow[] | null {
+  if (state !== null && state.report !== null) {
+    return state.report.skills.map((s) => ({ name: s.name, description: s.description, enabled: skillEnabled(state, s) }));
+  }
+  return view.skills === null ? null : view.skills.map((s) => ({ name: s.name, description: s.description, enabled: true }));
+}
+
+const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+/** Name and description, ignoring case and accents; an empty search keeps everything. */
+export function searchSkills(rows: readonly SkillRow[], query: string): SkillRow[] {
+  const q = fold(query.trim());
+  if (q === '') return [...rows];
+  return rows.filter((r) => fold(r.name).includes(q) || fold(r.description).includes(q));
+}
+
+export type SkillFilter = 'on' | 'all';
+
+/** "Ligadas | Todas" (the owner's), then the search. */
+export function filterSkills(rows: readonly SkillRow[], filter: SkillFilter, query: string): SkillRow[] {
+  return searchSkills(filter === 'on' ? rows.filter((r) => r.enabled) : rows, query);
 }
