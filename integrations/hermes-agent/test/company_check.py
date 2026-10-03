@@ -102,6 +102,11 @@ assert [s["enabled"] for s in company.skills()] == [True, False], "a JSON-string
 (home / "config.yaml").write_text(
     "skills:\n  platform_disabled:\n    ghostlink: [resumo]\n    discord: [hermes-agent]\n", encoding="utf-8")
 assert [s["enabled"] for s in company.skills()] == [True, False], "the ghostlink platform list counts"
+# GhostLink's list is authoritative once set: it also clears the ghostlink platform list.
+(home / "config.yaml").write_text(
+    "skills:\n  platform_disabled:\n    ghostlink: [resumo]\n", encoding="utf-8")
+company.apply({**config, "disabledSkills": []})
+assert [s["enabled"] for s in company.skills()] == [True, True], "switched back on from the panel"
 (home / "config.yaml").write_text(saved, encoding="utf-8")
 
 # .env holding a key wins in Hermes: reported, never read aloud.
@@ -173,12 +178,13 @@ async def flaky():
     a.active = True
     await a.report()  # not UTF-8: reported as unsupported, no exception
     assert a.unsupported is not None
-    a.unsupported = None
     task = asyncio.create_task(a.watch(every=0.01))
     await asyncio.sleep(0.1)
     assert not task.done(), "watch() survives a failure"
     task.cancel()
     (home / "memories" / "USER.md").write_text("Matheus prefere respostas curtas.", encoding="utf-8")
+    await a.report()
+    assert a.unsupported is None, "unsupported clears once the file is readable again"
 
 
 asyncio.run(flaky())

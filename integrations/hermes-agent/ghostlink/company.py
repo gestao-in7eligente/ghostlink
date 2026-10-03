@@ -234,6 +234,8 @@ class CompanyHome:
             if not isinstance(skills, dict):
                 data["skills"] = skills = _load_yaml("{}\n")
             skills["disabled"] = sorted(_names(config["disabledSkills"]) - ESSENTIAL_SKILLS)
+            if isinstance(skills.get("platform_disabled"), dict):  # GhostLink's list is authoritative
+                skills["platform_disabled"].pop(PLATFORM, None)
         after = _dump_yaml(data)
         changed = after != before
         if changed:
@@ -448,6 +450,8 @@ class CompanyAgent:
         primary = fallback = None
         skills: List[Dict[str, Any]] = []
         memory: Dict[str, List[Dict[str, str]]] = {"company": [], "people": []}
+        if self.unsupported is not None and self.home.check() is None:
+            self.unsupported = None  # readable again
         if self.unsupported is None:
             try:
                 primary, fallback = self.home.models()
