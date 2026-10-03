@@ -9,9 +9,9 @@ import { ProtocolError } from './errors.js';
 /**
  * Raw 32-byte Ed25519 public key of the LICENSE key (its own key, never the release key),
  * base64url. Its private half lives only on the owner's PC (D:\GhostLink Licencas\), made once by
- * scripts/gen-license-key.mjs. Empty until that ceremony: every license is refused.
+ * scripts/gen-license-key.mjs (the ceremony ran on 2026-10-03).
  */
-export const LICENSE_PUBLIC_KEY: string = '';
+export const LICENSE_PUBLIC_KEY: string = 'M1e08tq2P2vOBM6-Xnd_p4CFJPOlXzH1fchPLPv04xY';
 
 export const LICENSE_PREFIX = 'GLE1';
 

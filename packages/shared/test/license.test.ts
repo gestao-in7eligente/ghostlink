@@ -1,6 +1,6 @@
 import { generateKeyPairSync, sign, verify, type KeyObject } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { LICENSE_LIMITS, checkLicense, formatLicense, grantsEnterprise, parseLicense, toBase64Url, utf8, type LicenseData } from '../src/index.js';
+import { LICENSE_LIMITS, LICENSE_PUBLIC_KEY, checkLicense, formatLicense, grantsEnterprise, parseLicense, toBase64Url, utf8, type LicenseData } from '../src/index.js';
 
 const DAY = 86_400_000;
 const NOW = Date.UTC(2026, 9, 2, 15);
@@ -59,5 +59,9 @@ describe('Enterprise licenses (spec §1)', () => {
   ])('a broken license (%s) is invalid', (_why, text) => {
     expect(parseLicense(text)).toBeNull();
     expect(check(text)).toEqual({ state: 'invalid', data: null });
+  });
+
+  it('the license public key is set (the ceremony ran)', () => {
+    expect(LICENSE_PUBLIC_KEY).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
 });
