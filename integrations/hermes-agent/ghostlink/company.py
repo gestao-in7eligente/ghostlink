@@ -19,6 +19,7 @@ This module applies it to $HERMES_HOME and reads back what `hermes.report` tells
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import contextlib
 import hashlib
@@ -33,6 +34,7 @@ from typing import Any, Awaitable, Callable, Dict, List, MutableMapping, Optiona
 
 logger = logging.getLogger(__name__)
 
+PLATFORM = "ghostlink"
 PROVIDER_MAX, MODEL_MAX = 64, 128
 PROVIDER_ENV = {"deepseek": "DEEPSEEK_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
 KEY_CHECK_URLS = {"deepseek": "https://api.deepseek.com/models", "openrouter": "https://openrouter.ai/api/v1/key"}
@@ -113,10 +115,21 @@ def _frontmatter(text: str) -> Dict[str, Any]:
 
 
 def _names(value: Any) -> set:
-    if value is None:
-        return set()
+    """Hermes's parse_config_string_list: a list, a scalar name, or a list stored as a string."""
     if isinstance(value, str):
-        value = [value]
+        if value.strip().startswith("["):
+            try:
+                parsed = ast.literal_eval(value.strip())
+            except (ValueError, SyntaxError):
+                parsed = None
+            if isinstance(parsed, list):
+                value = parsed
+            else:
+                value = [value]
+        else:
+            value = [value]
+    elif not isinstance(value, (list, tuple, set, frozenset)):
+        return set()
     return {str(v).strip() for v in value if str(v).strip()}
 
 
@@ -211,6 +224,7 @@ class CompanyHome:
             model["provider"], model["default"] = primary["provider"], primary["model"]
         if "fallback_providers" in data:
             data["fallback_providers"] = [{"provider": fallback["provider"], "model": fallback["model"]}] if fallback else []
+            data.pop("fallback_model", None)  # Hermes merges both keys: a legacy entry would stay in its chain
         elif fallback:
             data["fallback_model"] = {"provider": fallback["provider"], "model": fallback["model"]}
         else:
@@ -259,17 +273,23 @@ class CompanyHome:
             primary = {"provider": _fit(str(model.get("provider") or ""), PROVIDER_MAX), "model": _fit(str(model["default"]), MODEL_MAX)}
         elif isinstance(model, str) and model:
             primary = {"provider": "", "model": _fit(model, MODEL_MAX)}
-        chain = data.get("fallback_providers") if data.get("fallback_providers") is not None else data.get("fallback_model")
-        first = chain[0] if isinstance(chain, list) and chain else chain
         fallback = None
-        if isinstance(first, dict) and first.get("provider") and first.get("model"):
-            fallback = {"provider": _fit(str(first["provider"]), PROVIDER_MAX), "model": _fit(str(first["model"]), MODEL_MAX)}
+        # Hermes's chain (hermes_cli/fallback_config.py) is fallback_providers, then the legacy fallback_model.
+        for raw in (data.get("fallback_providers"), data.get("fallback_model")):
+            for entry in [raw] if isinstance(raw, dict) else raw if isinstance(raw, list) else []:
+                provider = str(entry.get("provider") or "").strip() if isinstance(entry, dict) else ""
+                model_name = str(entry.get("model") or "").strip() if isinstance(entry, dict) else ""
+                if provider and model_name and fallback is None:
+                    fallback = {"provider": _fit(provider, PROVIDER_MAX), "model": _fit(model_name, MODEL_MAX)}
         return primary, fallback
 
     # ---- skills and memory ----
 
     def skills(self) -> List[Dict[str, Any]]:
-        disabled = _names((self._read_config().get("skills") or {}).get("disabled"))
+        cfg = self._read_config().get("skills") or {}
+        # Hermes (agent/skill_utils.get_disabled_skill_names): the global list united with this platform's.
+        platform_off = cfg.get("platform_disabled")
+        disabled = _names(cfg.get("disabled")) | _names(platform_off.get(PLATFORM) if isinstance(platform_off, dict) else None)
         found = []
         for dirpath, dirnames, filenames in os.walk(self.home / "skills"):
             is_skill = "SKILL.md" in filenames
@@ -432,7 +452,7 @@ class CompanyAgent:
             try:
                 primary, fallback = self.home.models()
                 skills, memory = self.home.skills(), self.home.memory()
-            except (Unsupported, OSError) as exc:
+            except (Unsupported, OSError, ValueError) as exc:  # ValueError: not UTF-8
                 self.unsupported = _fit(str(exc) or type(exc).__name__, REASON_MAX)
         self._fingerprint = self.home.fingerprint()
         return {"appliedVersion": self.version, "skills": skills, "memory": memory,
@@ -444,14 +464,18 @@ class CompanyAgent:
         try:
             await self.request("hermes.report", payload)
         except Exception as exc:  # the next change or reconnection reports again
+            self._fingerprint = None  # so watch() sends it again
             logger.warning("GhostLink: hermes.report failed (%s)", getattr(exc, "code", type(exc).__name__))
 
     async def watch(self, every: float = 60.0) -> None:
         """Reports again when Hermes itself changed a skill or its memory."""
         while True:
             await asyncio.sleep(every)
-            if self.active and await asyncio.to_thread(self.home.fingerprint) != self._fingerprint:
-                await self.report()
+            try:
+                if self.active and await asyncio.to_thread(self.home.fingerprint) != self._fingerprint:
+                    await self.report()
+            except Exception as exc:  # one failure never ends the watch
+                logger.warning("GhostLink: report check failed (%s)", type(exc).__name__)
 
     # ---- access (spec §2 "Quem pode usar") ----
 
@@ -459,6 +483,15 @@ class CompanyAgent:
         if user_id and user_id == owner_id:
             return True
         return bool(set(self.access.get("roleIds") or []).intersection(role_ids))
+
+    def permits(self, user_id: str, owner_id: Optional[str], role_ids: List[str],
+                channel_id: str = "", addressed: bool = True) -> bool:
+        """The gate for every incoming message. Not the company Hermes: True (the adapter's own rules
+        decide). Else only the owner or a listed role, in a listened channel, when addressed: Hermes's
+        own paths (allow-all, pairing, allowed users) must not let anyone else in."""
+        if not self.active:
+            return True
+        return addressed and self.listens_in(channel_id) and self.allows(user_id, owner_id, role_ids)
 
     def listens_in(self, channel_id: str) -> bool:
         channels = self.access.get("channels", "all")

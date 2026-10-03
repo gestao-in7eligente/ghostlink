@@ -4,6 +4,7 @@ an item deleted, access decisions. No Hermes install and no network. Prints "ok"
 
 import asyncio
 import hashlib
+import logging
 import os
 import secrets
 import sys
@@ -65,6 +66,20 @@ assert len(cut_primary["model"]) == 128 and len(cut_fallback["provider"]) == 64 
 company.apply({**config, "models": {"primary": {"provider": "deepseek", "model": "m5"},
                                     "fallback": {"provider": "openrouter", "model": "x/y"}}})
 
+# Hermes MERGES fallback_providers then the legacy fallback_model (hermes_cli/fallback_config.py):
+# writing "no fallback" must clear both, and the report shows the first valid entry of the merged chain.
+(home / "config.yaml").write_text(
+    "model:\n  provider: deepseek\n  default: m5\nfallback_providers: []\nfallback_model:\n  provider: openrouter\n  model: legacy/x\n", encoding="utf-8")
+assert company.models()[1] == {"provider": "openrouter", "model": "legacy/x"}, "the legacy entry is in Hermes's chain"
+company.apply({**config, "models": {"primary": {"provider": "deepseek", "model": "m5"}, "fallback": None}})
+assert company.models()[1] is None and "fallback_model" not in (home / "config.yaml").read_text(encoding="utf-8")
+(home / "config.yaml").write_text(
+    "fallback_providers:\n  - {provider: bad}\n  - {provider: openrouter, model: first/y}\nfallback_model: {provider: openrouter, model: legacy/x}\n", encoding="utf-8")
+assert company.models()[1] == {"provider": "openrouter", "model": "first/y"}
+(home / "config.yaml").write_text(text + "fallback_providers: []\n", encoding="utf-8")
+company.apply({**config, "models": {"primary": {"provider": "deepseek", "model": "m5"},
+                                    "fallback": {"provider": "openrouter", "model": "x/y"}}})
+
 skills = company.skills()
 assert [s["name"] for s in skills] == ["hermes-agent", "resumo"], skills
 assert skills[0]["locked"] and skills[0]["enabled"] and not skills[1]["enabled"]
@@ -77,6 +92,17 @@ assert memory["people"][0]["id"] == hashlib.sha256("Matheus prefere respostas cu
 assert company.delete_memory("company", memory_id("O estoque fica em Guarulhos.")) is True
 assert (home / "memories" / "MEMORY.md").read_text(encoding="utf-8") == "A TC Flag fabrica bandeiras."
 assert company.delete_memory("company", "0" * 16) is False
+
+# Skills off for the ghostlink platform, and lists stored as strings, count as Hermes reads them
+# (global list united with skills.platform_disabled.ghostlink; parse_config_string_list).
+saved = (home / "config.yaml").read_text(encoding="utf-8")
+(home / "config.yaml").write_text(
+    "skills:\n  disabled: '[\"resumo\"]'\n  platform_disabled:\n    discord: [hermes-agent]\n", encoding="utf-8")
+assert [s["enabled"] for s in company.skills()] == [True, False], "a JSON-string list is read as a list"
+(home / "config.yaml").write_text(
+    "skills:\n  platform_disabled:\n    ghostlink: [resumo]\n    discord: [hermes-agent]\n", encoding="utf-8")
+assert [s["enabled"] for s in company.skills()] == [True, False], "the ghostlink platform list counts"
+(home / "config.yaml").write_text(saved, encoding="utf-8")
 
 # .env holding a key wins in Hermes: reported, never read aloud.
 (home / ".env").write_text("OPENROUTER_API_KEY=" + "x" * 20 + "\n", encoding="utf-8")
@@ -121,6 +147,41 @@ async def agent_flow():
 
 
 asyncio.run(agent_flow())
+
+# The pure access decision the adapter applies to every message (Hermes's own allow-all/pairing/allowlist
+# paths must not let anyone else in): the owner or a listed role, in a listened channel, when addressed.
+agent = CompanyAgent(company, request=request, check_key=check_key)
+assert agent.permits("z" * 32, None, []), "not the company Hermes: the adapter's own rules decide"
+agent.active = True
+agent.access = {"roleIds": ["R" * 26], "channels": ["C" * 26]}
+assert agent.permits("o" * 32, "o" * 32, [], "C" * 26, True) and agent.permits("a" * 32, "o" * 32, ["R" * 26], "C" * 26, True)
+assert not agent.permits("z" * 32, "o" * 32, ["X" * 26], "C" * 26, True), "an outsider is refused"
+assert not agent.permits("o" * 32, "o" * 32, [], "D" * 26, True), "an unlistened channel is refused"
+
+# A report that fails is sent again; a bad memory file never ends watch().
+async def flaky():
+    logging.disable(logging.CRITICAL)  # the refused reports log a warning on purpose
+    calls = []
+
+    async def refuse(t, d):
+        calls.append(t)
+        raise RuntimeError("RATE_LIMITED")
+    a = CompanyAgent(company, request=refuse, check_key=check_key)
+    await a.report()
+    assert a._fingerprint is None, "a refused report is not remembered as sent"
+    (home / "memories" / "USER.md").write_bytes(bytes([0xFF, 0xFE, 0xFA]))
+    a.active = True
+    await a.report()  # not UTF-8: reported as unsupported, no exception
+    assert a.unsupported is not None
+    a.unsupported = None
+    task = asyncio.create_task(a.watch(every=0.01))
+    await asyncio.sleep(0.1)
+    assert not task.done(), "watch() survives a failure"
+    task.cancel()
+    (home / "memories" / "USER.md").write_text("Matheus prefere respostas curtas.", encoding="utf-8")
+
+
+asyncio.run(flaky())
 
 # ENTERPRISE_REQUIRED waits 2 minutes between tries.
 assert reconnect_delay("ENTERPRISE_REQUIRED", 0, Timing(), lambda: 0.5) == 120.0

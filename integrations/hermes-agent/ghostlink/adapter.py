@@ -306,6 +306,8 @@ class GhostLinkAdapter(BasePlatformAdapter):
         replied_to_me = bool(reply and reply.get("authorId") == self._self_id)
         if not self._addressed(channel_id, mentioned or replied_to_me):
             return
+        if self._company is not None and not self._company.permits(author, self._owner_id, list((self._members.get(author) or {}).get("roleIds") or []), channel_id, mentioned or replied_to_me):
+            return  # the company Hermes: only the panel's access rule
         text = self._readable(text.replace(f"<@{self._self_id}>", " ")).strip()
         for attachment in message.get("attachments") or []:
             if isinstance(attachment, dict):
