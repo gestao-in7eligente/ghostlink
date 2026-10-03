@@ -9,6 +9,7 @@ import { channelPrefsOf, isChannelMuted, nextMuteEnd, pinnedFirst } from '../fea
 import { useSavedServer } from '../features/channelMenu/useSavedServer.js';
 import { canOpenServerSettings } from '../features/server-settings/access.js';
 import { CreateChannelDialog } from '../features/server-settings/CreateChannelDialog.js';
+import { EnterpriseBadge } from '../features/enterprise/EnterpriseBadge.js';
 import { useOpenServerExit } from '../features/serverDelete/DeletionBanner.js';
 import { userMenuTriggers } from '../features/userMenu/triggers.js';
 import { useT } from '../i18n/index.js';
@@ -82,6 +83,7 @@ export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog, cha
       >
         {icon ? <ServerIcon name={name} hash={icon} size={22} /> : <GhostMark size={22} />}
         <span className={l.serverName}>{name}</span>
+        <EnterpriseBadge />
         <ChevronDown className={l.chevron} size={16} aria-hidden="true" />
         <span className={l.visuallyHidden}>{t('layout.serverMenu')}</span>
       </button>
