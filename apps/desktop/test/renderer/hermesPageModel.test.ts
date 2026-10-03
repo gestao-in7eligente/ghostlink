@@ -17,6 +17,7 @@ const view = (o: Partial<HermesView> = {}): HermesView => ({
   modelInUse: null,
   skills: null,
   access: { roleIds: [], channels: 'all' },
+  hiddenChannels: 0,
   ...o,
 });
 
@@ -33,10 +34,11 @@ describe('the company Hermes page blocks (spec 2026-10-03 §2)', () => {
     expect(hermesPageBlocks(view({ modelInUse: { provider: 'custom', model: 'x' } }), known).inUse).toBe('custom · x');
   });
 
-  it('channels "all" or the names, counting the ones this app does not see; roles by position', () => {
+  it("channels 'all' or the names, plus the server's count of the ones this person cannot see; roles by position", () => {
     expect(hermesPageBlocks(view(), known).channels).toEqual({ all: true });
-    const chosen = view({ access: { roleIds: ['v', 'd', 'gone'], channels: ['s', 'g', 'private'] } });
-    expect(hermesPageBlocks(chosen, known)).toMatchObject({ channels: { all: false, names: ['geral', 'suporte'], hidden: 1 }, roles: ['Diretoria', 'Vendas'] });
+    const chosen = view({ access: { roleIds: ['v', 'd', 'gone'], channels: ['s', 'g'] }, hiddenChannels: 2 });
+    expect(hermesPageBlocks(chosen, known)).toMatchObject({ channels: { all: false, names: ['geral', 'suporte'], hidden: 2 }, roles: ['Diretoria', 'Vendas'] });
+    expect(hermesPageBlocks(view({ access: { roleIds: [], channels: ['g', 'unknown'] } }), known).channels).toEqual({ all: false, names: ['geral'], hidden: 0 });
   });
 
   it("the role's page has no memory block; the owner's has the counts", () => {

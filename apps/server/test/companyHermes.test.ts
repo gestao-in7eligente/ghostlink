@@ -255,6 +255,32 @@ describe('the company Hermes page (spec 2026-10-03)', () => {
     expect((await fx.owner.ok<{ view: HermesView }>('hermes.view', {})).view.botId).toBe(created.bot.userId);
   });
 
+  it("a role holder never gets the id of a private channel they cannot see, only how many, and no event when it changes", async () => {
+    const { fx, bia } = await withViewer();
+    const general = fx.owner.text.channels.find((c) => c.type === 'text')!;
+    const { channel: secret } = await fx.owner.ok<{ channel: { id: string } }>('channel.create', { name: 'diretoria', type: 'text', private: true });
+    await fx.owner.ok('hermes.update', { access: { roleIds: [], channels: [general.id, secret.id] } });
+    const page = (await bia.event<ViewEvent>('hermes.view', (d) => d.view?.access.channels !== 'all')).view!;
+    expect(page).toMatchObject({ access: { channels: [general.id] }, hiddenChannels: 1 });
+    const owner = (await fx.owner.event<ViewEvent>('hermes.view', (d) => d.view?.access.channels !== 'all')).view!;
+    expect(owner).toMatchObject({ access: { channels: [general.id, secret.id] }, hiddenChannels: 0 });
+    const asked = await bia.ok('hermes.view', {});
+    await bia.sync();
+    const before = bia.seen('hermes.view').length;
+    await fx.owner.ok('channel.update', { id: secret.id, name: 'diretoria-2', topic: 'só a diretoria' });
+    await bia.sync();
+    expect(bia.seen('hermes.view')).toHaveLength(before);
+    await fx.owner.ok('channel.delete', { id: secret.id });
+    await bia.sync();
+    // A new session (it replaces the first one) starts from a welcome without it too.
+    const { channel: other } = await fx.owner.ok<{ channel: { id: string } }>('channel.create', { name: 'conselho', type: 'text', private: true });
+    await fx.owner.ok('hermes.update', { access: { roleIds: [], channels: [general.id, other.id] } });
+    const again = await fx.join({ seed: bia.seed, nickname: 'Bia' });
+    expect(again.welcome.hermesView).toMatchObject({ access: { channels: [general.id] }, hiddenChannels: 1 });
+    for (const seen of [JSON.stringify(bia.events), JSON.stringify(asked)]) expect(seen).not.toContain(secret.id);
+    expect(JSON.stringify(again.welcome)).not.toContain(other.id);
+  });
+
   it('deleting the role resets it to none; only an existing role other than @everyone is taken', async () => {
     const { fx, role, bia } = await withViewer();
     fx.owner.clear();

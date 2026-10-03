@@ -157,7 +157,8 @@ export interface HermesViewSkill {
 
 /**
  * The company Hermes's page (spec 2026-10-03 §2): what the owner and the viewer role see. Access
- * lists only roles and channels that still exist. `memory` is the owner's alone.
+ * lists only roles and channels that still exist, and for a role holder only the channels that
+ * person can see (`hiddenChannels` counts the rest). `memory` is the owner's alone.
  */
 export interface HermesView {
   botId: string | null;
@@ -169,6 +170,8 @@ export interface HermesView {
   /** The skills switched on, from the last report; null: the Hermes never reported. */
   skills: HermesViewSkill[] | null;
   access: HermesAccess;
+  /** Chosen channels this person cannot see: counted, never named (0 for the owner and for 'all'). */
+  hiddenChannels: number;
   /** The owner's view only: how many items it keeps (never their text); null before a report. */
   memory?: { company: number; people: number } | null;
 }
@@ -306,6 +309,7 @@ export const hermesViewSchemaClient: z.ZodType<HermesView> = z.object({
     .nullable()
     .catch(null),
   access: accessClient,
+  hiddenChannels: count,
   memory: z.object({ company: count, people: count }).nullable().optional().catch(undefined),
 });
 

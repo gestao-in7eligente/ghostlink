@@ -15,7 +15,7 @@ export interface HermesPageBlocks {
   inUse: string | null;
   /** 2. Skills: the ones on; null: the Hermes never reported. */
   skills: HermesViewSkill[] | null;
-  /** 3. Onde e quem usa: every channel, or the names this app knows plus how many it does not see. */
+  /** 3. Onde e quem usa: every channel, or the names plus how many this person cannot see (the server's count). */
   channels: { all: true } | { all: false; names: string[]; hidden: number };
   /** The roles that may talk to it, strongest first (the page adds "o dono"). */
   roles: string[];
@@ -37,7 +37,8 @@ export function hermesPageBlocks(view: HermesView, known: { roles: Readonly<Reco
   let where: HermesPageBlocks['channels'] = { all: true };
   if (channels !== 'all') {
     const names = sortedChannels(known.channels, 'text').filter((c) => channels.includes(c.id)).map((c) => c.name);
-    where = { all: false, names, hidden: Math.max(0, channels.length - names.length) };
+    // The server names only the channels this person can see and counts the rest.
+    where = { all: false, names, hidden: view.hiddenChannels };
   }
   return {
     connected: view.connected,

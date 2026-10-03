@@ -39,6 +39,7 @@ interface State {
   store: HermesStore;
   bots: BotsModule;
   enterprise: EnterpriseModule | null;
+  text: TextModule;
   changes: SlidingWindowLimiter;
   reports: SlidingWindowLimiter;
 }
@@ -87,31 +88,39 @@ export function createCompanyHermesModule(): CompanyHermesModule {
   const idsIn = (s: State, table: 'roles' | 'channels'): Set<string> => new Set(s.ctx.db.all<{ id: string }>(`SELECT id FROM ${table}`).map((x) => x.id));
 
   /**
-   * The page (spec 2026-10-03 §2) as the viewer role sees it: no key, no memory. The skills on as
-   * the Skills tab shows them; the access with only the roles and channels that still exist.
+   * The page (spec 2026-10-03 §2), built once per change, then per viewer: no key, no memory. The
+   * skills on as the Skills tab shows them; the access with only the roles and channels that still
+   * exist. A role holder gets only the chosen channels they can see, the rest counted in
+   * `hiddenChannels` and never named; `viewer` null is the owner, who sees them all.
    */
-  const pageOf = (s: State, r: HermesRecord): HermesView => {
+  const pagesOf = (s: State, r: HermesRecord): ((viewer: string | null) => HermesView) => {
     const disabled = r.settings.disabledSkills;
     const on = (k: HermesSkill) => k.locked || (disabled === null ? k.enabled : !disabled.includes(k.name));
     const { roleIds, channels } = r.settings.access;
     const roles = idsIn(s, 'roles');
     const existing = channels === 'all' ? null : idsIn(s, 'channels');
-    return {
+    const chosen = channels === 'all' ? null : channels.filter((id) => existing?.has(id) === true);
+    const base = {
       botId: r.botId,
       connected: r.botId !== null && sessionsOf(s, r.botId).length > 0,
       models: r.settings.models,
       modelInUse: r.report?.status.model ?? null,
       skills: r.report === null ? null : r.report.skills.filter(on).map(({ name, description }) => ({ name, description })),
-      access: {
-        roleIds: roleIds.filter((id) => roles.has(id)),
-        channels: channels === 'all' ? 'all' : channels.filter((id) => existing?.has(id) === true),
-      },
+    };
+    const shownRoles = roleIds.filter((id) => roles.has(id));
+    return (viewer) => {
+      const shown = chosen === null || viewer === null ? chosen : chosen.filter((id) => s.text.voiceAccess.permissions(viewer, id) !== 0);
+      return {
+        ...base,
+        access: { roleIds: shownRoles, channels: shown ?? 'all' },
+        hiddenChannels: chosen === null || shown === null ? 0 : chosen.length - shown.length,
+      };
     };
   };
 
-  /** The owner's page: the role's, plus how many memory items there are (never their text). */
-  const ownerPageOf = (s: State, r: HermesRecord, page = pageOf(s, r)): HermesView => ({
-    ...page,
+  /** The owner's page: every chosen channel, plus how many memory items there are (never their text). */
+  const ownerPageOf = (r: HermesRecord, page: (viewer: string | null) => HermesView): HermesView => ({
+    ...page(null),
     memory: r.report === null ? null : { company: r.report.memory.company.length, people: r.report.memory.people.length },
   });
 
@@ -124,17 +133,18 @@ export function createCompanyHermesModule(): CompanyHermesModule {
   /** The page this user may see now, or null. */
   const viewFor = (s: State, userId: string): HermesView | null => {
     const r = s.store.load();
-    if (userId === ownerId(s)) return ownerPageOf(s, r);
-    return roleHolders(s, r).includes(userId) ? pageOf(s, r) : null;
+    const page = pagesOf(s, r);
+    if (userId === ownerId(s)) return ownerPageOf(r, page);
+    return roleHolders(s, r).includes(userId) ? page(userId) : null;
   };
 
   /** `hermes.view` to whoever sees the page when what they see changed; `view: null` to whoever just lost it. */
   const announceView = (s: State): void => {
     const r = s.store.load();
-    const page = pageOf(s, r);
-    const audience = new Map<string, HermesView>(roleHolders(s, r).map((userId) => [userId, page]));
+    const page = pagesOf(s, r);
+    const audience = new Map<string, HermesView>(roleHolders(s, r).map((userId) => [userId, page(userId)]));
     const owner = ownerId(s);
-    if (owner !== null) audience.set(owner, ownerPageOf(s, r, page));
+    if (owner !== null) audience.set(owner, ownerPageOf(r, page));
     const send = (userId: string, view: HermesView | null) => {
       for (const x of sessionsOf(s, userId)) s.ctx.sessions.send(x.sessionId, { t: 'hermes.view', d: { view } });
     };
@@ -259,6 +269,7 @@ export function createCompanyHermesModule(): CompanyHermesModule {
         store: new HermesStore(c.db),
         bots: c.getModule<BotsModule>(BOTS_MODULE_NAME),
         enterprise: enterpriseOf(c),
+        text: c.getModule<TextModule>(TEXT_MODULE_NAME),
         changes: new SlidingWindowLimiter(HERMES_LIMITS.changesPerMinute, 60_000, c.now),
         reports: new SlidingWindowLimiter(HERMES_LIMITS.reportsPerMinute, 60_000, c.now),
       };
@@ -274,7 +285,7 @@ export function createCompanyHermesModule(): CompanyHermesModule {
       lastBot = r.botId;
       lastViewerRole = r.viewerRoleId;
       lastOwner = ownerId(s);
-      const text = c.getModule<TextModule>(TEXT_MODULE_NAME);
+      const text = s.text;
       text.events.on('membership.removed', ({ userId }) => {
         if (userId === lastBot) announce(s);
         else announceView(s); // a viewer who left stops getting the page
