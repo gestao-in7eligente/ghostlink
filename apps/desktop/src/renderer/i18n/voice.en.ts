@@ -95,6 +95,8 @@ export const voice: Record<keyof typeof voicePt, string> = {
   'voice.settings.noise': 'Noise suppression',
   'voice.settings.noiseHint': 'Removes background noise, like typing and fans, before your voice goes out.',
   'voice.settings.noiseFailed': 'Could not turn on {mode}. Using WebRTC (native).',
+  'voice.settings.callSounds': 'Call sounds',
+  'voice.settings.callSoundsHint': 'Plays a sound when someone joins or leaves your channel, when you mute your microphone or your sound, when a screen share starts or stops, and when the call drops.',
 
   'voice.noise.rnnoise': 'RNNoise — neural',
   'voice.noise.speex': 'Speex — classic',

@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { useT } from '../../i18n/index.js';
 import { Select, type SelectOption } from '../../layout/primitives.js';
+import l from '../../layout/settings.module.css';
 import { startLevelMeter } from './gateProcessor.js';
 import { SILENCE_DB } from './gateLogic.js';
 import { keyLabel } from './keys.js';
@@ -66,9 +67,9 @@ const SUPPRESSOR_NAMES: Readonly<Record<NoiseSuppression, string>> = { rnnoise: 
 
 /**
  * Voice settings (spec §11.1 item 7): input and output devices, the input level and the
- * voice-activity threshold, voice activity or push-to-talk and its key, and noise
- * suppression (noise spec §1). Embedded in the user settings screen, whose tab gives it its
- * title; per-user volume lives in each participant's menu.
+ * voice-activity threshold, voice activity or push-to-talk and its key, noise suppression
+ * (noise spec §1) and the call sounds (v0.5.2). Embedded in the user settings screen, whose
+ * tab gives it its title; per-user volume lives in each participant's menu.
  */
 export function VoiceSettings() {
   useVoiceRuntime();
@@ -195,6 +196,14 @@ export function VoiceSettings() {
           </p>
         )}
       </div>
+
+      <label className={l.perm} data-voice-call-sounds="">
+        <span className={l.permText}>
+          <span className={l.permName}>{t('voice.settings.callSounds')}</span>
+          <span className={l.hint}>{t('voice.settings.callSoundsHint')}</span>
+        </span>
+        <input type="checkbox" role="switch" className={l.switch} checked={settings.callSounds} onChange={(e) => update({ callSounds: e.target.checked })} />
+      </label>
 
       <p className={s.hint}>{t('voice.settings.volumeHint')}</p>
       <VideoSettings />

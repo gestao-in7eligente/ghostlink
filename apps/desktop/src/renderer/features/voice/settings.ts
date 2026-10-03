@@ -1,7 +1,7 @@
 // Local voice settings (spec §8.4, §11.1 item 7): devices, input mode and key, the
 // voice-activity threshold, noise suppression, mute/deafen, per-user volume and mute per server,
-// and the camera with its quality. They live in this app's localStorage (per userData profile); what is
-// read back is never trusted.
+// the camera with its quality, and the call sounds. They live in this app's localStorage (per
+// userData profile); what is read back is never trusted.
 import { create } from 'zustand';
 import { DEFAULT_CAMERA_QUALITY, isCameraQuality, type CameraQuality } from './camera.js';
 
@@ -45,6 +45,8 @@ export interface VoiceSettings {
   cameraDeviceId: string | null;
   /** What my camera sends: 720p30 by default. */
   cameraQuality: CameraQuality;
+  /** "Sons da chamada" (v0.5.2): joins, leaves, mute, deafen, screens and a dropped call make a sound. On by default. */
+  callSounds: boolean;
 }
 
 export const defaultVoiceSettings: VoiceSettings = {
@@ -60,6 +62,7 @@ export const defaultVoiceSettings: VoiceSettings = {
   localMutes: {},
   cameraDeviceId: null,
   cameraQuality: DEFAULT_CAMERA_QUALITY,
+  callSounds: true,
 };
 
 export const VOICE_SETTINGS_KEY = 'ghostlink.voice.v1';
@@ -134,6 +137,7 @@ export function parseVoiceSettings(raw: unknown): VoiceSettings {
   const pttCode = own(raw, 'pttCode');
   const cameraQuality = own(raw, 'cameraQuality');
   const noise = own(raw, 'noiseSuppression');
+  const callSounds = own(raw, 'callSounds');
   return {
     inputDeviceId: deviceId(own(raw, 'inputDeviceId')),
     outputDeviceId: deviceId(own(raw, 'outputDeviceId')),
@@ -150,6 +154,7 @@ export function parseVoiceSettings(raw: unknown): VoiceSettings {
     localMutes: parseLocalMutes(own(raw, 'localMutes')),
     cameraDeviceId: deviceId(own(raw, 'cameraDeviceId')),
     cameraQuality: isCameraQuality(cameraQuality) ? cameraQuality : DEFAULT_CAMERA_QUALITY,
+    callSounds: typeof callSounds === 'boolean' ? callSounds : true,
   };
 }
 

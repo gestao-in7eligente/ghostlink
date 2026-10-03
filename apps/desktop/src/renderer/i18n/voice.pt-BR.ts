@@ -94,6 +94,8 @@ export const voice = {
   'voice.settings.noise': 'Supressão de ruído',
   'voice.settings.noiseHint': 'Tira o barulho de fundo, como teclado e ventilador, antes de a sua voz sair.',
   'voice.settings.noiseFailed': 'Não foi possível ativar {mode}. Usando WebRTC (nativo).',
+  'voice.settings.callSounds': 'Sons da chamada',
+  'voice.settings.callSoundsHint': 'Toca um som quando alguém entra ou sai da sua sala, quando você silencia o microfone ou o áudio, quando uma transmissão começa ou para e quando a chamada cai.',
 
   'voice.noise.rnnoise': 'RNNoise — neural',
   'voice.noise.speex': 'Speex — clássico',
