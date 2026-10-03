@@ -17,7 +17,7 @@ import s from '../../layout/settings.module.css';
 import { SettingsShell, type SettingsTab } from '../../layout/SettingsShell.js';
 import { useConnectionStore } from '../../stores/connection.js';
 import { useEnterpriseStore } from '../../stores/enterprise.js';
-import { everyoneRole, myPermissions } from '../../stores/server.js';
+import { everyoneRole, isOwner, myPermissions } from '../../stores/server.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import { useTextStore } from '../../stores/text.js';
 import { setMemberRoles } from '../chat/actions.js';
@@ -109,8 +109,9 @@ export function BotSettings({ botId, onClose }: { botId: string; onClose: () => 
   const [dialog, setDialog] = useState<'regenerate' | 'delete' | null>(null);
   const systemProfile = useTextStore((st) => isSystemBot(st.bots.profiles, botId));
   const system = systemProfile || data.data?.bot.system === true;
-  // The company Hermes (Enterprise): its own tabs. Only the owner is ever sent its state (everyone else is refused).
+  // The company Hermes (Enterprise): its own tabs. Owner only: a former owner may still hold a stale state.
   const companyHermes = useEnterpriseStore((st) => st.hermes?.botId === botId);
+  const owner = useTextStore((st) => isOwner(st.server));
   const gone = !isBot(bot) || !canManage;
 
   // The bot was deleted meanwhile, or the person can no longer manage the server: nothing to show.
@@ -134,7 +135,7 @@ export function BotSettings({ botId, onClose }: { botId: string; onClose: () => 
     content: content[id],
     danger: id === 'delete',
   }));
-  if (companyHermes) tabs.splice(1, 0, ...hermesSettingsTabs(t));
+  if (companyHermes && owner) tabs.splice(1, 0, ...hermesSettingsTabs(t));
   const select = (id: string) => {
     setActive(id);
     // Uses and messages send no event here: the numbers are fetched again each time the tab opens.
