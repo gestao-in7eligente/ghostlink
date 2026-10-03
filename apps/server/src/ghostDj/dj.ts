@@ -232,6 +232,12 @@ export class GhostDj {
     if (this.#session) await this.#end(this.#session, 'shutdown');
   }
 
+  /** Stops and leaves its voice channel, as /stop does (the server became Enterprise). */
+  async leave(): Promise<void> {
+    await this.#opening?.catch(() => undefined);
+    if (this.#session) await this.#end(this.#session, 'stop');
+  }
+
   // ---- commands ----
 
   async #dispatch(e: InteractionCreateEvent): Promise<void> {

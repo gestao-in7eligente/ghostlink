@@ -71,6 +71,8 @@ export interface SystemBotSpec {
   commands: BotCommand[];
   /** Each use of one of its commands, inside the server, right after `interaction.invoke` answered. */
   onInteraction(event: InteractionCreateEvent): void;
+  /** Starts hidden (an Enterprise server has no Ghost DJ: spec 2026-10-02-enterprise §1). */
+  hidden?: boolean;
 }
 
 /**
@@ -89,6 +91,11 @@ export interface SystemBot {
   post(channelId: string, content: string): Message;
   /** Edits one of its messages (NOT_FOUND when it is gone). */
   editMessage(messageId: number, content: string): Message;
+  /**
+   * Hidden: it leaves the member list (member.left), its commands go (commands.updated with none),
+   * its roles stay. Shown: member.joined and its commands again (not while banned). Idempotent.
+   */
+  setHidden(hidden: boolean): void;
 }
 
 export interface BotsModule extends ServerModule {
@@ -273,6 +280,7 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
     const s = need();
     const db = s.ctx.db;
     const { commands } = commandsSetSchema.parse({ commands: spec.commands });
+    const banned = (id: string) => db.get('SELECT 1 AS x FROM bans WHERE user_id = ?', id) !== undefined;
     let fresh = false;
     let botId = db.get<{ user_id: string }>('SELECT user_id FROM bots WHERE system = ?', spec.kind)?.user_id;
     if (botId === undefined) {
@@ -293,16 +301,19 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
       s.text.memberCreated(id);
       botId = id;
       fresh = true;
-    } else if (!s.text.isMember(botId) && !db.get('SELECT 1 AS x FROM bans WHERE user_id = ?', botId)) {
+    } else if (!spec.hidden && !s.text.isMember(botId) && !banned(botId)) {
       // A kick took it out: it is back at the next start (a ban keeps it out).
       db.run('UPDATE users SET removed_at = NULL, rejoin_blocked_until = NULL WHERE id = ?', botId);
       s.text.memberCreated(botId);
       fresh = true;
     }
     const id = botId;
-    db.run('UPDATE bots SET commands = ? WHERE user_id = ?', JSON.stringify(commands), id);
+    const storeCommands = (list: BotCommand[]) => db.run('UPDATE bots SET commands = ? WHERE user_id = ?', JSON.stringify(list), id);
+    let hidden = spec.hidden === true;
+    storeCommands(hidden ? [] : commands);
     s.interactions.setLocalHandler(id, spec.onInteraction);
-    if (s.text.isMember(id)) s.text.setOnline(id, true);
+    if (hidden) s.text.park(id);
+    else if (s.text.isMember(id)) s.text.setOnline(id, true);
     return {
       botId: id,
       fresh,
@@ -315,6 +326,20 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
       followup: (interactionId, content, ephemeral) => s.interactions.followup(id, { id: interactionId, content, ephemeral }),
       post: (channelId, content) => s.text.post({ channelId, authorId: id, content }),
       editMessage: (messageId, content) => s.text.edit(messageId, id, content),
+      setHidden: (next) => {
+        if (next === hidden) return;
+        if (!next && banned(id)) return;
+        hidden = next;
+        if (next) {
+          s.text.park(id);
+          storeCommands([]);
+          s.text.broadcastMembers({ t: 'commands.updated', d: { botId: id, commands: [] } satisfies BotCommands });
+        } else {
+          storeCommands(commands);
+          s.text.unpark(id);
+          s.text.broadcastMembers({ t: 'commands.updated', d: { botId: id, commands } satisfies BotCommands });
+        }
+      },
     };
   };
 

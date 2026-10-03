@@ -19,9 +19,10 @@ import {
   type GhostDjState,
 } from '@ghostlink/shared';
 import { AVATARS_MODULE_NAME, type AvatarsModule } from '../avatars/index.js';
-import { BOTS_MODULE_NAME, type BotsModule } from '../bots/index.js';
+import { BOTS_MODULE_NAME, type BotsModule, type SystemBot } from '../bots/index.js';
 import type { Db } from '../db/database.js';
-import type { ModuleContext, RequestContext, ServerModule } from '../modules.js';
+import { enterpriseOf } from '../enterprise/index.js';
+import type { ModuleContext, RequestContext, RequestHandler, ServerModule } from '../modules.js';
 import { TEXT_MODULE_NAME, type TextModule } from '../text/index.js';
 import type { VoiceModule } from '../voice/index.js';
 import { DJ_AVATAR_PNG_BASE64 } from './avatar.js';
@@ -110,6 +111,19 @@ function saveEq(db: Db, eq: GhostDjEq): void {
   );
 }
 
+/** While the server is Enterprise the DJ does not exist: its requests answer NOT_FOUND (its data stays). */
+function unlessHidden(isHidden: () => boolean, handlers: Record<string, RequestHandler>): Record<string, RequestHandler> {
+  return Object.fromEntries(
+    Object.entries(handlers).map(([type, handler]): [string, RequestHandler] => [
+      type,
+      (rc, payload) => {
+        if (isHidden()) throw new ProtocolError('NOT_FOUND');
+        return handler(rc, payload);
+      },
+    ]),
+  );
+}
+
 function avatarsModuleOf(ctx: ModuleContext): AvatarsModule | null {
   try {
     return ctx.getModule<AvatarsModule>(AVATARS_MODULE_NAME);
@@ -131,6 +145,8 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
   let runner: YtDlpRunner | null = null;
   let dj: GhostDj | null = null;
   let botId: string | null = null;
+  let hidden = false;
+  let systemBot: SystemBot | null = null;
   let timer: NodeJS.Timeout | null = null;
   let rtcLoaded = false;
   let stopped = false;
@@ -199,14 +215,27 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
     return createLivekitOutput();
   };
 
+  /** Enterprise: stop, leave the call, then leave the member list (spec 2026-10-02-enterprise §1). */
+  const setEnterprise = async (on: boolean): Promise<void> => {
+    if (on === hidden) return;
+    hidden = on;
+    if (on) {
+      await dj?.leave().catch((e: unknown) => ctx?.logger.warn('Ghost DJ: could not leave', { error: e instanceof Error ? e.message : String(e) }));
+      systemBot?.setHidden(true);
+    } else {
+      systemBot?.setHidden(false);
+    }
+  };
+
   return {
     name: GHOST_DJ_MODULE_NAME,
 
     get features(): readonly string[] {
+      if (hidden) return [];
       return playable() && voice!.available ? [FEATURE_GHOST_DJ, FEATURE_GHOST_DJ_PANEL] : [FEATURE_GHOST_DJ_PANEL];
     },
 
-    handlers: {
+    handlers: unlessHidden(() => hidden, {
       'dj.state': (rc, payload) => {
         ghostDjStateRequestSchema.parse(payload);
         return answer(rc);
@@ -238,7 +267,7 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
         announce();
         return answer(rc);
       },
-    },
+    }),
 
     get botId() {
       return botId;
@@ -270,13 +299,19 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
         presentIn: (channelId) => voice?.registry.presentIn(channelId) ?? [],
         onStateChange: (listener) => voice?.onStateChange(listener) ?? (() => {}),
       };
+      const enterprise = enterpriseOf(c);
+      hidden = enterprise?.edition === 'enterprise';
       const bot = bots.ensureSystemBot({
         kind: GHOST_DJ_SYSTEM_KIND,
         name: DJ_NAME,
         description: DJ_DESCRIPTION,
         commands: DJ_COMMANDS,
-        onInteraction: (e) => dj?.handle(e),
+        onInteraction: (e) => {
+          if (!hidden) dj?.handle(e);
+        },
+        hidden,
       });
+      systemBot = bot;
       botId = bot.botId;
       if (bot.fresh) {
         try {
@@ -304,6 +339,7 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
         saveEq: (eq) => saveEq(c.db, eq),
         onState: announce,
       });
+      enterprise?.onChange((edition) => void setEnterprise(edition === 'enterprise'));
     },
 
     start() {

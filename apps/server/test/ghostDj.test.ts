@@ -5,6 +5,7 @@ import {
   FEATURE_GHOST_DJ,
   FEATURE_GHOST_DJ_PANEL,
   botsWelcomeSchemaClient,
+  type BotCommands,
   type BotInfo,
   type GhostDjState,
   type InteractionEphemeralEvent,
@@ -14,11 +15,14 @@ import {
 } from '@ghostlink/shared';
 import { createAvatarsModule } from '../src/avatars/index.js';
 import { createBotsModule } from '../src/bots/index.js';
+import { createEnterpriseModule, type EnterpriseModule } from '../src/enterprise/index.js';
 import { FRAME_BYTES, createGhostDjModule, type AudioOutput, type DjTrack, type GhostDjModule, type PcmSource, type ResolveResult, type TrackError } from '../src/ghostDj/index.js';
 import type { PlayTarget } from '../src/ghostDj/youtube.js';
 import { silentLogger, startServer } from '../src/index.js';
 import { createTextModule } from '../src/text/index.js';
 import { createVoiceModule } from '../src/voice/index.js';
+import { withDb } from './helpers/db.js';
+import { testLicenseKey } from './helpers/license.js';
 import { FakeBackend } from './helpers/voice.js';
 import { channelId, textFixture, type TextClient, type TextFixture } from './text/helpers.js';
 
@@ -98,7 +102,7 @@ interface Dj {
 let ids = 0;
 const track = (title: string, durationSec = 200) => ({ id: `vid${String(++ids).padStart(8, '0')}`, title, url: `https://www.youtube.com/watch?v=${title}`, durationSec });
 
-async function setup(o: { ffmpeg?: string | null } = {}): Promise<Dj> {
+async function setup(o: { ffmpeg?: string | null; enterprise?: EnterpriseModule } = {}): Promise<Dj> {
   const backend = new FakeBackend();
   const sources: FakeSource[] = [];
   const outputs: FakeOutput[] = [];
@@ -131,6 +135,7 @@ async function setup(o: { ffmpeg?: string | null } = {}): Promise<Dj> {
       createVoiceModule({ backend: () => backend, sweepIntervalMs: 3_600_000, reconcileIntervalMs: 3_600_000 }),
       createAvatarsModule(),
       createBotsModule(),
+      ...(o.enterprise ? [o.enterprise] : []),
       module,
     ],
   });
@@ -492,5 +497,37 @@ describe('Ghost DJ: the YouTube cookies (spec 2026-10-02-sons-da-chamada-e-cooki
       expect(JSON.stringify(c.events)).not.toContain(marker);
     }
     expect(ana.seen<GhostDjState>('dj.state').some((s) => 'cookies' in s)).toBe(false);
+  });
+});
+
+describe('Ghost DJ in an Enterprise server (spec 2026-10-02-enterprise-e-hermes-da-empresa §1)', () => {
+  it('stops, leaves and disappears while the server is Enterprise; comes back when it is normal again', async () => {
+    const key = testLicenseKey();
+    const enterprise = createEnterpriseModule({ publicKey: key.publicKey });
+    const d = await setup({ enterprise });
+    const DAY = 86_400_000;
+    await enterVoice(d, d.fx.owner, d.sala);
+    await use(d, d.fx.owner, 'play', [{ name: 'busca', value: 'musica' }]);
+    await expect.poll(() => d.outputs.length).toBe(1);
+    await d.fx.owner.ok('dj.eq', { preset: 'rock' });
+
+    await d.fx.owner.ok('enterprise.license.set', {
+      license: key.issue({ company: 'TC Flag', serverKeyId: d.fx.t.server.serverKeyId, issuedAt: d.fx.clock.now, expiresAt: d.fx.clock.now + DAY }),
+    });
+    await d.fx.owner.event('member.left', (e: { userId: string }) => e.userId === d.djId);
+    await d.fx.owner.event<BotCommands>('commands.updated', (e) => e.botId === d.djId && e.commands.length === 0);
+    await expect.poll(() => d.outputs[0]!.closed).toBe(true);
+    expect(d.module.dj!.channelId).toBeNull();
+    expect((await d.fx.join({ nickname: 'Bia' })).text.members.some((m) => m.userId === d.djId)).toBe(false);
+    d.fx.clock.now += 1_000;
+    expect(await d.fx.owner.fail('interaction.invoke', { channelId: d.geral, botId: d.djId, command: 'play', options: [{ name: 'busca', value: 'x' }] })).toBe('NOT_FOUND');
+    expect(await d.fx.owner.fail('dj.state', {})).toBe('NOT_FOUND');
+
+    d.fx.clock.now += 9 * DAY; // past the expiry and its 7 days of grace
+    enterprise.recheck();
+    await d.fx.owner.event('member.joined', (e: { member: { userId: string } }) => e.member.userId === d.djId);
+    await d.fx.owner.event<BotCommands>('commands.updated', (e) => e.botId === d.djId && e.commands.length > 0);
+    expect((await d.fx.owner.ok<GhostDjState>('dj.state', {})).eq.preset).toBe('rock');
+    expect(withDb(d.fx.t.dataDir, (db) => db.get<{ removed_at: number | null }>('SELECT removed_at FROM users WHERE id = ?', d.djId)?.removed_at)).toBeNull();
   });
 });
