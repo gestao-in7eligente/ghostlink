@@ -26,7 +26,7 @@ import ssl
 import sys
 import time
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, Optional, Set, Tuple
 from urllib.parse import parse_qs
 
 logger = logging.getLogger(__name__)
@@ -198,19 +198,26 @@ def reconnect_delay(cause: str, attempt: int, timing: Timing, rand: Callable[[],
 EventHandler = Callable[[str, Dict[str, Any]], Awaitable[None]]
 WelcomeHandler = Callable[[Dict[str, Any]], None]
 FatalHandler = Callable[[GhostLinkError], Awaitable[None]]
+RefusedHandler = Callable[[str], Awaitable[None]]
 
 
 class GhostLinkBotClient:
     """One bot session: ``await start()`` connects once (raising GhostLinkError on failure), then a
     background task keeps the session and reconnects. ``on_welcome`` runs on every (re)connection,
-    ``on_event`` for each server event, ``on_fatal`` when the session stops for good."""
+    ``on_event`` for each server event, ``on_fatal`` when the session stops for good, ``on_refused`` with
+    the code each time the server refuses a hello or ends the session with one (ENTERPRISE_REQUIRED,
+    BAD_BOT_TOKEN…; never a plain network loss). on_refused runs as its own task: it never delays nor
+    changes connecting or reconnecting."""
 
     def __init__(self, code: ConnectionCode, *, on_event: EventHandler, on_welcome: WelcomeHandler,
-                 on_fatal: Optional[FatalHandler] = None, timing: Optional[Timing] = None):
+                 on_fatal: Optional[FatalHandler] = None, timing: Optional[Timing] = None,
+                 on_refused: Optional[RefusedHandler] = None):
         self._code = code
         self._on_event = on_event
         self._on_welcome = on_welcome
         self._on_fatal = on_fatal
+        self._on_refused = on_refused
+        self._notices: Set[asyncio.Task] = set()  # on_refused tasks still running
         self._timing = timing or Timing()
         self._session: Any = None  # aiohttp.ClientSession
         self._ws: Any = None  # aiohttp.ClientWebSocketResponse
@@ -333,7 +340,9 @@ class GhostLinkBotClient:
             if msg.type == aiohttp.WSMsgType.TEXT:
                 break
             if msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
-                raise GhostLinkError(self._code_from_close(ws, msg))
+                code = self._server_code(ws, msg)
+                self._refused(code)
+                raise GhostLinkError(code or "CONNECTION_LOST")
         try:
             frame = json.loads(msg.data)
         except (TypeError, ValueError):
@@ -341,7 +350,9 @@ class GhostLinkBotClient:
         t = frame.get("t") if isinstance(frame, dict) else None
         d = frame.get("d") if isinstance(frame, dict) else None
         if t == "error":
-            raise GhostLinkError(str((d or {}).get("code") or "INTERNAL"))
+            code = str((d or {}).get("code") or "INTERNAL")
+            self._refused(code)
+            raise GhostLinkError(code)
         if t == "welcome" and isinstance(d, dict) and isinstance(d.get("self"), dict):
             return d
         # A challenge means a server without bots (before 0.4.0) took the hello for a person's.
@@ -410,7 +421,9 @@ class GhostLinkBotClient:
             if msg.type == aiohttp.WSMsgType.TEXT:
                 self._on_frame(msg.data)
             elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
-                return self._close_reason or self._code_from_close(ws, msg)
+                code = self._close_reason or self._server_code(ws, msg)
+                self._refused(code)
+                return code or "CONNECTION_LOST"
 
     async def _consume(self) -> None:
         """Server events, in order, apart from the reader: a handler may await a request without
@@ -449,14 +462,29 @@ class GhostLinkBotClient:
         self._events.put_nowait((t, frame.get("d") if isinstance(frame.get("d"), dict) else {}))
 
     @staticmethod
-    def _code_from_close(ws: Any, msg: Any) -> str:
-        """Close code 4000 carries the error code as its reason."""
+    def _server_code(ws: Any, msg: Any) -> Optional[str]:
+        """Close code 4000 carries the server's error code as its reason; any other close has none."""
         reason = getattr(msg, "extra", None)
         data = getattr(msg, "data", None)
         code = data if isinstance(data, int) else getattr(ws, "close_code", None)
         if code == 4000 and isinstance(reason, str) and _ERROR_CODE.match(reason):
             return reason
-        return "CONNECTION_LOST"
+        return None
+
+    def _refused(self, code: Optional[str]) -> None:
+        """The server's own code for a refused hello or an ended session, to on_refused, as its own task."""
+        if code is None or self._on_refused is None:
+            return
+        task = asyncio.ensure_future(self._tell_refused(self._on_refused, code))
+        self._notices.add(task)
+        task.add_done_callback(self._notices.discard)
+
+    @staticmethod
+    async def _tell_refused(handler: RefusedHandler, code: str) -> None:
+        try:
+            await handler(code)
+        except Exception:  # a bug there must not end the bot
+            logger.exception("GhostLink: error handling the refusal %s", code)
 
     def _fail_pending(self, why: str) -> None:
         for rid, (name, future) in list(self._pending.items()):

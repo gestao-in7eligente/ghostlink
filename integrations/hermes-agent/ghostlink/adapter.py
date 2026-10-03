@@ -27,7 +27,7 @@ import re
 import secrets
 import time
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, Optional, Set
+from typing import Any, Dict, Optional, Set
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms._shared import (
@@ -120,31 +120,6 @@ def _hermes_home() -> Path:
         return Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
 
 
-class _GhostLinkClient(GhostLinkBotClient):
-    """client.py's client, also telling the adapter why a session ended or a connection was refused: it
-    reconnects by itself, so a lapsed Enterprise license (ENTERPRISE_REQUIRED) would never reach connect()."""
-
-    def __init__(self, *args: Any, on_refused: Callable[[str], Awaitable[None]], **kwargs: Any):
-        super().__init__(*args, **kwargs)
-        self._on_refused = on_refused
-
-    async def _tell(self, code: str) -> None:
-        with contextlib.suppress(Exception):  # never stops the session
-            await self._on_refused(code)
-
-    async def _listen(self, ws: Any) -> str:
-        cause = await super()._listen(ws)
-        await self._tell(cause)
-        return cause
-
-    async def _establish(self) -> Any:
-        try:
-            return await super()._establish()
-        except GhostLinkError as exc:
-            await self._tell(exc.code)
-            raise
-
-
 class GhostLinkAdapter(BasePlatformAdapter):
     """Gateway adapter for one GhostLink server, as its bot member."""
 
@@ -227,8 +202,8 @@ class GhostLinkAdapter(BasePlatformAdapter):
             logger.error("GhostLink: %s. Copy the code again from the app (BOTS > the bot > Gerar novo código)", exc)
             self._set_fatal_error("ghostlink_bad_code", f"GHOSTLINK_BOT: {exc}", retryable=False)
             return False
-        client = _GhostLinkClient(code, on_event=self._on_event, on_welcome=self._apply_welcome, on_fatal=self._on_fatal,
-                                  on_refused=self._on_refused)
+        client = GhostLinkBotClient(code, on_event=self._on_event, on_welcome=self._apply_welcome, on_fatal=self._on_fatal,
+                                    on_refused=self._on_refused)
         company = company_enabled(self._setting("company", "GHOSTLINK_COMPANY", ""))
         keeper = self._keeper = SitesKeeper(_hermes_home(), cron=hermes_cron()) if company else None
         if not company:  # what an earlier company run left (the skill, the daily job) goes
@@ -280,8 +255,9 @@ class GhostLinkAdapter(BasePlatformAdapter):
         logger.info("GhostLink: disconnected")
 
     async def _on_refused(self, code: str) -> None:
-        """ENTERPRISE_REQUIRED: the server is no longer Enterprise, so its sites leave this Hermes (the next
-        hermes.config, after a renewal, brings them back)."""
+        """The client's on_refused (any connection or session the server refused or ended with a code; it
+        reconnects by itself). ENTERPRISE_REQUIRED: the server is no longer Enterprise, so its sites leave
+        this Hermes (the next hermes.config, after a renewal, brings them back)."""
         keeper = self._keeper
         if code == "ENTERPRISE_REQUIRED" and keeper is not None:
             await asyncio.to_thread(retire_sites, keeper)
