@@ -108,3 +108,21 @@ No mesmo servidor Enterprise da seção 10, com o Hermes de teste conectado e um
 - [ ] Em **Quem pode usar → Cargo que vê a página**, A escolhe um cargo que B tem e C não. B vê a página na hora, sem a Memória e sem as configurações; C vê só os comandos.
 - [ ] A troca o modelo ou desliga uma skill: a página de A e a de B mudam sozinhas, e o Hermes não reinicia quando só o cargo muda.
 - [ ] Tirando o cargo de B, a página dele volta na hora a mostrar só os comandos; apagando o cargo, o campo volta para "Nenhum".
+
+## 12. v0.7.0 A aba API e os Sites
+
+No mesmo servidor Enterprise das seções 10 e 11, com o Hermes de teste no plugin GhostLink 1.2 e `GHOSTLINK_COMPANY=true`. As chaves de teste ficam só no app, nunca nesta lista.
+
+- [ ] Na página do Hermes da empresa, A vê a aba **API** logo depois de **Memória**; B (do cargo da página) e C não veem. Nas configurações do Hermes não existe mais **Chaves de IA**.
+- [ ] A salva uma chave da **DeepSeek**: a linha mostra "configurada (final 1234)", **Trocar**, **Apagar** e, em alguns segundos, "teste: ok". Uma chave errada mostra "teste: recusada".
+- [ ] A salva uma chave da **ElevenLabs**: aparece "configurada (final 1234)", sem teste.
+- [ ] **Outra API:** com `PATH` ou `HERMES_HOME`, aparece "Essa variável é do sistema, do Hermes ou do GhostLink."; com `MINHA_API`, "O nome da variável precisa terminar em _KEY, _TOKEN, _SECRET ou _PASSWORD."; com `MINHA_API_KEY` e um nome, a API entra em **Suas APIs**.
+- [ ] **Apagar** uma chave tira a linha (ou volta para "não configurada"), e o Hermes deixa de ter a variável. Nenhuma chave aparece em log do servidor ou do Hermes, nem em arquivo no `$HERMES_HOME`.
+- [ ] Em **Modelos**, OpenAI, Anthropic e Gemini aparecem como provedores só depois de terem chave na aba API.
+- [ ] **SITES** aparece logo abaixo de **BOTS**. Só A e B veem o **+** (**Cadastrar site**) e, com o botão direito num site, **Editar site** e **Remover site**; C vê só os sites cujo canal ele vê.
+- [ ] **Criar canal novo:** um site novo ganha um canal de texto com o nome do endereço, que aparece em SITES com o globo e o nome do site, e não em "Canais de texto".
+- [ ] Um canal existente escolhido no cadastro sai de "Canais de texto" e vai para SITES com todo o histórico.
+- [ ] Com canais chamados como um site (ex.: `es.profetacristao.com`), o cadastro mostra "Canais com nome de site: N" e **Cadastrar como sites** cadastra todos de uma vez.
+- [ ] **Editar site** troca o nome e o endereço. **Remover site** devolve o canal para "Canais de texto", com o histórico.
+- [ ] Um site num canal privado que C não vê não aparece para C.
+- [ ] Depois de uma ação do Hermes num site, aparece no canal do site uma mensagem com ✅, o que ele fez e o link; um erro aparece com ⚠️. Depois das 23h (horário de São Paulo), um resumo 📋 aparece só nos canais dos sites que tiveram atividade no dia.
