@@ -543,15 +543,15 @@ describe('Ghost DJ in an Enterprise server (spec 2026-10-02-enterprise-e-hermes-
     expect((await d.fx.join({ nickname: 'Bia' })).text.members.find((m) => m.userId === d.djId)?.avatar).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('a /play whose lookup ends while the DJ leaves does not bring it back into the call', async () => {
-    const enterprise = fakeEnterprise('normal');
-    const d = await setup({ enterprise });
+  it('a closed DJ refuses to join a call, and joins again once reopened', async () => {
+    const d = await setup({ enterprise: fakeEnterprise('normal') });
     await enterVoice(d, d.fx.owner, d.sala);
+    await d.module.dj!.leave();
+    const refused = await use(d, d.fx.owner, 'play', [{ name: 'busca', value: 'musica' }]);
+    expect(await privateAnswer(d.fx.owner, refused, /não conseguiu entrar/)).toContain('não conseguiu entrar');
+    expect(d.outputs.length).toBe(0);
+    d.module.dj!.reopen();
     await use(d, d.fx.owner, 'play', [{ name: 'busca', value: 'musica' }]);
-    enterprise.set('enterprise');
-    await d.fx.owner.event('member.left', (e: { userId: string }) => e.userId === d.djId);
-    await expect.poll(() => d.module.dj!.channelId).toBeNull();
-    await sleep(30);
-    expect(d.module.dj!.channelId).toBeNull();
+    await expect.poll(() => d.outputs.length).toBe(1);
   });
 });

@@ -218,7 +218,7 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
   /** Parking the DJ cleared its photo (the avatars module clears a leaver's): put the default one back. */
   const restorePhoto = (): void => {
     if (!ctx || !botId) return;
-    const row = ctx.db.get<{ avatar_file_id: string | null }>('SELECT avatar_file_id FROM users WHERE id = ?', botId);
+    const row = ctx.db.get<{ avatar_file_id: string | null }>('SELECT avatar_file_id FROM users WHERE id = ? AND removed_at IS NULL', botId);
     if (!row || row.avatar_file_id !== null) return;
     try {
       avatarsModuleOf(ctx)?.setServerPhoto(botId, Buffer.from(DJ_AVATAR_PNG_BASE64, 'base64'), 'image/png');
