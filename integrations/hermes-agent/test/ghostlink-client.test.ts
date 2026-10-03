@@ -68,6 +68,15 @@ describe.skipIf(PYTHON === null)('the Hermes plugin client on a GhostLink server
 
   it('refuses a server whose key is not the pin, before sending the token', async () => {
     const { code } = await setup();
-    expect(await run(code, 'wrong-pin').next()).toEqual({ error: 'PIN_MISMATCH' });
+    expect(await run(code, 'wrong-pin').next()).toEqual({ error: 'PIN_MISMATCH', refused: [] });
+  });
+
+  it('tells on_refused the code the server refuses a hello or ends a session with', async () => {
+    const { fx, code, botId } = await setup();
+    expect(await run(code, 'bad-token').next()).toEqual({ error: 'BAD_BOT_TOKEN', refused: ['BAD_BOT_TOKEN'] });
+    const bot = run(code, 'closed');
+    expect(await bot.next()).toEqual({ ready: botId });
+    await fx.owner.ok('bot.regenerate', { botId });
+    expect(await bot.next()).toEqual({ refused: ['BAD_BOT_TOKEN'], fatal: 'BAD_BOT_TOKEN' });
   });
 });

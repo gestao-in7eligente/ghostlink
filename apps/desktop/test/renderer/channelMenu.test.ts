@@ -20,6 +20,17 @@ function saved(extra: Partial<SavedServer> = {}): SavedServer {
 }
 
 describe("a text channel's menu: which items show (spec 2026-10-02-menu-do-canal §2)", () => {
+  it('a site’s channel, for whoever manages sites: edit and remove the site before the channel items', () => {
+    expect(channelMenuEntries({ ...base, canManageChannels: true, manageSite: true }).entries).toEqual([
+      'markRead',
+      'separator', 'pin', 'copyLink',
+      'separator', 'mute', 'notify',
+      'separator', 'editSite', 'removeSite',
+      'separator', 'edit', 'duplicate', 'createText', 'delete',
+      'separator', 'copyId',
+    ]);
+  });
+
   it('a member without rights: mark read (greyed with nothing new), pin, link, mute, notifications and the id', () => {
     const menu = channelMenuEntries(base);
     expect(menu.entries).toEqual(['markRead', 'separator', 'pin', 'copyLink', 'separator', 'mute', 'notify', 'separator', 'copyId']);

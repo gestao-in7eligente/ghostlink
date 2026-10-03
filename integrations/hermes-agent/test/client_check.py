@@ -3,7 +3,9 @@ JSON line per step on stdout.
 
 GHOSTLINK_BOT  the connection code
 GL_MODE        'chat' (default): wait for a message that mentions the bot, then typing, a reply,
-               an edit, and a request the server refuses; 'wrong-pin': expect PIN_MISMATCH.
+               an edit, and a request the server refuses; 'wrong-pin': expect PIN_MISMATCH;
+               'bad-token': the server refuses the hello; 'closed': connect, then the server ends the
+               session (the test regenerates the code). The last three print what on_refused heard.
 """
 
 import asyncio
@@ -21,22 +23,41 @@ def say(**fields):
 
 
 async def main() -> None:
+    mode = os.environ.get("GL_MODE")
     code = parse_connection_code(os.environ["GHOSTLINK_BOT"])
-    if os.environ.get("GL_MODE") == "wrong-pin":
+    if mode == "wrong-pin":
         code = dataclasses.replace(code, pin="A" * 43)
+    if mode == "bad-token":
+        code = dataclasses.replace(code, token="A" * 43)  # no bot has it
     inbox: asyncio.Queue = asyncio.Queue()
+    refused: list = []
+    fatal: asyncio.Future = asyncio.get_running_loop().create_future()
 
     async def on_event(t, d):
         if t == "msg.new":
             await inbox.put(d.get("message") or {})
 
-    client = GhostLinkBotClient(code, on_event=on_event, on_welcome=lambda w: None)
+    async def on_refused(c):
+        refused.append(c)
+
+    async def on_fatal(exc):
+        fatal.set_result(exc.code)
+
+    client = GhostLinkBotClient(code, on_event=on_event, on_welcome=lambda w: None, on_fatal=on_fatal, on_refused=on_refused)
     try:
         welcome = await client.start()
     except GhostLinkError as exc:
-        say(error=exc.code)
+        await asyncio.sleep(0.1)  # on_refused runs as its own task
+        say(error=exc.code, refused=refused)
         return
     me = welcome["self"]["userId"]
+    if mode == "closed":
+        say(ready=me)
+        stopped = await asyncio.wait_for(fatal, 15)
+        await asyncio.sleep(0.1)
+        say(refused=refused, fatal=stopped)
+        await client.close()
+        return
     say(ready=me, channels=[c["name"] for c in welcome.get("channels", []) if c.get("type") == "text"],
         owner=(welcome.get("serverSettings") or {}).get("ownerId"))
     while True:

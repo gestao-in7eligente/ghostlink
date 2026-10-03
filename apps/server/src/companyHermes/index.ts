@@ -1,7 +1,9 @@
 import {
+  FEATURE_ENTERPRISE_APIS,
   FEATURE_ENTERPRISE_HERMES,
   FEATURE_ENTERPRISE_HERMES_VIEW,
   HERMES_LIMITS,
+  HERMES_PROVIDERS,
   ProtocolError,
   hermesCreateSchema,
   hermesGetSchema,
@@ -11,6 +13,7 @@ import {
   hermesViewGetSchema,
   type BotCreateResult,
   type HermesConfig,
+  type HermesSite,
   type HermesSkill,
   type HermesState,
   type HermesView,
@@ -21,17 +24,25 @@ import { enterpriseOf, type EnterpriseModule } from '../enterprise/index.js';
 import type { ModuleContext, RequestHandler, ServerEvent, ServerModule, SessionInfo } from '../modules.js';
 import { SlidingWindowLimiter } from '../ratelimit/limiter.js';
 import { TEXT_MODULE_NAME, type TextModule } from '../text/index.js';
+import { checkApisChange } from './apis.js';
 import { HermesStore, type HermesRecord } from './store.js';
 
 export const COMPANY_HERMES_MODULE_NAME = 'companyHermes';
 
 /**
  * The company's own Hermes (spec 2026-10-02-enterprise-e-hermes-da-empresa-design.md §2) and its
- * page for the owner and a chosen role (spec 2026-10-03-pagina-do-hermes-da-empresa-design.md).
+ * page for the owner and a chosen role (spec 2026-10-03-pagina-do-hermes-da-empresa-design.md), and the
+ * API tab (spec 2026-10-03-aba-api-e-sites-design.md §1).
  * Register after bots and enterprise.
  */
 export interface CompanyHermesModule extends ServerModule {
   readonly name: typeof COMPANY_HERMES_MODULE_NAME;
+  /** v0.7.0 (sites): the owner, or a member of the page's viewer role while the server is Enterprise. */
+  seesPage(userId: string): boolean;
+  /** v0.7.0: where hermes.config's `sites` come from (the sites module, from its init). */
+  useSites(source: () => HermesSite[]): void;
+  /** v0.7.0: the sites changed: a new hermes.config version goes to the company Hermes, the owner's state follows. */
+  sitesChanged(): void;
 }
 
 interface State {
@@ -53,6 +64,8 @@ export function createCompanyHermesModule(): CompanyHermesModule {
   let lastViewerRole: string | null = null;
   /** Per user, the page their apps have now (JSON): a change goes out once, a loss as `view: null`. */
   const sentViews = new Map<string, string>();
+  /** hermes.config's sites; none until the sites module registers (tests without it). */
+  let sitesSource: () => HermesSite[] = () => [];
   const need = (): State => {
     if (!state) throw new Error('the companyHermes module is not initialized');
     return state;
@@ -76,7 +89,8 @@ export function createCompanyHermesModule(): CompanyHermesModule {
       botId: r.botId,
       connected: r.botId !== null && sessionsOf(s, r.botId).length > 0,
       locked: !isEnterprise(s),
-      keys: { deepseek: last4(r.keys.deepseek), openrouter: last4(r.keys.openrouter) },
+      keys: Object.fromEntries(HERMES_PROVIDERS.map((p) => [p, last4(r.keys[p])])) as HermesState['keys'],
+      apis: r.apis.map(({ envVar, name, value }) => ({ envVar, name, last4: value.slice(-4) })),
       settings: r.settings,
       version: r.version,
       report: r.report,
@@ -165,7 +179,14 @@ export function createCompanyHermesModule(): CompanyHermesModule {
   const sendConfig = (s: State, only?: SessionInfo): void => {
     const r = s.store.load();
     if (r.botId === null || !isEnterprise(s)) return;
-    const event: ServerEvent = { t: 'hermes.config', d: { version: r.version, keys: r.keys, ...r.settings } satisfies HermesConfig };
+    const config: HermesConfig = {
+      version: r.version,
+      keys: r.keys,
+      apis: Object.fromEntries(r.apis.map((a) => [a.envVar, a.value])),
+      sites: sitesSource(),
+      ...r.settings,
+    };
+    const event: ServerEvent = { t: 'hermes.config', d: config };
     for (const x of only ? [only] : sessionsOf(s, r.botId)) s.ctx.sessions.send(x.sessionId, event);
   };
 
@@ -215,10 +236,11 @@ export function createCompanyHermesModule(): CompanyHermesModule {
         if (!role) throw new ProtocolError('NOT_FOUND');
         if (Number(role.is_default) === 1) throw new ProtocolError('BAD_REQUEST', 'the viewer role cannot be @everyone');
       }
+      const apis = checkApisChange(s.store.load(), change);
       // The viewer role is GhostLink's alone: changing only it sends the Hermes nothing.
-      const forHermes = change.keys !== undefined || change.models !== undefined || change.disabledSkills !== undefined || change.access !== undefined;
+      const forHermes = change.keys !== undefined || apis !== undefined || change.models !== undefined || change.disabledSkills !== undefined || change.access !== undefined;
       s.ctx.db.tx(() => {
-        if (forHermes) s.store.update(change);
+        if (forHermes) s.store.update({ keys: change.keys, apis, models: change.models, disabledSkills: change.disabledSkills, access: change.access });
         if (viewerRoleId !== undefined) s.store.setViewerRole(viewerRoleId);
       });
       if (forHermes) sendConfig(s);
@@ -260,8 +282,24 @@ export function createCompanyHermesModule(): CompanyHermesModule {
 
   return {
     name: COMPANY_HERMES_MODULE_NAME,
-    features: [FEATURE_ENTERPRISE_HERMES, FEATURE_ENTERPRISE_HERMES_VIEW],
+    features: [FEATURE_ENTERPRISE_HERMES, FEATURE_ENTERPRISE_HERMES_VIEW, FEATURE_ENTERPRISE_APIS],
     handlers,
+
+    seesPage(userId) {
+      const s = need();
+      return userId === ownerId(s) || roleHolders(s, s.store.load()).includes(userId);
+    },
+
+    useSites(source) {
+      sitesSource = source;
+    },
+
+    sitesChanged() {
+      const s = need();
+      s.store.bumpVersion();
+      sendConfig(s);
+      announce(s);
+    },
 
     init(c) {
       state = {

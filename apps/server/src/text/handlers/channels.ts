@@ -37,6 +37,29 @@ function checkAllowedRoles(core: TextCore, ids: readonly string[]): string[] {
   return unique;
 }
 
+/**
+ * Inserts a channel after the others and announces it to whoever sees it (withVisibility sends
+ * channel.created); its id. BAD_REQUEST past the channel limit. `name` is already clean.
+ */
+export function insertChannel(
+  core: TextCore,
+  c: { name: string; type: ChannelType; topic: string; private: boolean; allowed: readonly string[]; userLimit: number },
+): string {
+  const count = core.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM channels');
+  if (Number(count?.n ?? 0) >= core.maxChannels) throw new ProtocolError('BAD_REQUEST', 'too many channels');
+  const id = newEntityId();
+  const { db } = core;
+  core.withVisibility(() => db.tx(() => {
+    const max = db.get<{ p: number | null }>('SELECT MAX(position) AS p FROM channels');
+    db.run(
+      'INSERT INTO channels (id, name, type, topic, position, private, user_limit, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      id, c.name, c.type, c.topic, Number(max?.p ?? -1) + 1, c.private ? 1 : 0, c.userLimit, core.now(),
+    );
+    for (const roleId of c.allowed) db.run('INSERT INTO channel_allowed_roles (channel_id, role_id) VALUES (?, ?)', id, roleId);
+  }));
+  return id;
+}
+
 const create: Handler = (core, ctx, payload) => {
   const p = channelCreateSchema.parse(payload);
   const actor = core.member(ctx.userId);
@@ -45,19 +68,7 @@ const create: Handler = (core, ctx, payload) => {
   if (name === '') throw new ProtocolError('BAD_REQUEST', 'empty channel name');
   if (p.type === 'text' && (p.userLimit ?? 0) !== 0) throw new ProtocolError('BAD_REQUEST', 'userLimit is for voice channels');
   const allowed = checkAllowedRoles(core, p.allowedRoleIds ?? []);
-  const count = core.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM channels');
-  if (Number(count?.n ?? 0) >= core.maxChannels) throw new ProtocolError('BAD_REQUEST', 'too many channels');
-  const id = newEntityId();
-  const { db } = core;
-  // A new channel is "gained" by everyone who can see it: withVisibility announces channel.created.
-  core.withVisibility(() => db.tx(() => {
-    const max = db.get<{ p: number | null }>('SELECT MAX(position) AS p FROM channels');
-    db.run(
-      'INSERT INTO channels (id, name, type, topic, position, private, user_limit, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      id, name, p.type, cleanTopic(p.topic ?? ''), Number(max?.p ?? -1) + 1, p.private ? 1 : 0, p.userLimit ?? 0, core.now(),
-    );
-    for (const roleId of allowed) db.run('INSERT INTO channel_allowed_roles (channel_id, role_id) VALUES (?, ?)', id, roleId);
-  }));
+  const id = insertChannel(core, { name, type: p.type, topic: cleanTopic(p.topic ?? ''), private: p.private ?? false, allowed, userLimit: p.userLimit ?? 0 });
   return { channel: core.repo.toChannel(core.repo.channel(id)!) };
 };
 
@@ -91,6 +102,7 @@ const update: Handler = (core, ctx, payload) => {
       ctx.sessions.send(s.sessionId, { t: 'channel.updated', d: { channel: wire } });
     }
   }
+  if (name !== channel.name) core.events.emit('channel.renamed', { channelId: channel.id, name });
   if (p.private !== undefined || allowed) core.events.emit('access.changed', { userIds: null });
   return { channel: wire };
 };

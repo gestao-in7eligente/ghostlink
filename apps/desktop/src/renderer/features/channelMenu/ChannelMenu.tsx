@@ -27,6 +27,8 @@ export interface ChannelMenuProps {
   saved: SavedServer | null;
   onClose: () => void;
   onOpen: (dialog: ChannelMenuDialog, channelId: string) => void;
+  /** The channel is a site I manage (v0.7.0): its two items. */
+  site?: { onEdit: () => void; onRemove: () => void };
 }
 
 /** When a timed mute ends: the time today, else the date and time. */
@@ -41,7 +43,7 @@ function muteEndText(until: number, locale: Locale, now: number): string {
  * mute it, its notifications, the managers' edit/duplicate/create/delete, and its id; each only when it
  * makes sense (channelMenuEntries).
  */
-export function ChannelMenu({ channel, anchor, saved, onClose, onOpen }: ChannelMenuProps) {
+export function ChannelMenu({ channel, anchor, saved, onClose, onOpen, site }: ChannelMenuProps) {
   const t = useT();
   const locale = useSettingsStore((st) => st.settings?.locale ?? 'pt-BR');
   const server = useTextStore((st) => st.server);
@@ -63,6 +65,7 @@ export function ChannelMenu({ channel, anchor, saved, onClose, onOpen }: Channel
     canManageChannels: has(bits, PERMISSIONS.MANAGE_CHANNELS),
     pinned: isChannelPinned(saved, channel.id),
     muted,
+    manageSite: site !== undefined,
   });
 
   /** An action that ends the menu. */
@@ -166,6 +169,18 @@ export function ChannelMenu({ channel, anchor, saved, onClose, onOpen }: Channel
               </MenuRadio>
             ))}
           </MenuSub>
+        );
+      case 'editSite':
+        return (
+          <MenuItem key={entry} onSelect={act(() => site?.onEdit())}>
+            {t('sites.edit')}
+          </MenuItem>
+        );
+      case 'removeSite':
+        return (
+          <MenuItem key={entry} danger onSelect={act(() => site?.onRemove())}>
+            {t('sites.remove')}
+          </MenuItem>
         );
       case 'edit':
         return (

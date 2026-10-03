@@ -197,4 +197,105 @@ assert not ignored_hermes_event(False, "msg.new") and not ignored_hermes_event(T
 # ENTERPRISE_REQUIRED waits 2 minutes between tries.
 assert reconnect_delay("ENTERPRISE_REQUIRED", 0, Timing(), lambda: 0.5) == 120.0
 assert reconnect_delay("CONNECTION_LOST", 0, Timing(), lambda: 0.5) == 1.0
+
+# Plugin 1.2 (spec 2026-10-03-aba-api-e-sites §1): any API key by variable, in the environment only; a
+# reserved name, an AI's variable and the operator's own variables are never touched; deleted in
+# GhostLink, gone here.
+apis_env = {"OPERADOR_KEY": "do-railway"}
+apis_home = CompanyHome(home, environ=apis_env)  # the operator's: whatever was there at the start
+mine = "sk-test-" + secrets.token_hex(12)  # made at run time, never a real key
+assert apis_home.set_apis({"MINHA_API_KEY": mine, "PATH": "/tmp", "LD_PRELOAD": "x", "HERMES_HOME": "/x",
+                           "OPERADOR_KEY": "outro", "DEEPSEEK_API_KEY": "x", "minha_key": "x",
+                           "MINHA_API_KEY\n": "x", "MINHA_API": "x", "OPENAI_ORG_KEY": "x", "GOOGLE_API_KEY": "x",
+                           "CURL_HOME_KEY": "x", "SSLKEYLOG_KEY": "x", "VAZIA_KEY": "", "NUM_KEY": 7}) == ["MINHA_API_KEY"]
+assert apis_env == {"OPERADOR_KEY": "do-railway", "MINHA_API_KEY": mine}
+grok = "sk-test-" + secrets.token_hex(12)
+assert apis_home.set_apis({"MINHA_API_KEY": mine, "GROK_API_KEY": grok}) == ["GROK_API_KEY"], "a catalog API keeps its variable"
+assert apis_home.set_apis({}) == ["GROK_API_KEY", "MINHA_API_KEY"] and apis_env == {"OPERADOR_KEY": "do-railway"}
+assert apis_home.set_apis(None) == [] and apis_home.set_apis(["MINHA_API_KEY"]) == []
+assert all(mine not in p.read_text(encoding="utf-8", errors="replace") for p in home.rglob("*") if p.is_file()), "never on disk"
+
+# The five AI providers by Hermes's ids: openai-api reads OPENAI_API_KEY (Hermes's `openai` is OpenRouter's alias).
+# An AI variable the operator set (Railway) and GhostLink never sent stays: only what this process set goes.
+operator_ai = {"ANTHROPIC_API_KEY": "do-railway", "DEEPSEEK_API_KEY": "ds-do-railway"}
+ai_env = dict(operator_ai)
+ai_home = CompanyHome(home, environ=ai_env)
+ai_home.apply({**config, "keys": {"openai-api": mine, "gemini": None}})
+assert ai_env == {**operator_ai, "OPENAI_API_KEY": mine}, ai_env
+assert ai_home.apply({**config, "keys": {}})["keys"] == ["openai-api"] and ai_env == operator_ai
+# GhostLink's key wins while it has one; deleted there, the operator's own comes back (never no key at all).
+ai_home.apply({**config, "keys": {"deepseek": mine}})
+assert ai_env["DEEPSEEK_API_KEY"] == mine
+assert ai_home.apply({**config, "keys": {"deepseek": None}})["keys"] == ["deepseek"] and ai_env == operator_ai, ai_env
+assert ai_home.apply({**config, "keys": {}})["keys"] == [] and ai_env == operator_ai, "restored once, then left alone"
+
+
+# A 1.1-shaped config (no apis, no sites) still applies; the report carries two key results for a server
+# before 0.7 and five once its welcome lists enterpriseApis (envOverride follows the same list).
+async def report_shapes():
+    sent.clear()
+    (home / ".env").write_text("OPENROUTER_API_KEY=" + "x" * 20 + "\nGEMINI_API_KEY=" + "y" * 20 + "\n", encoding="utf-8")
+    agent = CompanyAgent(CompanyHome(home, environ={}), request=request, check_key=check_key)
+    await agent.on_event("hermes.config", config)
+    assert set(sent[-1][1]["status"]["keys"]) == {"deepseek", "openrouter"}
+    assert sent[-1][1]["status"]["envOverride"] == ["openrouter"]
+    agent.features = frozenset({"enterpriseApis"})
+    await agent.on_event("hermes.config", {**config, "apis": {"MINHA_API_KEY": mine}, "sites": [],
+                                           "keys": {**config["keys"], "anthropic": "sk-test-ok-" + secrets.token_hex(12)}})
+    status = sent[-1][1]["status"]
+    assert set(status["keys"]) == {"deepseek", "openrouter", "openai-api", "anthropic", "gemini"}
+    assert status["keys"]["anthropic"] == "ok" and status["keys"]["gemini"] == "missing", status
+    assert status["envOverride"] == ["openrouter", "gemini"]
+    assert agent.home.environ["MINHA_API_KEY"] == mine
+    assert all(mine not in str(d) for _, d in sent), "the report never carries a key"
+    (home / ".env").unlink()
+
+
+asyncio.run(report_shapes())
+
+# Hermes's gemini reads GOOGLE_API_KEY before GEMINI_API_KEY (hermes_cli/auth.py): one in the environment or
+# in .env wins over GhostLink's key, so the panel is told.
+assert CompanyHome(home, environ={"GOOGLE_API_KEY": "x" * 20}).env_override() == ["gemini"]
+(home / ".env").write_text("export GOOGLE_API_KEY=" + "x" * 20 + "\n", encoding="utf-8")
+assert CompanyHome(home, environ={}).env_override() == ["gemini"]
+(home / ".env").unlink()
+assert CompanyHome(home, environ={}).env_override() == []
+
+
+# Each provider's free listing (no tokens spent), against a local server: its own header, and Gemini's 400
+# for a bad key counts as refused.
+async def key_checks():
+    from aiohttp import web
+    import company
+    good = "sk-test-ok-" + secrets.token_hex(12)
+    seen = {}
+
+    async def listing(req):
+        provider = req.match_info["p"]
+        seen[provider] = {k.lower(): v for k, v in req.headers.items()}
+        auth = req.headers.get("Authorization") or req.headers.get("x-api-key") or req.headers.get("x-goog-api-key")
+        if auth in (good, f"Bearer {good}"):
+            return web.json_response({})
+        return web.json_response({}, status=400 if provider == "gemini" else 401)
+    app = web.Application()
+    app.router.add_get("/{p}", listing)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+    saved = dict(company.KEY_CHECKS)
+    try:
+        for p, (_, headers) in saved.items():
+            company.KEY_CHECKS[p] = (f"http://127.0.0.1:{port}/{p}", headers)
+        assert [await company.check_key(p, good) for p in saved] == ["ok"] * 5
+        assert [await company.check_key(p, "sk-test-bad") for p in saved] == ["refused"] * 5
+        assert seen["anthropic"]["anthropic-version"] == "2023-06-01" and seen["openai-api"]["authorization"].startswith("Bearer ")
+        company.KEY_CHECKS["deepseek"] = ("http://127.0.0.1:9/x", saved["deepseek"][1])
+        assert await company.check_key("deepseek", good, timeout=2.0) == "unreachable"
+    finally:
+        company.KEY_CHECKS.update(saved)
+        await runner.cleanup()
+
+
+asyncio.run(key_checks())
 print("ok")

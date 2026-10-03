@@ -20,6 +20,8 @@ export type ChannelMenuEntry =
   | 'mute'
   | 'unmute'
   | 'notify'
+  | 'editSite'
+  | 'removeSite'
   | 'edit'
   | 'duplicate'
   | 'createText'
@@ -38,6 +40,8 @@ export interface ChannelMenuFacts {
   pinned: boolean;
   /** Muted now (a timed mute that ended is not). */
   muted: boolean;
+  /** A site's channel and I manage sites (v0.7.0): "Editar site", "Remover site". */
+  manageSite?: boolean;
 }
 
 export interface ChannelMenuModel {
@@ -48,7 +52,7 @@ export interface ChannelMenuModel {
 
 /**
  * The menu, top to bottom: Marcar como lida | Convite para o canal, Fixar/Desafixar, Copiar link |
- * Silenciar/Reativar, Config. de notificação | Editar, Duplicar, Criar canal de texto, Excluir |
+ * Silenciar/Reativar, Config. de notificação | Editar site, Remover site | Editar, Duplicar, Criar canal de texto, Excluir |
  * Copiar ID do canal.
  */
 export function channelMenuEntries(f: ChannelMenuFacts): ChannelMenuModel {
@@ -56,6 +60,7 @@ export function channelMenuEntries(f: ChannelMenuFacts): ChannelMenuModel {
   if (f.canInvite) entries.push('invite');
   entries.push(f.pinned ? 'unpin' : 'pin', 'copyLink');
   entries.push('separator', f.muted ? 'unmute' : 'mute', 'notify');
+  if (f.manageSite) entries.push('separator', 'editSite', 'removeSite');
   if (f.canManageChannels) entries.push('separator', 'edit', 'duplicate', 'createText', 'delete');
   entries.push('separator', 'copyId');
   return { entries, disabled: new Set<ChannelMenuEntry>(f.unread ? [] : ['markRead']) };

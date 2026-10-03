@@ -1,21 +1,22 @@
-// The company Hermes end to end (spec 2026-10-02-enterprise-e-hermes-da-empresa-design.md §6): a real
-// server with the enterprise and companyHermes modules, the plugin's own code (company_e2e.py) on a
-// scratch HERMES_HOME, and the owner's requests exactly as the app sends them. Skipped without Python
-// with aiohttp, cryptography and ruamel.yaml (GHOSTLINK_TEST_PYTHON picks the interpreter; CI's Linux
-// job has them).
+// The company Hermes end to end (spec 2026-10-02-enterprise-e-hermes-da-empresa-design.md §6, and
+// 2026-10-03-aba-api-e-sites-design.md §5): a real server with the enterprise, companyHermes and sites
+// modules, the plugin's own code (company_e2e.py) on a scratch HERMES_HOME, and the owner's requests
+// exactly as the app sends them. Skipped without Python with aiohttp, cryptography and ruamel.yaml
+// (GHOSTLINK_TEST_PYTHON picks the interpreter; CI's Linux job has them).
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { BotCreateResult, HermesState } from '@ghostlink/shared';
+import type { BotCreateResult, HermesState, Site } from '@ghostlink/shared';
 import { createAvatarsModule } from '../../../apps/server/src/avatars/index.js';
 import { createBotsModule } from '../../../apps/server/src/bots/index.js';
 import { createCompanyHermesModule } from '../../../apps/server/src/companyHermes/index.js';
 import { createEnterpriseModule } from '../../../apps/server/src/enterprise/index.js';
+import { createSitesModule } from '../../../apps/server/src/sites/index.js';
 import { testLicenseKey } from '../../../apps/server/test/helpers/license.js';
 import { textFixture } from '../../../apps/server/test/text/helpers.js';
 
@@ -74,9 +75,11 @@ function runHermes(code: string, home: string) {
 }
 
 describe.skipIf(PYTHON === null)('the company Hermes, end to end (spec §6)', () => {
-  it('the owner changes the model, a key and the access; the Hermes applies them and the panel shows it; a memory item goes', async () => {
+  it("the owner changes the model, a key and the access, adds a key of the owner's own and a site; the Hermes applies them and the panel shows it; a memory item goes", async () => {
     const key = testLicenseKey();
-    const fx = await textFixture({ extraModules: [createAvatarsModule(), createBotsModule(), createEnterpriseModule({ publicKey: key.publicKey }), createCompanyHermesModule()] });
+    const fx = await textFixture({
+      extraModules: [createAvatarsModule(), createBotsModule(), createEnterpriseModule({ publicKey: key.publicKey }), createCompanyHermesModule(), createSitesModule()],
+    });
     await fx.owner.ok('enterprise.license.set', {
       license: key.issue({ company: 'TC Flag', serverKeyId: fx.t.server.serverKeyId, issuedAt: fx.clock.now, expiresAt: fx.clock.now + 365 * DAY }),
     });
@@ -109,15 +112,47 @@ describe.skipIf(PYTHON === null)('the company Hermes, end to end (spec §6)', ()
     const applied = await fx.owner.event<HermesState>('hermes.state', (s) => s.report?.appliedVersion === 1 && s.report.status.keys.deepseek === 'ok', 15_000);
     expect(applied.report!.status.model).toEqual({ provider: 'deepseek', model: 'deepseek-flash' });
     expect(applied.report!.status.fallback).toBeNull();
+    // The welcome's features reached the plugin: all five AI results, the keyless ones its own "missing".
+    expect(applied.report!.status.keys).toEqual({ deepseek: 'ok', openrouter: 'missing', 'openai-api': 'missing', anthropic: 'missing', gemini: 'missing' });
+
+    // v0.7.0: a key of the owner's own and a site reach the Hermes; the key only in its environment.
+    const mine = `sk-test-mine-${randomBytes(12).toString('hex')}`; // fake, made now
+    const saved = await fx.owner.ok<HermesState>('hermes.update', { apis: { MINHA_API_KEY: { name: 'Minha API', value: mine } } });
+    expect(saved.apis).toContainEqual({ envVar: 'MINHA_API_KEY', name: 'Minha API', last4: mine.slice(-4) });
+    expect(JSON.stringify(saved)).not.toContain(mine);
+    expect(await hermes.until((l) => l.event === 'hermes.config' && l.version === 2)).toMatchObject({ env: { MINHA_API_KEY: true, DEEPSEEK_API_KEY: true }, sites: [] });
+    // "Criar canal novo": the channel is named after the address, and the skill names it.
+    const { site } = await fx.owner.ok<{ site: Site }>('site.create', { name: 'Loja', domain: 'loja.tcflag.com.br', channelId: null });
+    expect(await hermes.until((l) => l.event === 'hermes.config' && l.version === 3)).toMatchObject({ sites: [site.domain], env: { MINHA_API_KEY: true } });
+    const skill = readFileSync(join(home, 'skills', 'ghostlink', 'ghostlink-sites', 'SKILL.md'), 'utf8');
+    expect(skill).toContain('| `Loja` | `loja.tcflag.com.br` | `#loja.tcflag.com.br` |');
+    expect(skill).not.toContain(mine);
+    expect(skill).not.toContain(aiKey);
+    // The generated skill is in the Skills tab like any other.
+    await fx.owner.event<HermesState>('hermes.state', (s) => s.report?.appliedVersion === 3 && s.report.skills.some((k) => k.name === 'ghostlink-sites'), 15_000);
 
     const config = readFileSync(join(home, 'config.yaml'), 'utf8');
     expect(config).toContain('# TC Hermes (teste)');
     expect(config).toContain('default: deepseek-flash');
     expect(config).not.toContain('fallback_model');
     for (const entry of readdirSync(home, { recursive: true, withFileTypes: true })) {
-      if (entry.isFile()) expect(readFileSync(join(entry.parentPath, entry.name), 'utf8')).not.toContain(aiKey);
+      if (!entry.isFile()) continue;
+      const text = readFileSync(join(entry.parentPath, entry.name), 'utf8');
+      expect(text).not.toContain(aiKey);
+      expect(text).not.toContain(mine);
     }
-    expect(JSON.stringify(fx.owner.events)).not.toContain(aiKey);
+    for (const app of [fx.owner, ana, bia]) {
+      const events = JSON.stringify(app.events);
+      expect(events).not.toContain(aiKey);
+      expect(events).not.toContain(mine);
+    }
+
+    // Deleted in GhostLink, gone from the Hermes: the variable from its environment, the skill from its home.
+    await fx.owner.ok('hermes.update', { apis: { MINHA_API_KEY: null } });
+    expect(await hermes.until((l) => l.event === 'hermes.config' && l.version === 4)).toMatchObject({ env: { MINHA_API_KEY: false, DEEPSEEK_API_KEY: true } });
+    await fx.owner.ok('site.delete', { id: site.id });
+    expect(await hermes.until((l) => l.event === 'hermes.config' && l.version === 5)).toMatchObject({ sites: [] });
+    expect(existsSync(join(home, 'skills', 'ghostlink', 'ghostlink-sites'))).toBe(false);
 
     const stock = applied.report!.memory.company.find((m) => m.text === 'O estoque fica em Guarulhos.')!;
     await fx.owner.ok('hermes.memory.delete', { target: 'company', id: stock.id });

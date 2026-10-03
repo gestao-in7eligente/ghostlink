@@ -65,8 +65,8 @@ describe('the company Hermes page tabs (spec 2026-10-03 pagina larga e abas)', (
     { name: 'ocr', description: '', enabled: true },
   ];
 
-  it('the owner sees five tabs; the role holder has no Memória', () => {
-    expect(hermesPageTabs(true)).toEqual(['overview', 'skills', 'access', 'memory', 'commands']);
+  it('the owner sees six tabs, API after Memória; the role holder has no Memória and no API', () => {
+    expect(hermesPageTabs(true)).toEqual(['overview', 'skills', 'access', 'memory', 'api', 'commands']);
     expect(hermesPageTabs(false)).toEqual(['overview', 'skills', 'access', 'commands']);
   });
 

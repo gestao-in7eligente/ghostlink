@@ -101,6 +101,8 @@ export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
   // Enterprise (v0.6.0): the owner's license, and the company Hermes's settings. hermes.report is the Hermes's own.
   // The company Hermes's page (v0.6.2): the owner and the viewer role.
   'enterprise.license.set', 'hermes.create', 'hermes.get', 'hermes.update', 'hermes.memory.delete', 'hermes.view',
+  // The Sites category (v0.7.0): the owner and the company Hermes page's role.
+  'site.create', 'site.update', 'site.delete',
   'ping',
 ]);
 

@@ -374,3 +374,73 @@
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
+
+/* The API tab (v0.7.0). */
+.apiPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.apiList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.apiRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sidebar);
+}
+
+.apiHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+}
+
+.apiName {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.apiVar,
+.apiVarInput {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.apiTestOk,
+.apiTestBad {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.apiTestOk {
+  color: var(--success);
+}
+
+.apiTestBad {
+  color: var(--danger);
+}
+
+.apiForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .apiForm {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

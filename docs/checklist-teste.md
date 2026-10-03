@@ -85,7 +85,7 @@ Roteiro da spec §14 para o que os testes automáticos não cobrem: redes reais,
 
 ## 10. v0.6.0 Enterprise
 
-Num servidor na VPS (Enterprise no Hospedar do app não é suportado), com A como dono, B e C como membros, e um Hermes de teste com o plugin GhostLink 1.1 e `GHOSTLINK_COMPANY=true`. As chaves de IA de teste ficam só no app, nunca nesta lista.
+Num servidor na VPS (Enterprise no Hospedar do app não é suportado), com A como dono, B e C como membros, e um Hermes de teste com o plugin GhostLink 1.2 e `GHOSTLINK_COMPANY=true`. As chaves de IA de teste ficam só no app, nunca nesta lista.
 
 - [ ] A abre **Configurações do servidor → Enterprise** (B e C não veem a aba), copia a **Identidade do servidor** e emite uma licença para ela com `scripts/issue-license.mjs`, no PC do dono. Colada e salva, aparece "Licença salva." e **todo mundo** vê o selo **Enterprise** ao lado do nome do servidor, sem reconectar. Só A vê a empresa e a validade.
 - [ ] A licença de outro servidor, ou com um caractere trocado, dá "Essa licença não vale para este servidor."; uma vencida há mais de 7 dias dá "Essa licença já venceu."
@@ -93,7 +93,7 @@ Num servidor na VPS (Enterprise no Hospedar do app não é suportado), com A com
 - [ ] **O DJ volta:** num servidor de teste, uma licença emitida com `--until` de 7 dias atrás vale até o fim do dia (A vê o aviso "A licença Enterprise venceu…"). Na primeira conferência depois da meia-noite (de hora em hora, ou ao reiniciar o servidor), o selo some, o Ghost DJ volta com os comandos, a foto, o equalizador e o volume de antes, e o Hermes da empresa cai e fica de fora, com as configurações guardadas mas travadas.
 - [ ] **Criar o Hermes da empresa:** em **Adicionar bot**, a opção **Hermes da empresa** aparece só para A e só num servidor Enterprise; depois de criado, não dá para criar outro. O código de conexão vai para `GHOSTLINK_BOT` do Hermes de teste.
 - [ ] Só A pode **gerar um código novo** ou **excluir** o Hermes da empresa; um administrador recebe recusa.
-- [ ] **Chaves de IA:** A cola uma chave e salva; a tela mostra só "configurada (final 1234)", com **Trocar** e **Apagar**. A chave não aparece em nenhum log do servidor nem do Hermes, nem em arquivo no `$HERMES_HOME`.
+- [ ] **Chaves de IA** (na aba **API** da página do Hermes, desde a v0.7.0): A cola uma chave e salva; a tela mostra só "configurada (final 1234)", com **Trocar** e **Apagar**. A chave não aparece em nenhum log do servidor nem do Hermes, nem em arquivo no `$HERMES_HOME`.
 - [ ] **Modelos:** A troca o modelo principal e o reserva; em alguns segundos a situação mostra **Conectado** e "Modelo em uso: …" com o modelo novo, e a próxima mensagem para o Hermes já usa esse modelo. Uma chave recusada mostra "A DeepSeek recusou a chave." (ou a OpenRouter).
 - [ ] **Skills:** a lista mostra nome e descrição; `hermes-agent` aparece como essencial, sempre ligada. Desligar uma skill vale a partir da próxima conversa.
 - [ ] **Quem pode usar:** A libera um cargo que B tem e C não. B fala com o Hermes mencionando-o; C menciona e não recebe resposta; A sempre recebe. Com "Só os escolhidos", ele não responde nos outros canais.
@@ -108,3 +108,21 @@ No mesmo servidor Enterprise da seção 10, com o Hermes de teste conectado e um
 - [ ] Em **Quem pode usar → Cargo que vê a página**, A escolhe um cargo que B tem e C não. B vê a página na hora, sem a Memória e sem as configurações; C vê só os comandos.
 - [ ] A troca o modelo ou desliga uma skill: a página de A e a de B mudam sozinhas, e o Hermes não reinicia quando só o cargo muda.
 - [ ] Tirando o cargo de B, a página dele volta na hora a mostrar só os comandos; apagando o cargo, o campo volta para "Nenhum".
+
+## 12. v0.7.0 A aba API e os Sites
+
+No mesmo servidor Enterprise das seções 10 e 11, com o Hermes de teste no plugin GhostLink 1.2 e `GHOSTLINK_COMPANY=true`. As chaves de teste ficam só no app, nunca nesta lista.
+
+- [ ] Na página do Hermes da empresa, A vê a aba **API** logo depois de **Memória**; B (do cargo da página) e C não veem. Nas configurações do Hermes não existe mais **Chaves de IA**.
+- [ ] A salva uma chave da **DeepSeek**: a linha mostra "configurada (final 1234)", **Trocar**, **Apagar** e, em alguns segundos, "teste: ok". Uma chave errada mostra "teste: recusada".
+- [ ] A salva uma chave da **ElevenLabs**: aparece "configurada (final 1234)", sem teste.
+- [ ] **Outra API:** com `PATH` ou `HERMES_HOME`, aparece "Essa variável é do sistema, do Hermes ou do GhostLink."; com `MINHA_API`, "O nome da variável precisa terminar em _KEY, _TOKEN, _SECRET ou _PASSWORD."; com `MINHA_API_KEY` e um nome, a API entra em **Suas APIs**.
+- [ ] **Apagar** uma chave tira a linha (ou volta para "não configurada"), e o Hermes deixa de ter a variável. Nenhuma chave aparece em log do servidor ou do Hermes, nem em arquivo no `$HERMES_HOME`.
+- [ ] Em **Modelos**, OpenAI, Anthropic e Gemini aparecem como provedores só depois de terem chave na aba API.
+- [ ] **SITES** aparece logo abaixo de **BOTS**. Só A e B veem o **+** (**Cadastrar site**) e, com o botão direito num site, **Editar site** e **Remover site**; C vê só os sites cujo canal ele vê.
+- [ ] **Criar canal novo:** um site novo ganha um canal de texto com o nome do endereço, que aparece em SITES com o globo e o nome do site, e não em "Canais de texto".
+- [ ] Um canal existente escolhido no cadastro sai de "Canais de texto" e vai para SITES com todo o histórico.
+- [ ] Com canais chamados como um site (ex.: `es.profetacristao.com`), o cadastro mostra "Canais com nome de site: N" e **Cadastrar como sites** cadastra todos de uma vez.
+- [ ] **Editar site** troca o nome e o endereço. **Remover site** devolve o canal para "Canais de texto", com o histórico.
+- [ ] Um site num canal privado que C não vê não aparece para C.
+- [ ] Depois de uma ação do Hermes num site, aparece no canal do site uma mensagem com ✅, o que ele fez e o link; um erro aparece com ⚠️. Depois das 23h (horário de São Paulo), um resumo 📋 aparece só nos canais dos sites que tiveram atividade no dia.

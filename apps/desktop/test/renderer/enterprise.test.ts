@@ -8,7 +8,7 @@ import type { RendererWelcome } from '../../src/shared/ipcTypes.js';
 const DAY = 86_400_000;
 const info = (o: Partial<EnterpriseLicenseInfo> = {}): EnterpriseLicenseInfo => ({ state: 'valid', company: 'TC Flag', issuedAt: 0, expiresAt: 30 * DAY, graceEndsAt: 37 * DAY, ...o });
 const welcome = (extra: Record<string, unknown>) => ({ serverId: 's1', ...extra }) as unknown as RendererWelcome;
-const hermes = { botId: 'b'.repeat(32), connected: true, locked: false, keys: { deepseek: null, openrouter: null }, settings: { models: { primary: { provider: 'deepseek', model: 'deepseek-v4-pro' }, fallback: null }, disabledSkills: null, access: { roleIds: [], channels: 'all' } }, version: 0, report: null, reportAt: null, viewerRoleId: null } satisfies HermesState;
+const hermes = { botId: 'b'.repeat(32), connected: true, locked: false, keys: { deepseek: null, openrouter: null, 'openai-api': null, anthropic: null, gemini: null }, apis: [], settings: { models: { primary: { provider: 'deepseek', model: 'deepseek-v4-pro' }, fallback: null }, disabledSkills: null, access: { roleIds: [], channels: 'all' } }, version: 0, report: null, reportAt: null, viewerRoleId: null } satisfies HermesState;
 
 describe('the enterprise store (spec §1, §2)', () => {
   it('starts from the welcome and follows the events of its own server only', () => {
@@ -21,6 +21,17 @@ describe('the enterprise store (spec §1, §2)', () => {
     s = enterpriseReducer(s, { type: 'event', serverId: 's1', envelope: { t: 'hermes.state', d: { ...hermes, connected: false } } });
     expect(s.hermes?.connected).toBe(false);
     expect(enterpriseReducer(s, { type: 'left' })).toEqual(initialEnterprise);
+  });
+
+  it('keeps the sites the server sends (v0.7.0); none from an older server', () => {
+    const site = { id: 'S'.repeat(26), name: 'Loja', domain: 'loja.tcflag.com.br', channelId: 'C'.repeat(26) };
+    let s = enterpriseReducer(initialEnterprise, { type: 'welcome', welcome: welcome({ sites: [site] }) });
+    expect(s.sites).toEqual([site]);
+    s = enterpriseReducer(s, { type: 'event', serverId: 's2', envelope: { t: 'sites.state', d: { sites: [] } } });
+    expect(s.sites).toEqual([site]);
+    s = enterpriseReducer(s, { type: 'event', serverId: 's1', envelope: { t: 'sites.state', d: { sites: [] } } });
+    expect(s.sites).toEqual([]);
+    expect(enterpriseReducer(initialEnterprise, { type: 'welcome', welcome: welcome({}) }).sites).toEqual([]);
   });
 
   it('a server before 0.6.0 is normal', () => {

@@ -6,6 +6,7 @@ import { releasePtBR } from './release.pt-BR.js';
 import { attachments } from './attachments.pt-BR.js';
 import { bots } from './bots.pt-BR.js';
 import { enterprise } from './enterprise.pt-BR.js';
+import { sites } from './sites.pt-BR.js';
 import { camera } from './camera.pt-BR.js';
 import { chat } from './chat.pt-BR.js';
 import { dm } from './dm.pt-BR.js';
@@ -167,5 +168,6 @@ export const messages = {
   ...tray,
   ...bots,
   ...enterprise,
+  ...sites,
   ...notifications,
 } as const;
