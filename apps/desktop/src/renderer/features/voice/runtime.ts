@@ -11,6 +11,8 @@ import { create } from 'zustand';
 import type { VoiceModerateAction } from '@ghostlink/shared';
 import { errorCodeOf } from '../../i18n/index.js';
 import { useConnectionStore } from '../../stores/connection.js';
+import { playCallSound } from './callSoundPlayer.js';
+import { CallSoundWatcher } from './callSounds.js';
 import { createCameraOutlet } from './cameraStore.js';
 import { directoryFromWelcome, type VoiceDirectory } from './directory.js';
 import { createDomOutlet, onNextUserGesture } from './dom.js';
@@ -25,6 +27,8 @@ import { callElsewhere, callServerId, selfVoice, useVoiceStore, viewVoice, welco
 
 let session: VoiceSession | null = null;
 let audioContext: AudioContext | null = null;
+/** The call sounds while the runtime runs. */
+let callSounds: CallSoundWatcher | null = null;
 
 /** Each open microphone's gate, its track and the noise suppression it has in use. */
 const gates = new Map<GateProcessor, { track: LocalAudioTrack; mode: NoiseSuppression }>();
@@ -260,6 +264,26 @@ function start(): () => void {
     // The screen picker belongs to the call's room: it closes when the call ends or moves.
     if (v.call.channelId !== prev.call.channelId && prev.call.channelId !== null) cancelScreenPicker();
   });
+  // The call sounds (v0.5.2): the store once per task, so a call that ends and goes on elsewhere at
+  // once (another server's channel) plays join alone; on the chosen output device.
+  const sounds = new CallSoundWatcher(voice.getState(), {
+    play: (sound) => void playCallSound(sound, useVoiceSettings.getState().settings.outputDeviceId),
+    enabled: () => useVoiceSettings.getState().settings.callSounds,
+    now: () => Date.now(),
+  });
+  callSounds = sounds;
+  let soundsDue: ReturnType<typeof setTimeout> | null = null;
+  const offSounds = voice.subscribe(() => {
+    soundsDue ??= setTimeout(() => {
+      soundsDue = null;
+      sounds.update(voice.getState());
+    }, 0);
+  });
+  // The call's server connected again: its welcome resets who is in the room, which is no one joining.
+  const offWelcome = api.onServerEvent((event, serverId) => {
+    if (event.t === 'welcome' && serverId === callServerId(voice.getState())) sounds.settle();
+  });
+
   configureGlobalPtt(initial);
   const offSettings = useVoiceSettings.subscribe(({ settings: s }, { settings: prev }) => {
     if (s.mode !== prev.mode || s.pttCode !== prev.pttCode) {
@@ -306,6 +330,10 @@ function start(): () => void {
     offSettings();
     offSelf();
     offConnection();
+    offWelcome();
+    offSounds();
+    if (soundsDue) clearTimeout(soundsDue);
+    if (callSounds === sounds) callSounds = null;
     void api.ptt.configure({ enabled: false, code: null }).catch(() => {});
     cancelScreenPicker();
     void current.dispose();
@@ -334,6 +362,9 @@ function viewedServerId(): string | undefined {
 /** Joins a voice channel of the server on screen (the layout's onJoinVoice handler); a call elsewhere ends first. */
 export function joinVoice(channelId: string): Promise<void> {
   const serverId = viewedServerId();
+  const { call, serverId: callServer } = useVoiceStore.getState();
+  // Moving the call: its end here is not a dropped call.
+  if (call.status !== 'idle' && (call.channelId !== channelId || callServer !== (serverId ?? null))) callSounds?.expectLeave();
   return session?.join(channelId, serverId === undefined ? {} : { serverId }) ?? Promise.resolve();
 }
 
@@ -353,6 +384,7 @@ export async function openCallServer(): Promise<void> {
 }
 
 export function leaveVoice(): Promise<void> {
+  if (useVoiceStore.getState().call.status !== 'idle') callSounds?.expectLeave();
   return session?.leave() ?? Promise.resolve();
 }
 
