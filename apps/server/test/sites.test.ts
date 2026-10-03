@@ -245,3 +245,22 @@ describe('the Sites category: which channels a role holder may use', () => {
     await fx.owner.ok('site.create', { name: 'Loja', domain: 'loja.tcflag.com.br', channelId: geral });
   });
 });
+
+describe('the Sites category: renaming channels', () => {
+  it("renaming a site's channel sends a new hermes.config; renaming another channel does not", async () => {
+    const { fx } = await setup();
+    const created = await fx.owner.ok<BotCreateResult>('hermes.create', { name: 'TC Hermes' });
+    const hermes = (await connectBot(fx, created.connectionToken)).client!;
+    let version = (await hermes.event<HermesConfig>('hermes.config')).version;
+    const { site } = await fx.owner.ok<{ site: Site }>('site.create', { name: 'A', domain: 'a.tcflag.com.br', channelId: null });
+    version = (await hermes.event<HermesConfig>('hermes.config', (x) => x.version > version)).version;
+
+    await fx.owner.ok('channel.update', { id: site.channelId, name: 'renomeado' });
+    version = (await hermes.event<HermesConfig>('hermes.config', (x) => x.version > version)).version;
+
+    hermes.clear();
+    await fx.owner.ok('channel.update', { id: channelId(fx.owner, 'geral'), name: 'geral2' });
+    await Promise.all([fx.owner.sync(), hermes.sync()]);
+    expect(hermes.seen('hermes.config')).toEqual([]);
+  });
+});

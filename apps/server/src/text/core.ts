@@ -19,6 +19,8 @@ export interface TextEventMap {
   'access.changed': { userIds: string[] | null };
   /** A channel was deleted (its voice room, if any, must be closed; its files' rows went with it). */
   'channel.deleted': { channelId: string; type: 'text' | 'voice' };
+  /** A channel's name changed (after channel.update committed). */
+  'channel.renamed': { channelId: string; name: string };
   /** Messages were deleted, and their files' rows with them: the bytes can go too. */
   'messages.deleted': { ids: number[] };
   /**

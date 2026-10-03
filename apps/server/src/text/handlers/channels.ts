@@ -102,6 +102,7 @@ const update: Handler = (core, ctx, payload) => {
       ctx.sessions.send(s.sessionId, { t: 'channel.updated', d: { channel: wire } });
     }
   }
+  if (name !== channel.name) core.events.emit('channel.renamed', { channelId: channel.id, name });
   if (p.private !== undefined || allowed) core.events.emit('access.changed', { userIds: null });
   return { channel: wire };
 };

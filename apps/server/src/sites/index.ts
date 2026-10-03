@@ -202,6 +202,10 @@ export function createSitesModule(): SitesModule {
       s.text.events.on('access.changed', () => announce(s));
       // ON DELETE CASCADE took its site, if it had one.
       s.text.events.on('channel.deleted', () => changed(s));
+      // The generated skill names each site's channel: a rename sends a new hermes.config (the list itself is the same).
+      s.text.events.on('channel.renamed', ({ channelId }) => {
+        if (s.ctx.db.get('SELECT 1 AS x FROM sites WHERE channel_id = ?', channelId)) s.hermes.sitesChanged();
+      });
       s.text.events.on('membership.removed', ({ userId }) => sent.delete(userId));
     },
 
