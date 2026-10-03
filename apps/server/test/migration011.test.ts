@@ -61,3 +61,19 @@ describe('011_apis_and_sites.sql', () => {
     none.close();
   });
 });
+
+describe('company_hermes_keys.env_var', () => {
+  it.each(['lower_key', 'WITH-DASH_KEY', 'WITH SPACE', '1STARTS_KEY', '_STARTS_KEY', 'AB', 'MY_KEY\n'])('refuses %j', (envVar) => {
+    const db = open();
+    db.migrate(loadMigrations());
+    expect(() => db.run('INSERT INTO company_hermes_keys (env_var, name, value) VALUES (?, ?, ?)', envVar, 'n', 'fake-value-0001')).toThrow();
+    db.close();
+  });
+
+  it('takes a plain variable name', () => {
+    const db = open();
+    db.migrate(loadMigrations());
+    db.run('INSERT INTO company_hermes_keys (env_var, name, value) VALUES (?, ?, ?)', 'MY_API_KEY', 'n', 'fake-value-0001');
+    db.close();
+  });
+});

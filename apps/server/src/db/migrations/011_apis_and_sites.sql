@@ -5,7 +5,7 @@
 --   never back to an app (the last 4 only), never to the logs. name: what the API tab shows. At most 30
 --   (the server checks). The server's erase empties it like every other table.
 CREATE TABLE company_hermes_keys (
-  env_var TEXT PRIMARY KEY CHECK (length(env_var) BETWEEN 3 AND 64),
+  env_var TEXT PRIMARY KEY CHECK (length(env_var) BETWEEN 3 AND 64 AND env_var GLOB '[A-Z]*' AND env_var NOT GLOB '*[^A-Z0-9_]*'),
   name TEXT NOT NULL CHECK (length(name) <= 256),
   value TEXT NOT NULL CHECK (length(value) <= 512)
 ) STRICT;

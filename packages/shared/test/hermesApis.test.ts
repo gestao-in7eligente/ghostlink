@@ -14,11 +14,11 @@ describe('the API tab: catalog and variable names (spec 2026-10-03-aba-api-e-sit
     for (const p of HERMES_PROVIDERS) expect(HERMES_API_CATALOG.find((a) => a.provider === p)?.envVar).toBe(HERMES_PROVIDER_ENV[p]);
   });
 
-  it.each(['MINHA_API_KEY', 'SERPAPI_KEY', 'ABC', 'WP_PASS_2', 'X'.repeat(64)])('takes %s for "Outra API"', (name) => {
+  it.each(['MINHA_API_KEY', 'SERPAPI_KEY', 'NOTION_TOKEN', 'MACROL_MCP_KEY', 'WP_PASSWORD', 'APP_SECRET', `${'X'.repeat(60)}_KEY`])('takes %s for "Outra API"', (name) => {
     expect(apiEnvVarProblem(name)).toBeNull();
   });
 
-  it.each(['', 'AB', 'my_key', '1KEY', '_KEY', 'MY-KEY', 'MY KEY', 'X'.repeat(65)])('refuses the shape of %j', (name) => {
+  it.each(['', 'AB', 'my_key', '1KEY', '_KEY', 'MY-KEY', 'MY KEY', 'X'.repeat(65), 'MY_KEY\n'])('refuses the shape of %j', (name) => {
     expect(apiEnvVarProblem(name)).toBe('format');
   });
 
@@ -27,7 +27,29 @@ describe('the API tab: catalog and variable names (spec 2026-10-03-aba-api-e-sit
     (name) => expect(apiEnvVarProblem(name)).toBe('reserved'),
   );
 
-  it('a catalog variable is not "Outra API"', () => {
+  it.each(['MY_VAR', 'ABC', 'WP_PASS_2', 'NOTION', 'KEY', 'TOKEN_X', 'MY_KEYS'])('refuses %s: no _KEY, _TOKEN, _SECRET or _PASSWORD ending', (name) => {
+    expect(apiEnvVarProblem(name)).toBe('suffix');
+  });
+
+  it.each([
+    'SSLKEYLOGFILE', 'OPENSSL_CONF', 'CURL_HOME', 'PERL5OPT', 'PERLLIB', 'RUBYOPT', 'JAVA_TOOL_OPTIONS', 'JDK_JAVA_OPTIONS', 'GCONV_PATH', 'GLIBC_TUNABLES',
+    'LESSOPEN', 'LESSSECURE', 'SSH_ASKPASS', 'SUDO_ASKPASS', 'OPENAI_BASE_URL', 'ANTHROPIC_BASE_URL', 'GEMINI_BASE_URL', 'GOOGLE_API_KEY',
+    'DEEPSEEK_BASE_URL', 'OPENROUTER_BASE_URL', 'XAI_API_KEY', 'BROWSER', 'MANPAGER', 'LOCPATH', 'BASHOPTS', 'SHELLOPTS', 'PS0', 'PS3', 'WGETRC', 'CXX', 'CPP',
+    'CFLAGS', 'LDFLAGS', 'LDSHARED', 'MY_PROXY', 'SOME_BASE_URL', 'MY_CA_BUNDLE', 'MY_CAINFO', 'MY_CERT_FILE',
+  ])('refuses the dangerous name %s as reserved', (name) => {
+    expect(apiEnvVarProblem(name)).toBe('reserved');
+  });
+
+  it('a name ending in a denied suffix is reserved even with an allowed ending', () => {
+    expect(apiEnvVarProblem('SOME_BASE_URL_KEY')).toBeNull();
+    expect(apiEnvVarProblem('OPENAI_FOO_KEY')).toBe('reserved');
+  });
+
+  it('a catalog variable is not "Outra API" (checked before the deny lists)', () => {
+    expect(apiEnvVarProblem('OPENAI_API_KEY')).toBe('catalog');
+    expect(apiEnvVarProblem('GEMINI_API_KEY')).toBe('catalog');
+    expect(apiEnvVarProblem('GROK_API_KEY')).toBe('catalog');
+    expect(apiEnvVarProblem('YUNWU_API_KEY')).toBe('catalog');
     expect(apiEnvVarProblem('ELEVENLABS_API_KEY')).toBe('catalog');
     expect(apiEnvVarProblem('DEEPSEEK_API_KEY')).toBe('catalog');
   });
@@ -36,6 +58,10 @@ describe('the API tab: catalog and variable names (spec 2026-10-03-aba-api-e-sit
     expect(hermesUpdateSchema.safeParse({ keys: { gemini: FAKE, deepseek: null } }).success).toBe(true);
     expect(hermesUpdateSchema.safeParse({ apis: { MINHA_API_KEY: { name: 'Minha API', value: FAKE }, YUNWU_API_KEY: null } }).success).toBe(true);
     expect(hermesUpdateSchema.safeParse({ apis: { my_key: null } }).success).toBe(false);
+    // The schema is a second guard: a reserved or suffix-less name fails here too.
+    expect(hermesUpdateSchema.safeParse({ apis: { LD_PRELOAD: null } }).success).toBe(false);
+    expect(hermesUpdateSchema.safeParse({ apis: { MY_VAR: { value: FAKE } } }).success).toBe(false);
+    expect(hermesUpdateSchema.safeParse({ apis: { OPENAI_BASE_URL: { value: FAKE } } }).success).toBe(false);
     expect(hermesUpdateSchema.safeParse({ apis: {} }).success).toBe(false);
     const many = Object.fromEntries(Array.from({ length: HERMES_LIMITS.maxApis + 1 }, (_, i) => [`API_${i}_KEY`, null]));
     expect(hermesUpdateSchema.safeParse({ apis: many }).success).toBe(false);

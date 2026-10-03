@@ -130,33 +130,59 @@ export const HERMES_API_CATALOG: readonly HermesApiCatalogEntry[] = [
   { envVar: 'YUNWU_API_KEY', name: 'Yunwu', provider: null },
 ];
 
-/** "Outra API": a letter, then letters, digits and `_`; 3 to 64 in all (a variable cannot start with a digit). */
+/**
+ * "Outra API": a letter, then letters, digits and `_`; 3 to 64 in all (a variable cannot start with a digit).
+ * Python mirrors it (company.py) with `re.fullmatch`, never `re.match` with `$`: Python's `$` also accepts a
+ * trailing newline, so a name with one would pass.
+ */
 export const API_ENV_VAR = /^[A-Z][A-Z0-9_]{2,63}$/;
 
+/** A custom variable must end in one of these: it is an API key, and this shuts out whole classes of names. */
+export const API_ENV_ALLOWED_SUFFIXES: readonly string[] = ['_KEY', '_TOKEN', '_SECRET', '_PASSWORD'];
+
 /**
- * Variables an API key must never replace (spec §1 "Nomes recusados"): the system's, the Python and
- * Node runtimes', TLS and proxies, Hermes's and GhostLink's. integrations/hermes-agent/ghostlink/company.py
- * keeps the same two lists (ENV_DENIED_NAMES / ENV_DENIED_PREFIXES): change both together.
+ * Second layer, after the suffix rule (spec §1 "Nomes recusados"): variables an API key must never replace:
+ * the system's, the shells', compilers', Python, Node, Perl, Ruby and Java runtimes', TLS, proxies, endpoints,
+ * Hermes's, GhostLink's and the AI providers' own. integrations/hermes-agent/ghostlink/company.py (Track E)
+ * mirrors ALL FOUR lists and the suffix rule exactly (ENV_DENIED_NAMES / ENV_DENIED_PREFIXES /
+ * ENV_DENIED_SUFFIXES / ENV_ALLOWED_SUFFIXES), matching with `re.fullmatch` and `str.startswith` /
+ * `str.endswith`: change both together.
  */
 export const API_ENV_DENIED_NAMES: readonly string[] = [
   'PATH', 'HOME', 'USER', 'SHELL', 'PWD', 'OLDPWD', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LANGUAGE', 'TERM', 'TZ',
-  'HOSTNAME', 'LOGNAME', 'MAIL', 'IFS', 'ENV', 'CDPATH', 'PS1', 'PS2', 'PS4', 'PROMPT_COMMAND', 'EDITOR', 'VISUAL',
-  'PAGER', 'DISPLAY', 'SSH_AUTH_SOCK', 'VIRTUAL_ENV',
+  'HOSTNAME', 'LOGNAME', 'MAIL', 'IFS', 'ENV', 'CDPATH', 'PS0', 'PS1', 'PS2', 'PS3', 'PS4', 'PROMPT_COMMAND', 'EDITOR', 'VISUAL',
+  'PAGER', 'MANPAGER', 'BROWSER', 'DISPLAY', 'SSH_AUTH_SOCK', 'VIRTUAL_ENV', 'LOCPATH', 'BASHOPTS', 'SHELLOPTS', 'WGETRC',
+  'CXX', 'CPP', 'CFLAGS', 'LDFLAGS', 'LDSHARED',
   'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'ALL_PROXY', 'FTP_PROXY',
+  'GOOGLE_API_KEY',
 ];
 export const API_ENV_DENIED_PREFIXES: readonly string[] = [
-  'LD_', 'DYLD_', 'PYTHON', 'NODE_', 'NPM_', 'SSL_', 'REQUESTS_CA', 'CURL_CA', 'GIT_', 'PIP_', 'UV_', 'LC_', 'XDG_',
+  'LD_', 'DYLD_', 'PYTHON', 'NODE_', 'NPM_', 'SSL', 'OPENSSL_', 'REQUESTS_CA', 'CURL_', 'GIT_', 'PIP_', 'UV_', 'LC_', 'XDG_',
+  'PERL', 'RUBY', 'JAVA_', 'JDK_', 'GCONV_', 'GLIBC_', 'LESS', 'SSH_', 'SUDO_',
   // Hermes reads its terminal backend (TERMINAL_*) and the gateway's allowlists (GATEWAY_*) from the environment.
   'BASH_', 'S6_', 'RAILWAY_', 'TERMINAL_', 'GATEWAY_', 'HERMES_', 'GHOSTLINK_',
+  // The AI providers' own variables (base URLs and the like) belong to the Models tab.
+  'OPENAI_', 'ANTHROPIC_', 'GEMINI_', 'GOOGLE_', 'DEEPSEEK_', 'OPENROUTER_', 'XAI_',
 ];
+export const API_ENV_DENIED_SUFFIXES: readonly string[] = ['_PROXY', '_BASE_URL', '_CA_BUNDLE', '_CAINFO', '_CERT_FILE'];
 
-export type ApiEnvVarProblem = 'format' | 'reserved' | 'catalog';
+export type ApiEnvVarProblem = 'format' | 'suffix' | 'reserved' | 'catalog';
 
-/** Why a variable cannot be an "Outra API" (null: it can). 'catalog': it has its own row. */
+/**
+ * Why a variable cannot be an "Outra API" (null: it can). Order: the shape, the catalog (so OPENAI_API_KEY
+ * still answers 'catalog': it has its own row), the deny lists, then the suffix allowlist.
+ */
 export function apiEnvVarProblem(envVar: string): ApiEnvVarProblem | null {
   if (!API_ENV_VAR.test(envVar)) return 'format';
-  if (API_ENV_DENIED_NAMES.includes(envVar) || API_ENV_DENIED_PREFIXES.some((p) => envVar.startsWith(p))) return 'reserved';
   if (HERMES_API_CATALOG.some((a) => a.envVar === envVar)) return 'catalog';
+  if (
+    API_ENV_DENIED_NAMES.includes(envVar) ||
+    API_ENV_DENIED_PREFIXES.some((p) => envVar.startsWith(p)) ||
+    API_ENV_DENIED_SUFFIXES.some((x) => envVar.endsWith(x))
+  ) {
+    return 'reserved';
+  }
+  if (!API_ENV_ALLOWED_SUFFIXES.some((x) => envVar.endsWith(x))) return 'suffix';
   return null;
 }
 
@@ -312,7 +338,8 @@ export const hermesSettingsSchema: z.ZodType<HermesSettings> = z.strictObject({
 export const hermesCreateSchema = z.strictObject({ name: z.string().min(1).max(64) });
 export const hermesGetSchema = z.strictObject({});
 const keyChange = keyValue.nullable().optional();
-const apiEnvVar = z.string().regex(API_ENV_VAR);
+// A second guard besides the server's checkApisChange: a reserved or suffix-less name fails here too.
+const apiEnvVar = z.string().refine((v) => [null, 'catalog'].includes(apiEnvVarProblem(v)), 'not a usable variable name');
 const apiName = z.string().min(1).max(256); // cut to HERMES_LIMITS.apiNameMax graphemes by the server
 
 export const hermesUpdateSchema = z

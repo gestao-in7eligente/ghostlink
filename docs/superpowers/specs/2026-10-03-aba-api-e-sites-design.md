@@ -25,7 +25,7 @@ Regras que continuam valendo:
   - **IA:** DeepSeek (`DEEPSEEK_API_KEY`), OpenRouter (`OPENROUTER_API_KEY`), OpenAI (`OPENAI_API_KEY`), Anthropic (`ANTHROPIC_API_KEY`) e Google Gemini (`GEMINI_API_KEY`). Os nomes exatos são os que o Hermes lê, a confirmar no plano.
   - **Outras:** ElevenLabs (`ELEVENLABS_API_KEY`), Grok/xAI (`GROK_API_KEY`), Yunwu (`YUNWU_API_KEY`) e o MCP do Macrol Dashboard (`MACROL_MCP_KEY`).
 - **Outra API:**
-  - **Nome:** um nome de exibição e o nome da variável, em maiúsculas, com números e `_`, de 3 a 64 caracteres.
+  - **Nome:** um nome de exibição e o nome da variável, em maiúsculas, com números e `_`, de 3 a 64 caracteres, começando por letra e **terminando em `_KEY`, `_TOKEN`, `_SECRET` ou `_PASSWORD`**.
   - **Nomes recusados:**
     - os do sistema (`PATH`, `HOME`, `LD_*`, `PYTHON*`, `NODE_*`, `SSL_*`, `HTTP(S)_PROXY`…);
     - os do Hermes e do GhostLink (`HERMES_*`, `GHOSTLINK_*`);
