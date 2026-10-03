@@ -2,7 +2,7 @@
 // events, and the labels.
 import { describe, expect, it } from 'vitest';
 import type { GhostDjState, VoiceParticipant } from '@ghostlink/shared';
-import { bandLabel, canControlDj, djPosition, djStateOf, formatClock, formatGain, withBand } from '../../src/renderer/features/bots/djModel.js';
+import { bandLabel, canControlDj, cookiesDate, cookiesFileProblem, djPosition, djStateOf, formatClock, formatGain, withBand } from '../../src/renderer/features/bots/djModel.js';
 
 const ME = 'a'.repeat(32);
 const SALA = 'c'.repeat(32);
@@ -50,5 +50,16 @@ describe('the Ghost DJ panel', () => {
     expect(formatGain(3)).toBe('+3');
     expect(formatGain(-5)).toBe('−5');
     expect(withBand({ preset: 'rock', gains: [4, 2, -2, 2, 4] }, 2, 20)).toEqual({ preset: 'custom', gains: [4, 2, 12, 2, 4] });
+  });
+
+  it('dates the owner’s YouTube cookies and refuses a file before sending it, a large one without reading it', () => {
+    const october2 = new Date(2026, 9, 2, 12).getTime();
+    expect(cookiesDate(october2, 'pt-BR')).toBe('02/10');
+    expect(cookiesDate(october2, 'en')).toBe('10/02');
+    expect(cookiesFileProblem(200 * 1024, null)).toBe('too_large');
+    expect(cookiesFileProblem(10, null)).toBeNull();
+    const line = ['.youtube.com', 'TRUE', '/', 'TRUE', '0', 'test_name', ['test', 'value'].join('-')].join('\t');
+    expect(cookiesFileProblem(100, `# Netscape HTTP Cookie File\n${line}\n`)).toBeNull();
+    expect(cookiesFileProblem(100, '{"cookies": []}')).toBe('format');
   });
 });

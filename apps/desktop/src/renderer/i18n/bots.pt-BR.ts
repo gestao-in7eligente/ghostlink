@@ -162,6 +162,16 @@ export const bots = {
   'dj.eq.preset.voice': 'Voz',
   'dj.eq.preset.electronic': 'Eletrônica',
   'dj.eq.preset.custom': 'Personalizado',
+  'dj.cookies.title': 'Cookies do YouTube',
+  'dj.cookies.none': 'Não configurados',
+  'dj.cookies.since': 'Configurados em {date}',
+  'dj.cookies.hint': 'Se o YouTube bloquear o Ghost DJ neste servidor, envie os cookies de um navegador logado no YouTube, num arquivo .txt no formato Netscape (cookies.txt), de preferência de uma conta separada. Só você, o dono do servidor, vê esta parte.',
+  'dj.cookies.send': 'Enviar arquivo',
+  'dj.cookies.remove': 'Remover',
+  'dj.cookies.tooLarge': 'Esse arquivo passa de 100 KB.',
+  'dj.cookies.notNetscape': 'Esse arquivo não está no formato Netscape (cookies.txt).',
+  'dj.cookies.noYoutube': 'Esse arquivo não tem nenhum cookie do youtube.com.',
+  'dj.cookies.unreadable': 'Não foi possível ler esse arquivo.',
 } as const;
 
 /** Keys whose English text is the same on purpose (i18n.test.ts). */

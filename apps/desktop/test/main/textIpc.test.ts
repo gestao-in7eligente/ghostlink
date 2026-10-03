@@ -78,7 +78,7 @@ describe('server.request (generic renderer → server requests)', () => {
     }
     for (const t of ['voice.join', 'voice.leave', 'voice.selfState', 'voice.moderate', 'ping']) expect(RENDERER_REQUEST_TYPES.has(t), t).toBe(true);
     for (const t of ['bot.create', 'bot.regenerate', 'bot.delete', 'bot.list', 'bot.get', 'bot.update', 'interaction.invoke']) expect(RENDERER_REQUEST_TYPES.has(t), t).toBe(true);
-    for (const t of ['dj.state', 'dj.eq', 'dj.volume', 'dj.control']) expect(RENDERER_REQUEST_TYPES.has(t), t).toBe(true);
+    for (const t of ['dj.state', 'dj.eq', 'dj.volume', 'dj.control', 'dj.cookies.set', 'dj.cookies.clear']) expect(RENDERER_REQUEST_TYPES.has(t), t).toBe(true);
     for (const t of FORBIDDEN_REQUEST_TYPES) expect(RENDERER_REQUEST_TYPES.has(t)).toBe(false);
   });
 
