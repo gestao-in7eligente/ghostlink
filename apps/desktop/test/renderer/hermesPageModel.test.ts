@@ -1,0 +1,57 @@
+import { describe, expect, it } from 'vitest';
+import { HERMES_DEFAULT_SETTINGS, type Channel, type HermesView, type Role } from '@ghostlink/shared';
+import { hermesPageBlocks } from '../../src/renderer/features/bots/hermes/hermesPageModel.js';
+import { enterpriseReducer, initialEnterprise } from '../../src/renderer/stores/enterprise.js';
+import type { RendererWelcome } from '../../src/shared/ipcTypes.js';
+
+const role = (id: string, name: string, position: number): Role => ({ id, name, color: 0, permissions: 0, position, hoist: false, mentionable: false, isDefault: position === 0 });
+const channel = (id: string, name: string, position: number): Channel => ({ id, name, type: 'text', topic: '', position, private: false, allowedRoleIds: [], userLimit: 0, lastMessageId: 0 });
+const known = {
+  roles: { e: role('e', '@todos', 0), d: role('d', 'Diretoria', 2), v: role('v', 'Vendas', 1) },
+  channels: { g: channel('g', 'geral', 0), s: channel('s', 'suporte', 1) },
+};
+const view = (o: Partial<HermesView> = {}): HermesView => ({
+  botId: 'b'.repeat(32),
+  connected: true,
+  models: HERMES_DEFAULT_SETTINGS.models,
+  modelInUse: null,
+  skills: null,
+  access: { roleIds: [], channels: 'all' },
+  ...o,
+});
+
+describe('the company Hermes page blocks (spec 2026-10-03 §2)', () => {
+  it('without a report: no skills, no model in use, no memory yet', () => {
+    const b = hermesPageBlocks(view({ connected: false, memory: null }), known);
+    expect(b).toMatchObject({ connected: false, primary: 'DeepSeek · deepseek-v4-pro', fallback: 'OpenRouter · deepseek/deepseek-v4-pro', inUse: null, skills: null, memory: null });
+  });
+
+  it('with and without a fallback; the model in use only when it is not the primary', () => {
+    const models = { primary: { provider: 'deepseek' as const, model: 'deepseek-v4-pro' }, fallback: null };
+    expect(hermesPageBlocks(view({ models, modelInUse: { provider: 'deepseek', model: 'deepseek-v4-pro' } }), known)).toMatchObject({ fallback: null, inUse: null });
+    expect(hermesPageBlocks(view({ modelInUse: { provider: 'openrouter', model: 'deepseek/deepseek-v4-pro' } }), known).inUse).toBe('OpenRouter · deepseek/deepseek-v4-pro');
+    expect(hermesPageBlocks(view({ modelInUse: { provider: 'custom', model: 'x' } }), known).inUse).toBe('custom · x');
+  });
+
+  it('channels "all" or the names, counting the ones this app does not see; roles by position', () => {
+    expect(hermesPageBlocks(view(), known).channels).toEqual({ all: true });
+    const chosen = view({ access: { roleIds: ['v', 'd', 'gone'], channels: ['s', 'g', 'private'] } });
+    expect(hermesPageBlocks(chosen, known)).toMatchObject({ channels: { all: false, names: ['geral', 'suporte'], hidden: 1 }, roles: ['Diretoria', 'Vendas'] });
+  });
+
+  it("the role's page has no memory block; the owner's has the counts", () => {
+    expect(hermesPageBlocks(view(), known).memory).toBeUndefined();
+    expect(hermesPageBlocks(view({ memory: { company: 3, people: 1 } }), known).memory).toEqual({ company: 3, people: 1 });
+  });
+
+  it('the store takes the page from the welcome and the hermes.view event, and drops it on view: null', () => {
+    const welcome = { serverId: 's1', hermesView: view() } as unknown as RendererWelcome;
+    let s = enterpriseReducer(initialEnterprise, { type: 'welcome', welcome });
+    expect(s.view?.botId).toBe('b'.repeat(32));
+    s = enterpriseReducer(s, { type: 'event', serverId: 's1', envelope: { t: 'hermes.view', d: { view: view({ connected: false }) } } });
+    expect(s.view?.connected).toBe(false);
+    expect(enterpriseReducer(s, { type: 'event', serverId: 's2', envelope: { t: 'hermes.view', d: { view: null } } })).toBe(s);
+    expect(enterpriseReducer(s, { type: 'event', serverId: 's1', envelope: { t: 'hermes.view', d: { view: null } } }).view).toBeNull();
+    expect(enterpriseReducer(initialEnterprise, { type: 'welcome', welcome: { serverId: 's1' } as unknown as RendererWelcome }).view).toBeNull();
+  });
+});

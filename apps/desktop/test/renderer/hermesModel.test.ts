@@ -14,7 +14,7 @@ const report: HermesReport = {
 };
 const state = (o: Partial<HermesState> = {}): HermesState => ({
   botId: 'b'.repeat(32), connected: true, locked: false, keys: { deepseek: { last4: 'ab12' }, openrouter: null },
-  settings: HERMES_DEFAULT_SETTINGS, version: 2, report, reportAt: 0, ...o,
+  settings: HERMES_DEFAULT_SETTINGS, version: 2, report, reportAt: 0, viewerRoleId: null, ...o,
 });
 
 describe('the company Hermes panel (spec §2)', () => {
