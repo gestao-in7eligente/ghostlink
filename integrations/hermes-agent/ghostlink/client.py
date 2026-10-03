@@ -32,7 +32,7 @@ from urllib.parse import parse_qs
 logger = logging.getLogger(__name__)
 
 PROTOCOL_VERSION = 1
-CLIENT_NAME = "hermes-ghostlink/1.0"
+CLIENT_NAME = "hermes-ghostlink/1.1"
 DEFAULT_PORT = 7700
 MAX_INBOUND_FRAME_BYTES = 16 * 1024 * 1024
 
@@ -47,6 +47,9 @@ FATAL_CODES = frozenset({
     "REJOIN_BLOCKED", "SERVER_DELETING", "SERVER_DELETED",
 })
 
+# Retrying soon cannot help, but it may later: this server is not Enterprise now (a renewal fixes it).
+SLOW_RETRY = {"ENTERPRISE_REQUIRED": 120.0}
+
 _EXPLAIN = {
     "PIN_MISMATCH": "the server's TLS key does not match the pin in the connection code; nothing was sent. Copy the code again from the app",
     "BAD_BOT_TOKEN": "the server does not know this connection code: a new code was generated or the bot was deleted. Create a new code in the app (BOTS)",
@@ -57,6 +60,7 @@ _EXPLAIN = {
     "REJOIN_BLOCKED": "the bot was kicked from this server and cannot come back yet",
     "SERVER_DELETING": "the server is being deleted",
     "SERVER_DELETED": "the server was deleted",
+    "ENTERPRISE_REQUIRED": "this server is not Enterprise (its license lapsed): the company Hermes tries again every 2 minutes",
     "RATE_LIMITED": "too many failed attempts from this address; wait a minute",
 }
 
@@ -184,6 +188,11 @@ class Timing:
 def backoff_delay(attempt: int, timing: Timing, rand: Callable[[], float] = random.random) -> float:
     base = min(timing.backoff_max, timing.backoff_min * 2 ** min(attempt, 30))
     return min(timing.backoff_max, max(timing.backoff_min, base * (0.8 + 0.4 * rand())))
+
+
+def reconnect_delay(cause: str, attempt: int, timing: Timing, rand: Callable[[], float] = random.random) -> float:
+    """The backoff, or longer for codes only time fixes (SLOW_RETRY)."""
+    return max(backoff_delay(attempt, timing, rand), SLOW_RETRY.get(cause, 0.0))
 
 
 EventHandler = Callable[[str, Dict[str, Any]], Awaitable[None]]
@@ -373,7 +382,7 @@ class GhostLinkBotClient:
                     return await self._stop(GhostLinkError(cause))
                 if cause == "SESSION_REPLACED":
                     logger.warning("GhostLink: another process connected with this bot's connection code and took its session; reconnecting")
-                delay = backoff_delay(failures, self._timing)
+                delay = reconnect_delay(cause, failures, self._timing)
                 failures += 1
                 self.state = "reconnecting"
                 logger.info("GhostLink: connection lost (%s); reconnecting in %.1f s", cause, delay)
