@@ -6,7 +6,10 @@ import {
   GHOST_DJ_LIMITS,
   GHOST_DJ_SYSTEM_KIND,
   PERMISSIONS,
+  ProtocolError,
   ghostDjControlSchema,
+  ghostDjCookiesClearSchema,
+  ghostDjCookiesSetSchema,
   ghostDjEqSchema,
   ghostDjEqStoredSchema,
   ghostDjStateRequestSchema,
@@ -23,6 +26,7 @@ import { TEXT_MODULE_NAME, type TextModule } from '../text/index.js';
 import type { VoiceModule } from '../voice/index.js';
 import { DJ_AVATAR_PNG_BASE64 } from './avatar.js';
 import { DJ_COMMANDS, DJ_DESCRIPTION, DJ_NAME, say } from './commands.js';
+import { clearCookies, cookiesView, saveCookies } from './cookies.js';
 import { GhostDj, type DjTrack, type DjVoice } from './dj.js';
 import { findFfmpeg, openYoutubePcm, type PcmSource } from './ffmpeg.js';
 import type { AudioOutput } from './output.js';
@@ -132,6 +136,8 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
   let stopped = false;
   let ctx: ModuleContext | null = null;
   let stateTimer: NodeJS.Timeout | null = null;
+  /** `<data>/ghost-dj` (after init). */
+  let djDir = '';
 
   const playable = (): boolean => ffmpeg !== null && voice !== null;
 
@@ -145,15 +151,25 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
     return null;
   };
 
+  const textModule = (): TextModule => ctx!.getModule<TextModule>(TEXT_MODULE_NAME);
+  const isOwner = (userId: string): boolean => textModule().voiceAccess.isOwner(userId);
+
   /**
    * The state as `userId` may see it: without the voice channel and its tracks when they cannot
-   * see that channel (as if the DJ were in none; the equalizer is the server's).
+   * see that channel (as if the DJ were in none; the equalizer is the server's). Only the owner
+   * gets the cookies line (when they were sent, never their content).
    */
   const stateFor = (userId: string, full: GhostDjState): GhostDjState => {
-    if (full.channelId === null) return full;
-    const text = ctx!.getModule<TextModule>(TEXT_MODULE_NAME);
-    if (has(text.voiceAccess.permissions(userId, full.channelId), PERMISSIONS.VIEW_CHANNEL)) return full;
-    return { ...full, channelId: null, current: null, positionSec: 0, paused: false, volume: GHOST_DJ_LIMITS.defaultVolume, loop: 'off', next: [], queueLength: 0 };
+    const seen =
+      full.channelId === null || has(textModule().voiceAccess.permissions(userId, full.channelId), PERMISSIONS.VIEW_CHANNEL)
+        ? full
+        : { ...full, channelId: null, current: null, positionSec: 0, paused: false, volume: GHOST_DJ_LIMITS.defaultVolume, loop: 'off' as const, next: [], queueLength: 0 };
+    return isOwner(userId) ? { ...seen, cookies: cookiesView(djDir) } : seen;
+  };
+
+  /** The cookies requests are the owner's alone. */
+  const requireOwner = (rc: RequestContext): void => {
+    if (!isOwner(rc.userId)) throw new ProtocolError('FORBIDDEN');
   };
 
   /** `dj.state` to every session (each as they may see it), once per burst of changes. */
@@ -207,6 +223,21 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
         await engine().control(rc.userId, ghostDjControlSchema.parse(payload).action);
         return answer(rc);
       },
+      'dj.cookies.set': (rc, payload) => {
+        requireOwner(rc);
+        saveCookies(djDir, ghostDjCookiesSetSchema.parse(payload).content);
+        rc.logger.info('Ghost DJ: the owner sent YouTube cookies');
+        announce();
+        return answer(rc);
+      },
+      'dj.cookies.clear': (rc, payload) => {
+        requireOwner(rc);
+        ghostDjCookiesClearSchema.parse(payload);
+        clearCookies(djDir);
+        rc.logger.info('Ghost DJ: the owner removed the YouTube cookies');
+        announce();
+        return answer(rc);
+      },
     },
 
     get botId() {
@@ -224,6 +255,7 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
       const text = c.getModule<TextModule>(TEXT_MODULE_NAME).bots;
       const bots = c.getModule<BotsModule>(BOTS_MODULE_NAME);
       const dir = join(c.dataDir, GHOST_DJ_DIR);
+      djDir = dir;
       if (opts.ytdlp !== false) {
         binary = new YtDlpBinary({ dir, logger: c.logger, releases: opts.ytdlp?.releases, fetch: opts.ytdlp?.fetch, asset: opts.ytdlp?.asset });
         runner = new YtDlpRunner({ binary: () => binary!.path, dir, spawn: opts.ytdlp?.spawn });

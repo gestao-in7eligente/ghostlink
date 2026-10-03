@@ -1,3 +1,5 @@
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   FEATURE_GHOST_DJ,
@@ -283,7 +285,7 @@ describe('Ghost DJ: playing (spec §1)', () => {
     expect(await privateAnswer(ana, await use(d, ana, 'play', [{ name: 'busca', value: 'https://vimeo.com/123' }]))).toContain('Não consigo tocar isso');
 
     d.answers.set('ytsearch1:bloqueado', { ok: false, error: 'blocked' });
-    expect(await privateAnswer(ana, await use(d, ana, 'play', [{ name: 'busca', value: 'bloqueado' }]), /YouTube/)).toContain('ghost-dj/cookies.txt');
+    expect(await privateAnswer(ana, await use(d, ana, 'play', [{ name: 'busca', value: 'bloqueado' }]), /YouTube/)).toContain('pela página do Ghost DJ');
 
     await privateAnswer(ana, await use(d, ana, 'play', [{ name: 'busca', value: 'tocando aqui' }]), /Tocando/);
     const { channel } = await d.fx.owner.ok<{ channel: { id: string } }>('channel.create', { name: 'Outra sala', type: 'voice' });
@@ -445,5 +447,50 @@ describe('Ghost DJ: the panel (spec 2026-10-02-ghost-dj-som-e-equalizador §2)',
     } finally {
       await server.close();
     }
+  });
+});
+
+describe('Ghost DJ: the YouTube cookies (spec 2026-10-02-sons-da-chamada-e-cookies-do-dj §2)', () => {
+  /** A cookies file with obviously fake values, made at run time (never a real-looking secret in the repository). */
+  const marker = ['fake', 'cookie', 'value'].join('-');
+  const file = (domain = '.youtube.com') => `${[domain, 'TRUE', '/', 'TRUE', '1900000000', 'test_name', marker].join('\t')}\r\n`;
+
+  it('only the owner sends and removes them; their content never comes back, and a bad file is refused', async () => {
+    const d = await setup();
+    const ana = await d.fx.join({ nickname: 'ana' });
+    const path = join(d.fx.t.dataDir, 'ghost-dj', 'cookies.txt');
+    expect((await d.fx.owner.ok<GhostDjState>('dj.state', {})).cookies).toBeNull();
+    expect(await ana.ok<GhostDjState>('dj.state', {})).not.toHaveProperty('cookies');
+
+    expect(await ana.fail('dj.cookies.set', { content: file() })).toBe('FORBIDDEN');
+    expect(await ana.fail('dj.cookies.clear', {})).toBe('FORBIDDEN');
+    expect(existsSync(path)).toBe(false);
+
+    d.fx.clock.now += 1_000;
+    const sent = await d.fx.owner.ok<GhostDjState>('dj.cookies.set', { content: file() });
+    expect(sent.cookies).toEqual({ setAt: expect.any(Number) });
+    // On disk for yt-dlp: the Netscape header first, LF line ends, readable by the server's user only.
+    expect(readFileSync(path, 'utf8')).toBe(`# Netscape HTTP Cookie File\n${file().trimEnd()}\n`);
+    if (process.platform !== 'win32') expect(statSync(path).mode & 0o777).toBe(0o600);
+    await d.fx.owner.event<GhostDjState>('dj.state', (s) => s.cookies !== null && s.cookies !== undefined);
+    await ana.sync();
+
+    // Refused files leave the saved one as it was.
+    expect(await d.fx.owner.fail('dj.cookies.set', { content: file('.google.com') })).toBe('BAD_REQUEST');
+    const json = await d.fx.owner.request('dj.cookies.set', { content: `[{"domain": ".youtube.com", "value": "${marker}"}]` });
+    expect(json.error?.code).toBe('BAD_REQUEST');
+    expect(JSON.stringify(json)).not.toContain(marker);
+    expect(await d.fx.owner.fail('dj.cookies.set', { content: `${file()}# ${'x'.repeat(100 * 1024)}` })).toBe('FILE_TOO_LARGE');
+    expect(await d.fx.owner.fail('dj.cookies.set', { content: file(), extra: 1 })).toBe('BAD_REQUEST');
+    expect(readFileSync(path, 'utf8')).toContain(marker);
+
+    expect((await d.fx.owner.ok<GhostDjState>('dj.cookies.clear', {})).cookies).toBeNull();
+    expect(existsSync(path)).toBe(false);
+    await d.fx.owner.event<GhostDjState>('dj.state', (s) => s.cookies === null);
+    for (const c of [d.fx.owner, ana]) {
+      await c.sync();
+      expect(JSON.stringify(c.events)).not.toContain(marker);
+    }
+    expect(ana.seen<GhostDjState>('dj.state').some((s) => 'cookies' in s)).toBe(false);
   });
 });

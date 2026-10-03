@@ -83,8 +83,8 @@ export function trackErrorText(error: TrackError, o: { hasCookies?: boolean; que
   switch (error) {
     case 'blocked':
       return o.hasCookies
-        ? 'O YouTube recusou o Ghost DJ mesmo com o arquivo de cookies. O dono do servidor precisa trocar o `ghost-dj/cookies.txt` por um novo.'
-        : 'O YouTube bloqueou o Ghost DJ neste servidor ("Sign in to confirm you\'re not a bot", comum em servidores na nuvem). O dono do servidor pode colocar um arquivo de cookies do YouTube (formato Netscape) em `ghost-dj/cookies.txt`, na pasta de dados do servidor.';
+        ? 'O YouTube recusou o Ghost DJ mesmo com os cookies. O dono do servidor precisa enviar cookies do YouTube novos pela página do Ghost DJ (clique nele na seção BOTS).'
+        : 'O YouTube bloqueou o Ghost DJ neste servidor ("Sign in to confirm you\'re not a bot", comum em servidores na nuvem). O dono do servidor pode enviar os cookies do YouTube pela página do Ghost DJ (clique nele na seção BOTS).';
     case 'unavailable':
       return 'Esse vídeo não está disponível (privado, removido ou com restrição de idade).';
     case 'not_found':
