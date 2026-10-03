@@ -40,7 +40,11 @@ interface State {
   enterprise: EnterpriseModule | null;
   hermes: CompanyHermesModule;
   changes: SlidingWindowLimiter;
+  /** "Criar canal novo" without MANAGE_CHANNELS: new channels per person per hour (a create/delete loop must not flood the server). */
+  newChannels: SlidingWindowLimiter;
 }
+
+const NEW_CHANNELS_PER_HOUR = 10;
 
 const toSite = (r: Row): Site => ({ id: r.id, name: r.name, domain: r.domain, channelId: r.channel_id });
 
@@ -115,12 +119,24 @@ export function createSitesModule(): SitesModule {
       const p = siteCreateSchema.parse(payload);
       const s = need();
       requireManager(s, rc.userId);
+      // Every check runs before anything is written, so a refusal never leaves a stray channel behind.
+      // "Too many sites" and "domain in use" count hidden sites too: a role holder learns that one exists
+      // (accepted: the company's sites are not secret from its managers, and the limit is global).
       const name = cleanName(p.name);
       if (all(s).length >= SITE_LIMITS.maxSites) throw new ProtocolError('BAD_REQUEST', 'too many sites');
       requireFreeDomain(s, p.domain);
       let channelId: string;
       if (p.channelId === null) {
-        channelId = s.text.createTextChannel(p.domain);
+        // Reuse a text channel they see that is named after the domain and is not a site yet.
+        const reuse = s.ctx.db
+          .all<{ id: string }>("SELECT id FROM channels WHERE type = 'text' AND name = ? AND id NOT IN (SELECT channel_id FROM sites)", p.domain)
+          .find((r) => sees(s, rc.userId, r.id));
+        if (reuse) {
+          channelId = reuse.id;
+        } else {
+          if (!s.newChannels.hit(rc.userId)) throw new ProtocolError('RATE_LIMITED');
+          channelId = s.text.createTextChannel(p.domain);
+        }
       } else {
         const channel = s.text.voiceAccess.channel(p.channelId);
         if (!channel || !sees(s, rc.userId, p.channelId)) throw new ProtocolError('NOT_FOUND');
@@ -173,6 +189,7 @@ export function createSitesModule(): SitesModule {
         enterprise: enterpriseOf(c),
         hermes: c.getModule<CompanyHermesModule>(COMPANY_HERMES_MODULE_NAME),
         changes: new SlidingWindowLimiter(SITE_LIMITS.changesPerMinute, 60_000, c.now),
+        newChannels: new SlidingWindowLimiter(NEW_CHANNELS_PER_HOUR, 3_600_000, c.now),
       };
       const s = state;
       forHermes = JSON.stringify(all(s));
@@ -187,7 +204,11 @@ export function createSitesModule(): SitesModule {
 
     welcome: (session) => {
       const s = need();
-      if (!isEnterprise(s)) return {};
+      if (!isEnterprise(s)) {
+        // After a renewal announce() must send this user their list: their app has none.
+        sent.set(session.userId, '[]');
+        return {};
+      }
       const sites = listFor(s, session.userId);
       sent.set(session.userId, JSON.stringify(sites));
       return { sites };

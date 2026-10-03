@@ -98,3 +98,120 @@ describe('the Sites category (spec 2026-10-03-aba-api-e-sites §2)', () => {
     expect(await sitesOf(fx.owner, (s) => s.length === 0)).toEqual([]);
   });
 });
+
+describe('the Sites category: visibility, limits and refusals', () => {
+  it("a role or channel permission change adds or removes the site in that person's sites.state and welcome", async () => {
+    const { fx } = await setup();
+    const { role } = await fx.owner.ok<{ role: { id: string } }>('role.create', { name: 'Interno', permissions: 0 });
+    const bia = await fx.join({ nickname: 'Bia' });
+    const { channel } = await fx.owner.ok<{ channel: Channel }>('channel.create', { name: 'interno', type: 'text', private: true, allowedRoleIds: [role.id] });
+    const { site } = await fx.owner.ok<{ site: Site }>('site.create', { name: 'Interno', domain: 'interno.tcflag.com.br', channelId: channel.id });
+    await bia.sync();
+    expect(bia.seen('sites.state')).toEqual([]);
+
+    // Granting the role shows the site; removing it hides it again.
+    await fx.owner.ok('member.setRoles', { userId: bia.userId, roleIds: [role.id] });
+    expect(await sitesOf(bia, (s) => s.length === 1)).toEqual([site]);
+    bia.clear();
+    await fx.owner.ok('member.setRoles', { userId: bia.userId, roleIds: [] });
+    expect(await sitesOf(bia, (s) => s.length === 0)).toEqual([]);
+
+    // The welcome leaves out a site whose channel the person does not see.
+    const cy = await fx.join({ nickname: 'Cy' });
+    expect(cy.welcome.sites).toEqual([]);
+
+    // channel.update to private / allowed roles.
+    const { channel: open } = await fx.owner.ok<{ channel: Channel }>('channel.create', { name: 'aberto', type: 'text' });
+    const { site: openSite } = await fx.owner.ok<{ site: Site }>('site.create', { name: 'Aberto', domain: 'aberto.tcflag.com.br', channelId: open.id });
+    expect(await sitesOf(bia, (s) => s.length === 1)).toEqual([openSite]);
+    bia.clear();
+    await fx.owner.ok('channel.update', { id: open.id, private: true, allowedRoleIds: [] });
+    expect(await sitesOf(bia, (s) => s.length === 0)).toEqual([]);
+    bia.clear();
+    await fx.owner.ok('channel.update', { id: open.id, allowedRoleIds: [role.id] });
+    await fx.owner.ok('member.setRoles', { userId: bia.userId, roleIds: [role.id] });
+    expect((await sitesOf(bia, (s) => s.length === 2)).map((x) => x.id).sort()).toEqual([openSite.id, site.id].sort());
+    const joined = await fx.join({ nickname: 'Bia', seed: bia.seed });
+    expect((joined.welcome.sites as Site[]).length).toBe(2);
+    expect(cy.welcome.sites).toEqual([]);
+  });
+
+  it("a normal server's welcome has no sites; after a renewal the list reaches those who joined meanwhile", async () => {
+    const { fx, enterprise } = await setup();
+    const { site } = await fx.owner.ok<{ site: Site }>('site.create', { name: 'Loja', domain: 'loja.tcflag.com.br', channelId: null });
+    enterprise.set('normal');
+    const bia = await fx.join({ nickname: 'Bia' });
+    expect(bia.welcome.sites).toBeUndefined();
+    enterprise.set('enterprise');
+    expect(await sitesOf(bia, (s) => s.length === 1)).toEqual([site]);
+  });
+
+  it('a site on a hidden channel is NOT_FOUND for the role holder (create, update, delete)', async () => {
+    const { fx } = await setup();
+    const ana = await pageRole(fx);
+    const { channel } = await fx.owner.ok<{ channel: Channel }>('channel.create', { name: 'interno', type: 'text', private: true });
+    const { site } = await fx.owner.ok<{ site: Site }>('site.create', { name: 'Interno', domain: 'interno.tcflag.com.br', channelId: channel.id });
+    expect(await ana.fail('site.create', { name: 'X', domain: 'x.tcflag.com.br', channelId: channel.id })).toBe('NOT_FOUND');
+    expect(await ana.fail('site.update', { id: site.id, name: 'X' })).toBe('NOT_FOUND');
+    expect(await ana.fail('site.delete', { id: site.id })).toBe('NOT_FOUND');
+  });
+
+  it('BAD_REQUEST: a voice channel, a pasted URL, a domain in use', async () => {
+    const { fx } = await setup();
+    const { channel: voice } = await fx.owner.ok<{ channel: Channel }>('channel.create', { name: 'sala', type: 'voice' });
+    expect(await fx.owner.fail('site.create', { name: 'V', domain: 'v.tcflag.com.br', channelId: voice.id })).toBe('BAD_REQUEST');
+    expect(await fx.owner.fail('site.create', { name: 'X', domain: 'https://X.com/', channelId: null })).toBe('BAD_REQUEST');
+    const { site } = await fx.owner.ok<{ site: Site }>('site.create', { name: 'A', domain: 'a.tcflag.com.br', channelId: null });
+    const { site: b } = await fx.owner.ok<{ site: Site }>('site.create', { name: 'B', domain: 'b.tcflag.com.br', channelId: null });
+    expect(await fx.owner.fail('site.update', { id: b.id, domain: site.domain })).toBe('BAD_REQUEST');
+  });
+
+  it('50 sites at most; 60 changes a minute per person', async () => {
+    const { fx } = await setup();
+    for (let i = 0; i < 50; i++) {
+      const { channel } = await fx.owner.ok<{ channel: Channel }>('channel.create', { name: `ch${i}`, type: 'text' });
+      await fx.owner.ok('site.create', { name: `S${i}`, domain: `d${i}.tcflag.com.br`, channelId: channel.id });
+    }
+    const { channel } = await fx.owner.ok<{ channel: Channel }>('channel.create', { name: 'extra', type: 'text' });
+    expect(await fx.owner.fail('site.create', { name: 'S', domain: 'extra.tcflag.com.br', channelId: channel.id })).toBe('BAD_REQUEST');
+
+    const other = await setup();
+    const { site } = await other.fx.owner.ok<{ site: Site }>('site.create', { name: 'A', domain: 'a.tcflag.com.br', channelId: null });
+    for (let i = 0; i < 59; i++) await other.fx.owner.ok('site.update', { id: site.id, name: `N${i}` });
+    expect(await other.fx.owner.fail('site.update', { id: site.id, name: 'N' })).toBe('RATE_LIMITED');
+  });
+
+  it('"Criar canal novo" is limited to 10 new channels an hour; an existing channel named after the domain is reused; removing keeps the channel', async () => {
+    const { fx } = await setup();
+    for (let i = 0; i < 10; i++) {
+      const { site } = await fx.owner.ok<{ site: Site }>('site.create', { name: `S${i}`, domain: `n${i}.tcflag.com.br`, channelId: null });
+      await fx.owner.ok('site.delete', { id: site.id });
+      // The channel stays, with its history.
+      await fx.owner.ok('msg.history', { channelId: site.channelId });
+    }
+    expect(await fx.owner.fail('site.create', { name: 'S', domain: 'n10.tcflag.com.br', channelId: null })).toBe('RATE_LIMITED');
+    // The channel named after the address is reused, which costs nothing.
+    fx.owner.clear();
+    const again = await fx.owner.ok<{ site: Site }>('site.create', { name: 'S0 de novo', domain: 'n0.tcflag.com.br', channelId: null });
+    await fx.owner.sync();
+    expect(fx.owner.seen('channel.created')).toEqual([]);
+    expect(again.site.channelId).toBeTruthy();
+  });
+
+  it('every site change bumps the hermes.config version', async () => {
+    const { fx } = await setup();
+    const created = await fx.owner.ok<BotCreateResult>('hermes.create', { name: 'TC Hermes' });
+    const hermes = (await connectBot(fx, created.connectionToken)).client!;
+    let version = (await hermes.event<HermesConfig>('hermes.config')).version;
+    const next = async (): Promise<void> => {
+      const c = await hermes.event<HermesConfig>('hermes.config', (x) => x.version > version);
+      version = c.version;
+    };
+    const { site } = await fx.owner.ok<{ site: Site }>('site.create', { name: 'A', domain: 'a.tcflag.com.br', channelId: null });
+    await next();
+    await fx.owner.ok('site.update', { id: site.id, name: 'B' });
+    await next();
+    await fx.owner.ok('site.delete', { id: site.id });
+    await next();
+  });
+});
