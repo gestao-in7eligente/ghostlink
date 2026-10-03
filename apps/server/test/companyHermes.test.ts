@@ -156,6 +156,12 @@ describe('the company Hermes (spec §2)', () => {
     const { fx } = await setup();
     const ana = await fx.join({ nickname: 'Ana' });
     await fx.owner.ok<BotCreateResult>('hermes.create', { name: 'TC Hermes' });
+    const bia = await fx.join({ nickname: 'Bia' });
+    await fx.owner.sync();
+    const before = fx.owner.seen('hermes.state').length;
+    await fx.owner.ok('member.kick', { userId: bia.userId });
+    await fx.owner.sync();
+    expect(fx.owner.seen('hermes.state')).toHaveLength(before);
     await fx.owner.ok('server.transferOwnership', { userId: ana.userId });
     expect((await ana.event<HermesState>('hermes.state')).botId).not.toBeNull();
   });
