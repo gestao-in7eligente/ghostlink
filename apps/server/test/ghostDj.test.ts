@@ -22,6 +22,7 @@ import { silentLogger, startServer } from '../src/index.js';
 import { createTextModule } from '../src/text/index.js';
 import { createVoiceModule } from '../src/voice/index.js';
 import { withDb } from './helpers/db.js';
+import { fakeEnterprise } from './helpers/enterprise.js';
 import { testLicenseKey } from './helpers/license.js';
 import { FakeBackend } from './helpers/voice.js';
 import { channelId, textFixture, type TextClient, type TextFixture } from './text/helpers.js';
@@ -529,5 +530,28 @@ describe('Ghost DJ in an Enterprise server (spec 2026-10-02-enterprise-e-hermes-
     await d.fx.owner.event<BotCommands>('commands.updated', (e) => e.botId === d.djId && e.commands.length > 0);
     expect((await d.fx.owner.ok<GhostDjState>('dj.state', {})).eq.preset).toBe('rock');
     expect(withDb(d.fx.t.dataDir, (db) => db.get<{ removed_at: number | null }>('SELECT removed_at FROM users WHERE id = ?', d.djId)?.removed_at)).toBeNull();
+    // Parking cleared its photo: it is put back.
+    expect((await d.fx.join({ nickname: 'Cai' })).text.members.find((m) => m.userId === d.djId)?.avatar).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('a DJ created while the server is Enterprise has its photo once the server is normal', async () => {
+    const enterprise = fakeEnterprise('enterprise');
+    const d = await setup({ enterprise });
+    expect(withDb(d.fx.t.dataDir, (db) => db.get<{ removed_at: number | null }>('SELECT removed_at FROM users WHERE id = ?', d.djId)?.removed_at)).not.toBeNull();
+    enterprise.set('normal');
+    await d.fx.owner.event('member.joined', (e: { member: { userId: string } }) => e.member.userId === d.djId);
+    expect((await d.fx.join({ nickname: 'Bia' })).text.members.find((m) => m.userId === d.djId)?.avatar).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('a /play whose lookup ends while the DJ leaves does not bring it back into the call', async () => {
+    const enterprise = fakeEnterprise('normal');
+    const d = await setup({ enterprise });
+    await enterVoice(d, d.fx.owner, d.sala);
+    await use(d, d.fx.owner, 'play', [{ name: 'busca', value: 'musica' }]);
+    enterprise.set('enterprise');
+    await d.fx.owner.event('member.left', (e: { userId: string }) => e.userId === d.djId);
+    await expect.poll(() => d.module.dj!.channelId).toBeNull();
+    await sleep(30);
+    expect(d.module.dj!.channelId).toBeNull();
   });
 });

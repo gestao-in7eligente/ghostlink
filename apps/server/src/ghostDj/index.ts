@@ -215,15 +215,29 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
     return createLivekitOutput();
   };
 
+  /** Parking the DJ cleared its photo (the avatars module clears a leaver's): put the default one back. */
+  const restorePhoto = (): void => {
+    if (!ctx || !botId) return;
+    const row = ctx.db.get<{ avatar_file_id: string | null }>('SELECT avatar_file_id FROM users WHERE id = ?', botId);
+    if (!row || row.avatar_file_id !== null) return;
+    try {
+      avatarsModuleOf(ctx)?.setServerPhoto(botId, Buffer.from(DJ_AVATAR_PNG_BASE64, 'base64'), 'image/png');
+    } catch (e) {
+      ctx.logger.warn('Ghost DJ: could not set its photo', { error: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
   /** Enterprise: stop, leave the call, then leave the member list (spec 2026-10-02-enterprise §1). */
   const setEnterprise = async (on: boolean): Promise<void> => {
     if (on === hidden) return;
     hidden = on;
     if (on) {
       await dj?.leave().catch((e: unknown) => ctx?.logger.warn('Ghost DJ: could not leave', { error: e instanceof Error ? e.message : String(e) }));
-      systemBot?.setHidden(true);
+      if (hidden) systemBot?.setHidden(true);
     } else {
+      dj?.reopen();
       systemBot?.setHidden(false);
+      restorePhoto();
     }
   };
 

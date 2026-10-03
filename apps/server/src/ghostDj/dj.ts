@@ -138,6 +138,8 @@ export class GhostDj {
   #eq: GhostDjEq;
   #session: Session | null = null;
   #opening: Promise<Session> | null = null;
+  /** Set by `leave()` while the server is Enterprise: no new call is joined. */
+  #closed = false;
   readonly #offState: () => void;
 
   constructor(deps: DjDeps) {
@@ -234,6 +236,7 @@ export class GhostDj {
 
   /** Stops and leaves its voice channel, as /stop does (the server became Enterprise). */
   async leave(): Promise<void> {
+    this.#closed = true;
     await this.#opening?.catch(() => undefined);
     if (this.#session) await this.#end(this.#session, 'stop');
   }
@@ -446,9 +449,15 @@ export class GhostDj {
 
   // ---- the session ----
 
+  /** Lets the DJ join calls again after `leave()` (the server is normal again). */
+  reopen(): void {
+    this.#closed = false;
+  }
+
   /** Joins the voice channel (one at a time: a second /play meanwhile waits for this one). */
   #open(voiceChannelId: string, textChannelId: string): Promise<Session> {
     if (this.#session) return Promise.resolve(this.#session);
+    if (this.#closed) return Promise.reject(new Error('the Ghost DJ is closed'));
     this.#opening ??= this.#connect(voiceChannelId, textChannelId).finally(() => {
       this.#opening = null;
     });

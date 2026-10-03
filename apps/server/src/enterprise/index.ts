@@ -185,8 +185,13 @@ export function createEnterpriseModule(opts: EnterpriseModuleOptions = {}): Ente
 
     start() {
       timer = setInterval(() => {
-        recheck();
-        limiter?.sweep();
+        try {
+          recheck();
+          limiter?.sweep();
+        } catch (e) {
+          // One failed check must not stop the server; the next one tries again.
+          ctx?.logger.error('the license check failed', { error: e instanceof Error ? e.name : 'error' });
+        }
       }, opts.checkEveryMs ?? CHECK_EVERY_MS);
       timer.unref();
     },
