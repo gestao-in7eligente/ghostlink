@@ -42,6 +42,8 @@ from gateway.platforms.helpers import MessageDeduplicator
 
 from .company import CompanyAgent, CompanyHome, check_key, company_enabled, ignored_hermes_event, restart_gateway_s6
 from .client import FATAL_CODES, GhostLinkBotClient, GhostLinkError, parse_connection_code
+from .sites import (SiteTools, SitesKeeper, channel_history, hermes_cron, post_to_channel, register_site_tools,
+                    run_on_loop, set_active_tools)
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +141,7 @@ class GhostLinkAdapter(BasePlatformAdapter):
         self._dedup = MessageDeduplicator()
         self._company: Optional[CompanyAgent] = None
         self._company_watch: Optional[asyncio.Task] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None  # the gateway loop: the sites' tools post through it
 
     # --- settings ---
 
@@ -199,12 +202,15 @@ class GhostLinkAdapter(BasePlatformAdapter):
             self._set_fatal_error("ghostlink_bad_code", f"GHOSTLINK_BOT: {exc}", retryable=False)
             return False
         client = GhostLinkBotClient(code, on_event=self._on_event, on_welcome=self._apply_welcome, on_fatal=self._on_fatal)
+        company = company_enabled(self._setting("company", "GHOSTLINK_COMPANY", ""))
+        keeper = SitesKeeper(_hermes_home(), cron=hermes_cron()) if company else None
         # Before start(): the first hermes.config arrives right after the welcome.
         # Only when the operator opted in (GHOSTLINK_COMPANY=true); otherwise hermes.* events are ignored.
         self._company = CompanyAgent(
             CompanyHome(_hermes_home()), request=lambda t, d: client.request(t, d), check_key=check_key,
             restart=restart_gateway_s6 if os.environ.get("GHOSTLINK_COMPANY_RESTART") == "s6" else None,
-        ) if company_enabled(self._setting("company", "GHOSTLINK_COMPANY", "")) else None
+            sites=keeper, channel_name=lambda cid: (self._channels.get(cid) or {}).get("name"),
+        ) if company else None
         try:
             await client.start()
         except GhostLinkError as exc:
@@ -215,6 +221,13 @@ class GhostLinkAdapter(BasePlatformAdapter):
                 self._set_fatal_error("ghostlink_enterprise_required", str(exc), retryable=True)
             return False
         self._client = client
+        self._loop = asyncio.get_running_loop()
+        if keeper is not None:  # the sites' tools (sites.py), called from the agent's thread
+            set_active_tools(SiteTools(
+                keeper, run=lambda coro: run_on_loop(self._loop, coro),
+                send=lambda cid, text: post_to_channel(self.send, lambda c: c in self._channels, cid, text),
+                history=lambda cid, since: channel_history(lambda t, d: self._require_client().request(t, d), cid, since),
+                self_id=lambda: self._self_id))
         if self._company is not None:
             self._company_watch = asyncio.create_task(self._company.watch(), name="ghostlink-company")
         self._mark_connected()
@@ -224,6 +237,8 @@ class GhostLinkAdapter(BasePlatformAdapter):
         return True
 
     async def disconnect(self) -> None:
+        set_active_tools(None)
+        self._loop = None
         client, self._client = self._client, None
         watch, self._company_watch = self._company_watch, None
         if watch is not None:
@@ -253,6 +268,8 @@ class GhostLinkAdapter(BasePlatformAdapter):
                        if isinstance(r, dict) and r.get("id")}
         self._members = {str(m["userId"]): m for m in welcome.get("members") or []
                          if isinstance(m, dict) and m.get("userId")}
+        if self._company is not None:  # the report's shape follows the server (company.py)
+            self._company.features = frozenset(str(f) for f in welcome.get("features") or [])
 
     # --- events ---
 
@@ -433,3 +450,4 @@ def register(ctx) -> None:
         allowed_users_env="GHOSTLINK_ALLOWED_USERS", allow_all_env="GHOSTLINK_ALLOW_ALL_USERS",
         cron_deliver_env_var="GHOSTLINK_HOME_CHANNEL", max_message_length=MAX_MESSAGE_LENGTH,
         emoji="👻", platform_hint=PLATFORM_HINT)
+    register_site_tools(ctx)  # hidden unless GHOSTLINK_COMPANY=true and GhostLink sent sites (sites.py)

@@ -141,4 +141,78 @@ logging.disable(logging.CRITICAL)
 SitesKeeper(home, cron=None, now=lambda: UTC, clear_skill_index=lambda: None).apply(sites, lambda cid: None)
 assert skill.exists()
 sites_module.register_site_tools(object())
+logging.disable(logging.NOTSET)
+
+# What adapter.py wires (it cannot run without Hermes, so its logic lives here): the agent's thread runs a
+# coroutine on the gateway loop and waits; a post goes only to a channel the bot sees; history pages back.
+from types import SimpleNamespace  # noqa: E402
+import threading  # noqa: E402
+
+from sites import SiteError, channel_history, post_to_channel, run_on_loop  # noqa: E402
+
+loop = asyncio.new_event_loop()
+thread = threading.Thread(target=loop.run_forever, daemon=True)
+thread.start()
+
+
+async def answer(value):
+    return value
+
+
+def refused(fn, *args):
+    try:
+        fn(*args)
+    except SiteError as exc:
+        return exc.code
+    raise AssertionError("must refuse")
+
+
+assert run_on_loop(loop, answer(42)) == 42
+assert refused(run_on_loop, None, answer(1)) == "CONNECTION_LOST", "not connected"
+
+
+async def on_the_loop():
+    run_on_loop(loop, answer(1))  # a tool called on the gateway loop itself would wait on itself forever
+
+
+assert refused(lambda: asyncio.run_coroutine_threadsafe(on_the_loop(), loop).result(5)) == "CONNECTION_LOST"
+
+sends = []
+
+
+async def fake_send(channel_id, text):
+    sends.append((channel_id, text))
+    return SimpleNamespace(success=channel_id != "F" * 26, message_id="7", error="x")
+
+
+visible = {"C" * 26, "F" * 26}.__contains__
+assert asyncio.run(post_to_channel(fake_send, visible, "C" * 26, "✅ ok")) == "7"
+assert refused(lambda: asyncio.run(post_to_channel(fake_send, visible, "Z" * 26, "x"))) == "NOT_FOUND"
+assert refused(lambda: asyncio.run(post_to_channel(fake_send, visible, "F" * 26, "x"))) == "NOT_SENT"
+assert [c for c, _ in sends] == ["C" * 26, "F" * 26], "a channel the bot does not see is never sent to"
+
+pages = {None: {"messages": [{"id": 101, "createdAt": 5_000}, {"id": 102, "createdAt": 6_000}], "hasMore": True},
+         101: {"messages": [{"id": 51, "createdAt": 3_000}, {"id": 100, "createdAt": 4_000}], "hasMore": True},
+         51: {"messages": [{"id": 1, "createdAt": 1_000}], "hasMore": False}}
+asked = []
+
+
+async def fake_request(t, d):
+    asked.append((t, d))
+    return pages[d.get("before")]
+
+
+got = asyncio.run(channel_history(fake_request, "C" * 26, 3_500))
+assert [m["id"] for m in got] == [101, 102, 51, 100], got
+assert asked == [("msg.history", {"channelId": "C" * 26, "limit": 50}),
+                 ("msg.history", {"channelId": "C" * 26, "limit": 50, "before": 101})], asked
+asked.clear()
+assert [m["id"] for m in asyncio.run(channel_history(fake_request, "C" * 26, 0))] == [101, 102, 51, 100, 1]
+assert len(asked) == 3, "until hasMore is false"
+asked.clear()
+assert len(asyncio.run(channel_history(fake_request, "C" * 26, 0, pages=2))) == 4 and len(asked) == 2
+loop.call_soon_threadsafe(loop.stop)
+thread.join(5)
+loop.close()
+assert refused(run_on_loop, loop, answer(1)) == "CONNECTION_LOST", "a closed loop is not connected"
 print("ok")

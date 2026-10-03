@@ -14,6 +14,7 @@ imports.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -21,7 +22,7 @@ import re
 import shutil
 from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -242,6 +243,63 @@ class SiteTools:
                      and str(m.get("content") or "").startswith((PREFIX["action"], PREFIX["error"]))]
             out.append({"site": s["domain"], "name": s["name"], "posts": posts})
         return json.dumps({"date": start.date().isoformat(), "sites": out}, ensure_ascii=False)
+
+
+class SiteError(Exception):
+    """A tool's post or read that did not happen; `code` is all the tool tells the model."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+# What adapter.py hands SiteTools (here, because the adapter cannot run without Hermes).
+
+def run_on_loop(loop: Optional[asyncio.AbstractEventLoop], coro: Any, timeout: float = 30.0) -> Any:
+    """Runs a coroutine on the gateway loop the adapter lives on, from the agent's thread, and waits."""
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+    if loop is None or loop.is_closed() or running is loop:  # on the loop itself it would wait on itself
+        coro.close()
+        raise SiteError("CONNECTION_LOST")
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    try:
+        return future.result(timeout)
+    except TimeoutError:
+        future.cancel()
+        raise SiteError("TIMEOUT") from None
+
+
+async def post_to_channel(send: Callable[[str, str], Awaitable[Any]], visible: Callable[[str], bool],
+                          channel_id: str, text: str) -> Optional[str]:
+    """The adapter's send() (a SendResult), only to a text channel the bot sees by its id (send() alone
+    would also take a channel's name)."""
+    if not visible(channel_id):
+        raise SiteError("NOT_FOUND")
+    result = await send(channel_id, text)
+    if not result.success:
+        raise SiteError("NOT_SENT")
+    return result.message_id
+
+
+async def channel_history(request: Callable[[str, Dict[str, Any]], Awaitable[Any]], channel_id: str, since_ms: int,
+                          pages: int = 4, limit: int = 50) -> List[Dict[str, Any]]:
+    """The channel's messages back to `since_ms` through msg.history: at most `pages` pages of `limit`."""
+    messages: List[Dict[str, Any]] = []
+    before: Optional[int] = None
+    for _ in range(pages):
+        payload: Dict[str, Any] = {"channelId": channel_id, "limit": limit}
+        if before is not None:
+            payload["before"] = before
+        res = await request("msg.history", payload) or {}
+        page = [m for m in res.get("messages") or [] if isinstance(m, dict) and isinstance(m.get("id"), int)]
+        messages.extend(page)
+        if not page or not res.get("hasMore") or min(int(m.get("createdAt") or 0) for m in page) < since_ms:
+            break
+        before = min(m["id"] for m in page)
+    return messages
 
 
 # The tools are registered once (register_site_tools, at plugin load); the adapter hands them the live

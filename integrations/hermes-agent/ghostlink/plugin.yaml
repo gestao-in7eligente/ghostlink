@@ -1,13 +1,14 @@
 name: ghostlink
 label: GhostLink
 kind: platform
-version: 1.1.0
+version: 1.2.0
 description: >
   GhostLink gateway adapter for Hermes Agent. Joins one GhostLink server as its bot (the connection
   code the GhostLink app shows when the bot is created) over a WebSocket pinned to the server's TLS
   key, and relays the text channels the bot can see. Answers when @mentioned or replied to; only the
   server's owner, allowed roles and allowed users get answers. In an Enterprise GhostLink server, the bot
-  marked as the company Hermes gets its settings and AI keys from GhostLink.
+  marked as the company Hermes gets its settings, API keys and sites from GhostLink, and posts what it
+  does on each site in that site's channel.
 author: GhostLink
 requires_env:
   - name: GHOSTLINK_BOT
@@ -48,7 +49,7 @@ optional_env:
     prompt: "Home channel"
     password: false
   - name: GHOSTLINK_COMPANY
-    description: "true: this Hermes is the company Hermes and takes models, skills, keys and access from GhostLink (off: every hermes.* event is ignored)"
+    description: "true: this Hermes is the company Hermes and takes models, skills, API keys, access and sites from GhostLink (off: every hermes.* event is ignored)"
     prompt: "Company Hermes? (true or empty)"
     password: false
   - name: GHOSTLINK_COMPANY_RESTART
