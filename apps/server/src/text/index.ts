@@ -1,8 +1,8 @@
-import { CHAT_LIMITS, type TextWelcome } from '@ghostlink/shared';
+import { CHAT_LIMITS, ProtocolError, type TextWelcome } from '@ghostlink/shared';
 import type { ModuleContext, RequestContext, RequestHandler, ServerModule, SessionInfo } from '../modules.js';
 import { createBotTextApi, type BotTextApi } from './bots.js';
 import { TextCore, TextEmitter, type TextEvents } from './core.js';
-import { channelHandlers } from './handlers/channels.js';
+import { channelHandlers, cleanChannelName, insertChannel } from './handlers/channels.js';
 import { memberHandlers } from './handlers/members.js';
 import { messageHandlers } from './handlers/messages.js';
 import { roleHandlers } from './handlers/roles.js';
@@ -46,6 +46,12 @@ export interface TextModule extends ServerModule {
   serverPermissions(userId: string): number;
   /** Sends `server.updated` as stored now to every member, as server.update does (the server icon). */
   announceServer(): void;
+  /**
+   * A new public text channel named `name` (cleaned as channel.create does), announced to whoever sees
+   * it: the Sites category's "Criar canal novo" (spec 2026-10-03-aba-api-e-sites §2), for someone who
+   * may lack MANAGE_CHANNELS. BAD_REQUEST: an empty name, or past the channel limit. Its id.
+   */
+  createTextChannel(name: string): string;
   /** For the bots module (bots spec §2): bot members and their messages. Usable after init. */
   readonly bots: BotTextApi;
 }
@@ -137,6 +143,12 @@ export function createTextModule(opts: TextModuleOptions = {}): TextModule {
     announceServer() {
       const c = need();
       c.broadcastAll({ t: 'server.updated', d: c.serverInfo() });
+    },
+
+    createTextChannel(raw) {
+      const name = cleanChannelName(raw, 'text');
+      if (name === '') throw new ProtocolError('BAD_REQUEST', 'empty channel name');
+      return insertChannel(need(), { name, type: 'text', topic: '', private: false, allowed: [], userLimit: 0 });
     },
 
     init(ctx) {
