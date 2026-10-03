@@ -40,7 +40,7 @@ from gateway.platforms.base import BasePlatformAdapter, SendResult, resolve_chan
 from gateway.platforms.event import MessageEvent, MessageType
 from gateway.platforms.helpers import MessageDeduplicator
 
-from .company import CompanyAgent, CompanyHome, check_key, restart_gateway_s6
+from .company import CompanyAgent, CompanyHome, check_key, company_enabled, ignored_hermes_event, restart_gateway_s6
 from .client import FATAL_CODES, GhostLinkBotClient, GhostLinkError, parse_connection_code
 
 logger = logging.getLogger(__name__)
@@ -200,9 +200,11 @@ class GhostLinkAdapter(BasePlatformAdapter):
             return False
         client = GhostLinkBotClient(code, on_event=self._on_event, on_welcome=self._apply_welcome, on_fatal=self._on_fatal)
         # Before start(): the first hermes.config arrives right after the welcome.
+        # Only when the operator opted in (GHOSTLINK_COMPANY=true); otherwise hermes.* events are ignored.
         self._company = CompanyAgent(
             CompanyHome(_hermes_home()), request=lambda t, d: client.request(t, d), check_key=check_key,
-            restart=restart_gateway_s6 if os.environ.get("GHOSTLINK_COMPANY_RESTART") == "s6" else None)
+            restart=restart_gateway_s6 if os.environ.get("GHOSTLINK_COMPANY_RESTART") == "s6" else None,
+        ) if company_enabled(self._setting("company", "GHOSTLINK_COMPANY", "")) else None
         try:
             await client.start()
         except GhostLinkError as exc:
@@ -213,7 +215,8 @@ class GhostLinkAdapter(BasePlatformAdapter):
                 self._set_fatal_error("ghostlink_enterprise_required", str(exc), retryable=True)
             return False
         self._client = client
-        self._company_watch = asyncio.create_task(self._company.watch(), name="ghostlink-company")
+        if self._company is not None:
+            self._company_watch = asyncio.create_task(self._company.watch(), name="ghostlink-company")
         self._mark_connected()
         self._wire_plugin_handlers(None)
         logger.info("GhostLink: connected to %s (%s) as %s, %d text channels",
@@ -254,6 +257,9 @@ class GhostLinkAdapter(BasePlatformAdapter):
     # --- events ---
 
     async def _on_event(self, t: str, d: Dict[str, Any]) -> None:
+        if ignored_hermes_event(self._company is not None, t):
+            logger.debug("GhostLink: %s ignored (GHOSTLINK_COMPANY is not on)", t)
+            return
         if self._company is not None and await self._company.on_event(t, d):
             return
         if t == "msg.new":

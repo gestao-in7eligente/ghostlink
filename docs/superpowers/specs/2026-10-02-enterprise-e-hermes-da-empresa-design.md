@@ -77,6 +77,7 @@ Exemplos: **TC Flag** é o primeiro Enterprise (o Hermes dele é o **TC Hermes**
 
 ## 3. O lado do Hermes (plugin GhostLink)
 
+- **Só com consentimento de quem opera o Hermes:** o plugin só aceita a configuração da empresa se `GHOSTLINK_COMPANY=true` estiver ligado; sem isso ignora todo evento `hermes.*` e não manda relatório.
 - **Aplicar `hermes.config`:**
   - **Onde grava:**
     - as chaves no `.env` do `$HERMES_HOME`, mexendo só nas variáveis que o plugin controla;

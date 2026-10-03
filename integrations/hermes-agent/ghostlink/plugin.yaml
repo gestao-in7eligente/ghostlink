@@ -47,6 +47,10 @@ optional_env:
     description: "Channel (name or id) for cron and notification delivery"
     prompt: "Home channel"
     password: false
+  - name: GHOSTLINK_COMPANY
+    description: "true: this Hermes is the company Hermes and takes models, skills, keys and access from GhostLink (off: every hermes.* event is ignored)"
+    prompt: "Company Hermes? (true or empty)"
+    password: false
   - name: GHOSTLINK_COMPANY_RESTART
     description: "s6: restart Hermes's gateway after a model change (only for a Hermes that reads config.yaml at start)"
     prompt: "Restart after changes? (s6 or empty)"

@@ -46,6 +46,8 @@ A conexão é TLS presa à chave do servidor (o `pin` do código): se a chave n�
 
 ## Hermes da empresa (servidor Enterprise)
 
+**Só vale se quem opera o Hermes ligar `GHOSTLINK_COMPANY=true`.** Sem isso o plugin ignora todo evento `hermes.*` e nunca manda `hermes.report`: nenhum servidor consegue mexer nas chaves, no `config.yaml`, nas regras de acesso nem ler a memória desse Hermes.
+
 Num servidor GhostLink Enterprise, o bot marcado como "Hermes da empresa" recebe do GhostLink, a cada conexão, as configurações que o dono mexe nas configurações do bot. O plugin aplica assim:
 
 | O que o GhostLink manda | Onde o plugin grava |

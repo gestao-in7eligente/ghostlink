@@ -55,6 +55,16 @@ class Unsupported(Exception):
     """A Hermes file is not in a shape this plugin knows: nothing is applied."""
 
 
+def company_enabled(value: Any) -> bool:
+    """GHOSTLINK_COMPANY: only a Hermes whose operator turned it on takes the company's config."""
+    return str(value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def ignored_hermes_event(enabled: bool, t: str) -> bool:
+    """Without the opt-in, no server can configure this Hermes: every hermes.* event is dropped."""
+    return not enabled and t.startswith("hermes.")
+
+
 def memory_id(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 

@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ghostlink"))
 from client import Timing, reconnect_delay  # noqa: E402
-from company import CompanyAgent, CompanyHome, memory_id  # noqa: E402
+from company import CompanyAgent, CompanyHome, company_enabled, ignored_hermes_event, memory_id  # noqa: E402
 
 home = Path(tempfile.mkdtemp(prefix="ghostlink-company-"))
 (home / "config.yaml").write_text(
@@ -188,6 +188,11 @@ async def flaky():
 
 
 asyncio.run(flaky())
+
+# The operator's opt-in: without GHOSTLINK_COMPANY=true no agent exists and every hermes.* event is ignored.
+assert [company_enabled(v) for v in ("true", "TRUE", "1", "yes", "", "false", None, "0", "no")] == [True, True, True, True, False, False, False, False, False]
+assert ignored_hermes_event(False, "hermes.config") and ignored_hermes_event(False, "hermes.memory.delete")
+assert not ignored_hermes_event(False, "msg.new") and not ignored_hermes_event(True, "hermes.config")
 
 # ENTERPRISE_REQUIRED waits 2 minutes between tries.
 assert reconnect_delay("ENTERPRISE_REQUIRED", 0, Timing(), lambda: 0.5) == 120.0
