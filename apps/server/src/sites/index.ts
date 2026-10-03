@@ -1,5 +1,6 @@
 import {
   FEATURE_ENTERPRISE_SITES,
+  PERMISSIONS,
   ProtocolError,
   SITE_LIMITS,
   sanitizeLabel,
@@ -127,9 +128,9 @@ export function createSitesModule(): SitesModule {
       requireFreeDomain(s, p.domain);
       let channelId: string;
       if (p.channelId === null) {
-        // Reuse a text channel they see that is named after the domain and is not a site yet.
+        // Reuse a public text channel they see that is named after the domain and is not a site yet (the promise is a public channel).
         const reuse = s.ctx.db
-          .all<{ id: string }>("SELECT id FROM channels WHERE type = 'text' AND name = ? AND id NOT IN (SELECT channel_id FROM sites)", p.domain)
+          .all<{ id: string }>("SELECT id FROM channels WHERE type = 'text' AND private = 0 AND name = ? AND id NOT IN (SELECT channel_id FROM sites)", p.domain)
           .find((r) => sees(s, rc.userId, r.id));
         if (reuse) {
           channelId = reuse.id;
@@ -140,6 +141,8 @@ export function createSitesModule(): SitesModule {
       } else {
         const channel = s.text.voiceAccess.channel(p.channelId);
         if (!channel || !sees(s, rc.userId, p.channelId)) throw new ProtocolError('NOT_FOUND');
+        // The page role must not make the Hermes post where they cannot write themselves.
+        if (!s.text.voiceAccess.isOwner(rc.userId) && (s.text.voiceAccess.permissions(rc.userId, p.channelId) & PERMISSIONS.SEND_MESSAGES) === 0) throw new ProtocolError('FORBIDDEN');
         if (channel.type !== 'text') throw new ProtocolError('BAD_REQUEST', 'a site needs a text channel');
         if (s.ctx.db.get('SELECT 1 AS x FROM sites WHERE channel_id = ?', p.channelId)) throw new ProtocolError('BAD_REQUEST', 'the channel already is a site');
         channelId = p.channelId;

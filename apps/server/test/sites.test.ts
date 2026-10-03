@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { BotCreateResult, Channel, Edition, HermesConfig, Site } from '@ghostlink/shared';
+import { PERMISSIONS, type BotCreateResult, type Channel, type Edition, type HermesConfig, type Site } from '@ghostlink/shared';
 import { createAvatarsModule } from '../src/avatars/index.js';
 import { createBotsModule } from '../src/bots/index.js';
 import { createCompanyHermesModule } from '../src/companyHermes/index.js';
@@ -183,8 +183,10 @@ describe('the Sites category: visibility, limits and refusals', () => {
 
   it('"Criar canal novo" is limited to 10 new channels an hour; an existing channel named after the domain is reused; removing keeps the channel', async () => {
     const { fx } = await setup();
+    let firstChannel = '';
     for (let i = 0; i < 10; i++) {
       const { site } = await fx.owner.ok<{ site: Site }>('site.create', { name: `S${i}`, domain: `n${i}.tcflag.com.br`, channelId: null });
+      if (i === 0) firstChannel = site.channelId;
       await fx.owner.ok('site.delete', { id: site.id });
       // The channel stays, with its history.
       await fx.owner.ok('msg.history', { channelId: site.channelId });
@@ -195,7 +197,7 @@ describe('the Sites category: visibility, limits and refusals', () => {
     const again = await fx.owner.ok<{ site: Site }>('site.create', { name: 'S0 de novo', domain: 'n0.tcflag.com.br', channelId: null });
     await fx.owner.sync();
     expect(fx.owner.seen('channel.created')).toEqual([]);
-    expect(again.site.channelId).toBeTruthy();
+    expect(again.site.channelId).toBe(firstChannel);
   });
 
   it('every site change bumps the hermes.config version', async () => {
@@ -213,5 +215,33 @@ describe('the Sites category: visibility, limits and refusals', () => {
     await next();
     await fx.owner.ok('site.delete', { id: site.id });
     await next();
+  });
+});
+
+describe('the Sites category: which channels a role holder may use', () => {
+  it('never reuses a hidden or private channel named after the domain; makes a public one', async () => {
+    const { fx } = await setup();
+    const ana = await pageRole(fx);
+    const { channel: hidden } = await fx.owner.ok<{ channel: Channel }>('channel.create', { name: 'oculto.tcflag.com.br', type: 'text', private: true });
+    const { site } = await ana.ok<{ site: Site }>('site.create', { name: 'Oculto', domain: 'oculto.tcflag.com.br', channelId: null });
+    expect(site.channelId).not.toBe(hidden.id);
+    const created = await fx.owner.event<{ channel: Channel }>('channel.created', (d) => d.channel.id === site.channelId);
+    expect(created.channel.private).toBe(false);
+    // The owner sees the private one but gets a public channel too: reuse is for public channels only.
+    const { site: mine } = await fx.owner.ok<{ site: Site }>('site.create', { name: 'Meu', domain: 'meu.tcflag.com.br', channelId: null });
+    const { channel: priv } = await fx.owner.ok<{ channel: Channel }>('channel.create', { name: 'privado.tcflag.com.br', type: 'text', private: true });
+    const { site: other } = await fx.owner.ok<{ site: Site }>('site.create', { name: 'Privado', domain: 'privado.tcflag.com.br', channelId: null });
+    expect(other.channelId).not.toBe(priv.id);
+    expect(mine.channelId).toBeTruthy();
+  });
+
+  it('the role holder needs SEND_MESSAGES in an existing channel; the owner is not asked', async () => {
+    const { fx } = await setup();
+    const ana = await pageRole(fx);
+    const geral = channelId(fx.owner, 'geral');
+    const everyone = fx.owner.text.roles.find((r) => r.isDefault)!;
+    await fx.owner.ok('role.update', { id: everyone.id, permissions: everyone.permissions & ~PERMISSIONS.SEND_MESSAGES });
+    expect(await ana.fail('site.create', { name: 'Loja', domain: 'loja.tcflag.com.br', channelId: geral })).toBe('FORBIDDEN');
+    await fx.owner.ok('site.create', { name: 'Loja', domain: 'loja.tcflag.com.br', channelId: geral });
   });
 });
