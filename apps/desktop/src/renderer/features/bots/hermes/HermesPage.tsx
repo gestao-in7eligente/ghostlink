@@ -7,14 +7,15 @@ import { useEnterpriseStore } from '../../../stores/enterprise.js';
 import { useTextStore } from '../../../stores/text.js';
 import { openBotSettings } from '../botSettingsLink.js';
 import g from '../botPage.module.css';
+import { ApiTab } from './ApiTab.js';
 import { refreshHermesView } from './hermesActions.js';
 import { filterSkills, hermesPageBlocks, hermesPageTabs, pageSkillRows, type HermesPageTab, type SkillFilter, type SkillRow } from './hermesPageModel.js';
 import h from './hermes.module.css';
 
 /**
  * The company Hermes on its page (specs 2026-10-03 pagina-do-hermes-da-empresa and
- * pagina-larga-e-abas), for the owner and the viewer role: the "Hermes da empresa" badge, then five
- * tabs (Visão geral, Skills, Acesso, Memória for the owner only, Comandos). Read only; `hermes.view`
+ * pagina-larga-e-abas), for the owner and the viewer role: the "Hermes da empresa" badge, then six
+ * tabs (Visão geral, Skills, Acesso, Memória and API for the owner only, Comandos). Read only; `hermes.view`
  * events keep the open tab live. The caller keys it by server and bot, so the tab goes back to
  * Visão geral on a change. `overview` goes under the status; `commands` is the bot's command list.
  */
@@ -44,6 +45,7 @@ export function HermesPage({ view, overview, commands }: { view: HermesView; ove
     if (id === 'overview') return t('hermes.page.tab.overview');
     if (id === 'access') return t('hermes.page.tab.access');
     if (id === 'memory') return t('hermes.tab.memory');
+    if (id === 'api') return t('hermes.page.tab.api');
     return t('bots.page.commands');
   };
   const onKeyDown = (e: KeyboardEvent) => {
@@ -163,6 +165,8 @@ export function HermesPage({ view, overview, commands }: { view: HermesView; ove
             </div>
           </Block>
         )}
+
+        {tab === 'api' && ownState !== null && <ApiTab state={ownState} />}
 
         {tab === 'commands' && commands}
       </div>

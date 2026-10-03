@@ -52,11 +52,11 @@ export function hermesPageBlocks(view: HermesView, known: { roles: Readonly<Reco
   };
 }
 
-export type HermesPageTab = 'overview' | 'skills' | 'access' | 'memory' | 'commands';
+export type HermesPageTab = 'overview' | 'skills' | 'access' | 'memory' | 'api' | 'commands';
 
-/** The tabs under the badge: Memória is the owner's only. */
+/** The tabs under the badge: Memória and API (v0.7.0) are the owner's only. */
 export function hermesPageTabs(owner: boolean): HermesPageTab[] {
-  return owner ? ['overview', 'skills', 'access', 'memory', 'commands'] : ['overview', 'skills', 'access', 'commands'];
+  return owner ? ['overview', 'skills', 'access', 'memory', 'api', 'commands'] : ['overview', 'skills', 'access', 'commands'];
 }
 
 export interface SkillRow {

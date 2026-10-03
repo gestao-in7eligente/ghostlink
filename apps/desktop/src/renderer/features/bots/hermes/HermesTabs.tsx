@@ -3,7 +3,6 @@ import { Trash2 } from 'lucide-react';
 import {
   FEATURE_ENTERPRISE_HERMES_VIEW,
   HERMES_LIMITS,
-  HERMES_PROVIDERS,
   type HermesMemoryItem,
   type HermesMemoryTarget,
   type HermesModelRef,
@@ -12,7 +11,7 @@ import {
   type HermesUpdatePayload,
 } from '@ghostlink/shared';
 import { errorCodeOf, useT, type Translate } from '../../../i18n/index.js';
-import { ConfirmDialog, ErrorText, Select, primitives as p } from '../../../layout/primitives.js';
+import { ErrorText, Select, primitives as p } from '../../../layout/primitives.js';
 import s from '../../../layout/settings.module.css';
 import type { SettingsTab } from '../../../layout/SettingsShell.js';
 import { useConnectionStore } from '../../../stores/connection.js';
@@ -30,15 +29,14 @@ import h from './hermes.module.css';
 const DOT = { ok: h.dotOk, warn: h.dotWarn, error: h.dotError } as const;
 const MODEL_SUGGESTIONS = ['deepseek-v4-pro', 'deepseek-flash', 'deepseek/deepseek-v4-pro'];
 
-/** The five tabs of the company Hermes's settings, in the bot's settings (the owner only). */
+/** The four tabs of the company Hermes's settings, in the bot's settings (the owner only). */
 export function hermesSettingsTabs(t: Translate): SettingsTab[] {
   const tab = (id: string, content: (state: HermesState) => ReactNode): SettingsTab => ({
     id,
-    label: t(`hermes.tab.${id.slice('hermes'.length).toLowerCase()}` as 'hermes.tab.keys'),
+    label: t(`hermes.tab.${id.slice('hermes'.length).toLowerCase()}` as 'hermes.tab.models'),
     content: () => <HermesTab render={content} />,
   });
   return [
-    tab('hermesKeys', (state) => <KeysTab state={state} />),
     tab('hermesModels', (state) => <ModelsTab state={state} />),
     tab('hermesSkills', (state) => <SkillsTab state={state} />),
     tab('hermesAccess', (state) => <AccessTab state={state} />),
@@ -102,99 +100,6 @@ function SaveResult({ error, done }: { error: string | null; done: boolean }) {
       {error && <ErrorText code={error} />}
       {done && <p className={s.ok}>{t('hermes.saved')}</p>}
     </>
-  );
-}
-
-// ---- Chaves de IA ----
-
-function KeysTab({ state }: { state: HermesState }) {
-  const t = useT();
-  return (
-    <>
-      <p className={p.text}>{t('hermes.keys.intro')}</p>
-      {HERMES_PROVIDERS.map((provider) => (
-        <KeyRow key={provider} provider={provider} state={state} />
-      ))}
-    </>
-  );
-}
-
-function KeyRow({ provider, state }: { provider: HermesProvider; state: HermesState }) {
-  const t = useT();
-  const id = useId();
-  const saved = state.keys[provider];
-  const [editing, setEditing] = useState(saved === null);
-  const [value, setValue] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
-  const name = PROVIDER_NAMES[provider];
-
-  const save = async (key: string | null) => {
-    setBusy(true);
-    setError(null);
-    try {
-      await updateHermes({ keys: { [provider]: key } });
-      setValue('');
-      setEditing(key === null);
-    } catch (e) {
-      setError(errorCodeOf(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className={s.field} data-hermes-key={provider}>
-      <label htmlFor={id} className={s.label}>
-        {name}
-      </label>
-      <p className={s.hint}>{saved ? t('hermes.keys.set', { last4: saved.last4 }) : t('hermes.keys.none')}</p>
-      {editing ? (
-        <form
-          className={s.row}
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (value.trim()) void save(value);
-          }}
-        >
-          <input
-            id={id}
-            className={s.input}
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            maxLength={HERMES_LIMITS.keyMax}
-            placeholder={t('hermes.keys.paste')}
-            value={value}
-            disabled={busy || state.locked}
-            onChange={(e) => setValue(e.target.value)}
-          />
-          <button type="submit" className={`${p.button} ${p.buttonPrimary}`} disabled={busy || state.locked || value.trim() === ''}>
-            {t('hermes.keys.save')}
-          </button>
-        </form>
-      ) : (
-        <div className={s.row}>
-          <button type="button" className={p.button} disabled={state.locked} onClick={() => setEditing(true)}>
-            {t('hermes.keys.change')}
-          </button>
-          <button type="button" className={`${p.button} ${p.buttonDanger}`} disabled={state.locked} onClick={() => setConfirming(true)}>
-            {t('hermes.keys.delete')}
-          </button>
-        </div>
-      )}
-      {error && <ErrorText code={error} />}
-      {confirming && (
-        <ConfirmDialog
-          title={t('hermes.keys.deleteTitle', { provider: name })}
-          body={t('hermes.keys.deleteBody', { provider: name })}
-          confirmLabel={t('hermes.keys.delete')}
-          onConfirm={() => save(null)}
-          onClose={() => setConfirming(false)}
-        />
-      )}
-    </section>
   );
 }
 
