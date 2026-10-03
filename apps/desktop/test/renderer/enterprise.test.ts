@@ -40,4 +40,11 @@ describe('the enterprise store (spec §1, §2)', () => {
     expect(settingsTabs(ALL_PERMISSIONS, false, { enterprise: true })).not.toContain('enterprise');
     expect(settingsTabs(ALL_PERMISSIONS, true)).not.toContain('enterprise');
   });
+
+  it('ignores an answer that belongs to another server', () => {
+    const s = enterpriseReducer(initialEnterprise, { type: 'welcome', welcome: welcome({ enterprise: { edition: 'enterprise', license: info() }, hermes }) });
+    expect(enterpriseReducer(s, { type: 'enterprise', serverId: 's2', state: { edition: 'normal' } })).toBe(s);
+    expect(enterpriseReducer(s, { type: 'hermes', serverId: 's2', state: { ...hermes, connected: false } })).toBe(s);
+    expect(enterpriseReducer(s, { type: 'hermes', serverId: 's1', state: { ...hermes, connected: false } }).hermes?.connected).toBe(false);
+  });
 });

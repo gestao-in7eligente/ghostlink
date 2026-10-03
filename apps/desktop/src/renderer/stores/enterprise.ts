@@ -3,7 +3,7 @@
 // (the owner only). Seeded by the welcome's `enterprise` and `hermes` keys, then kept by the
 // `enterprise.state` and `hermes.state` events and by the answers to the owner's own requests.
 // A server before 0.6.0 sends none of them: normal.
-import { useEffect } from 'react';
+import { useLayoutEffect } from 'react';
 import { create } from 'zustand';
 import {
   enterpriseStateSchemaClient,
@@ -29,8 +29,8 @@ export interface EnterpriseView {
 export type EnterpriseAction =
   | { type: 'welcome'; welcome: RendererWelcome }
   | { type: 'event'; serverId: string; envelope: Envelope }
-  | { type: 'enterprise'; state: EnterpriseState }
-  | { type: 'hermes'; state: HermesState }
+  | { type: 'enterprise'; serverId: string | null; state: EnterpriseState }
+  | { type: 'hermes'; serverId: string | null; state: HermesState }
   | { type: 'left' };
 
 export const initialEnterprise: EnterpriseView = { serverId: null, edition: 'normal', license: null, hermes: null };
@@ -57,9 +57,9 @@ export function enterpriseReducer(s: EnterpriseView, a: EnterpriseAction): Enter
       };
     }
     case 'enterprise':
-      return withEnterprise(s, a.state);
+      return a.serverId !== s.serverId ? s : withEnterprise(s, a.state);
     case 'hermes':
-      return { ...s, hermes: a.state };
+      return a.serverId !== s.serverId ? s : { ...s, hermes: a.state };
     case 'event': {
       if (a.serverId !== s.serverId) return s;
       if (a.envelope.t === 'enterprise.state') {
@@ -87,10 +87,10 @@ export const useEnterpriseStore = create<EnterpriseStore>()((set) => ({
 /** Mount once (MainLayout): the welcome on screen, then the server's events. */
 export function useEnterpriseSync(): void {
   const welcome = useConnectionStore((s) => s.welcome);
-  useEffect(() => {
+  useLayoutEffect(() => {
     useEnterpriseStore.getState().dispatch(welcome ? { type: 'welcome', welcome } : { type: 'left' });
   }, [welcome]);
-  useEffect(() => ghostlink().onServerEvent((envelope, serverId) => useEnterpriseStore.getState().dispatch({ type: 'event', serverId, envelope })), []);
+  useLayoutEffect(() => ghostlink().onServerEvent((envelope, serverId) => useEnterpriseStore.getState().dispatch({ type: 'event', serverId, envelope })), []);
 }
 
 // Not `window.ghostlink`: the node-side typecheck (tests) has no DOM types, as in chat/actions.ts.

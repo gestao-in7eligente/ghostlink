@@ -8,6 +8,7 @@ import {
   type HermesUpdatePayload,
 } from '@ghostlink/shared';
 import { useEnterpriseStore } from '../../../stores/enterprise.js';
+import { textState } from '../../../stores/text.js';
 import { request } from '../../chat/actions.js';
 
 /** A bot marked as the company Hermes; its code shows once (for GHOSTLINK_BOT on Railway). */
@@ -17,8 +18,9 @@ export function createCompanyHermes(name: string): Promise<BotCreateResult> {
 
 /** Saves a change; the answer (and hermes.state) refresh the panel. A key passed here is never kept. */
 export async function updateHermes(patch: HermesUpdatePayload): Promise<HermesState> {
+  const serverId = textState().server.serverId;
   const state = await request('hermes.update', { ...patch }, hermesStateSchemaClient);
-  useEnterpriseStore.getState().dispatch({ type: 'hermes', state });
+  useEnterpriseStore.getState().dispatch({ type: 'hermes', serverId, state });
   return state;
 }
 

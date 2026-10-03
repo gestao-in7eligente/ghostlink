@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HERMES_DEFAULT_SETTINGS, type HermesReport, type HermesState } from '@ghostlink/shared';
-import { canCreateCompanyHermes, providersWithKeys, skillEnabled, statusLines, toggledSkills } from '../../src/renderer/features/bots/hermes/hermesModel.js';
+import { canCreateCompanyHermes, initialModels, modelsSaveable, providersWithKeys, skillEnabled, statusLines, toggledSkills } from '../../src/renderer/features/bots/hermes/hermesModel.js';
 
 const report: HermesReport = {
   appliedVersion: 2,
@@ -45,5 +45,19 @@ describe('the company Hermes panel (spec §2)', () => {
     expect(canCreateCompanyHermes({ owner: true, edition: 'normal', hermes: none })).toBe(false);
     expect(canCreateCompanyHermes({ owner: true, edition: 'enterprise', hermes: state() })).toBe(false);
     expect(canCreateCompanyHermes({ owner: true, edition: 'enterprise', hermes: null })).toBe(false);
+  });
+
+  it('starts the models from providers that have a key, and saves only those', () => {
+    const only = state();
+    expect(initialModels(only)).toEqual({ primary: HERMES_DEFAULT_SETTINGS.models.primary, fallback: null });
+    const noPrimary = state({ keys: { deepseek: null, openrouter: { last4: 'cd34' } } });
+    expect(initialModels(noPrimary).primary).toEqual({ provider: 'openrouter', model: '' });
+    expect(initialModels(noPrimary).fallback).toEqual(HERMES_DEFAULT_SETTINGS.models.fallback);
+    const ok = { provider: 'deepseek' as const, model: 'm' };
+    expect(modelsSaveable(['deepseek'], ok, null)).toBe(true);
+    expect(modelsSaveable(['deepseek'], { ...ok, model: ' ' }, null)).toBe(false);
+    expect(modelsSaveable(['deepseek'], { provider: 'openrouter', model: 'm' }, null)).toBe(false);
+    expect(modelsSaveable(['deepseek'], ok, { provider: 'openrouter', model: 'm' })).toBe(false);
+    expect(modelsSaveable(['deepseek', 'openrouter'], ok, { provider: 'openrouter', model: 'm' })).toBe(true);
   });
 });

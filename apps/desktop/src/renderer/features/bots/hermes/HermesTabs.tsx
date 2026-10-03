@@ -13,7 +13,7 @@ import { useTextStore } from '../../../stores/text.js';
 import { useNow } from '../BotParts.js';
 import { timeAgo } from '../botsModel.js';
 import { deleteHermesMemory, updateHermes } from './hermesActions.js';
-import { PROVIDER_NAMES, providersWithKeys, skillEnabled, statusLines, toggledSkills } from './hermesModel.js';
+import { PROVIDER_NAMES, initialModels, modelsSaveable, providersWithKeys, skillEnabled, statusLines, toggledSkills } from './hermesModel.js';
 import h from './hermes.module.css';
 
 const DOT = { ok: h.dotOk, warn: h.dotWarn, error: h.dotError } as const;
@@ -193,8 +193,8 @@ function ModelsTab({ state }: { state: HermesState }) {
   const t = useT();
   const providers = providersWithKeys(state);
   const listId = useId();
-  const [primary, setPrimary] = useState<HermesModelRef>(state.settings.models.primary);
-  const [fallback, setFallback] = useState<HermesModelRef | null>(state.settings.models.fallback);
+  const [primary, setPrimary] = useState<HermesModelRef>(() => initialModels(state).primary);
+  const [fallback, setFallback] = useState<HermesModelRef | null>(() => initialModels(state).fallback);
   const save = useSave();
   if (providers.length === 0) return <p className={s.hint}>{t('hermes.models.noKeys')}</p>;
   const options = providers.map((value) => ({ value, label: PROVIDER_NAMES[value] }));
@@ -235,7 +235,7 @@ function ModelsTab({ state }: { state: HermesState }) {
         <button
           type="button"
           className={`${p.button} ${p.buttonPrimary}`}
-          disabled={disabled || primary.model.trim() === '' || (fallback !== null && fallback.model.trim() === '')}
+          disabled={disabled || !modelsSaveable(providers, primary, fallback)}
           onClick={() => void save.run(() => updateHermes({ models: { primary: { ...primary, model: primary.model.trim() }, fallback: fallback && { ...fallback, model: fallback.model.trim() } } }))}
         >
           {t('hermes.models.save')}
@@ -274,7 +274,7 @@ function ModelField({
           value={value?.provider ?? 'none'}
           options={options}
           disabled={disabled}
-          labelledBy={labelId}
+          label={`${title}: ${t('hermes.models.provider')}`}
           onChange={(v) => {
             if (v === 'none') onChange(null);
             else onChange({ provider: v as HermesProvider, model: value?.model ?? '' });

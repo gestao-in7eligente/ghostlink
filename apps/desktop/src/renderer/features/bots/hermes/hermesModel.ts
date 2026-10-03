@@ -1,4 +1,4 @@
-import { HERMES_PROVIDERS, type Edition, type HermesProvider, type HermesSkill, type HermesState } from '@ghostlink/shared';
+import { HERMES_PROVIDERS, type Edition, type HermesModelRef, type HermesProvider, type HermesSettings, type HermesSkill, type HermesState } from '@ghostlink/shared';
 import type { MessageKey, Vars } from '../../../i18n/index.js';
 
 export const PROVIDER_NAMES: Record<HermesProvider, string> = { deepseek: 'DeepSeek', openrouter: 'OpenRouter' };
@@ -52,4 +52,20 @@ export function statusLines(state: HermesState): HermesLine[] {
 /** "Hermes da empresa" in "Adicionar bot" (spec §2 "Criar"). `hermes` is null on servers without it. */
 export function canCreateCompanyHermes(o: { owner: boolean; edition: Edition; hermes: HermesState | null }): boolean {
   return o.owner && o.edition === 'enterprise' && o.hermes !== null && o.hermes.botId === null;
+}
+
+/** The Models tab's starting point (spec §2: only providers with a key): a model whose provider has none is replaced. */
+export function initialModels(state: HermesState): HermesSettings['models'] {
+  const providers = providersWithKeys(state);
+  const { primary, fallback } = state.settings.models;
+  return {
+    primary: providers.includes(primary.provider) ? primary : { provider: providers[0] ?? primary.provider, model: '' },
+    fallback: fallback && providers.includes(fallback.provider) ? fallback : null,
+  };
+}
+
+/** "Salvar modelos" is allowed only with every chosen provider among those with a key, and a model id each. */
+export function modelsSaveable(providers: readonly HermesProvider[], primary: HermesModelRef, fallback: HermesModelRef | null): boolean {
+  const ok = (m: HermesModelRef) => providers.includes(m.provider) && m.model.trim() !== '';
+  return ok(primary) && (fallback === null || ok(fallback));
 }

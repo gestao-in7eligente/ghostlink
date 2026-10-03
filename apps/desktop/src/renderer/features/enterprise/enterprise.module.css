@@ -39,6 +39,6 @@
 
 .license {
   min-height: 96px;
-  font-family: ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
