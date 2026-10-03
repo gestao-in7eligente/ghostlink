@@ -3,12 +3,17 @@ import { BookOpen, ExternalLink, TriangleAlert } from 'lucide-react';
 import { errorCodeOf, errorMessage, useT } from '../../i18n/index.js';
 import { Avatar, ConfirmDialog, ErrorText, Modal, primitives as p } from '../../layout/primitives.js';
 import s from '../../layout/settings.module.css';
+import { useEnterpriseStore } from '../../stores/enterprise.js';
+import { isOwner } from '../../stores/server.js';
 import { useSettingsStore } from '../../stores/settings.js';
+import { useTextStore } from '../../stores/text.js';
 import { AvatarCropModal } from '../profile/AvatarCropModal.js';
 import { IMAGE_ACCEPT, usePickedImage } from '../profile/usePickedImage.js';
 import { CopyField } from '../server-settings/InviteDialog.js';
 import { createBot, deleteBot, regenerateBotCode, setBotPhoto } from './botActions.js';
 import { botsGuideUrl } from './botsModel.js';
+import { createCompanyHermes } from './hermes/hermesActions.js';
+import { canCreateCompanyHermes } from './hermes/hermesModel.js';
 import b from './bots.module.css';
 
 /** The bot a menu or the settings act on. */
@@ -26,7 +31,8 @@ export function RegenerateBotDialog({ bot, onClose }: { bot: BotRef; onClose: ()
   const [code, setCode] = useState<string | null>(null);
   // ConfirmDialog closes itself after a success; by then the code screen has taken its place.
   const replaced = useRef(false);
-  if (code !== null) return <BotCodeDialog name={bot.nickname} code={code} onClose={onClose} />;
+  const companyHermes = useEnterpriseStore((st) => st.hermes?.botId === bot.userId);
+  if (code !== null) return <BotCodeDialog name={bot.nickname} code={code} note={companyHermes ? t('hermes.code.railway') : undefined} onClose={onClose} />;
   return (
     <ConfirmDialog
       title={t('bots.regenerate.title', { name: bot.nickname })}
@@ -66,7 +72,7 @@ const PREVIEW = 80;
  * The connection code, shown once (bots spec §3): Copiar, the warning that it does not appear
  * again, and the guide. After "Adicionar bot" and after "Gerar novo código".
  */
-export function BotCodeDialog({ name, code, photoError = null, onClose }: { name: string; code: string; photoError?: string | null; onClose: () => void }) {
+export function BotCodeDialog({ name, code, photoError = null, note, onClose }: { name: string; code: string; photoError?: string | null; note?: string; onClose: () => void }) {
   const t = useT();
   const locale = useSettingsStore((st) => st.settings?.locale ?? 'pt-BR');
   return (
@@ -83,6 +89,7 @@ export function BotCodeDialog({ name, code, photoError = null, onClose }: { name
       <div className={p.stack} data-bot-code>
         <p className={p.text}>{t('bots.code.body', { name })}</p>
         <CopyField label={t('bots.code.label')} value={code} />
+        {note && <p className={p.text}>{note}</p>}
         <p className={b.warning}>
           <TriangleAlert size={16} aria-hidden="true" />
           {t('bots.code.warning')}
@@ -121,12 +128,17 @@ export function AddBotDialog({ onClose }: { onClose: () => void }) {
   const [photo, setPhoto] = useState<BotPhoto | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ name: string; code: string; photoError: string | null } | null>(null);
+  const [created, setCreated] = useState<{ name: string; code: string; photoError: string | null; hermes: boolean } | null>(null);
+  const owner = useTextStore((st) => isOwner(st.server));
+  const edition = useEnterpriseStore((st) => st.edition);
+  const hermesState = useEnterpriseStore((st) => st.hermes);
+  const canHermes = canCreateCompanyHermes({ owner, edition, hermes: hermesState });
+  const [kind, setKind] = useState<'regular' | 'hermes'>('regular');
   const picking = usePickedImage(t('profile.photo.unreadable'));
 
   useEffect(() => (photo ? () => URL.revokeObjectURL(photo.url) : undefined), [photo]);
 
-  if (created) return <BotCodeDialog name={created.name} code={created.code} photoError={created.photoError} onClose={onClose} />;
+  if (created) return <BotCodeDialog name={created.name} code={created.code} photoError={created.photoError} note={created.hermes ? t('hermes.code.railway') : undefined} onClose={onClose} />;
 
   const trimmed = name.trim();
   const submit = async (e?: FormEvent) => {
@@ -135,7 +147,7 @@ export function AddBotDialog({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const { bot, connectionToken } = await createBot(trimmed);
+      const { bot, connectionToken } = kind === 'hermes' && canHermes ? await createCompanyHermes(trimmed) : await createBot(trimmed);
       let photoError: string | null = null;
       if (photo) {
         try {
@@ -144,7 +156,7 @@ export function AddBotDialog({ onClose }: { onClose: () => void }) {
           photoError = errorCodeOf(err);
         }
       }
-      setCreated({ name: bot.name, code: connectionToken, photoError });
+      setCreated({ name: bot.name, code: connectionToken, photoError, hermes: kind === 'hermes' && canHermes });
     } catch (err) {
       setError(errorCodeOf(err));
       setBusy(false);
@@ -170,6 +182,28 @@ export function AddBotDialog({ onClose }: { onClose: () => void }) {
         }
       >
         <form id={`${nameId}-form`} className={p.stack} onSubmit={(e) => void submit(e)}>
+          {canHermes && (
+            <fieldset className={s.field} disabled={busy} data-bot-kind>
+              <legend className={s.label}>{t('hermes.create.kind')}</legend>
+              <label className={s.check}>
+                <input type="radio" name={`${nameId}-kind`} checked={kind === 'regular'} onChange={() => setKind('regular')} />
+                <span>{t('hermes.create.kind.regular')}</span>
+              </label>
+              <label className={s.check}>
+                <input
+                  type="radio"
+                  name={`${nameId}-kind`}
+                  checked={kind === 'hermes'}
+                  onChange={() => {
+                    setKind('hermes');
+                    if (name.trim() === '') setName('Hermes');
+                  }}
+                />
+                <span>{t('hermes.create.kind.hermes')}</span>
+              </label>
+              <p className={s.hint}>{t('hermes.create.hermesHint')}</p>
+            </fieldset>
+          )}
           <div className={s.field}>
             <label htmlFor={nameId} className={s.label}>
               {t('bots.create.name')}

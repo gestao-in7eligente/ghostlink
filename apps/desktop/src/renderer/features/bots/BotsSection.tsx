@@ -6,7 +6,8 @@ import l from '../../layout/layout.module.css';
 import { Avatar, Menu, MenuItem, MenuSeparator, type MenuAnchor } from '../../layout/primitives.js';
 import { useConnectionStore } from '../../stores/connection.js';
 import { centerView } from '../../stores/channels.js';
-import { myPermissions } from '../../stores/server.js';
+import { useEnterpriseStore } from '../../stores/enterprise.js';
+import { isOwner, myPermissions } from '../../stores/server.js';
 import { dispatchText, useTextStore } from '../../stores/text.js';
 import { AddBotDialog, DeleteBotDialog, RegenerateBotDialog } from './BotDialogs.js';
 import { BotSettings } from './BotSettings.js';
@@ -34,7 +35,10 @@ export function BotsSection() {
   const [menu, setMenu] = useState<{ botId: string; anchor: MenuAnchor } | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const closeDialog = useCallback(() => setDialog(null), []);
-  const menuSystem = useTextStore((s) => menu !== null && isSystemBot(s.bots.profiles, menu.botId));
+  // The Ghost DJ has neither; the company Hermes's code and deletion are the owner's alone.
+  const owner = useTextStore((s) => isOwner(s.server));
+  const menuHermesLocked = useEnterpriseStore((e) => menu !== null && e.hermes?.botId === menu.botId) && !owner;
+  const menuSystem = useTextStore((s) => menu !== null && isSystemBot(s.bots.profiles, menu.botId)) || menuHermesLocked;
 
   if (!showBotsSection({ bots: bots.length, canManage, supported })) return null;
   const canAdd = canManage && supported;
