@@ -1,6 +1,8 @@
 import { createAvatarsModule } from './avatars/index.js';
 import { createBotsModule } from './bots/index.js';
+import { createCompanyHermesModule } from './companyHermes/index.js';
 import { createServerDeleteModule } from './deletion/index.js';
+import { createEnterpriseModule } from './enterprise/index.js';
 import { createFilesModule } from './files/index.js';
 import { createGhostDjModule } from './ghostDj/index.js';
 import type { ServerModule } from './modules.js';
@@ -28,6 +30,8 @@ export function defaultModules(opts: DefaultModulesOptions = {}): ServerModule[]
   // Files after avatars: it registers the `attachment` purpose with the avatars module's upload hub.
   // After voice: the pencil (screenDraw) reads voice's rooms, and status reports whether anyone is in a call.
   // Bots after text: bot members, their messages and interaction answers go through it (TextModule.bots).
+  // Enterprise after text (the owner, the sessions); the company Hermes after bots and enterprise
+  // (its bot, the edition); the Ghost DJ after enterprise (it hides in an Enterprise server).
   // The Ghost DJ after bots, voice and avatars: its member is a system bot, it plays as a voice participant.
   // serverDelete last: it may close a session from its onSessionOpened, after every other module saw it open.
   return [
@@ -36,6 +40,8 @@ export function defaultModules(opts: DefaultModulesOptions = {}): ServerModule[]
     createAvatarsModule(),
     createFilesModule(),
     createBotsModule(),
+    createEnterpriseModule(),
+    createCompanyHermesModule(),
     ...(opts.ghostDj === false ? [] : [createGhostDjModule()]),
     createScreenDrawModule(),
     createStatusModule(),

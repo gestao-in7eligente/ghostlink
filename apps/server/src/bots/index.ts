@@ -100,6 +100,11 @@ export interface BotsModule extends ServerModule {
    * the init of a module registered after this one.
    */
   ensureSystemBot(spec: SystemBotSpec): SystemBot;
+  /**
+   * `bot.create` for another module (the company Hermes, src/companyHermes/): the same checks
+   * (MANAGE_SERVER, the bot limit, NICK_TAKEN, the rate limit) and the same answer, for rc's user.
+   */
+  createBot(rc: RequestContext, name: string): BotCreateResult;
 }
 
 /** Interactions in flight per bot, answered ones included (memory bound; spec §2 sets none). */
@@ -359,30 +364,41 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
     }
   };
 
+  const createBot = (ctx: RequestContext, name: string): BotCreateResult => {
+    const s = need();
+    requireManager(s, ctx.userId);
+    const nick = normalizeNickname(name);
+    const count = Number(s.ctx.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM bots WHERE system IS NULL')?.n ?? 0);
+    if (count >= BOT_LIMITS.maxBots) throw new ProtocolError('BAD_REQUEST', 'too many bots');
+    if (s.ctx.db.get('SELECT 1 AS x FROM users WHERE nickname_norm = ?', nick.norm)) throw new ProtocolError('NICK_TAKEN');
+    if (!s.manage.hit(ctx.userId)) throw new ProtocolError('RATE_LIMITED');
+    const botId = randomBytes(16).toString('hex');
+    const { token, hash } = newBotToken();
+    const now = s.ctx.now();
+    s.ctx.db.tx(() => {
+      // No identity: a 19-byte marker that no 32-byte hello key can equal (005_bots.sql).
+      s.ctx.db.run(
+        `INSERT INTO users (id, public_key, nickname, nickname_norm, locale, joined_at, is_bot) VALUES (?, ?, ?, ?, NULL, ?, 1)`,
+        botId, Buffer.concat([Buffer.from('bot'), randomBytes(16)]), nick.display, nick.norm, now,
+      );
+      s.ctx.db.run('INSERT INTO bots (user_id, name, token_hash, created_by, created_at) VALUES (?, ?, ?, ?, ?)', botId, nick.display, hash, ctx.userId, now);
+    });
+    s.text.memberCreated(botId);
+    return { bot: toInfo(botRow(s, botId)!), connectionToken: connectionCode(s, ctx, token) };
+  };
+
+  /**
+   * The company's own Hermes (company_hermes.bot_id): whoever holds its connection code receives the
+   * company's AI keys, so only the server's owner may make a new code or delete it.
+   */
+  const requireOwnerForCompanyHermes = (s: State, userId: string, botId: string): void => {
+    if (s.ctx.db.get('SELECT 1 AS x FROM company_hermes WHERE bot_id = ?', botId) !== undefined && getMeta(s.ctx.db).ownerUserId !== userId) {
+      throw new ProtocolError('FORBIDDEN');
+    }
+  };
+
   const handlers: Record<string, RequestHandler> = {
-    'bot.create': (ctx, payload): BotCreateResult => {
-      const p = botCreateSchema.parse(payload);
-      const s = need();
-      requireManager(s, ctx.userId);
-      const nick = normalizeNickname(p.name);
-      const count = Number(s.ctx.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM bots WHERE system IS NULL')?.n ?? 0);
-      if (count >= BOT_LIMITS.maxBots) throw new ProtocolError('BAD_REQUEST', 'too many bots');
-      if (s.ctx.db.get('SELECT 1 AS x FROM users WHERE nickname_norm = ?', nick.norm)) throw new ProtocolError('NICK_TAKEN');
-      if (!s.manage.hit(ctx.userId)) throw new ProtocolError('RATE_LIMITED');
-      const botId = randomBytes(16).toString('hex');
-      const { token, hash } = newBotToken();
-      const now = s.ctx.now();
-      s.ctx.db.tx(() => {
-        // No identity: a 19-byte marker that no 32-byte hello key can equal (005_bots.sql).
-        s.ctx.db.run(
-          `INSERT INTO users (id, public_key, nickname, nickname_norm, locale, joined_at, is_bot) VALUES (?, ?, ?, ?, NULL, ?, 1)`,
-          botId, Buffer.concat([Buffer.from('bot'), randomBytes(16)]), nick.display, nick.norm, now,
-        );
-        s.ctx.db.run('INSERT INTO bots (user_id, name, token_hash, created_by, created_at) VALUES (?, ?, ?, ?, ?)', botId, nick.display, hash, ctx.userId, now);
-      });
-      s.text.memberCreated(botId);
-      return { bot: toInfo(botRow(s, botId)!), connectionToken: connectionCode(s, ctx, token) };
-    },
+    'bot.create': (ctx, payload): BotCreateResult => createBot(ctx, botCreateSchema.parse(payload).name),
 
     'bot.regenerate': (ctx, payload): BotRegenerateResult => {
       const p = botRegenerateSchema.parse(payload);
@@ -392,6 +408,7 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
       if (!row) throw new ProtocolError('NOT_FOUND');
       // The server's own bot has no connection code.
       if (row.system !== null) throw new ProtocolError('FORBIDDEN');
+      requireOwnerForCompanyHermes(s, ctx.userId, p.botId);
       if (!s.manage.hit(ctx.userId)) throw new ProtocolError('RATE_LIMITED');
       const { token, hash } = newBotToken();
       s.ctx.db.run('UPDATE bots SET token_hash = ? WHERE user_id = ?', hash, p.botId);
@@ -407,6 +424,7 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
       const row = botRow(s, p.botId);
       if (!row) throw new ProtocolError('NOT_FOUND');
       if (row.system !== null) throw new ProtocolError('FORBIDDEN');
+      requireOwnerForCompanyHermes(s, ctx.userId, p.botId);
       if (!s.manage.hit(ctx.userId)) throw new ProtocolError('RATE_LIMITED');
       // Messages stay (authorBot: true, a former member); the name is free again.
       s.text.removeMember(p.botId, () => {
@@ -562,6 +580,7 @@ export function createBotsModule(opts: BotsModuleOptions = {}): BotsModule {
     features: [FEATURE_BOTS, FEATURE_BOT_SETTINGS],
     handlers,
     ensureSystemBot,
+    createBot,
 
     init(ctx) {
       const textModule = ctx.getModule<TextModule>(TEXT_MODULE_NAME);
