@@ -117,10 +117,10 @@ async function djEnv(proxy?: ProxyEndpoint): Promise<Env> {
 
 /**
  * The owner in the voice channel as a real participant (through `url`: LiveKit, or a relay),
- * then /play: resolves with the stereo PCM heard, once `seconds` of it are in, and the address
- * the listener's media came from (its selected ICE candidate pair's remote end).
+ * then /play: resolves with the stereo PCM heard, once `seconds` of it are in, the address the
+ * listener's media came from (its selected ICE candidate pair's remote end) and its room.
  */
-async function hear(e: Env, url: string, seconds: number): Promise<{ pcm: Int16Array; from: { address: string; protocol: string } | null }> {
+async function hear(e: Env, url: string, seconds: number): Promise<{ pcm: Int16Array; from: { address: string; protocol: string } | null; room: Room }> {
   const { token } = await e.owner.ok<{ token: string }>('voice.join', { channelId: e.sala });
   const room = new Room();
   rooms.push(room);
@@ -157,11 +157,11 @@ async function hear(e: Env, url: string, seconds: number): Promise<{ pcm: Int16A
     pcm.set(f.subarray(0, pcm.length - at), at);
     at += f.length;
   }
-  return { pcm, from: selectedRemote(await room.getRtcStats()) };
+  return { pcm, from: selectedRemote(await room.getRtcStats()), room };
 }
 
-/** The remote end of the selected ICE candidate pair in rtc-node's session stats. */
-function selectedRemote(stats: unknown): { address: string; protocol: string } | null {
+/** rtc-node's session stats by id: each one's kind (transport, inboundRtp…) and its fields. */
+function statsById(stats: unknown): Map<string, { kind: string; body: Record<string, unknown> }> {
   const all = JSON.parse(JSON.stringify(stats, (_k, v: unknown) => (typeof v === 'bigint' ? Number(v) : v))) as Record<string, Record<string, Record<string, unknown>>[]>;
   const byId = new Map<string, { kind: string; body: Record<string, unknown> }>();
   for (const entry of [...(all.publisherStats ?? []), ...(all.subscriberStats ?? [])]) {
@@ -169,6 +169,12 @@ function selectedRemote(stats: unknown): { address: string; protocol: string } |
     const body: Record<string, unknown> = Object.assign({}, ...Object.values(parts));
     byId.set(String(body.id), { kind, body });
   }
+  return byId;
+}
+
+/** The remote end of the selected ICE candidate pair in rtc-node's session stats. */
+function selectedRemote(stats: unknown): { address: string; protocol: string } | null {
+  const byId = statsById(stats);
   for (const { kind, body } of byId.values()) {
     if (kind !== 'transport') continue;
     const pair = byId.get(String(body.selectedCandidatePairId))?.body;
@@ -176,6 +182,26 @@ function selectedRemote(stats: unknown): { address: string; protocol: string } |
     if (remote && Number(pair!.bytesReceived) > 0) return { address: String(remote.address), protocol: String(remote.protocol) };
   }
   return null;
+}
+
+/** The audio RTP payload a listener received so far (bytes), and when it was read (ms). */
+async function audioReceived(room: Room): Promise<{ bytes: number; at: number }> {
+  const stats = statsById(await room.getRtcStats());
+  const at = performance.now();
+  const audio = [...stats.values()].find(({ kind, body }) => kind === 'inboundRtp' && body.kind === 'audio' && Number(body.bytesReceived) > 0);
+  expect(audio, 'the listener’s audio stats').toBeDefined();
+  return { bytes: Number(audio!.body.bytesReceived), at };
+}
+
+/**
+ * The DJ's sound as it reaches a listener, in kbps of RTP payload over `ms`: Opus at 160 kbps, or
+ * about twice that with RED, which repeats every packet in the next one (v0.5.1: 310 to 336 kbps).
+ */
+async function wireKbps(room: Room, ms: number): Promise<number> {
+  const first = await audioReceived(room);
+  await new Promise((r) => setTimeout(r, ms));
+  const last = await audioReceived(room);
+  return ((last.bytes - first.bytes) * 8) / (last.at - first.at);
 }
 
 /**
@@ -208,9 +234,13 @@ async function stop(e: Env): Promise<void> {
 }
 
 describe.skipIf(!binary)('Ghost DJ with the real LiveKit', () => {
-  it('someone in the channel hears it in stereo, bass to treble, with no gaps (v0.5.1: it was mono, in Opus voice mode)', async () => {
+  it('someone in the channel hears it in stereo, bass to treble, with no gaps, at 160 kbps (v0.5.1: mono; then twice that with RED)', async () => {
     const e = await djEnv();
-    const { pcm } = await hear(e, `ws://127.0.0.1:${e.livekitPort}`, 5);
+    const { pcm, room } = await hear(e, `ws://127.0.0.1:${e.livekitPort}`, 5);
+    // Without RED (measured: 163 kbps; 322 kbps with it).
+    const kbps = await wireKbps(room, 3_000);
+    expect(kbps).toBeGreaterThan(120);
+    expect(kbps).toBeLessThan(220);
     expectClean(pcm);
     await stop(e);
   }, 60_000);

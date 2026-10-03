@@ -1,6 +1,18 @@
 // The Ghost DJ's panel (v0.5.1, spec 2026-10-02-ghost-dj-som-e-equalizador §2), pure: the state
-// from the server's events, who may control it, the position between events and the labels.
-import { GHOST_DJ_EQ_LIMITS, ghostDjStateSchemaClient, type Envelope, type GhostDjEq, type GhostDjState, type VoiceParticipant } from '@ghostlink/shared';
+// from the server's events, who may control it, the position between events and the labels; and
+// (v0.5.2) the owner's YouTube cookies line.
+import {
+  GHOST_DJ_COOKIES_MAX_BYTES,
+  GHOST_DJ_EQ_LIMITS,
+  ghostDjCookiesProblem,
+  ghostDjStateSchemaClient,
+  type Envelope,
+  type GhostDjCookiesProblem,
+  type GhostDjEq,
+  type GhostDjState,
+  type VoiceParticipant,
+} from '@ghostlink/shared';
+import type { MessageKey } from '../../i18n/index.js';
 
 /** The DJ's state from a server event; null for any other event or a malformed one. */
 export function djStateOf(event: Envelope): GhostDjState | null {
@@ -47,4 +59,25 @@ export function formatGain(gain: number): string {
 export function withBand(eq: GhostDjEq, band: number, gain: number): GhostDjEq {
   const g = Math.max(GHOST_DJ_EQ_LIMITS.minGain, Math.min(GHOST_DJ_EQ_LIMITS.maxGain, Math.round(gain)));
   return { preset: 'custom', gains: eq.gains.map((v, i) => (i === band ? g : v)) };
+}
+
+/** "02/10": the day the YouTube cookies were sent, in the app's language. */
+export function cookiesDate(setAt: number, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit' }).format(new Date(setAt));
+}
+
+/** What the cookies line says about a file that is not sent. */
+export const COOKIES_PROBLEM_TEXT = {
+  too_large: 'dj.cookies.tooLarge',
+  format: 'dj.cookies.notNetscape',
+  no_youtube: 'dj.cookies.noYoutube',
+} as const satisfies Record<GhostDjCookiesProblem, MessageKey>;
+
+/**
+ * Why a picked cookies file is not sent (the server checks again): too large before it is read
+ * (`content` null), then as yt-dlp would read it. Null: send it.
+ */
+export function cookiesFileProblem(size: number, content: string | null): GhostDjCookiesProblem | null {
+  if (size > GHOST_DJ_COOKIES_MAX_BYTES) return 'too_large';
+  return content === null ? null : ghostDjCookiesProblem(content);
 }

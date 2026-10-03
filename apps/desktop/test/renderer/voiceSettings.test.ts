@@ -26,7 +26,7 @@ function memory(initial?: string): KeyValueStorage & { data: Map<string, string>
 }
 
 describe('voice settings', () => {
-  it('defaults: system devices, voice activity, no push-to-talk key, RNNoise, unmuted', () => {
+  it('defaults: system devices, voice activity, no push-to-talk key, RNNoise, unmuted, call sounds on', () => {
     expect(defaultVoiceSettings).toEqual({
       inputDeviceId: null,
       outputDeviceId: null,
@@ -40,6 +40,7 @@ describe('voice settings', () => {
       localMutes: {},
       cameraDeviceId: null,
       cameraQuality: '720p30',
+      callSounds: true,
     });
   });
 
@@ -56,6 +57,9 @@ describe('voice settings', () => {
     });
     for (const mode of NOISE_SUPPRESSIONS) expect(parseVoiceSettings({ noiseSuppression: mode }).noiseSuppression).toBe(mode);
     for (const junk of ['RNNoise', 'krisp', '', 1, null, true, ['speex']]) expect(parseVoiceSettings({ noiseSuppression: junk }).noiseSuppression).toBe('rnnoise');
+    // The call sounds (v0.5.2): on unless switched off.
+    expect(parseVoiceSettings({ callSounds: false }).callSounds).toBe(false);
+    for (const junk of [undefined, 'no', 0]) expect(parseVoiceSettings({ callSounds: junk }).callSounds).toBe(true);
     expect(NOISE_SUPPRESSIONS).toEqual(['rnnoise', 'speex', 'gtcrn', 'webrtc', 'off']);
   });
 

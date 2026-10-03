@@ -81,7 +81,7 @@ sudo -u ghostlink node /opt/ghostlink/current/dist/cli.js ghost-dj --data /var/l
 
 On a server installed before 0.5.0, the automatic update does not install system packages: run `sudo apt install ffmpeg` once (or `install.sh` again), then `sudo systemctl restart ghostlink`.
 
-If `/play` says **YouTube blocked the server** ("Sign in to confirm you're not a bot", common on cloud IPs), export the YouTube cookies of a logged-in browser in Netscape format (`cookies.txt`), preferably from a separate account, and put the file in the DJ's folder. No restart needed:
+If `/play` says **YouTube blocked the server** ("Sign in to confirm you're not a bot", common on cloud IPs), export the YouTube cookies of a logged-in browser in Netscape format (`cookies.txt`), preferably from a separate account. Since 0.5.2 the server owner uploads the file from the app: click the Ghost DJ in the BOTS section and, under **YouTube cookies**, click **Upload file**. You can also put the file in the DJ's folder. No restart needed:
 
 ```bash
 sudo -u ghostlink mkdir -p /var/lib/ghostlink/ghost-dj

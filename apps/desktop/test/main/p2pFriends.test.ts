@@ -392,7 +392,7 @@ describe('the inbox owner\'s rules (friends spec §3.2, §3.4)', () => {
     strangers[INBOX_MAX_PER_HOUR + 1]!.friends.add(bia.code());
     await flush();
     expect(bia.sees(strangers[INBOX_MAX_PER_HOUR + 1]!)).toBe('pending_in');
-  });
+  }, 120_000); // 32 strangers on a slow Windows CI runner took 26 s
 
   it('holds at most 8 inbox connections from strangers at once', async () => {
     const { person } = setup();

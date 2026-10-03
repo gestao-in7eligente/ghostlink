@@ -1,23 +1,24 @@
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { ListMusic, Music, Pause, Play, SkipForward, Square, Volume2 } from 'lucide-react';
+import { useCallback, useEffect, useId, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import { Cookie, ListMusic, Music, Pause, Play, SkipForward, Square, Volume2 } from 'lucide-react';
 import {
   GHOST_DJ_EQ_BANDS,
   GHOST_DJ_EQ_LIMITS,
   GHOST_DJ_EQ_PRESET_IDS,
   ghostDjStateSchemaClient,
   type GhostDjControlAction,
+  type GhostDjCookiesView,
   type GhostDjEq,
   type GhostDjState,
 } from '@ghostlink/shared';
 import { errorCodeOf, useT } from '../../i18n/index.js';
-import { ErrorText } from '../../layout/primitives.js';
+import { ErrorText, primitives as p } from '../../layout/primitives.js';
 import { useConnectionStore } from '../../stores/connection.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import { useTextStore } from '../../stores/text.js';
 import { request } from '../chat/actions.js';
 import { useVoiceStore, viewVoice } from '../voice/state.js';
 import { useNow } from './BotParts.js';
-import { bandLabel, canControlDj, djPosition, djStateOf, formatClock, formatGain, withBand } from './djModel.js';
+import { COOKIES_PROBLEM_TEXT, bandLabel, canControlDj, cookiesDate, cookiesFileProblem, djPosition, djStateOf, formatClock, formatGain, withBand } from './djModel.js';
 import g from './botPage.module.css';
 import d from './djPanel.module.css';
 
@@ -54,7 +55,8 @@ function useLatestSender<T>(send: (value: T) => Promise<unknown>, done: () => vo
  * The Ghost DJ's panel on its page (v0.5.1, spec 2026-10-02-ghost-dj-som-e-equalizador §2): what
  * plays (title, who asked, the position), pause/continue, skip, stop, the volume and the
  * equalizer (5 bands and the presets). Live through `dj.state`; read only for whoever is not
- * in its voice channel (the slash commands' rule, which the server checks too).
+ * in its voice channel (the slash commands' rule, which the server checks too). The owner also
+ * gets the YouTube cookies line (v0.5.2).
  */
 export function DjPanel() {
   const t = useT();
@@ -277,6 +279,86 @@ export function DjPanel() {
           <p className={d.hint}>{t('dj.eq.hint')}</p>
         </div>
       </section>
+
+      {state.cookies !== undefined && <DjCookies cookies={state.cookies} locale={locale} onState={take} />}
     </>
+  );
+}
+
+/**
+ * "Cookies do YouTube" (v0.5.2, spec 2026-10-02-sons-da-chamada-e-cookies-do-dj §2): only the
+ * owner sees it (the server sends `cookies` to nobody else). "Enviar arquivo" reads a .txt here,
+ * checks it as the server will and sends its text; "Remover" deletes it. The content never comes
+ * back: the line only says since when there are cookies.
+ */
+function DjCookies({ cookies, locale, onState }: { cookies: GhostDjCookiesView | null; locale: string; onState: (state: GhostDjState) => void }) {
+  const t = useT();
+  const titleId = useId();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<{ code: string } | { text: string } | null>(null);
+
+  const send = async (type: 'dj.cookies.set' | 'dj.cookies.clear', payload: Record<string, unknown>) => {
+    setBusy(true);
+    try {
+      onState(await request(type, payload, ghostDjStateSchemaClient));
+    } catch (e) {
+      setError({ code: errorCodeOf(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // picking the same file again still fires
+    setError(null);
+    if (!file) return;
+    let problem = cookiesFileProblem(file.size, null);
+    let content = '';
+    if (problem === null) {
+      try {
+        content = await file.text();
+      } catch {
+        setError({ text: t('dj.cookies.unreadable') });
+        return;
+      }
+      problem = cookiesFileProblem(file.size, content);
+    }
+    if (problem !== null) setError({ text: t(COOKIES_PROBLEM_TEXT[problem]) });
+    else await send('dj.cookies.set', { content });
+  };
+
+  return (
+    <section aria-labelledby={titleId} data-dj-cookies>
+      <h2 id={titleId} className={g.sectionTitle}>
+        {t('dj.cookies.title')}
+      </h2>
+      <div className={d.card}>
+        <div className={d.cookies}>
+          <span className={d.cover} aria-hidden="true">
+            <Cookie size={22} />
+          </span>
+          <div className={d.trackText}>
+            <p className={d.cookiesStatus} data-dj-cookies-status={cookies ? 'set' : 'none'}>
+              {cookies ? t('dj.cookies.since', { date: cookiesDate(cookies.setAt, locale) }) : t('dj.cookies.none')}
+            </p>
+            <p className={d.hint}>{t('dj.cookies.hint')}</p>
+          </div>
+          <div className={d.cookiesButtons}>
+            <button type="button" className={`${p.button} ${p.buttonPrimary}`} disabled={busy} onClick={() => input.current?.click()} data-dj-cookies-send>
+              {t('dj.cookies.send')}
+            </button>
+            {cookies && (
+              <button type="button" className={p.button} disabled={busy} onClick={() => void send('dj.cookies.clear', {})} data-dj-cookies-remove>
+                {t('dj.cookies.remove')}
+              </button>
+            )}
+          </div>
+        </div>
+        <input ref={input} type="file" accept=".txt,text/plain" hidden onChange={(e) => void onFile(e)} data-dj-cookies-input />
+        {error && ('code' in error ? <ErrorText code={error.code} /> : <p className={p.error} role="alert">{error.text}</p>)}
+      </div>
+    </section>
   );
 }

@@ -1,4 +1,4 @@
-/* The Ghost DJ's panel on its page (v0.5.1): "Tocando agora" and the equalizer, in GhostLink's palette. */
+/* The Ghost DJ's panel on its page (v0.5.1): "Tocando agora", the equalizer and (v0.5.2) the owner's YouTube cookies, in GhostLink's palette. */
 
 .card {
   display: flex;
@@ -289,4 +289,31 @@
 .freq {
   color: var(--text-faint);
   font-size: 12px;
+}
+
+/* ---- the owner's YouTube cookies (v0.5.2) ---- */
+
+.cookies {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.cookies .trackText {
+  flex: 1;
+  min-width: 220px;
+}
+
+.cookiesStatus {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.cookiesButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }

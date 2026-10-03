@@ -145,6 +145,9 @@ describe('the deadline (spec §3.5)', () => {
     writeFileSync(join(dataDir, 'avatars', 'upload-0a1b.tmp'), 'half');
     writeFileSync(join(dataDir, 'backups', 'ghostlink-v2.db'), marker);
     writeFileSync(join(dataDir, 'setup-code.txt'), 'CODE\n');
+    // The Ghost DJ's YouTube cookies (fake ones): the owner's login, not the server's.
+    mkdirSync(join(dataDir, 'ghost-dj'), { recursive: true });
+    writeFileSync(join(dataDir, 'ghost-dj', 'cookies.txt'), `# Netscape HTTP Cookie File\n${marker}\n`);
 
     await f.owner.ok('server.delete', {});
     await bia.closed;
@@ -166,6 +169,7 @@ describe('the deadline (spec §3.5)', () => {
     expect(readdirSync(join(dataDir, 'avatars'))).toEqual([]);
     expect(readdirSync(join(dataDir, 'backups'))).toEqual([]);
     expect(existsSync(join(dataDir, 'setup-code.txt'))).toBe(false);
+    expect(existsSync(join(dataDir, 'ghost-dj', 'cookies.txt'))).toBe(false);
     expect(statSync(join(dataDir, 'tls', 'server.key')).isFile()).toBe(true);
 
     // The pin still matches (connectRaw pins serverKeyId) and everyone is refused.

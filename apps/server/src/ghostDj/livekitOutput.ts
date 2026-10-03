@@ -33,8 +33,10 @@ export class LivekitOutput implements AudioOutput {
     this.#relay = await startSignalRelay({ target: url, icePort });
     await this.#room.connect(this.#relay.url, token, { autoSubscribe: false, dynacast: false });
     const track = LocalAudioTrack.createAudioTrack('ghost-dj', this.#source);
-    // Music: no DTX (it would cut quiet passages).
-    const options = new TrackPublishOptions({ source: TrackSource.SOURCE_MICROPHONE, dtx: false, audioEncoding: { maxBitrate: MAX_BITRATE } });
+    // Music: no DTX (it would cut quiet passages), and no RED (v0.5.2): RED repeats each packet in
+    // the next one, which doubled what every listener received (310 to 336 kbps for 160 kbps of
+    // music) and protects nothing over TCP (Railway). livekit-client turns it off for stereo too.
+    const options = new TrackPublishOptions({ source: TrackSource.SOURCE_MICROPHONE, dtx: false, red: false, audioEncoding: { maxBitrate: MAX_BITRATE } });
     await this.#room.localParticipant!.publishTrack(track, options);
   }
 

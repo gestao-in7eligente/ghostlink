@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { LIMITS } from './constants.js';
+import { utf8 } from './encoding.js';
 
 /**
  * Ghost DJ (spec 2026-10-02-ghost-dj-design.md): the music bot every server has. It is a system
@@ -101,6 +103,11 @@ export interface GhostDjState {
   next: GhostDjTrackView[];
   queueLength: number;
   eq: GhostDjEq;
+  /**
+   * The YouTube cookies (v0.5.2): only the owner gets this, `{ setAt }` (when they were sent, ms
+   * epoch) or null without them. Absent for everyone else, and from older servers.
+   */
+  cookies?: GhostDjCookiesView | null;
 }
 
 /** How many of the next tracks the state lists. */
@@ -126,6 +133,53 @@ export interface GhostDjControlPayload {
   action: GhostDjControlAction;
 }
 
+// ---- the YouTube cookies (spec 2026-10-02-sons-da-chamada-e-cookies-do-dj-design.md §2, v0.5.2) ----
+
+/**
+ * The owner's cookies file for yt-dlp (YouTube blocks many cloud servers without a login), sent
+ * from the Ghost DJ's page. Owner only (FORBIDDEN otherwise); each answers the new GhostDjState.
+ * Its content never comes back to any app.
+ * - `dj.cookies.set` { content }: the file's text; refused when ghostDjCookiesProblem() finds one.
+ * - `dj.cookies.clear` {}: removes it.
+ */
+export interface GhostDjCookiesView {
+  /** When they were sent (ms epoch). */
+  setAt: number;
+}
+
+export interface GhostDjCookiesSetPayload {
+  content: string;
+}
+
+/** The largest cookies file taken, in UTF-8 bytes (100 KB). */
+export const GHOST_DJ_COOKIES_MAX_BYTES = 100 * 1024;
+
+/** Why a cookies file is refused: too large, not in the Netscape format, or without a youtube.com cookie. */
+export type GhostDjCookiesProblem = 'too_large' | 'format' | 'no_youtube';
+
+/** Browsers write HttpOnly cookies as `#HttpOnly_<domain>…`: a cookie, not a comment (as yt-dlp reads them). */
+const HTTP_ONLY_PREFIX = '#HttpOnly_';
+
+/**
+ * What is wrong with a cookies file, as yt-dlp would read it, or null when it is fine: at most
+ * 100 KB; every line empty, a comment, or a cookie of 7 tab-separated fields (domain, subdomains,
+ * path, secure, expiry in whole seconds or empty, name, value); and a cookie of youtube.com.
+ * The app checks before sending; the server checks again.
+ */
+export function ghostDjCookiesProblem(content: string): GhostDjCookiesProblem | null {
+  if (utf8(content).length > GHOST_DJ_COOKIES_MAX_BYTES) return 'too_large';
+  let youtube = false;
+  for (const raw of content.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+    const line = raw.startsWith(HTTP_ONLY_PREFIX) ? raw.slice(HTTP_ONLY_PREFIX.length) : raw;
+    if (line.trim() === '' || line.startsWith('#')) continue;
+    const fields = line.split('\t');
+    if (fields.length !== 7 || fields[0]!.trim() === '' || !/^\d*$/.test(fields[4]!)) return 'format';
+    const domain = fields[0]!.trim().toLowerCase().replace(/^\./, '');
+    if (domain === 'youtube.com' || domain.endsWith('.youtube.com')) youtube = true;
+  }
+  return youtube ? null : 'no_youtube';
+}
+
 const eqGainSchema = z.number().int().min(GHOST_DJ_EQ_LIMITS.minGain).max(GHOST_DJ_EQ_LIMITS.maxGain);
 const eqGainsSchema = z.array(eqGainSchema).length(GHOST_DJ_EQ_BANDS.length);
 const presetSchema = z.enum(GHOST_DJ_EQ_PRESET_IDS as [GhostDjEqPreset, ...GhostDjEqPreset[]]);
@@ -136,6 +190,9 @@ export const ghostDjStateRequestSchema = z.strictObject({});
 export const ghostDjEqSchema = z.union([z.strictObject({ preset: presetSchema }), z.strictObject({ gains: eqGainsSchema })]);
 export const ghostDjVolumeSchema = z.strictObject({ volume: z.number().int().min(0).max(100) });
 export const ghostDjControlSchema = z.strictObject({ action: z.enum(GHOST_DJ_CONTROL_ACTIONS) });
+/** The cookies file's text; its size and lines are judged by ghostDjCookiesProblem() (FILE_TOO_LARGE, BAD_REQUEST). */
+export const ghostDjCookiesSetSchema = z.strictObject({ content: z.string().max(LIMITS.maxPayloadBytes) });
+export const ghostDjCookiesClearSchema = z.strictObject({});
 /** The stored equalizer (the server's own data, read back). */
 export const ghostDjEqStoredSchema = z.strictObject({ preset: z.union([presetSchema, z.literal('custom')]), gains: eqGainsSchema });
 
@@ -172,4 +229,5 @@ export const ghostDjStateSchemaClient: z.ZodType<GhostDjState> = z.object({
   next: z.array(ghostDjTrackViewSchemaClient).max(100).catch([]),
   queueLength: z.number().int().nonnegative().catch(0),
   eq: ghostDjEqSchemaClient,
+  cookies: z.object({ setAt: z.number().nonnegative() }).nullable().optional().catch(undefined),
 });
