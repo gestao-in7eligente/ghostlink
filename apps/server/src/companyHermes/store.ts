@@ -18,6 +18,7 @@ interface Row {
   version: number;
   report: string | null;
   report_at: number | null;
+  viewer_role_id: string | null;
 }
 
 export interface HermesRecord {
@@ -28,6 +29,8 @@ export interface HermesRecord {
   version: number;
   report: HermesReport | null;
   reportAt: number | null;
+  /** The role that sees the company Hermes's page (010_hermes_viewer_role.sql); never in hermes.config. */
+  viewerRoleId: string | null;
 }
 
 function json(text: string | null): unknown {
@@ -46,7 +49,7 @@ export class HermesStore {
   }
 
   load(): HermesRecord {
-    const r = this.db.get<Row>('SELECT bot_id, deepseek_key, openrouter_key, settings, version, report, report_at FROM company_hermes WHERE id = 1')!;
+    const r = this.db.get<Row>('SELECT bot_id, deepseek_key, openrouter_key, settings, version, report, report_at, viewer_role_id FROM company_hermes WHERE id = 1')!;
     const settings = hermesSettingsSchema.safeParse(json(r.settings));
     const report = hermesReportSchema.safeParse(json(r.report));
     return {
@@ -56,6 +59,7 @@ export class HermesStore {
       version: Number(r.version),
       report: report.success ? report.data : null,
       reportAt: r.report_at === null ? null : Number(r.report_at),
+      viewerRoleId: r.viewer_role_id,
     };
   }
 
@@ -63,8 +67,12 @@ export class HermesStore {
     this.db.run('UPDATE company_hermes SET bot_id = ? WHERE id = 1', botId);
   }
 
-  /** Merges a change and bumps the version. */
-  update(p: HermesUpdatePayload): void {
+  setViewerRole(roleId: string | null): void {
+    this.db.run('UPDATE company_hermes SET viewer_role_id = ? WHERE id = 1', roleId);
+  }
+
+  /** Merges a change of what the Hermes gets (keys, models, skills, access) and bumps the version. */
+  update(p: Omit<HermesUpdatePayload, 'viewerRoleId'>): void {
     const current = this.load();
     const keys = { ...current.keys };
     for (const provider of HERMES_PROVIDERS) {
