@@ -353,7 +353,9 @@ export function createGhostDjModule(opts: GhostDjModuleOptions = {}): GhostDjMod
         saveEq: (eq) => saveEq(c.db, eq),
         onState: announce,
       });
-      enterprise?.onChange((edition) => void setEnterprise(edition === 'enterprise'));
+      enterprise?.onChange((edition) => {
+        setEnterprise(edition === 'enterprise').catch((e: unknown) => c.logger.error('Ghost DJ: edition change failed', { error: e instanceof Error ? e.name : 'error' }));
+      });
     },
 
     start() {
