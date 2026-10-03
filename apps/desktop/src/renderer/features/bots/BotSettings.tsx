@@ -95,9 +95,10 @@ function useBotData(botId: string, enabled: boolean): BotData {
  * full-size dialog: Visão geral (photo, name, description), Comandos, Atividade (7 dias),
  * Permissões (where it sees and speaks, and its roles), Código de conexão and Excluir bot (neither
  * for the server's own bot, the Ghost DJ: "Bot do sistema" instead). For MANAGE_SERVER. A server without the bot's settings (before 0.4.2) shows what the app knows and
- * "Atualize o servidor para editar" where the server's data is needed.
+ * "Atualize o servidor para editar" where the server's data is needed. `initialTab`: the company
+ * Hermes's page opens its Memória tab.
  */
-export function BotSettings({ botId, onClose }: { botId: string; onClose: () => void }) {
+export function BotSettings({ botId, initialTab = 'overview', onClose }: { botId: string; initialTab?: string; onClose: () => void }) {
   const t = useT();
   const bot = useTextStore((st) => (Object.hasOwn(st.members.byId, botId) ? st.members.byId[botId] : undefined));
   const server = useTextStore((st) => st.server);
@@ -105,7 +106,7 @@ export function BotSettings({ botId, onClose }: { botId: string; onClose: () => 
   const canManage = useMemo(() => has(myPermissions({ server, members }), PERMISSIONS.MANAGE_SERVER), [server, members]);
   const supported = useConnectionStore((st) => st.welcome?.serverId === server.serverId && st.welcome.features.includes(FEATURE_BOT_SETTINGS));
   const data = useBotData(botId, supported && canManage && isBot(bot));
-  const [active, setActive] = useState<string>('overview');
+  const [active, setActive] = useState<string>(initialTab);
   const [dialog, setDialog] = useState<'regenerate' | 'delete' | null>(null);
   const systemProfile = useTextStore((st) => isSystemBot(st.bots.profiles, botId));
   const system = systemProfile || data.data?.bot.system === true;

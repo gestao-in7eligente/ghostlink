@@ -130,3 +130,99 @@
   flex: 1;
   min-width: 200px;
 }
+
+/* ---- the company Hermes on its page (spec 2026-10-03 §2) ---- */
+
+.pageBadge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--text-bright);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sidebar);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px var(--space-4);
+  margin: 0;
+  font-size: 14px;
+}
+
+.facts dt,
+.factLabel {
+  color: var(--text-faint);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-strong);
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-strong);
+}
+
+.factMuted {
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.memoryRow {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.memoryText {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 14px;
+}
+
+.pageEmpty {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 14px;
+}
