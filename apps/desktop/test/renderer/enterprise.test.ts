@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ALL_PERMISSIONS, type EnterpriseLicenseInfo, type HermesState } from '@ghostlink/shared';
 import { settingsTabs } from '../../src/renderer/features/server-settings/access.js';
-import { licenseBanner } from '../../src/renderer/features/enterprise/enterpriseModel.js';
+import { daysUntil, enterpriseView, licenseBanner } from '../../src/renderer/features/enterprise/enterpriseModel.js';
 import { enterpriseReducer, initialEnterprise } from '../../src/renderer/stores/enterprise.js';
 import type { RendererWelcome } from '../../src/shared/ipcTypes.js';
 
@@ -46,5 +46,40 @@ describe('the enterprise store (spec §1, §2)', () => {
     expect(enterpriseReducer(s, { type: 'enterprise', serverId: 's2', state: { edition: 'normal' } })).toBe(s);
     expect(enterpriseReducer(s, { type: 'hermes', serverId: 's2', state: { ...hermes, connected: false } })).toBe(s);
     expect(enterpriseReducer(s, { type: 'hermes', serverId: 's1', state: { ...hermes, connected: false } }).hermes?.connected).toBe(false);
+  });
+});
+
+describe('the Enterprise tab view (spec 2026-10-03)', () => {
+  it('counts whole days, rounding up, never below 0', () => {
+    expect(daysUntil(30 * DAY, 0)).toBe(30);
+    expect(daysUntil(7 * DAY, 0)).toBe(7);
+    expect(daysUntil(7 * DAY + 1, 0)).toBe(8);
+    expect(daysUntil(DAY, 0)).toBe(1);
+    expect(daysUntil(1, 0)).toBe(1);
+    expect(daysUntil(0, 0)).toBe(0);
+    expect(daysUntil(-DAY, 0)).toBe(0);
+  });
+
+  it('a normal server, or one without a usable license, keeps the plain view', () => {
+    expect(enterpriseView('normal', info(), 0)).toEqual({ mode: 'normal' });
+    expect(enterpriseView('enterprise', null, 0)).toEqual({ mode: 'normal' });
+    expect(enterpriseView('enterprise', info({ state: 'invalid', expiresAt: null }), 0)).toEqual({ mode: 'normal' });
+    expect(enterpriseView('enterprise', info({ state: 'expired' }), 0)).toEqual({ mode: 'normal' });
+  });
+
+  it('an active license is a plain card with the days left', () => {
+    expect(enterpriseView('enterprise', info(), 0)).toEqual({ mode: 'enterprise', tone: 'ok', company: 'TC Flag', expiresAt: 30 * DAY, days: 30 });
+  });
+
+  it('turns to a warning at 7 days to go (the server says expiring) and counts to the day', () => {
+    expect(enterpriseView('enterprise', info({ state: 'valid' }), 23 * DAY - 1)).toMatchObject({ tone: 'ok', days: 8 });
+    expect(enterpriseView('enterprise', info({ state: 'expiring' }), 23 * DAY)).toMatchObject({ tone: 'warning', days: 7 });
+    expect(enterpriseView('enterprise', info({ state: 'expiring' }), 30 * DAY - 1)).toMatchObject({ tone: 'warning', days: 1 });
+  });
+
+  it('in grace it is danger and counts the days to the fallback', () => {
+    expect(enterpriseView('enterprise', info({ state: 'grace' }), 30 * DAY)).toMatchObject({ tone: 'danger', days: 7 });
+    expect(enterpriseView('enterprise', info({ state: 'grace' }), 37 * DAY - 1)).toMatchObject({ tone: 'danger', days: 1 });
+    expect(enterpriseView('enterprise', info({ state: 'grace' }), 37 * DAY)).toMatchObject({ tone: 'danger', days: 0 });
   });
 });
