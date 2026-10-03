@@ -79,7 +79,7 @@ docker run -d --name watchtower --restart unless-stopped   -v /var/run/docker.so
 
 ## Ghost DJ and the YouTube block
 
-The image already has ffmpeg: with voice on, the **Ghost DJ** (the music bot, `/play`) works without any setup. YouTube often blocks cloud IPs such as Railway's ("Sign in to confirm you're not a bot"), and `/play` says so when it happens. To fix it, export the YouTube cookies of a logged-in browser in Netscape format (`cookies.txt`), preferably from a separate account, and put the file at `/data/ghost-dj/cookies.txt` (for example through `railway ssh`, pasting the content into `cat > /data/ghost-dj/cookies.txt`). No restart needed.
+The image already has ffmpeg: with voice on, the **Ghost DJ** (the music bot, `/play`) works without any setup. YouTube often blocks cloud IPs such as Railway's ("Sign in to confirm you're not a bot"), and `/play` says so when it happens. To fix it, export the YouTube cookies of a logged-in browser in Netscape format (`cookies.txt`), preferably from a separate account, and upload the file from the app: click the Ghost DJ in the BOTS section and, under **YouTube cookies**, click **Upload file** (only the server owner sees it, since 0.5.2). No restart needed.
 
 ## Restarting and deleting
 

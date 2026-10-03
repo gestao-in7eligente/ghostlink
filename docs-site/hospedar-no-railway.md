@@ -79,7 +79,7 @@ docker run -d --name watchtower --restart unless-stopped   -v /var/run/docker.so
 
 ## Ghost DJ e o bloqueio do YouTube
 
-A imagem já traz o ffmpeg: com a voz ligada, o **Ghost DJ** (o bot de música, `/play`) funciona sem configurar nada. O YouTube costuma bloquear IPs de nuvem como os do Railway ("Sign in to confirm you're not a bot"), e o `/play` avisa quando isso acontece. Para resolver, exporte os cookies do YouTube de um navegador logado, no formato Netscape (`cookies.txt`), de preferência de uma conta separada, e coloque o arquivo em `/data/ghost-dj/cookies.txt` (por exemplo, pelo `railway ssh`, colando o conteúdo em `cat > /data/ghost-dj/cookies.txt`). Não precisa reiniciar.
+A imagem já traz o ffmpeg: com a voz ligada, o **Ghost DJ** (o bot de música, `/play`) funciona sem configurar nada. O YouTube costuma bloquear IPs de nuvem como os do Railway ("Sign in to confirm you're not a bot"), e o `/play` avisa quando isso acontece. Para resolver, exporte os cookies do YouTube de um navegador logado, no formato Netscape (`cookies.txt`), de preferência de uma conta separada, e envie o arquivo pelo app: clique no Ghost DJ na seção BOTS e, em **Cookies do YouTube**, em **Enviar arquivo** (só o dono do servidor vê essa parte, desde a 0.5.2). Não precisa reiniciar.
 
 ## Reiniciar e apagar
 
