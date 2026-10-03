@@ -23,6 +23,17 @@ describe('the enterprise store (spec §1, §2)', () => {
     expect(enterpriseReducer(s, { type: 'left' })).toEqual(initialEnterprise);
   });
 
+  it('keeps the sites the server sends (v0.7.0); none from an older server', () => {
+    const site = { id: 'S'.repeat(26), name: 'Loja', domain: 'loja.tcflag.com.br', channelId: 'C'.repeat(26) };
+    let s = enterpriseReducer(initialEnterprise, { type: 'welcome', welcome: welcome({ sites: [site] }) });
+    expect(s.sites).toEqual([site]);
+    s = enterpriseReducer(s, { type: 'event', serverId: 's2', envelope: { t: 'sites.state', d: { sites: [] } } });
+    expect(s.sites).toEqual([site]);
+    s = enterpriseReducer(s, { type: 'event', serverId: 's1', envelope: { t: 'sites.state', d: { sites: [] } } });
+    expect(s.sites).toEqual([]);
+    expect(enterpriseReducer(initialEnterprise, { type: 'welcome', welcome: welcome({}) }).sites).toEqual([]);
+  });
+
   it('a server before 0.6.0 is normal', () => {
     expect(enterpriseReducer(initialEnterprise, { type: 'welcome', welcome: welcome({}) })).toMatchObject({ edition: 'normal', license: null, hermes: null });
   });

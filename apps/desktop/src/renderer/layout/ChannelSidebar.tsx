@@ -1,36 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Hash, Lock, LogOut, Plus, Settings, Trash2, UserPlus, Volume2 } from 'lucide-react';
+import { ChevronDown, Lock, LogOut, Plus, Settings, Trash2, UserPlus, Volume2 } from 'lucide-react';
 import { PERMISSIONS, has, type Channel, type ChannelType } from '@ghostlink/shared';
-import type { SavedServer } from '../../shared/ipcTypes.js';
 import { GhostMark } from '../components/GhostMark.js';
 import { BotsSection } from '../features/bots/BotsSection.js';
 import { ChannelMenu } from '../features/channelMenu/ChannelMenu.js';
-import { channelPrefsOf, isChannelMuted, nextMuteEnd, pinnedFirst } from '../features/channelMenu/channelPrefs.js';
+import { nextMuteEnd, pinnedFirst } from '../features/channelMenu/channelPrefs.js';
 import { useSavedServer } from '../features/channelMenu/useSavedServer.js';
 import { canOpenServerSettings } from '../features/server-settings/access.js';
 import { CreateChannelDialog } from '../features/server-settings/CreateChannelDialog.js';
 import { EnterpriseBadge } from '../features/enterprise/EnterpriseBadge.js';
 import { useOpenServerExit } from '../features/serverDelete/DeletionBanner.js';
-import { userMenuTriggers } from '../features/userMenu/triggers.js';
+import { SitesSection } from '../features/sites/SitesSection.js';
+import { withoutSites } from '../features/sites/siteModel.js';
 import { useT } from '../i18n/index.js';
-import { centerView, isUnread, readMark, sortedChannels } from '../stores/channels.js';
+import { sortedChannels } from '../stores/channels.js';
+import { useEnterpriseStore } from '../stores/enterprise.js';
 import { myPermissions } from '../stores/server.js';
 import { dispatchText, useTextStore } from '../stores/text.js';
 import l from './layout.module.css';
 import { Menu, MenuItem, MenuSeparator, ServerIcon, type MenuAnchor } from './primitives.js';
 import { useLayoutSlots } from './slots.js';
+import { TextChannelRow, type TextRowContext } from './TextChannelRow.js';
 
 export type SidebarDialog = 'invite' | 'settings' | 'leave' | 'delete';
 
-/** What a text channel row needs from the sidebar: my choices for it, the time, and its menu. */
-interface TextRowContext {
-  saved: SavedServer | null;
-  now: number;
-  openMenu: (channelId: string, anchor: MenuAnchor) => void;
-}
-
 /**
- * Server header with its menu, then the text and voice channels (spec §11.1 item 4). A text channel's
+ * Server header with its menu, then BOTS, SITES (Enterprise, v0.7.0), the text and the voice channels (spec §11.1 item 4). A text channel's
  * right click (or menu key) opens its menu (spec 2026-10-02-menu-do-canal); `channelId` names the channel
  * an invite or the settings opened from it are about.
  */
@@ -41,6 +36,7 @@ export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog, cha
   const server = useTextStore((s) => s.server);
   const members = useTextStore((s) => s.members);
   const byId = useTextStore((s) => s.channels.byId);
+  const sites = useEnterpriseStore((s) => s.sites);
   const [menu, setMenu] = useState<DOMRect | null>(null);
   const [creating, setCreating] = useState<ChannelType | null>(null);
   const [channelMenu, setChannelMenu] = useState<{ channelId: string; anchor: MenuAnchor } | null>(null);
@@ -63,7 +59,7 @@ export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog, cha
   const canManageChannels = has(bits, PERMISSIONS.MANAGE_CHANNELS);
   // Members leave, the owner deletes (leave/delete spec §2, §3).
   const exit = useOpenServerExit();
-  const text = useMemo(() => pinnedFirst(sortedChannels(byId, 'text'), saved?.pinned), [byId, saved]);
+  const text = useMemo(() => pinnedFirst(withoutSites(sortedChannels(byId, 'text'), sites), saved?.pinned), [byId, saved, sites]);
   const voice = useMemo(() => sortedChannels(byId, 'voice'), [byId]);
 
   const pick = (dialog: SidebarDialog) => {
@@ -115,6 +111,7 @@ export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog, cha
 
       <div className={l.channelScroll}>
         <BotsSection />
+        <SitesSection saved={saved} onOpen={onOpen} />
         <ChannelSection
           title={t('layout.textChannels')}
           type="text"
@@ -173,49 +170,6 @@ function ChannelSection({
         {channels.map((c) => (type === 'text' && textRow ? <TextChannelRow key={c.id} channel={c} context={textRow} /> : <VoiceChannelRow key={c.id} channel={c} />))}
       </ul>
     </section>
-  );
-}
-
-function TextChannelRow({ channel, context }: { channel: Channel; context: TextRowContext }) {
-  const t = useT();
-  const active = useTextStore((s) => s.channels.activeId === channel.id && centerView(s.channels) === 'chat');
-  const mark = useTextStore((s) => readMark(s.channels, channel.id));
-  // Muted (its menu): dimmed and never bold; its mentions still count.
-  const muted = isChannelMuted(channelPrefsOf(context.saved, channel.id), context.now);
-  const unread = !active && !muted && isUnread(channel, mark);
-  const mentions = mark.mentionCount;
-  const className = [l.channel, muted ? l.channelMuted : '', active ? l.channelActive : '', unread ? l.channelUnread : ''].filter(Boolean).join(' ');
-  const triggers = userMenuTriggers((anchor) => context.openMenu(channel.id, anchor));
-  const label = [
-    channel.name,
-    channel.private ? t('layout.privateChannel') : null,
-    muted ? t('channelMenu.mutedLabel') : null,
-    unread ? t('layout.unread') : null,
-    mentions > 0 ? t('layout.mentions', { count: mentions }) : null,
-  ]
-    .filter(Boolean)
-    .join(', ');
-  return (
-    <li className={l.channelItem}>
-      <button
-        type="button"
-        className={className}
-        aria-current={active ? 'page' : undefined}
-        aria-label={label}
-        onClick={() => dispatchText({ type: 'select', channelId: channel.id })}
-        {...triggers}
-        data-channel={channel.id}
-      >
-        <Hash className={l.channelIcon} size={18} aria-hidden="true" />
-        <span className={l.channelName}>{channel.name}</span>
-        {channel.private && <Lock className={l.lock} size={13} aria-hidden="true" />}
-        {mentions > 0 && (
-          <span className={l.mentionBadge} aria-hidden="true">
-            {mentions > 99 ? '99+' : mentions}
-          </span>
-        )}
-      </button>
-    </li>
   );
 }
 

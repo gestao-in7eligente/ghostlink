@@ -1,6 +1,7 @@
 // Enterprise and the company Hermes as this app sees them (spec 2026-10-02-enterprise-e-hermes-da-empresa
 // §1, §2): the edition of the server on screen (everyone), its license and the company Hermes's state
-// (the owner only), and the company Hermes's page (v0.6.2: the owner and the viewer role). Seeded by
+// (the owner only), and the company Hermes's page (v0.6.2: the owner and the viewer role) and the company's sites (v0.7.0: every member,
+// those whose channel they see; the welcome's `sites`, then `sites.state`). Seeded by
 // the welcome's `enterprise`, `hermes` and `hermesView` keys, then kept by the `enterprise.state`,
 // `hermes.state` and `hermes.view` events and by the answers to the app's own requests.
 // A server before 0.6.0 sends none of them: normal; one before 0.6.2 has no page.
@@ -11,12 +12,15 @@ import {
   hermesStateSchemaClient,
   hermesViewEventSchemaClient,
   hermesViewSchemaClient,
+  sitesSchemaClient,
+  sitesStateSchemaClient,
   type Edition,
   type EnterpriseLicenseInfo,
   type EnterpriseState,
   type Envelope,
   type HermesState,
   type HermesView,
+  type Site,
 } from '@ghostlink/shared';
 import type { GhostlinkApi, RendererWelcome } from '../../shared/ipcTypes.js';
 import { useConnectionStore } from './connection.js';
@@ -30,6 +34,8 @@ export interface EnterpriseView {
   hermes: HermesState | null;
   /** The company Hermes's page: the owner's, or the viewer role's (no memory); null for anyone else. */
   view: HermesView | null;
+  /** The sites this person sees (v0.7.0); [] on a normal server or one before 0.7.0. */
+  sites: Site[];
 }
 
 export type EnterpriseAction =
@@ -40,7 +46,7 @@ export type EnterpriseAction =
   | { type: 'view'; serverId: string | null; view: HermesView | null }
   | { type: 'left' };
 
-export const initialEnterprise: EnterpriseView = { serverId: null, edition: 'normal', license: null, hermes: null, view: null };
+export const initialEnterprise: EnterpriseView = { serverId: null, edition: 'normal', license: null, hermes: null, view: null, sites: [] };
 
 function withEnterprise(s: EnterpriseView, d: EnterpriseState): EnterpriseView {
   // Everyone but the owner gets the edition alone: the license they had (none) stays.
@@ -53,7 +59,7 @@ export function enterpriseReducer(s: EnterpriseView, a: EnterpriseAction): Enter
     case 'left':
       return initialEnterprise;
     case 'welcome': {
-      const w = a.welcome as RendererWelcome & { enterprise?: unknown; hermes?: unknown; hermesView?: unknown };
+      const w = a.welcome as RendererWelcome & { enterprise?: unknown; hermes?: unknown; hermesView?: unknown; sites?: unknown };
       const ent = enterpriseStateSchemaClient.safeParse(w.enterprise);
       const hermes = hermesStateSchemaClient.safeParse(w.hermes);
       const view = hermesViewSchemaClient.safeParse(w.hermesView);
@@ -63,6 +69,7 @@ export function enterpriseReducer(s: EnterpriseView, a: EnterpriseAction): Enter
         license: ent.success ? (ent.data.license ?? null) : null,
         hermes: w.hermes !== undefined && hermes.success ? hermes.data : null,
         view: w.hermesView !== undefined && view.success ? view.data : null,
+        sites: sitesSchemaClient.parse(w.sites),
       };
     }
     case 'enterprise':
@@ -84,6 +91,10 @@ export function enterpriseReducer(s: EnterpriseView, a: EnterpriseAction): Enter
       if (a.envelope.t === 'hermes.view') {
         const p = hermesViewEventSchemaClient.safeParse(a.envelope.d);
         return p.success ? { ...s, view: p.data.view } : s;
+      }
+      if (a.envelope.t === 'sites.state') {
+        const p = sitesStateSchemaClient.safeParse(a.envelope.d);
+        return p.success ? { ...s, sites: p.data.sites } : s;
       }
       return s;
     }
