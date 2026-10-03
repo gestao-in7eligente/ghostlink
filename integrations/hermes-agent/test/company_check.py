@@ -217,11 +217,17 @@ assert all(mine not in p.read_text(encoding="utf-8", errors="replace") for p in 
 
 # The five AI providers by Hermes's ids: openai-api reads OPENAI_API_KEY (Hermes's `openai` is OpenRouter's alias).
 # An AI variable the operator set (Railway) and GhostLink never sent stays: only what this process set goes.
-ai_env = {"ANTHROPIC_API_KEY": "do-railway"}
+operator_ai = {"ANTHROPIC_API_KEY": "do-railway", "DEEPSEEK_API_KEY": "ds-do-railway"}
+ai_env = dict(operator_ai)
 ai_home = CompanyHome(home, environ=ai_env)
 ai_home.apply({**config, "keys": {"openai-api": mine, "gemini": None}})
-assert ai_env == {"ANTHROPIC_API_KEY": "do-railway", "OPENAI_API_KEY": mine}, ai_env
-assert ai_home.apply({**config, "keys": {}})["keys"] == ["openai-api"] and ai_env == {"ANTHROPIC_API_KEY": "do-railway"}
+assert ai_env == {**operator_ai, "OPENAI_API_KEY": mine}, ai_env
+assert ai_home.apply({**config, "keys": {}})["keys"] == ["openai-api"] and ai_env == operator_ai
+# GhostLink's key wins while it has one; deleted there, the operator's own comes back (never no key at all).
+ai_home.apply({**config, "keys": {"deepseek": mine}})
+assert ai_env["DEEPSEEK_API_KEY"] == mine
+assert ai_home.apply({**config, "keys": {"deepseek": None}})["keys"] == ["deepseek"] and ai_env == operator_ai, ai_env
+assert ai_home.apply({**config, "keys": {}})["keys"] == [] and ai_env == operator_ai, "restored once, then left alone"
 
 
 # A 1.1-shaped config (no apis, no sites) still applies; the report carries two key results for a server
@@ -246,6 +252,14 @@ async def report_shapes():
 
 
 asyncio.run(report_shapes())
+
+# Hermes's gemini reads GOOGLE_API_KEY before GEMINI_API_KEY (hermes_cli/auth.py): one in the environment or
+# in .env wins over GhostLink's key, so the panel is told.
+assert CompanyHome(home, environ={"GOOGLE_API_KEY": "x" * 20}).env_override() == ["gemini"]
+(home / ".env").write_text("export GOOGLE_API_KEY=" + "x" * 20 + "\n", encoding="utf-8")
+assert CompanyHome(home, environ={}).env_override() == ["gemini"]
+(home / ".env").unlink()
+assert CompanyHome(home, environ={}).env_override() == []
 
 
 # Each provider's free listing (no tokens spent), against a local server: its own header, and Gemini's 400

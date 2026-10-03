@@ -27,7 +27,7 @@ import re
 import secrets
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Set
+from typing import Any, Awaitable, Callable, Dict, Optional, Set
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms._shared import (
@@ -43,7 +43,7 @@ from gateway.platforms.helpers import MessageDeduplicator
 from .company import CompanyAgent, CompanyHome, check_key, company_enabled, ignored_hermes_event, restart_gateway_s6
 from .client import FATAL_CODES, GhostLinkBotClient, GhostLinkError, parse_connection_code
 from .sites import (SiteTools, SitesKeeper, channel_history, hermes_cron, post_to_channel, register_site_tools,
-                    run_on_loop, set_active_tools)
+                    retire_sites, run_on_loop, set_active_tools)
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +120,31 @@ def _hermes_home() -> Path:
         return Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
 
 
+class _GhostLinkClient(GhostLinkBotClient):
+    """client.py's client, also telling the adapter why a session ended or a connection was refused: it
+    reconnects by itself, so a lapsed Enterprise license (ENTERPRISE_REQUIRED) would never reach connect()."""
+
+    def __init__(self, *args: Any, on_refused: Callable[[str], Awaitable[None]], **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self._on_refused = on_refused
+
+    async def _tell(self, code: str) -> None:
+        with contextlib.suppress(Exception):  # never stops the session
+            await self._on_refused(code)
+
+    async def _listen(self, ws: Any) -> str:
+        cause = await super()._listen(ws)
+        await self._tell(cause)
+        return cause
+
+    async def _establish(self) -> Any:
+        try:
+            return await super()._establish()
+        except GhostLinkError as exc:
+            await self._tell(exc.code)
+            raise
+
+
 class GhostLinkAdapter(BasePlatformAdapter):
     """Gateway adapter for one GhostLink server, as its bot member."""
 
@@ -142,6 +167,7 @@ class GhostLinkAdapter(BasePlatformAdapter):
         self._company: Optional[CompanyAgent] = None
         self._company_watch: Optional[asyncio.Task] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None  # the gateway loop: the sites' tools post through it
+        self._keeper: Optional[SitesKeeper] = None  # the company sites (company mode only)
 
     # --- settings ---
 
@@ -201,9 +227,12 @@ class GhostLinkAdapter(BasePlatformAdapter):
             logger.error("GhostLink: %s. Copy the code again from the app (BOTS > the bot > Gerar novo código)", exc)
             self._set_fatal_error("ghostlink_bad_code", f"GHOSTLINK_BOT: {exc}", retryable=False)
             return False
-        client = GhostLinkBotClient(code, on_event=self._on_event, on_welcome=self._apply_welcome, on_fatal=self._on_fatal)
+        client = _GhostLinkClient(code, on_event=self._on_event, on_welcome=self._apply_welcome, on_fatal=self._on_fatal,
+                                  on_refused=self._on_refused)
         company = company_enabled(self._setting("company", "GHOSTLINK_COMPANY", ""))
-        keeper = SitesKeeper(_hermes_home(), cron=hermes_cron()) if company else None
+        keeper = self._keeper = SitesKeeper(_hermes_home(), cron=hermes_cron()) if company else None
+        if not company:  # what an earlier company run left (the skill, the daily job) goes
+            await asyncio.to_thread(lambda: retire_sites(SitesKeeper(_hermes_home(), cron=hermes_cron())))
         # Before start(): the first hermes.config arrives right after the welcome.
         # Only when the operator opted in (GHOSTLINK_COMPANY=true); otherwise hermes.* events are ignored.
         self._company = CompanyAgent(
@@ -249,6 +278,13 @@ class GhostLinkAdapter(BasePlatformAdapter):
             await client.close()
         self._mark_disconnected()
         logger.info("GhostLink: disconnected")
+
+    async def _on_refused(self, code: str) -> None:
+        """ENTERPRISE_REQUIRED: the server is no longer Enterprise, so its sites leave this Hermes (the next
+        hermes.config, after a renewal, brings them back)."""
+        keeper = self._keeper
+        if code == "ENTERPRISE_REQUIRED" and keeper is not None:
+            await asyncio.to_thread(retire_sites, keeper)
 
     async def _on_fatal(self, exc: GhostLinkError) -> None:
         self._set_fatal_error(f"ghostlink_{exc.code.lower()}", str(exc), retryable=False)

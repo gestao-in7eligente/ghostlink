@@ -7,9 +7,9 @@ This module applies it to $HERMES_HOME and reads back what `hermes.report` tells
 - the AI keys (the five providers of PROVIDER_ENV) and any other API key (`apis`, by variable) go to this
   process's environment only, never to a file: Hermes reads them every turn
   (hermes_cli.config.get_env_value_prefer_dotenv: $HERMES_HOME/.env first, then the environment), and
-  GhostLink sends them again on every connection. Only a variable this process set is ever removed, and
-  an `apis` key never replaces one the operator had when the gateway started (Railway, s6, .env; spec
-  2026-10-03-aba-api-e-sites §1);
+  GhostLink sends them again on every connection. A variable the operator had when the gateway started
+  (Railway, s6, .env) never goes: an AI key from GhostLink replaces it only while GhostLink has one (then
+  the operator's value comes back), and an `apis` key never replaces it (spec 2026-10-03-aba-api-e-sites §1);
 - the models go to config.yaml `model.provider` / `model.default`; the fallback to `fallback_providers`
   when the file has it, else to the legacy `fallback_model`;
 - the skills to config.yaml `skills.disabled`, Hermes's own switch (`hermes-agent` is never off); null
@@ -117,6 +117,13 @@ def api_env_ok(name: Any) -> bool:
 # The environment's names when the gateway loaded this plugin (Railway variables, s6, Hermes's .env): the
 # operator's. An `apis` key never replaces or removes one (MACROL_MCP_KEY lives there: plan decision 16).
 _OPERATOR_ENV = frozenset(os.environ)
+# The operator's own AI keys at that moment: GhostLink's key replaces one while GhostLink has it, and once
+# deleted there the operator's comes back (Hermes never runs without the key it started with). Kept in this
+# process's memory only, like the variables themselves.
+_OPERATOR_KEYS = {var: os.environ[var] for var in PROVIDER_ENV.values() if os.environ.get(var)}
+# Hermes's gemini reads GOOGLE_API_KEY before GEMINI_API_KEY (hermes_cli/auth.py#L193): one set elsewhere
+# wins over GhostLink's key (env_override tells the panel).
+PROVIDER_ENV_FIRST = {"gemini": ("GOOGLE_API_KEY",)}
 # The variables this process set, across reconnections (one deleted in GhostLink is removed here): `apis`
 # and AI keys apart, so neither removes the other's.
 _MANAGED_APIS: set = set()
@@ -252,7 +259,7 @@ class CompanyHome:
 
     def __init__(self, home: Path, environ: MutableMapping[str, str] = os.environ,
                  operator: Optional[frozenset] = None, managed: Optional[set] = None,
-                 managed_keys: Optional[set] = None):
+                 managed_keys: Optional[set] = None, operator_keys: Optional[Dict[str, str]] = None):
         self.home = Path(home)
         self.environ = environ
         self.config_path = self.home / "config.yaml"
@@ -260,6 +267,8 @@ class CompanyHome:
         own = environ is os.environ
         # A test's environment is all the operator's when it is handed over; the real one was read at import.
         self.operator = operator if operator is not None else (_OPERATOR_ENV if own else frozenset(environ))
+        self.operator_keys = operator_keys if operator_keys is not None else (
+            _OPERATOR_KEYS if own else {var: environ[var] for var in PROVIDER_ENV.values() if environ.get(var)})
         self.managed = managed if managed is not None else (_MANAGED_APIS if own else set())
         self.managed_keys = managed_keys if managed_keys is not None else (_MANAGED_KEYS if own else set())
 
@@ -335,8 +344,9 @@ class CompanyHome:
 
     def _set_keys(self, keys: Dict[str, Optional[str]]) -> List[str]:
         """The AI keys, in this process's environment only. Returns the providers whose key changed.
-        GhostLink's key wins while it has one; without one, only a variable this process set goes (a server
-        before 0.7 sends two providers: the operator's own OPENAI_API_KEY and the like stay)."""
+        GhostLink's key wins while it has one. Without one, a variable this process set goes back to the
+        operator's own value, or goes when the operator had none; one this process never set stays (a server
+        before 0.7 sends two providers: the operator's OPENAI_API_KEY and the like are left alone)."""
         changed = []
         for provider, var in PROVIDER_ENV.items():
             value = keys.get(provider)
@@ -346,10 +356,16 @@ class CompanyHome:
                     changed.append(provider)
                 self.managed_keys.add(var)
                 continue
-            if var in self.managed_keys:
-                self.managed_keys.discard(var)
-                if self.environ.pop(var, None) is not None:
+            if var not in self.managed_keys:
+                continue
+            self.managed_keys.discard(var)
+            original = self.operator_keys.get(var)
+            if original is not None:
+                if self.environ.get(var) != original:
+                    self.environ[var] = original
                     changed.append(provider)
+            elif self.environ.pop(var, None) is not None:
+                changed.append(provider)
         return changed
 
     def set_apis(self, apis: Any) -> List[str]:
@@ -371,13 +387,17 @@ class CompanyHome:
         return changed
 
     def env_override(self) -> List[str]:
-        """Providers whose key is also in $HERMES_HOME/.env, which Hermes prefers (names only, never values)."""
+        """Providers whose key Hermes takes from elsewhere first: its variable in $HERMES_HOME/.env, or one it
+        reads before that variable (Gemini's GOOGLE_API_KEY) in .env or the environment. Names only."""
         try:
             lines = (self.home / ".env").read_text(encoding="utf-8-sig", errors="replace").splitlines()
         except OSError:
-            return []
+            lines = []
+
+        def in_dotenv(var: str) -> bool:
+            return any(re.match(rf"^\s*(export\s+)?{var}\s*=\s*\S", line) for line in lines)
         return [p for p, var in PROVIDER_ENV.items()
-                if any(re.match(rf"^\s*(export\s+)?{var}\s*=\s*\S", line) for line in lines)]
+                if in_dotenv(var) or any(in_dotenv(v) or self.environ.get(v) for v in PROVIDER_ENV_FIRST.get(p, ()))]
 
     def models(self) -> Tuple[Optional[Dict[str, str]], Optional[Dict[str, str]]]:
         data = self._read_config()
