@@ -8,7 +8,7 @@ import type { RendererWelcome } from '../../src/shared/ipcTypes.js';
 const DAY = 86_400_000;
 const info = (o: Partial<EnterpriseLicenseInfo> = {}): EnterpriseLicenseInfo => ({ state: 'valid', company: 'TC Flag', issuedAt: 0, expiresAt: 30 * DAY, graceEndsAt: 37 * DAY, ...o });
 const welcome = (extra: Record<string, unknown>) => ({ serverId: 's1', ...extra }) as unknown as RendererWelcome;
-const hermes = { botId: 'b'.repeat(32), connected: true, locked: false, keys: { deepseek: null, openrouter: null }, settings: { models: { primary: { provider: 'deepseek', model: 'deepseek-v4-pro' }, fallback: null }, disabledSkills: null, access: { roleIds: [], channels: 'all' } }, version: 0, report: null, reportAt: null, viewerRoleId: null } satisfies HermesState;
+const hermes = { botId: 'b'.repeat(32), connected: true, locked: false, keys: { deepseek: null, openrouter: null, 'openai-api': null, anthropic: null, gemini: null }, apis: [], settings: { models: { primary: { provider: 'deepseek', model: 'deepseek-v4-pro' }, fallback: null }, disabledSkills: null, access: { roleIds: [], channels: 'all' } }, version: 0, report: null, reportAt: null, viewerRoleId: null } satisfies HermesState;
 
 describe('the enterprise store (spec §1, §2)', () => {
   it('starts from the welcome and follows the events of its own server only', () => {

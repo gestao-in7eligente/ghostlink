@@ -7,6 +7,7 @@ import { createFilesModule } from './files/index.js';
 import { createGhostDjModule } from './ghostDj/index.js';
 import type { ServerModule } from './modules.js';
 import { createScreenDrawModule } from './screenDraw/index.js';
+import { createSitesModule } from './sites/index.js';
 import { createStatusModule } from './status/index.js';
 import { createTextModule } from './text/index.js';
 import { createVoiceModule } from './voice/index.js';
@@ -32,6 +33,7 @@ export function defaultModules(opts: DefaultModulesOptions = {}): ServerModule[]
   // Bots after text: bot members, their messages and interaction answers go through it (TextModule.bots).
   // Enterprise after text (the owner, the sessions); the company Hermes after bots and enterprise
   // (its bot, the edition); the Ghost DJ after enterprise (it hides in an Enterprise server).
+  // The sites after the company Hermes (who manages them is the page's role; hermes.config carries them).
   // The Ghost DJ after bots, voice and avatars: its member is a system bot, it plays as a voice participant.
   // serverDelete last: it may close a session from its onSessionOpened, after every other module saw it open.
   return [
@@ -42,6 +44,7 @@ export function defaultModules(opts: DefaultModulesOptions = {}): ServerModule[]
     createBotsModule(),
     createEnterpriseModule(),
     createCompanyHermesModule(),
+    createSitesModule(),
     ...(opts.ghostDj === false ? [] : [createGhostDjModule()]),
     createScreenDrawModule(),
     createStatusModule(),

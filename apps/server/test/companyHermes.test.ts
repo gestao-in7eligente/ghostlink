@@ -53,7 +53,7 @@ const report = (o: Partial<HermesReport> = {}): HermesReport => ({
   appliedVersion: 1,
   skills: [{ name: 'resumo', description: 'Resume conversas', enabled: true, locked: false }],
   memory: { company: [{ id: '0123456789abcdef', text: 'A TC Flag fabrica bandeiras.' }], people: [] },
-  status: { model: { provider: 'deepseek', model: 'deepseek-v4-pro' }, fallback: null, keys: { deepseek: 'ok', openrouter: 'missing' }, unsupported: null, envOverride: [] },
+  status: { model: { provider: 'deepseek', model: 'deepseek-v4-pro' }, fallback: null, keys: { deepseek: 'ok', openrouter: 'missing', 'openai-api': 'missing', anthropic: 'missing', gemini: 'missing' }, unsupported: null, envOverride: [] },
   ...o,
 });
 
@@ -85,7 +85,7 @@ describe('the company Hermes (spec §2)', () => {
 
     const key = fakeKey('deepseek');
     const state = await fx.owner.ok<HermesState>('hermes.update', { keys: { deepseek: `  ${key} ` } });
-    expect(state.keys).toEqual({ deepseek: { last4: key.slice(-4) }, openrouter: null });
+    expect(state.keys).toEqual({ deepseek: { last4: key.slice(-4) }, openrouter: null, 'openai-api': null, anthropic: null, gemini: null });
     const config = await hermes.event<HermesConfig>('hermes.config', (c) => c.version === 1);
     expect(config.keys.deepseek).toBe(key);
     expect(config.models.primary).toEqual({ provider: 'deepseek', model: 'deepseek-v4-pro' });

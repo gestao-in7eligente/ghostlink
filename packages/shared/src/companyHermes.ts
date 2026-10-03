@@ -23,18 +23,36 @@
 //   - Their welcome carries `hermesView`, so the app knows which bot is the company Hermes.
 //   The role's view never has the keys (not even their last 4), the memory nor its counts.
 // Only the owner may regenerate the company Hermes's code or delete it (bot.regenerate / bot.delete).
+//
+// The API tab (spec 2026-10-03-aba-api-e-sites-design.md §1, `enterpriseApis`, v0.7.0):
+//   - `hermes.update` takes `keys` for the five AI providers and `apis`: any other API key by its
+//     environment variable (the catalog's, or one of the owner's own named after apiEnvVarProblem's
+//     rules), `null` to delete it; at most 30 keys in all.
+//   - `hermes.config` carries `keys` (the five), `apis` ({ VAR: key }) and `sites` (sites.ts). Plugin 1.1
+//     reads only keys.deepseek / keys.openrouter and ignores the rest.
+//   - HermesState shows each as its last 4: `keys` by provider, `apis` for the others.
 import { z } from 'zod';
 import { entityIdSchema } from './chat.js';
+import type { HermesSite } from './sites.js';
 
 export const FEATURE_ENTERPRISE_HERMES = 'enterpriseHermes';
 /** welcome.features (v0.6.2): the company Hermes's page, for the owner and a chosen role. */
 export const FEATURE_ENTERPRISE_HERMES_VIEW = 'enterpriseHermesView';
+/** welcome.features (v0.7.0): the API tab (`apis` in hermes.update, the five AI providers). */
+export const FEATURE_ENTERPRISE_APIS = 'enterpriseApis';
 
-export const HERMES_PROVIDERS = ['deepseek', 'openrouter'] as const;
+/** The AI providers GhostLink keeps keys for, by the id Hermes's `model.provider` takes (plan "Facts" 1). */
+export const HERMES_PROVIDERS = ['deepseek', 'openrouter', 'openai-api', 'anthropic', 'gemini'] as const;
 export type HermesProvider = (typeof HERMES_PROVIDERS)[number];
+/** The two a plugin 1.1 knows: its report's `status.keys` has only these. */
+export const HERMES_PROVIDERS_V1 = ['deepseek', 'openrouter'] as const satisfies readonly HermesProvider[];
 
 export const HERMES_LIMITS = {
   keyMax: 512,
+  /** API keys in all, the five AIs' included (spec 2026-10-03 §1 "Limite"). */
+  maxApis: 30,
+  /** An "Outra API" display name, in graphemes. */
+  apiNameMax: 64,
   modelMax: 128,
   maxSkills: 200,
   skillNameMax: 64,
@@ -76,11 +94,82 @@ export const HERMES_DEFAULT_SETTINGS: HermesSettings = {
   access: { roleIds: [], channels: 'all' },
 };
 
+/** The variable Hermes reads each AI provider's key from (plan "Facts" 1). */
+export const HERMES_PROVIDER_ENV: Readonly<Record<HermesProvider, string>> = {
+  deepseek: 'DEEPSEEK_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  'openai-api': 'OPENAI_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  gemini: 'GEMINI_API_KEY',
+};
+
+export const HERMES_PROVIDER_NAMES: Readonly<Record<HermesProvider, string>> = {
+  deepseek: 'DeepSeek',
+  openrouter: 'OpenRouter',
+  'openai-api': 'OpenAI',
+  anthropic: 'Anthropic',
+  gemini: 'Google Gemini',
+};
+
+/** An API of the API tab's catalog. */
+export interface HermesApiCatalogEntry {
+  envVar: string;
+  name: string;
+  /** The AI provider it keys (Models tab, key test); null: another API, never tested. */
+  provider: HermesProvider | null;
+}
+
+/**
+ * Spec §1 "Catálogo": the AIs, then the others (their variables are what the TC Hermes's skills read).
+ * MACROL_MCP_KEY is not here: Hermes connects MCP servers before GhostLink sends any key (plan decision 16).
+ */
+export const HERMES_API_CATALOG: readonly HermesApiCatalogEntry[] = [
+  ...HERMES_PROVIDERS.map((provider) => ({ envVar: HERMES_PROVIDER_ENV[provider], name: HERMES_PROVIDER_NAMES[provider], provider })),
+  { envVar: 'ELEVENLABS_API_KEY', name: 'ElevenLabs', provider: null },
+  { envVar: 'GROK_API_KEY', name: 'Grok (xAI)', provider: null },
+  { envVar: 'YUNWU_API_KEY', name: 'Yunwu', provider: null },
+];
+
+/** "Outra API": a letter, then letters, digits and `_`; 3 to 64 in all (a variable cannot start with a digit). */
+export const API_ENV_VAR = /^[A-Z][A-Z0-9_]{2,63}$/;
+
+/**
+ * Variables an API key must never replace (spec §1 "Nomes recusados"): the system's, the Python and
+ * Node runtimes', TLS and proxies, Hermes's and GhostLink's. integrations/hermes-agent/ghostlink/company.py
+ * keeps the same two lists (ENV_DENIED_NAMES / ENV_DENIED_PREFIXES): change both together.
+ */
+export const API_ENV_DENIED_NAMES: readonly string[] = [
+  'PATH', 'HOME', 'USER', 'SHELL', 'PWD', 'OLDPWD', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LANGUAGE', 'TERM', 'TZ',
+  'HOSTNAME', 'LOGNAME', 'MAIL', 'IFS', 'ENV', 'CDPATH', 'PS1', 'PS2', 'PS4', 'PROMPT_COMMAND', 'EDITOR', 'VISUAL',
+  'PAGER', 'DISPLAY', 'SSH_AUTH_SOCK', 'VIRTUAL_ENV',
+  'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'ALL_PROXY', 'FTP_PROXY',
+];
+export const API_ENV_DENIED_PREFIXES: readonly string[] = [
+  'LD_', 'DYLD_', 'PYTHON', 'NODE_', 'NPM_', 'SSL_', 'REQUESTS_CA', 'CURL_CA', 'GIT_', 'PIP_', 'UV_', 'LC_', 'XDG_',
+  // Hermes reads its terminal backend (TERMINAL_*) and the gateway's allowlists (GATEWAY_*) from the environment.
+  'BASH_', 'S6_', 'RAILWAY_', 'TERMINAL_', 'GATEWAY_', 'HERMES_', 'GHOSTLINK_',
+];
+
+export type ApiEnvVarProblem = 'format' | 'reserved' | 'catalog';
+
+/** Why a variable cannot be an "Outra API" (null: it can). 'catalog': it has its own row. */
+export function apiEnvVarProblem(envVar: string): ApiEnvVarProblem | null {
+  if (!API_ENV_VAR.test(envVar)) return 'format';
+  if (API_ENV_DENIED_NAMES.includes(envVar) || API_ENV_DENIED_PREFIXES.some((p) => envVar.startsWith(p))) return 'reserved';
+  if (HERMES_API_CATALOG.some((a) => a.envVar === envVar)) return 'catalog';
+  return null;
+}
+
 /** `hermes.config`: everything the Hermes should be, keys included. A secret: never logged. */
 export interface HermesConfig extends HermesSettings {
-  /** Bumped by every hermes.update; the report names the one applied. */
+  /** Bumped by every hermes.update and every site change; the report names the one applied. */
   version: number;
+  /** The AI keys by provider (plugin 1.1 reads deepseek and openrouter only). */
   keys: Record<HermesProvider, string | null>;
+  /** v0.7.0: every other API key, by its environment variable. */
+  apis: Record<string, string>;
+  /** v0.7.0: the company's sites (no key). */
+  sites: HermesSite[];
 }
 
 export interface HermesSkill {
@@ -131,6 +220,13 @@ export interface HermesMemoryDelete {
   id: string;
 }
 
+/** An API key other than the five AIs', as the owner's app sees it (v0.7.0). */
+export interface HermesApiInfo {
+  envVar: string;
+  name: string;
+  last4: string;
+}
+
 /** What the owner's settings show. Keys appear only as their last 4 characters. */
 export interface HermesState {
   /** The company Hermes's member id; null: none yet, or deleted (its settings stay for the next). */
@@ -140,6 +236,8 @@ export interface HermesState {
   /** The server is not Enterprise: shown, but changes are refused. */
   locked: boolean;
   keys: Record<HermesProvider, { last4: string } | null>;
+  /** v0.7.0: the other API keys saved, by variable, each as its last 4 ([] from a server before 0.7.0). */
+  apis: HermesApiInfo[];
   settings: HermesSettings;
   version: number;
   /** The last report, kept while it is disconnected. */
@@ -179,6 +277,8 @@ export interface HermesView {
 export interface HermesUpdatePayload {
   /** A key, or null to delete it; absent: unchanged. */
   keys?: Partial<Record<HermesProvider, string | null>>;
+  /** v0.7.0: other API keys by variable: a key (and, for a variable of the owner's own, its name), or null to delete. */
+  apis?: Record<string, { name?: string; value: string } | null>;
   models?: HermesSettings['models'];
   disabledSkills?: string[];
   access?: HermesAccess;
@@ -211,16 +311,25 @@ export const hermesSettingsSchema: z.ZodType<HermesSettings> = z.strictObject({
 
 export const hermesCreateSchema = z.strictObject({ name: z.string().min(1).max(64) });
 export const hermesGetSchema = z.strictObject({});
+const keyChange = keyValue.nullable().optional();
+const apiEnvVar = z.string().regex(API_ENV_VAR);
+const apiName = z.string().min(1).max(256); // cut to HERMES_LIMITS.apiNameMax graphemes by the server
+
 export const hermesUpdateSchema = z
   .strictObject({
-    keys: z.strictObject({ deepseek: keyValue.nullable().optional(), openrouter: keyValue.nullable().optional() }).optional(),
+    keys: z.strictObject({ deepseek: keyChange, openrouter: keyChange, 'openai-api': keyChange, anthropic: keyChange, gemini: keyChange }).optional(),
+    apis: z
+      .record(apiEnvVar, z.strictObject({ name: apiName.optional(), value: keyValue }).nullable())
+      .refine((r) => Object.keys(r).length >= 1 && Object.keys(r).length <= HERMES_LIMITS.maxApis, '1 to 30 changes')
+      .optional(),
     models: hermesModelsSchema.optional(),
     disabledSkills: z.array(skillName).max(HERMES_LIMITS.maxSkills).optional(),
     access: hermesAccessSchema.optional(),
     viewerRoleId: entityIdSchema.nullable().optional(),
   })
   .refine(
-    (p) => p.keys !== undefined || p.models !== undefined || p.disabledSkills !== undefined || p.access !== undefined || p.viewerRoleId !== undefined,
+    (p) =>
+      p.keys !== undefined || p.apis !== undefined || p.models !== undefined || p.disabledSkills !== undefined || p.access !== undefined || p.viewerRoleId !== undefined,
     'nothing to update',
   );
 export const hermesMemoryDeleteSchema = z.strictObject({ target: memoryTarget, id: memoryId });
@@ -238,7 +347,14 @@ export const hermesReportSchema: z.ZodType<HermesReport> = z.strictObject({
   status: z.strictObject({
     model: reportModel,
     fallback: reportModel,
-    keys: z.strictObject({ deepseek: keyStatus, openrouter: keyStatus }),
+    // Plugin 1.1 reports the first two only (decision 6).
+    keys: z.strictObject({
+      deepseek: keyStatus,
+      openrouter: keyStatus,
+      'openai-api': keyStatus.default('unchecked'),
+      anthropic: keyStatus.default('unchecked'),
+      gemini: keyStatus.default('unchecked'),
+    }),
     unsupported: z.string().max(200).nullable(),
     envOverride: z.array(provider).max(HERMES_PROVIDERS.length),
   }),
@@ -259,6 +375,9 @@ const accessClient = z
   })
   .catch(HERMES_DEFAULT_SETTINGS.access);
 
+const UNCHECKED_KEYS = Object.fromEntries(HERMES_PROVIDERS.map((p) => [p, 'unchecked'])) as Record<HermesProvider, HermesKeyStatus>;
+const NO_KEYS = Object.fromEntries(HERMES_PROVIDERS.map((p) => [p, null])) as Record<HermesProvider, null>;
+
 export const hermesReportSchemaClient: z.ZodType<HermesReport> = z.object({
   appliedVersion: z.number().int().nonnegative().catch(0),
   skills: z
@@ -270,18 +389,22 @@ export const hermesReportSchemaClient: z.ZodType<HermesReport> = z.object({
     .object({
       model: modelInUseClient,
       fallback: modelInUseClient,
-      keys: z.object({ deepseek: keyStatusClient, openrouter: keyStatusClient }).catch({ deepseek: 'unchecked', openrouter: 'unchecked' }),
+      keys: z
+        .object({ deepseek: keyStatusClient, openrouter: keyStatusClient, 'openai-api': keyStatusClient, anthropic: keyStatusClient, gemini: keyStatusClient })
+        .catch(UNCHECKED_KEYS),
       unsupported: z.string().max(400).nullable().catch(null),
-      envOverride: z.array(z.enum(HERMES_PROVIDERS)).max(4).catch([]),
+      envOverride: z.array(z.enum(HERMES_PROVIDERS)).max(HERMES_PROVIDERS.length).catch([]),
     })
-    .catch({ model: null, fallback: null, keys: { deepseek: 'unchecked', openrouter: 'unchecked' }, unsupported: null, envOverride: [] }),
+    .catch({ model: null, fallback: null, keys: UNCHECKED_KEYS, unsupported: null, envOverride: [] }),
 });
 
 export const hermesStateSchemaClient: z.ZodType<HermesState> = z.object({
   botId: z.string().max(64).nullable().catch(null),
   connected: z.boolean().catch(false),
   locked: z.boolean().catch(true),
-  keys: z.object({ deepseek: lastFour, openrouter: lastFour }).catch({ deepseek: null, openrouter: null }),
+  keys: z.object({ deepseek: lastFour, openrouter: lastFour, 'openai-api': lastFour, anthropic: lastFour, gemini: lastFour }).catch(NO_KEYS),
+  // A server before 0.7.0 has none.
+  apis: z.array(z.object({ envVar: z.string().max(64), name: z.string().max(256), last4: z.string().max(8) })).max(200).catch([]),
   settings: z
     .object({
       models: modelsClient,

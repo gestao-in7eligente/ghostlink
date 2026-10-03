@@ -10,10 +10,10 @@ const report: HermesReport = {
     { name: 'planilhas', description: '', enabled: false, locked: false },
   ],
   memory: { company: [], people: [] },
-  status: { model: { provider: 'deepseek', model: 'deepseek-v4-pro' }, fallback: null, keys: { deepseek: 'refused', openrouter: 'missing' }, unsupported: null, envOverride: ['openrouter'] },
+  status: { model: { provider: 'deepseek', model: 'deepseek-v4-pro' }, fallback: null, keys: { deepseek: 'refused', openrouter: 'missing', 'openai-api': 'missing', anthropic: 'missing', gemini: 'missing' }, unsupported: null, envOverride: ['openrouter'] },
 };
 const state = (o: Partial<HermesState> = {}): HermesState => ({
-  botId: 'b'.repeat(32), connected: true, locked: false, keys: { deepseek: { last4: 'ab12' }, openrouter: null },
+  botId: 'b'.repeat(32), connected: true, locked: false, keys: { deepseek: { last4: 'ab12' }, openrouter: null, 'openai-api': null, anthropic: null, gemini: null }, apis: [],
   settings: HERMES_DEFAULT_SETTINGS, version: 2, report, reportAt: 0, viewerRoleId: null, ...o,
 });
 
@@ -50,7 +50,7 @@ describe('the company Hermes panel (spec §2)', () => {
   it('starts the models from providers that have a key, and saves only those', () => {
     const only = state();
     expect(initialModels(only)).toEqual({ primary: HERMES_DEFAULT_SETTINGS.models.primary, fallback: null });
-    const noPrimary = state({ keys: { deepseek: null, openrouter: { last4: 'cd34' } } });
+    const noPrimary = state({ keys: { deepseek: null, openrouter: { last4: 'cd34' }, 'openai-api': null, anthropic: null, gemini: null } });
     expect(initialModels(noPrimary).primary).toEqual({ provider: 'openrouter', model: '' });
     expect(initialModels(noPrimary).fallback).toEqual(HERMES_DEFAULT_SETTINGS.models.fallback);
     const ok = { provider: 'deepseek' as const, model: 'm' };

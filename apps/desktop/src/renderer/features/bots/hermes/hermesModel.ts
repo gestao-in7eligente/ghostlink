@@ -1,7 +1,7 @@
-import { HERMES_PROVIDERS, type Edition, type HermesModelRef, type HermesProvider, type HermesSettings, type HermesSkill, type HermesState } from '@ghostlink/shared';
+import { HERMES_PROVIDERS, HERMES_PROVIDER_NAMES, type Edition, type HermesModelRef, type HermesProvider, type HermesSettings, type HermesSkill, type HermesState } from '@ghostlink/shared';
 import type { MessageKey, Vars } from '../../../i18n/index.js';
 
-export const PROVIDER_NAMES: Record<HermesProvider, string> = { deepseek: 'DeepSeek', openrouter: 'OpenRouter' };
+export const PROVIDER_NAMES: Record<HermesProvider, string> = HERMES_PROVIDER_NAMES;
 
 /** Providers the owner may pick models from (spec §2 "Modelos"): the ones with a key saved. */
 export function providersWithKeys(state: HermesState): HermesProvider[] {
