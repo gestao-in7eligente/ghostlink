@@ -49,7 +49,7 @@ const TOP_LABEL = /^(?:[a-z]{2,63}|xn--[a-z0-9-]{1,59})$/;
  */
 export function normalizeSiteDomain(raw: string): string | null {
   let s = raw.trim().toLowerCase().replace(/^https?:\/\//, '');
-  if (/[\u0080-￿]/.test(s)) {
+  if (/[\u0080-\uffff]/.test(s)) {
     // An accented address becomes punycode ("café.com" → "xn--caf-dma.com"); a path, port or user stays refused.
     if (/[\s/?#@:\\]/.test(s.replace(/\/$/, ''))) return null;
     try {
