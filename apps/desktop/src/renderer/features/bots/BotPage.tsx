@@ -31,7 +31,7 @@ export function useBotProfile(botId: string): BotProfileView | null {
  * seen (servers with the bot's settings), and the slash commands it registered. The settings
  * (the bot's menu, "Configurações") hold the rest. The server's own bot, the Ghost DJ, also shows
  * its panel (v0.5.1: what plays, the controls and the equalizer) on servers that have it. The
- * company Hermes shows its page (v0.6.2: models, skills, where and who, memory) to the owner and
+ * company Hermes shows its page (v0.6.2; v0.6.3: five tabs, the commands in the last one) to the owner and
  * the viewer role, on servers that have it.
  */
 export function BotPage({ botId }: { botId: string }) {
@@ -43,9 +43,28 @@ export function BotPage({ botId }: { botId: string }) {
   const panelSupported = useConnectionStore((s) => s.welcome?.features.includes(FEATURE_GHOST_DJ_PANEL) === true);
   const hermesSupported = useConnectionStore((s) => s.welcome?.features.includes(FEATURE_ENTERPRISE_HERMES_VIEW) === true);
   const hermesView = useEnterpriseStore((s) => (s.view?.botId === botId ? s.view : null));
+  const serverId = useEnterpriseStore((s) => s.serverId);
   // The reducer closes the page when the bot leaves; this covers the frame in between.
   if (!isBot(bot)) return null;
   const status = bot.online ? t('layout.online') : t('members.statusOffline');
+
+  const about =
+    profile && profile.description !== '' ? (
+      <section aria-labelledby="bot-page-about">
+        <h2 id="bot-page-about" className={g.sectionTitle}>
+          {t('bots.page.about')}
+        </h2>
+        <BotDescription text={profile.description} />
+      </section>
+    ) : null;
+  const commandList = (
+    <section aria-labelledby="bot-page-commands">
+      <h2 id="bot-page-commands" className={g.sectionTitle}>
+        {t('bots.page.commands')} — {commands.length}
+      </h2>
+      <CommandList commands={commands} />
+    </section>
+  );
 
   return (
     <div className={g.page} role="region" aria-label={t('bots.page.label', { name: bot.nickname })} data-bot-page={bot.userId}>
@@ -77,21 +96,14 @@ export function BotPage({ botId }: { botId: string }) {
             </div>
           </section>
           {system && panelSupported && <DjPanel />}
-          {hermesSupported && hermesView && <HermesPage view={hermesView} />}
-          {profile && profile.description !== '' && (
-            <section aria-labelledby="bot-page-about">
-              <h2 id="bot-page-about" className={g.sectionTitle}>
-                {t('bots.page.about')}
-              </h2>
-              <BotDescription text={profile.description} />
-            </section>
+          {hermesSupported && hermesView ? (
+            <HermesPage key={`${serverId}:${botId}`} view={hermesView} overview={about} commands={commandList} />
+          ) : (
+            <>
+              {about}
+              {commandList}
+            </>
           )}
-          <section aria-labelledby="bot-page-commands">
-            <h2 id="bot-page-commands" className={g.sectionTitle}>
-              {t('bots.page.commands')} — {commands.length}
-            </h2>
-            <CommandList commands={commands} />
-          </section>
         </div>
       </div>
     </div>

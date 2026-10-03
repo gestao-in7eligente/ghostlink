@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HERMES_DEFAULT_SETTINGS, type Channel, type HermesView, type Role } from '@ghostlink/shared';
-import { hermesPageBlocks } from '../../src/renderer/features/bots/hermes/hermesPageModel.js';
+import { filterSkills, hermesPageBlocks, hermesPageTabs, pageSkillRows, searchSkills, type SkillRow } from '../../src/renderer/features/bots/hermes/hermesPageModel.js';
 import { enterpriseReducer, initialEnterprise } from '../../src/renderer/stores/enterprise.js';
 import type { RendererWelcome } from '../../src/shared/ipcTypes.js';
 
@@ -55,5 +55,50 @@ describe('the company Hermes page blocks (spec 2026-10-03 §2)', () => {
     expect(enterpriseReducer(s, { type: 'event', serverId: 's2', envelope: { t: 'hermes.view', d: { view: null } } })).toBe(s);
     expect(enterpriseReducer(s, { type: 'event', serverId: 's1', envelope: { t: 'hermes.view', d: { view: null } } }).view).toBeNull();
     expect(enterpriseReducer(initialEnterprise, { type: 'welcome', welcome: { serverId: 's1' } as unknown as RendererWelcome }).view).toBeNull();
+  });
+});
+
+describe('the company Hermes page tabs (spec 2026-10-03 pagina larga e abas)', () => {
+  const rows: SkillRow[] = [
+    { name: 'git-flow', description: 'Fluxo de ramificação', enabled: true },
+    { name: 'planejamento', description: 'Organiza as TAREFAS', enabled: false },
+    { name: 'ocr', description: '', enabled: true },
+  ];
+
+  it('the owner sees five tabs; the role holder has no Memória', () => {
+    expect(hermesPageTabs(true)).toEqual(['overview', 'skills', 'access', 'memory', 'commands']);
+    expect(hermesPageTabs(false)).toEqual(['overview', 'skills', 'access', 'commands']);
+  });
+
+  it('searches name and description, ignoring case and accents', () => {
+    expect(searchSkills(rows, '').length).toBe(3);
+    expect(searchSkills(rows, '  ').length).toBe(3);
+    expect(searchSkills(rows, 'RAMIFICACAO').map((r) => r.name)).toEqual(['git-flow']);
+    expect(searchSkills(rows, 'tarefas').map((r) => r.name)).toEqual(['planejamento']);
+    expect(searchSkills(rows, 'GIT').map((r) => r.name)).toEqual(['git-flow']);
+    expect(searchSkills(rows, 'nada')).toEqual([]);
+  });
+
+  it('the Ligadas filter hides the off ones; Todas keeps them; both combine with the search', () => {
+    expect(filterSkills(rows, 'on', '').map((r) => r.name)).toEqual(['git-flow', 'ocr']);
+    expect(filterSkills(rows, 'all', '').length).toBe(3);
+    expect(filterSkills(rows, 'on', 'tarefas')).toEqual([]);
+    expect(filterSkills(rows, 'all', 'tarefas').map((r) => r.name)).toEqual(['planejamento']);
+  });
+
+  it("the owner's rows come from the full state (with the off ones); the role's from the page", () => {
+    const v = view({ skills: [{ name: 'a', description: 'x' }] });
+    expect(pageSkillRows(v, null)).toEqual([{ name: 'a', description: 'x', enabled: true }]);
+    expect(pageSkillRows(view(), null)).toBeNull();
+    const unreported = { settings: { disabledSkills: null }, report: null } as unknown as Parameters<typeof pageSkillRows>[1];
+    expect(pageSkillRows(v, unreported)).toEqual([{ name: 'a', description: 'x', enabled: true }]);
+    const state = {
+      settings: { disabledSkills: ['b'] },
+      report: { skills: [{ name: 'a', description: 'x', enabled: true, locked: false }, { name: 'b', description: 'y', enabled: true, locked: false }] },
+    } as unknown as Parameters<typeof pageSkillRows>[1];
+    expect(pageSkillRows(v, state)).toEqual([
+      { name: 'a', description: 'x', enabled: true },
+      { name: 'b', description: 'y', enabled: false },
+    ]);
   });
 });
