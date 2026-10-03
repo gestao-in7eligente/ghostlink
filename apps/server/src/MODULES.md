@@ -50,7 +50,7 @@ Put a feature's payload and event types, its server-side strict schemas and its 
 
 Migrations are numbered SQL files in `src/db/migrations/NNN_name.sql`, one transaction each. `loadMigrations()` refuses gaps.
 
-- The Text track owns `002_*.sql`; `003_server_delete.sql` adds `server_meta.deleting_at` and `deleted_at` (the `serverDelete` module, `src/deletion/`); `004_files.sql` adds the `files` table (attachments); `005_bots.sql` adds `users.is_bot`, the `bots` table and the `messages.interaction_*` columns (the `bots` module); `006_bot_settings.sql` adds `bots.description`, `bots.last_seen_at` and the `bot_command_uses` table (the bot's settings, same module); `007_system_bots.sql` adds `bots.system` (the Ghost DJ, a bot the server creates itself); `008_ghost_dj_eq.sql` adds `ghost_dj_settings` (the Ghost DJ's equalizer).
+- The Text track owns `002_*.sql`; `003_server_delete.sql` adds `server_meta.deleting_at` and `deleted_at` (the `serverDelete` module, `src/deletion/`); `004_files.sql` adds the `files` table (attachments); `005_bots.sql` adds `users.is_bot`, the `bots` table and the `messages.interaction_*` columns (the `bots` module); `006_bot_settings.sql` adds `bots.description`, `bots.last_seen_at` and the `bot_command_uses` table (the bot's settings, same module); `007_system_bots.sql` adds `bots.system` (the Ghost DJ, a bot the server creates itself); `008_ghost_dj_eq.sql` adds `ghost_dj_settings` (the Ghost DJ's equalizer); `009_enterprise.sql` adds `enterprise` (the license and the edition) and `company_hermes` (the company Hermes's bot, keys, settings and last report).
 - Any other track that needs tables takes the next free number when it merges, and renumbers its file if another track merged first, so the numbering stays contiguous.
 - Never edit a migration that has already been merged. Use `STRICT` tables, as `001_init.sql` does.
 
@@ -76,6 +76,25 @@ Put tests next to the existing ones in `apps/server/test` (and `test/integration
 
 - System bots (`bots.system`, Ghost DJ spec §2): `ensureSystemBot(spec)` creates the member on the first run (no connection code: its token hash is of a secret nobody sees), brings it back after a kick (not a ban), stores its commands at every start and marks it online. Its interactions skip the WebSocket: `Interactions.setLocalHandler()` hands `interaction.create` to the module right after `interaction.invoke` answered, and the module answers through the returned `SystemBot` (respond/edit/followup with the same deadlines, plain post/edit for its own messages). `bot.regenerate` / `bot.delete` refuse it with FORBIDDEN; it does not count toward `maxBots`. `BotInfo.system` and `BotProfile.system` tell the app.
 
+## Enterprise
+
+`src/enterprise/` (spec 2026-10-02-enterprise-e-hermes-da-empresa-design.md §1), registered after text and bots, before companyHermes and ghostDj (they read the edition in their init):
+
+- The license is the text `GLE1.<data>.<signature>`: the company, the server's `serverKeyId`, when it was issued and when it expires, signed with Ed25519 by a key of its own (not the release key). The public half is `LICENSE_PUBLIC_KEY` in `packages/shared/src/license.ts`; `scripts/gen-license-key.mjs` and `scripts/issue-license.mjs` run on the owner's PC only and keep the private key outside every git work tree.
+- `enterprise.license.set` (the owner only) checks it when pasted (`LICENSE_INVALID`: unreadable, forged or another server's; `LICENSE_EXPIRED`: past the 7-day grace) and stores it in `enterprise.license`; it is checked again at start and every hour. A failed check is logged and never stops the server.
+- `edition` is `enterprise` while the license is valid, up to 7 days past its expiry. The module mirrors it in `enterprise.edition`, which the bot handshake reads, and sends `enterprise.state` to everyone when it changes (the license details only to the owner, also after an ownership transfer). The welcome carries `enterprise`.
+- `onChange(listener)` tells other modules: the company Hermes locks and disconnects, and the Ghost DJ parks itself (`SystemBot.setHidden`, through `BotTextApi.park` / `unpark`): `removed_at` set, roles kept for its return, commands cleared, its `dj.*` requests answer `NOT_FOUND`. Back on a normal server it joins again with its commands and photo.
+
+## The company Hermes
+
+`src/companyHermes/` (same spec §2), registered after bots and enterprise:
+
+- `hermes.create { name }` (the owner of an Enterprise server, once) makes a bot and marks it in `company_hermes.bot_id`. `hermes.get` / `hermes.update` / `hermes.memory.delete` are the owner's; changes need Enterprise (`ENTERPRISE_REQUIRED`), and memory deletion `BOT_OFFLINE` while the Hermes is disconnected.
+- `hermes.config` (version, keys, models, skills, access) goes only to that bot's session, when it connects and after every change. The keys never go back to an app (the owner's `hermes.state` and welcome show their last 4 characters) and never reach the log.
+- `hermes.report` comes only from that bot; the last one stays in `company_hermes.report` and reaches the owner's sessions live as `hermes.state`, also while the Hermes is offline.
+- `bot.regenerate` and `bot.delete` on the company Hermes are the owner's alone: whoever holds its code receives the keys. Deleting it keeps the settings and keys for the next one (`bot_id` becomes NULL).
+- `auth/botAuth.ts` refuses it at the handshake with `ENTERPRISE_REQUIRED` on a normal server; a lapse closes its session the same way.
+
 ## Ghost DJ
 
 `src/ghostDj/` (spec 2026-10-02-ghost-dj-design.md), registered after text, voice, avatars and bots (`defaultModules({ ghostDj: false })` leaves it out: the desktop Hosting mode):
@@ -91,4 +110,4 @@ Put tests next to the existing ones in `apps/server/test` (and `test/integration
 
 ## Deleting the server
 
-`src/deletion/` (spec 2026-10-01-sair-e-excluir-servidor-design.md): while `server_meta.deleting_at` is set, the handshake and admission refuse everyone but the owner with `SERVER_DELETING`; once the deadline passed, everyone with `SERVER_DELETED`. The `serverDelete` module (registered last) answers `server.delete` / `server.restore` and, at the deadline, closes every session and erases the data in place (`erase.ts`). A table added by a later migration is emptied too, without changes; a module that keeps member data in its own files must add them to `eraseFiles()`.
+`src/deletion/` (spec 2026-10-01-sair-e-excluir-servidor-design.md): while `server_meta.deleting_at` is set, the handshake and admission refuse everyone but the owner with `SERVER_DELETING`; once the deadline passed, everyone with `SERVER_DELETED`. The `serverDelete` module (registered last) answers `server.delete` / `server.restore` and, at the deadline, closes every session and erases the data in place (`erase.ts`). A table added by a later migration is emptied too, without changes; a module that keeps member data in its own files must add them to `eraseFiles()`. `enterprise` and `company_hermes` (the license and the company's AI keys) are emptied by `eraseDatabase()` like the rest; neither keeps files.

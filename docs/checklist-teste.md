@@ -82,3 +82,20 @@ Roteiro da spec §14 para o que os testes automáticos não cobrem: redes reais,
 
 - [ ] Todas as páginas abrem em pt-BR e em inglês, a busca encontra as páginas e os links internos funcionam.
 - [ ] Com as ferramentas de desenvolvedor abertas (aba Rede) na página `/j/`, nenhuma requisição vai para fora de `gestao-in7eligente.github.io` antes de clicar em baixar (aí só `api.github.com`), e nenhuma leva o `#GL1-…`.
+
+## 10. v0.6.0 Enterprise
+
+Num servidor na VPS (Enterprise no Hospedar do app não é suportado), com A como dono, B e C como membros, e um Hermes de teste com o plugin GhostLink 1.1. As chaves de IA de teste ficam só no app, nunca nesta lista.
+
+- [ ] A abre **Configurações do servidor → Enterprise** (B e C não veem a aba), copia a **Identidade do servidor** e emite uma licença para ela com `scripts/issue-license.mjs`, no PC do dono. Colada e salva, aparece "Licença salva." e **todo mundo** vê o selo **Enterprise** ao lado do nome do servidor, sem reconectar. Só A vê a empresa e a validade.
+- [ ] A licença de outro servidor, ou com um caractere trocado, dá "Essa licença não vale para este servidor."; uma vencida há mais de 7 dias dá "Essa licença já venceu."
+- [ ] Ao virar Enterprise, o **Ghost DJ some** da lista de membros e os comandos dele somem; se estava tocando, ele para e sai da chamada.
+- [ ] **O DJ volta:** num servidor de teste, uma licença emitida com `--until` de 7 dias atrás vale até o fim do dia (A vê o aviso "A licença Enterprise venceu…"). Na primeira conferência depois da meia-noite (de hora em hora, ou ao reiniciar o servidor), o selo some, o Ghost DJ volta com os comandos, a foto, o equalizador e o volume de antes, e o Hermes da empresa cai e fica de fora, com as configurações guardadas mas travadas.
+- [ ] **Criar o Hermes da empresa:** em **Adicionar bot**, a opção **Hermes da empresa** aparece só para A e só num servidor Enterprise; depois de criado, não dá para criar outro. O código de conexão vai para `GHOSTLINK_BOT` do Hermes de teste.
+- [ ] Só A pode **gerar um código novo** ou **excluir** o Hermes da empresa; um administrador recebe recusa.
+- [ ] **Chaves de IA:** A cola uma chave e salva; a tela mostra só "configurada (final 1234)", com **Trocar** e **Apagar**. A chave não aparece em nenhum log do servidor nem do Hermes, nem em arquivo no `$HERMES_HOME`.
+- [ ] **Modelos:** A troca o modelo principal e o reserva; em alguns segundos a situação mostra **Conectado** e "Modelo em uso: …" com o modelo novo, e a próxima mensagem para o Hermes já usa esse modelo. Uma chave recusada mostra "A DeepSeek recusou a chave." (ou a OpenRouter).
+- [ ] **Skills:** a lista mostra nome e descrição; `hermes-agent` aparece como essencial, sempre ligada. Desligar uma skill vale a partir da próxima conversa.
+- [ ] **Quem pode usar:** A libera um cargo que B tem e C não. B fala com o Hermes mencionando-o; C menciona e não recebe resposta; A sempre recebe. Com "Só os escolhidos", ele não responde nos outros canais.
+- [ ] **Memória:** os itens "Sobre a empresa" e "Sobre as pessoas" aparecem; **Apagar item** some da lista e do `memories/MEMORY.md` (ou `USER.md`) do Hermes, com a cópia anterior em `ghostlink/backups`.
+- [ ] **Hermes desconectado:** parando o Hermes de teste, o painel mostra "Hermes desconectado" com a última lista de skills e de memória. Uma mudança feita nesse meio-tempo é aplicada quando ele reconecta; apagar memória pede que ele esteja conectado.
