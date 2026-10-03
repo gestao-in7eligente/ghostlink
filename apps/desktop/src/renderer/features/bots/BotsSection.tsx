@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { EllipsisVertical, KeyRound, Plus, Settings, Trash2 } from 'lucide-react';
 import { FEATURE_BOTS, PERMISSIONS, has, type Member } from '@ghostlink/shared';
 import { useT } from '../../i18n/index.js';
@@ -10,10 +10,11 @@ import { myPermissions } from '../../stores/server.js';
 import { dispatchText, useTextStore } from '../../stores/text.js';
 import { AddBotDialog, DeleteBotDialog, RegenerateBotDialog } from './BotDialogs.js';
 import { BotSettings } from './BotSettings.js';
+import { useBotSettingsLink } from './botSettingsLink.js';
 import { isSystemBot, serverBots, showBotsSection } from './botsModel.js';
 import b from './bots.module.css';
 
-type Dialog = { kind: 'create' } | { kind: 'settings'; botId: string } | { kind: 'regenerate' | 'delete'; bot: Member };
+type Dialog = { kind: 'create' } | { kind: 'settings'; botId: string; tab?: string } | { kind: 'regenerate' | 'delete'; bot: Member };
 
 /**
  * BOTS in the server's sidebar, above "CANAIS DE TEXTO" (bots spec §3): each bot with its photo
@@ -35,6 +36,13 @@ export function BotsSection() {
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const closeDialog = useCallback(() => setDialog(null), []);
   const menuSystem = useTextStore((s) => menu !== null && isSystemBot(s.bots.profiles, menu.botId));
+  // "Abrir" on the company Hermes's page: its settings, at the asked tab.
+  const wanted = useBotSettingsLink((s) => s.wanted);
+  useEffect(() => {
+    if (!wanted) return;
+    setDialog({ kind: 'settings', botId: wanted.botId, tab: wanted.tab });
+    useBotSettingsLink.setState({ wanted: null });
+  }, [wanted]);
 
   if (!showBotsSection({ bots: bots.length, canManage, supported })) return null;
   const canAdd = canManage && supported;
@@ -99,7 +107,7 @@ export function BotsSection() {
       )}
 
       {dialog?.kind === 'create' && <AddBotDialog onClose={closeDialog} />}
-      {dialog?.kind === 'settings' && <BotSettings botId={dialog.botId} onClose={closeDialog} />}
+      {dialog?.kind === 'settings' && <BotSettings botId={dialog.botId} initialTab={dialog.tab} onClose={closeDialog} />}
       {dialog?.kind === 'regenerate' && <RegenerateBotDialog bot={dialog.bot} onClose={closeDialog} />}
       {dialog?.kind === 'delete' && <DeleteBotDialog bot={dialog.bot} onClose={closeDialog} />}
     </section>

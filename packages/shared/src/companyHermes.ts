@@ -6,17 +6,29 @@
 //   - `hermes.create { name }` → BotCreateResult: a bot marked as the company Hermes, one per
 //     server (BAD_REQUEST when it exists); its connection code shows once, as for any bot.
 //   - `hermes.get {}` → HermesState (on a normal server too, with `locked`).
-//   - `hermes.update { keys?, models?, disabledSkills?, access? }` → HermesState.
+//   - `hermes.update { keys?, models?, disabledSkills?, access?, viewerRoleId? }` → HermesState.
+//     `viewerRoleId` (v0.6.2, `enterpriseHermesView`): a role of the server, not @everyone (NOT_FOUND,
+//     BAD_REQUEST), or null; GhostLink's alone, never in `hermes.config`.
 //   - `hermes.memory.delete { target, id }` → {} (BOT_OFFLINE while the Hermes is disconnected).
 // To the company Hermes's session only: `hermes.config` (HermesConfig, keys included) when it
 //   connects and after every change; `hermes.memory.delete` (HermesMemoryDelete).
 // From the company Hermes only: `hermes.report` (HermesReport) → {}.
 // To the owner's sessions: `hermes.state` (HermesState); the owner's welcome carries `hermes`.
+//
+// The company Hermes's page (spec 2026-10-03-pagina-do-hermes-da-empresa-design.md, `enterpriseHermesView`):
+//   - `hermes.view {}` → { view: HermesView }: the owner, and the viewer role's members while the
+//     server is Enterprise; FORBIDDEN for anyone else.
+//   - Event `hermes.view { view: HermesView | null }` to exactly those people when what they see
+//     changes; `view: null` to whoever just lost it (the role taken away or deleted, a lapse, a transfer).
+//   - Their welcome carries `hermesView`, so the app knows which bot is the company Hermes.
+//   The role's view never has the keys (not even their last 4), the memory nor its counts.
 // Only the owner may regenerate the company Hermes's code or delete it (bot.regenerate / bot.delete).
 import { z } from 'zod';
 import { entityIdSchema } from './chat.js';
 
 export const FEATURE_ENTERPRISE_HERMES = 'enterpriseHermes';
+/** welcome.features (v0.6.2): the company Hermes's page, for the owner and a chosen role. */
+export const FEATURE_ENTERPRISE_HERMES_VIEW = 'enterpriseHermesView';
 
 export const HERMES_PROVIDERS = ['deepseek', 'openrouter'] as const;
 export type HermesProvider = (typeof HERMES_PROVIDERS)[number];
@@ -133,6 +145,35 @@ export interface HermesState {
   /** The last report, kept while it is disconnected. */
   report: HermesReport | null;
   reportAt: number | null;
+  /** The role whose members see the company Hermes's page (v0.6.2); null: the owner alone. Never sent to the Hermes. */
+  viewerRoleId: string | null;
+}
+
+/** A skill switched on, as the page shows it. */
+export interface HermesViewSkill {
+  name: string;
+  description: string;
+}
+
+/**
+ * The company Hermes's page (spec 2026-10-03 §2): what the owner and the viewer role see. Access
+ * lists only roles and channels that still exist, and for a role holder only the channels that
+ * person can see (`hiddenChannels` counts the rest). `memory` is the owner's alone.
+ */
+export interface HermesView {
+  botId: string | null;
+  connected: boolean;
+  /** As configured. */
+  models: HermesSettings['models'];
+  /** The model the Hermes reported in use; null before a report. */
+  modelInUse: HermesModelInUse | null;
+  /** The skills switched on, from the last report; null: the Hermes never reported. */
+  skills: HermesViewSkill[] | null;
+  access: HermesAccess;
+  /** Chosen channels this person cannot see: counted, never named (0 for the owner and for 'all'). */
+  hiddenChannels: number;
+  /** The owner's view only: how many items it keeps (never their text); null before a report. */
+  memory?: { company: number; people: number } | null;
 }
 
 export interface HermesUpdatePayload {
@@ -141,6 +182,8 @@ export interface HermesUpdatePayload {
   models?: HermesSettings['models'];
   disabledSkills?: string[];
   access?: HermesAccess;
+  /** v0.6.2: the role that sees the page, or null for none. */
+  viewerRoleId?: string | null;
 }
 
 // ---- server side: strict ----
@@ -174,9 +217,14 @@ export const hermesUpdateSchema = z
     models: hermesModelsSchema.optional(),
     disabledSkills: z.array(skillName).max(HERMES_LIMITS.maxSkills).optional(),
     access: hermesAccessSchema.optional(),
+    viewerRoleId: entityIdSchema.nullable().optional(),
   })
-  .refine((p) => p.keys !== undefined || p.models !== undefined || p.disabledSkills !== undefined || p.access !== undefined, 'nothing to update');
+  .refine(
+    (p) => p.keys !== undefined || p.models !== undefined || p.disabledSkills !== undefined || p.access !== undefined || p.viewerRoleId !== undefined,
+    'nothing to update',
+  );
 export const hermesMemoryDeleteSchema = z.strictObject({ target: memoryTarget, id: memoryId });
+export const hermesViewGetSchema = z.strictObject({});
 
 const reportModel = z.strictObject({ provider: z.string().max(64), model: z.string().max(HERMES_LIMITS.modelMax) }).nullable();
 const memoryItems = z.array(z.strictObject({ id: memoryId, text: z.string().max(HERMES_LIMITS.memoryItemMax) })).max(HERMES_LIMITS.maxMemoryItems);
@@ -203,6 +251,13 @@ const modelInUseClient = z.object({ provider: z.string().max(64), model: z.strin
 const keyStatusClient = z.enum(HERMES_KEY_STATUSES).catch('unchecked');
 const memoryClient = z.array(z.object({ id: z.string().max(32), text: z.string().max(4_000) })).max(500).catch([]);
 const lastFour = z.object({ last4: z.string().max(8) }).nullable().catch(null);
+const modelsClient = z.object({ primary: modelRefClient, fallback: modelRefClient.nullable().catch(null) }).catch(HERMES_DEFAULT_SETTINGS.models);
+const accessClient = z
+  .object({
+    roleIds: z.array(z.string().max(64)).max(1_000).catch([]),
+    channels: z.union([z.literal('all'), z.array(z.string().max(64)).max(1_000)]).catch('all'),
+  })
+  .catch(HERMES_DEFAULT_SETTINGS.access);
 
 export const hermesReportSchemaClient: z.ZodType<HermesReport> = z.object({
   appliedVersion: z.number().int().nonnegative().catch(0),
@@ -229,17 +284,34 @@ export const hermesStateSchemaClient: z.ZodType<HermesState> = z.object({
   keys: z.object({ deepseek: lastFour, openrouter: lastFour }).catch({ deepseek: null, openrouter: null }),
   settings: z
     .object({
-      models: z.object({ primary: modelRefClient, fallback: modelRefClient.nullable().catch(null) }).catch(HERMES_DEFAULT_SETTINGS.models),
+      models: modelsClient,
       disabledSkills: z.array(z.string().max(256)).max(1_000).nullable().catch(null),
-      access: z
-        .object({
-          roleIds: z.array(z.string().max(64)).max(1_000).catch([]),
-          channels: z.union([z.literal('all'), z.array(z.string().max(64)).max(1_000)]).catch('all'),
-        })
-        .catch(HERMES_DEFAULT_SETTINGS.access),
+      access: accessClient,
     })
     .catch(HERMES_DEFAULT_SETTINGS),
   version: z.number().int().nonnegative().catch(0),
   report: hermesReportSchemaClient.nullable().catch(null),
   reportAt: z.number().nullable().catch(null),
+  // A server before 0.6.2 has none: the owner alone.
+  viewerRoleId: z.string().max(64).nullable().catch(null),
 });
+
+const count = z.number().int().nonnegative().catch(0);
+
+export const hermesViewSchemaClient: z.ZodType<HermesView> = z.object({
+  botId: z.string().max(64).nullable().catch(null),
+  connected: z.boolean().catch(false),
+  models: modelsClient,
+  modelInUse: modelInUseClient,
+  skills: z
+    .array(z.object({ name: z.string().max(256), description: z.string().max(1_000).catch('') }))
+    .max(1_000)
+    .nullable()
+    .catch(null),
+  access: accessClient,
+  hiddenChannels: count,
+  memory: z.object({ company: count, people: count }).nullable().optional().catch(undefined),
+});
+
+/** The `hermes.view` event; `view: null`: this person no longer sees the page. */
+export const hermesViewEventSchemaClient = z.object({ view: hermesViewSchemaClient.nullable() });

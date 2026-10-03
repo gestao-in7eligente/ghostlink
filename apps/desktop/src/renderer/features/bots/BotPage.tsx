@@ -1,14 +1,16 @@
-import { FEATURE_GHOST_DJ_PANEL, type BotCommand, type CommandOption } from '@ghostlink/shared';
+import { FEATURE_ENTERPRISE_HERMES_VIEW, FEATURE_GHOST_DJ_PANEL, type BotCommand, type CommandOption } from '@ghostlink/shared';
 import { SquareSlash } from 'lucide-react';
 import { useT } from '../../i18n/index.js';
 import { Avatar } from '../../layout/primitives.js';
 import { useConnectionStore } from '../../stores/connection.js';
+import { useEnterpriseStore } from '../../stores/enterprise.js';
 import { useTextStore } from '../../stores/text.js';
 import type { BotProfileView } from '../../stores/textState.js';
 import c from '../chat/chat.module.css';
 import { BotDescription, BotTag, CreatedLine, SeenLine } from './BotParts.js';
 import { isBot, isSystemBot } from './botsModel.js';
 import { DjPanel } from './DjPanel.js';
+import { HermesPage } from './hermes/HermesPage.js';
 import g from './botPage.module.css';
 
 const NO_COMMANDS: readonly BotCommand[] = [];
@@ -28,7 +30,9 @@ export function useBotProfile(botId: string): BotProfileView | null {
  * BOTS: its photo, name, BOT tag and state, its description, who created it and when it was last
  * seen (servers with the bot's settings), and the slash commands it registered. The settings
  * (the bot's menu, "Configurações") hold the rest. The server's own bot, the Ghost DJ, also shows
- * its panel (v0.5.1: what plays, the controls and the equalizer) on servers that have it.
+ * its panel (v0.5.1: what plays, the controls and the equalizer) on servers that have it. The
+ * company Hermes shows its page (v0.6.2: models, skills, where and who, memory) to the owner and
+ * the viewer role, on servers that have it.
  */
 export function BotPage({ botId }: { botId: string }) {
   const t = useT();
@@ -37,6 +41,8 @@ export function BotPage({ botId }: { botId: string }) {
   const profile = useBotProfile(botId);
   const system = useTextStore((s) => isSystemBot(s.bots.profiles, botId));
   const panelSupported = useConnectionStore((s) => s.welcome?.features.includes(FEATURE_GHOST_DJ_PANEL) === true);
+  const hermesSupported = useConnectionStore((s) => s.welcome?.features.includes(FEATURE_ENTERPRISE_HERMES_VIEW) === true);
+  const hermesView = useEnterpriseStore((s) => (s.view?.botId === botId ? s.view : null));
   // The reducer closes the page when the bot leaves; this covers the frame in between.
   if (!isBot(bot)) return null;
   const status = bot.online ? t('layout.online') : t('members.statusOffline');
@@ -71,6 +77,7 @@ export function BotPage({ botId }: { botId: string }) {
             </div>
           </section>
           {system && panelSupported && <DjPanel />}
+          {hermesSupported && hermesView && <HermesPage view={hermesView} />}
           {profile && profile.description !== '' && (
             <section aria-labelledby="bot-page-about">
               <h2 id="bot-page-about" className={g.sectionTitle}>

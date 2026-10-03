@@ -99,7 +99,8 @@ export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
   // the owner's YouTube cookies (v0.5.2).
   'dj.state', 'dj.eq', 'dj.volume', 'dj.control', 'dj.cookies.set', 'dj.cookies.clear',
   // Enterprise (v0.6.0): the owner's license, and the company Hermes's settings. hermes.report is the Hermes's own.
-  'enterprise.license.set', 'hermes.create', 'hermes.get', 'hermes.update', 'hermes.memory.delete',
+  // The company Hermes's page (v0.6.2): the owner and the viewer role.
+  'enterprise.license.set', 'hermes.create', 'hermes.get', 'hermes.update', 'hermes.memory.delete', 'hermes.view',
   'ping',
 ]);
 

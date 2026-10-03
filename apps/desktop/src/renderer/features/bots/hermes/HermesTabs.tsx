@@ -1,10 +1,21 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Trash2 } from 'lucide-react';
-import { HERMES_LIMITS, HERMES_PROVIDERS, type HermesMemoryItem, type HermesMemoryTarget, type HermesModelRef, type HermesProvider, type HermesState } from '@ghostlink/shared';
+import {
+  FEATURE_ENTERPRISE_HERMES_VIEW,
+  HERMES_LIMITS,
+  HERMES_PROVIDERS,
+  type HermesMemoryItem,
+  type HermesMemoryTarget,
+  type HermesModelRef,
+  type HermesProvider,
+  type HermesState,
+  type HermesUpdatePayload,
+} from '@ghostlink/shared';
 import { errorCodeOf, useT, type Translate } from '../../../i18n/index.js';
 import { ConfirmDialog, ErrorText, Select, primitives as p } from '../../../layout/primitives.js';
 import s from '../../../layout/settings.module.css';
 import type { SettingsTab } from '../../../layout/SettingsShell.js';
+import { useConnectionStore } from '../../../stores/connection.js';
 import { useEnterpriseStore } from '../../../stores/enterprise.js';
 import { rolesByPosition } from '../../../stores/server.js';
 import { sortedChannels } from '../../../stores/channels.js';
@@ -345,17 +356,35 @@ function toggle(list: readonly string[], id: string, on: boolean): string[] {
   return on ? [...next, id] : next;
 }
 
+/** Only what changed: the viewer role alone sends the Hermes nothing (spec 2026-10-03 §3). */
+function accessPatch(state: HermesState, access: HermesState['settings']['access'], viewerRoleId: string | null, viewerSupported: boolean): HermesUpdatePayload {
+  const patch: HermesUpdatePayload = {};
+  if (JSON.stringify(access) !== JSON.stringify(state.settings.access)) patch.access = access;
+  if (viewerSupported && viewerRoleId !== state.viewerRoleId) patch.viewerRoleId = viewerRoleId;
+  return patch;
+}
+
 function AccessTab({ state }: { state: HermesState }) {
   const t = useT();
   const roles = useTextStore((st) => st.server.roles);
   const channels = useTextStore((st) => st.channels.byId);
+  const viewerSupported = useConnectionStore((st) => st.welcome?.features.includes(FEATURE_ENTERPRISE_HERMES_VIEW) === true);
   const [roleIds, setRoleIds] = useState<string[]>(state.settings.access.roleIds);
   const [chosen, setChosen] = useState<string[] | null>(state.settings.access.channels === 'all' ? null : state.settings.access.channels);
+  const [viewer, setViewer] = useState<string>(state.viewerRoleId ?? 'none');
   const save = useSave();
   const disabled = save.busy || state.locked;
   const roleList = rolesByPosition(roles).filter((r) => !r.isDefault);
   const textChannels = sortedChannels(channels, 'text');
   const edit = () => save.reset();
+  // The saved role may have been deleted meanwhile (the server resets it): "Nenhum".
+  const viewerShown = viewer !== 'none' && Object.hasOwn(roles, viewer) ? viewer : 'none';
+  const submit = async () => {
+    const patch = accessPatch(state, { roleIds, channels: chosen ?? 'all' }, viewerShown === 'none' ? null : viewerShown, viewerSupported);
+    await save.run(async () => {
+      if (Object.keys(patch).length > 0) await updateHermes(patch);
+    });
+  };
   return (
     <>
       <section className={h.block}>
@@ -421,14 +450,25 @@ function AccessTab({ state }: { state: HermesState }) {
           ))}
       </section>
       <p className={s.hint}>{t('hermes.access.mentionHint')}</p>
+      {viewerSupported && (
+        <section className={h.block} data-hermes-viewer>
+          <h4 className={h.blockTitle}>{t('hermes.access.viewer')}</h4>
+          <p className={s.hint}>{t('hermes.access.viewerHint')}</p>
+          <Select
+            value={viewerShown}
+            options={[{ value: 'none', label: t('hermes.access.viewerNone') }, ...roleList.map((r) => ({ value: r.id, label: r.name }))]}
+            disabled={disabled}
+            label={t('hermes.access.viewer')}
+            onChange={(v) => {
+              setViewer(v);
+              edit();
+            }}
+          />
+        </section>
+      )}
       <SaveResult error={save.error} done={save.done} />
       <div className={s.row}>
-        <button
-          type="button"
-          className={`${p.button} ${p.buttonPrimary}`}
-          disabled={disabled}
-          onClick={() => void save.run(() => updateHermes({ access: { roleIds, channels: chosen ?? 'all' } }))}
-        >
+        <button type="button" className={`${p.button} ${p.buttonPrimary}`} disabled={disabled} onClick={() => void submit()}>
           {t('hermes.access.save')}
         </button>
       </div>

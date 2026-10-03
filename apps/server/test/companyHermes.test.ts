@@ -10,6 +10,7 @@ import {
   type HermesConfig,
   type HermesReport,
   type HermesState,
+  type HermesView,
 } from '@ghostlink/shared';
 import { createAvatarsModule } from '../src/avatars/index.js';
 import { createBotsModule } from '../src/bots/index.js';
@@ -164,5 +165,160 @@ describe('the company Hermes (spec §2)', () => {
     expect(fx.owner.seen('hermes.state')).toHaveLength(before);
     await fx.owner.ok('server.transferOwnership', { userId: ana.userId });
     expect((await ana.event<HermesState>('hermes.state')).botId).not.toBeNull();
+  });
+});
+
+type ViewEvent = { view: HermesView | null };
+const reported = (d: ViewEvent) => Array.isArray(d.view?.skills);
+const lost = (d: ViewEvent) => d.view === null;
+
+/** The company Hermes, a viewer role held by Bia, and Caio without it. */
+async function withViewer() {
+  const { fx, enterprise } = await setup();
+  const created = await fx.owner.ok<BotCreateResult>('hermes.create', { name: 'TC Hermes' });
+  const { role } = await fx.owner.ok<{ role: { id: string } }>('role.create', { name: 'Diretoria' });
+  const bia = await fx.join({ nickname: 'Bia' });
+  const caio = await fx.join({ nickname: 'Caio' });
+  await fx.owner.ok('member.setRoles', { userId: bia.userId, roleIds: [role.id] });
+  const state = await fx.owner.ok<HermesState>('hermes.update', { viewerRoleId: role.id });
+  await bia.event<ViewEvent>('hermes.view');
+  return { fx, enterprise, created, role, bia, caio, state };
+}
+
+describe('the company Hermes page (spec 2026-10-03)', () => {
+  it('the owner and the viewer role see it, live and in the welcome; anyone else gets FORBIDDEN and no event', async () => {
+    const { fx, created, role, bia, caio, state } = await withViewer();
+    expect(state.viewerRoleId).toBe(role.id);
+    expect(bia.seen<ViewEvent>('hermes.view')[0]?.view?.botId).toBe(created.bot.userId);
+    const hermes = (await connectBot(fx, created.connectionToken)).client!;
+    await hermes.ok('hermes.report', report());
+    const live = await bia.event<ViewEvent>('hermes.view', (d) => reported(d) && d.view?.connected === true);
+    expect(live.view).toMatchObject({
+      models: { primary: { provider: 'deepseek', model: 'deepseek-v4-pro' } },
+      modelInUse: { provider: 'deepseek', model: 'deepseek-v4-pro' },
+      skills: [{ name: 'resumo', description: 'Resume conversas' }],
+      access: { roleIds: [], channels: 'all' },
+    });
+    expect((await fx.owner.ok<{ view: HermesView }>('hermes.view', {})).view.memory).toEqual({ company: 1, people: 0 });
+    expect((await bia.ok<{ view: HermesView }>('hermes.view', {})).view.botId).toBe(created.bot.userId);
+
+    expect(await caio.fail('hermes.view', {})).toBe('FORBIDDEN');
+    await caio.sync();
+    expect(caio.seen('hermes.view')).toEqual([]);
+    expect(caio.welcome.hermesView).toBeUndefined();
+    const again = await fx.join({ seed: bia.seed, nickname: 'Bia' });
+    expect((again.welcome.hermesView as HermesView).botId).toBe(created.bot.userId);
+  });
+
+  it("the role's page has no key and no memory, the owner's only the counts; the Hermes never gets the role", async () => {
+    const { fx, created, bia } = await withViewer();
+    const key = fakeKey('deepseek');
+    await fx.owner.ok('hermes.update', { keys: { deepseek: key } });
+    const hermes = (await connectBot(fx, created.connectionToken)).client!;
+    expect(await hermes.event<HermesConfig>('hermes.config')).not.toHaveProperty('viewerRoleId');
+    await hermes.ok('hermes.report', report());
+    const owner = (await fx.owner.event<ViewEvent>('hermes.view', reported)).view!;
+    const role = (await bia.event<ViewEvent>('hermes.view', reported)).view!;
+    expect(owner.memory).toEqual({ company: 1, people: 0 });
+    expect(role).not.toHaveProperty('memory');
+    for (const seen of [JSON.stringify(owner), JSON.stringify(bia.events), JSON.stringify(await bia.ok('hermes.view', {}))]) {
+      expect(seen).not.toContain(key.slice(-4));
+      expect(seen).not.toContain('A TC Flag fabrica bandeiras.');
+    }
+    // Changing only the viewer role sends the Hermes nothing.
+    await hermes.sync();
+    const configs = hermes.seen('hermes.config').length;
+    await fx.owner.ok('hermes.update', { viewerRoleId: null });
+    await hermes.sync();
+    expect(hermes.seen('hermes.config')).toHaveLength(configs);
+  });
+
+  it('losing the role, or the license lapsing, stops the page at once', async () => {
+    const { fx, enterprise, created, bia } = await withViewer();
+    await fx.owner.ok('member.setRoles', { userId: bia.userId, roleIds: [] });
+    await bia.event<ViewEvent>('hermes.view', lost);
+    const hermes = (await connectBot(fx, created.connectionToken)).client!;
+    await hermes.ok('hermes.report', report());
+    await fx.owner.event<ViewEvent>('hermes.view', reported);
+    await bia.sync();
+    expect(bia.seen<ViewEvent>('hermes.view').at(-1)?.view).toBeNull();
+    expect(await bia.fail('hermes.view', {})).toBe('FORBIDDEN');
+
+    const { role } = await fx.owner.ok<{ role: { id: string } }>('role.create', { name: 'Conselho' });
+    await fx.owner.ok('hermes.update', { viewerRoleId: role.id });
+    await fx.owner.ok('member.setRoles', { userId: bia.userId, roleIds: [role.id] });
+    await bia.event<ViewEvent>('hermes.view', reported);
+    bia.clear();
+    enterprise.set('normal');
+    await bia.event<ViewEvent>('hermes.view', lost);
+    expect(await bia.fail('hermes.view', {})).toBe('FORBIDDEN');
+    expect((await fx.owner.ok<{ view: HermesView }>('hermes.view', {})).view.botId).toBe(created.bot.userId);
+  });
+
+  it("a role holder never gets the id of a private channel they cannot see, only how many, and no event when it changes", async () => {
+    const { fx, bia } = await withViewer();
+    const general = fx.owner.text.channels.find((c) => c.type === 'text')!;
+    const { channel: secret } = await fx.owner.ok<{ channel: { id: string } }>('channel.create', { name: 'diretoria', type: 'text', private: true });
+    await fx.owner.ok('hermes.update', { access: { roleIds: [], channels: [general.id, secret.id] } });
+    const page = (await bia.event<ViewEvent>('hermes.view', (d) => d.view?.access.channels !== 'all')).view!;
+    expect(page).toMatchObject({ access: { channels: [general.id] }, hiddenChannels: 1 });
+    const owner = (await fx.owner.event<ViewEvent>('hermes.view', (d) => d.view?.access.channels !== 'all')).view!;
+    expect(owner).toMatchObject({ access: { channels: [general.id, secret.id] }, hiddenChannels: 0 });
+    const asked = await bia.ok('hermes.view', {});
+    await bia.sync();
+    const before = bia.seen('hermes.view').length;
+    await fx.owner.ok('channel.update', { id: secret.id, name: 'diretoria-2', topic: 'só a diretoria' });
+    await bia.sync();
+    expect(bia.seen('hermes.view')).toHaveLength(before);
+    await fx.owner.ok('channel.delete', { id: secret.id });
+    await bia.sync();
+    // A new session (it replaces the first one) starts from a welcome without it too.
+    const { channel: other } = await fx.owner.ok<{ channel: { id: string } }>('channel.create', { name: 'conselho', type: 'text', private: true });
+    await fx.owner.ok('hermes.update', { access: { roleIds: [], channels: [general.id, other.id] } });
+    const again = await fx.join({ seed: bia.seed, nickname: 'Bia' });
+    expect(again.welcome.hermesView).toMatchObject({ access: { channels: [general.id] }, hiddenChannels: 1 });
+    for (const seen of [JSON.stringify(bia.events), JSON.stringify(asked)]) expect(seen).not.toContain(secret.id);
+    expect(JSON.stringify(again.welcome)).not.toContain(other.id);
+  });
+
+  it('after an ownership transfer the old owner without the role gets view: null, then nothing', async () => {
+    const { fx, caio } = await withViewer();
+    await fx.owner.event<ViewEvent>('hermes.view');
+    await fx.owner.ok('server.transferOwnership', { userId: caio.userId });
+    await fx.owner.event<ViewEvent>('hermes.view', lost);
+    expect((await caio.event<ViewEvent>('hermes.view')).view).toHaveProperty('memory');
+    const after = fx.owner.seen('hermes.view').length;
+    await caio.ok('hermes.update', { models: { primary: { provider: 'deepseek', model: 'deepseek-v4-flash' }, fallback: null } });
+    await caio.event<ViewEvent>('hermes.view', (d) => d.view?.models.primary.model === 'deepseek-v4-flash');
+    await fx.owner.sync();
+    expect(fx.owner.seen('hermes.view')).toHaveLength(after);
+    expect(await fx.owner.fail('hermes.view', {})).toBe('FORBIDDEN');
+  });
+
+  it('a kicked role holder gets nothing more, even back as a plain member', async () => {
+    const { fx, bia } = await withViewer();
+    await fx.owner.ok('member.kick', { userId: bia.userId });
+    await bia.closed;
+    fx.clock.now += 600_001; // past the 10 minutes a kick blocks the rejoin
+    const back = await fx.join({ seed: bia.seed, nickname: 'Bia' });
+    expect(back.welcome.hermesView).toBeUndefined();
+    await fx.owner.ok('hermes.update', { models: { primary: { provider: 'deepseek', model: 'deepseek-v4-flash' }, fallback: null } });
+    await fx.owner.event<ViewEvent>('hermes.view', (d) => d.view?.models.primary.model === 'deepseek-v4-flash');
+    await back.sync();
+    expect(back.seen('hermes.view')).toEqual([]);
+    expect(await back.fail('hermes.view', {})).toBe('FORBIDDEN');
+  });
+
+  it('deleting the role resets it to none; only an existing role other than @everyone is taken', async () => {
+    const { fx, role, bia } = await withViewer();
+    fx.owner.clear();
+    await fx.owner.ok('role.delete', { id: role.id });
+    expect((await fx.owner.event<HermesState>('hermes.state')).viewerRoleId).toBeNull();
+    await bia.event<ViewEvent>('hermes.view', lost);
+    expect((await fx.owner.ok<HermesState>('hermes.get', {})).viewerRoleId).toBeNull();
+    expect(await fx.owner.fail('hermes.update', { viewerRoleId: role.id })).toBe('NOT_FOUND');
+    const everyone = fx.owner.text.roles.find((r) => r.isDefault)!;
+    expect(await fx.owner.fail('hermes.update', { viewerRoleId: everyone.id })).toBe('BAD_REQUEST');
+    expect(await bia.fail('hermes.update', { viewerRoleId: null })).toBe('FORBIDDEN');
   });
 });
