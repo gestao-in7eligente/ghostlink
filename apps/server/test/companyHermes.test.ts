@@ -281,6 +281,34 @@ describe('the company Hermes page (spec 2026-10-03)', () => {
     expect(JSON.stringify(again.welcome)).not.toContain(other.id);
   });
 
+  it('after an ownership transfer the old owner without the role gets view: null, then nothing', async () => {
+    const { fx, caio } = await withViewer();
+    await fx.owner.event<ViewEvent>('hermes.view');
+    await fx.owner.ok('server.transferOwnership', { userId: caio.userId });
+    await fx.owner.event<ViewEvent>('hermes.view', lost);
+    expect((await caio.event<ViewEvent>('hermes.view')).view).toHaveProperty('memory');
+    const after = fx.owner.seen('hermes.view').length;
+    await caio.ok('hermes.update', { models: { primary: { provider: 'deepseek', model: 'deepseek-v4-flash' }, fallback: null } });
+    await caio.event<ViewEvent>('hermes.view', (d) => d.view?.models.primary.model === 'deepseek-v4-flash');
+    await fx.owner.sync();
+    expect(fx.owner.seen('hermes.view')).toHaveLength(after);
+    expect(await fx.owner.fail('hermes.view', {})).toBe('FORBIDDEN');
+  });
+
+  it('a kicked role holder gets nothing more, even back as a plain member', async () => {
+    const { fx, bia } = await withViewer();
+    await fx.owner.ok('member.kick', { userId: bia.userId });
+    await bia.closed;
+    fx.clock.now += 600_001; // past the 10 minutes a kick blocks the rejoin
+    const back = await fx.join({ seed: bia.seed, nickname: 'Bia' });
+    expect(back.welcome.hermesView).toBeUndefined();
+    await fx.owner.ok('hermes.update', { models: { primary: { provider: 'deepseek', model: 'deepseek-v4-flash' }, fallback: null } });
+    await fx.owner.event<ViewEvent>('hermes.view', (d) => d.view?.models.primary.model === 'deepseek-v4-flash');
+    await back.sync();
+    expect(back.seen('hermes.view')).toEqual([]);
+    expect(await back.fail('hermes.view', {})).toBe('FORBIDDEN');
+  });
+
   it('deleting the role resets it to none; only an existing role other than @everyone is taken', async () => {
     const { fx, role, bia } = await withViewer();
     fx.owner.clear();
