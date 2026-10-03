@@ -32,6 +32,8 @@ export function HermesPage({ view, overview, commands }: { view: HermesView; ove
   const tabs = hermesPageTabs(owner);
   const [picked, setPicked] = useState<HermesPageTab>('overview');
   const tab = tabs.includes(picked) ? picked : 'overview';
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<SkillFilter>('on');
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     void refreshHermesView();
@@ -110,7 +112,7 @@ export function HermesPage({ view, overview, commands }: { view: HermesView; ove
           </>
         )}
 
-        {tab === 'skills' && <SkillsPanel rows={rows} owner={ownState !== null} botId={botId} />}
+        {tab === 'skills' && <SkillsPanel rows={rows} owner={owner} botId={botId} query={query} onQuery={setQuery} filter={filter} onFilter={setFilter} />}
 
         {tab === 'access' && (
           <Block id="hermes-page-where" title={t('hermes.page.where')}>
@@ -169,19 +171,17 @@ export function HermesPage({ view, overview, commands }: { view: HermesView; ove
 }
 
 /** Skills N: search, the compact grid, and for the owner the Ligadas | Todas filter and "Gerenciar skills". */
-function SkillsPanel({ rows, owner, botId }: { rows: SkillRow[] | null; owner: boolean; botId: string | null }) {
+function SkillsPanel({ rows, owner, botId, query, onQuery, filter, onFilter }: { rows: SkillRow[] | null; owner: boolean; botId: string | null; query: string; onQuery: (q: string) => void; filter: SkillFilter; onFilter: (f: SkillFilter) => void }) {
   const t = useT();
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<SkillFilter>('on');
   const shown = useMemo(() => filterSkills(rows ?? [], owner ? filter : 'on', query), [rows, owner, filter, query]);
   return (
     <section aria-label={t('hermes.tab.skills')} className={h.skillsPanel}>
       <div className={h.skillsBar}>
-        <input type="search" className={h.skillsSearch} placeholder={t('hermes.page.skillsSearch')} aria-label={t('hermes.page.skillsSearch')} value={query} onChange={(e) => setQuery(e.target.value)} data-hermes-page-skills-search />
+        <input type="search" className={h.skillsSearch} placeholder={t('hermes.page.skillsSearch')} aria-label={t('hermes.page.skillsSearch')} value={query} onChange={(e) => onQuery(e.target.value)} data-hermes-page-skills-search />
         {owner && (
           <div className={h.segment} role="group" aria-label={t('hermes.page.filter')}>
             {(['on', 'all'] as const).map((id) => (
-              <button key={id} type="button" aria-pressed={filter === id} className={filter === id ? `${h.segmentButton} ${h.segmentOn}` : h.segmentButton} onClick={() => setFilter(id)} data-hermes-page-filter={id}>
+              <button key={id} type="button" aria-pressed={filter === id} className={filter === id ? `${h.segmentButton} ${h.segmentOn}` : h.segmentButton} onClick={() => onFilter(id)} data-hermes-page-filter={id}>
                 {t(id === 'on' ? 'hermes.page.filter.on' : 'hermes.page.filter.all')}
               </button>
             ))}

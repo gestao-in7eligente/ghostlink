@@ -90,6 +90,8 @@ describe('the company Hermes page tabs (spec 2026-10-03 pagina larga e abas)', (
     const v = view({ skills: [{ name: 'a', description: 'x' }] });
     expect(pageSkillRows(v, null)).toEqual([{ name: 'a', description: 'x', enabled: true }]);
     expect(pageSkillRows(view(), null)).toBeNull();
+    const unreported = { settings: { disabledSkills: null }, report: null } as unknown as Parameters<typeof pageSkillRows>[1];
+    expect(pageSkillRows(v, unreported)).toEqual([{ name: 'a', description: 'x', enabled: true }]);
     const state = {
       settings: { disabledSkills: ['b'] },
       report: { skills: [{ name: 'a', description: 'x', enabled: true, locked: false }, { name: 'b', description: 'y', enabled: true, locked: false }] },
