@@ -322,3 +322,53 @@ describe('the company Hermes page (spec 2026-10-03)', () => {
     expect(await bia.fail('hermes.update', { viewerRoleId: null })).toBe('FORBIDDEN');
   });
 });
+
+describe('the API tab (spec 2026-10-03-aba-api-e-sites §1)', () => {
+  it('only the owner saves and deletes keys; the app sees the last 4, only the company Hermes the keys', async () => {
+    const { fx } = await setup();
+    const ana = await admin(fx);
+    const created = await fx.owner.ok<BotCreateResult>('hermes.create', { name: 'TC Hermes' });
+    const other = await fx.owner.ok<BotCreateResult>('bot.create', { name: 'Outro bot' });
+    const hermes = (await connectBot(fx, created.connectionToken)).client!;
+    const impostor = (await connectBot(fx, other.connectionToken)).client!;
+    await hermes.event<HermesConfig>('hermes.config');
+    const eleven = fakeKey('eleven');
+    const mine = fakeKey('mine');
+    const gemini = fakeKey('gemini');
+
+    expect(await ana.fail('hermes.update', { apis: { ELEVENLABS_API_KEY: { value: eleven } } })).toBe('FORBIDDEN');
+    const state = await fx.owner.ok<HermesState>('hermes.update', {
+      keys: { gemini },
+      apis: { ELEVENLABS_API_KEY: { value: eleven }, MINHA_API_KEY: { name: 'Minha API', value: mine } },
+    });
+    expect(state.keys.gemini).toEqual({ last4: gemini.slice(-4) });
+    expect(state.apis).toEqual([
+      { envVar: 'ELEVENLABS_API_KEY', name: 'ElevenLabs', last4: eleven.slice(-4) },
+      { envVar: 'MINHA_API_KEY', name: 'Minha API', last4: mine.slice(-4) },
+    ]);
+    const config = await hermes.event<HermesConfig>('hermes.config', (c) => c.version === 1);
+    expect(config.keys.gemini).toBe(gemini);
+    expect(config.apis).toEqual({ ELEVENLABS_API_KEY: eleven, MINHA_API_KEY: mine });
+
+    await Promise.all([impostor.sync(), ana.sync(), fx.owner.sync()]);
+    expect(impostor.seen('hermes.config')).toEqual([]);
+    const answers = [JSON.stringify(fx.owner.events), JSON.stringify(ana.events), JSON.stringify(state), JSON.stringify(await fx.owner.ok('hermes.get', {}))];
+    for (const seen of answers) for (const key of [eleven, mine, gemini]) expect(seen).not.toContain(key);
+
+    const after = await fx.owner.ok<HermesState>('hermes.update', { apis: { MINHA_API_KEY: null } });
+    expect(after.apis.map((a) => a.envVar)).toEqual(['ELEVENLABS_API_KEY']);
+    expect((await hermes.event<HermesConfig>('hermes.config', (c) => c.version === 2)).apis).toEqual({ ELEVENLABS_API_KEY: eleven });
+  });
+
+  it('refuses system, Hermes and GhostLink variables, a name without a key suffix, an AI in apis, a nameless one and the 31st key', async () => {
+    const { fx } = await setup();
+    for (const name of ['PATH', 'LD_PRELOAD', 'PYTHONPATH', 'NODE_OPTIONS', 'HTTPS_PROXY', 'HERMES_HOME', 'GHOSTLINK_BOT', 'DEEPSEEK_API_KEY', 'MINHA_API', 'MY_PROXY_KEY_X']) {
+      expect(await fx.owner.fail('hermes.update', { apis: { [name]: { name: 'x', value: fakeKey('x') } } }), name).toBe('BAD_REQUEST');
+    }
+    expect(await fx.owner.fail('hermes.update', { apis: { SEM_NOME_KEY: { value: fakeKey('x') } } })).toBe('BAD_REQUEST');
+    const thirty = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`API_${i}_KEY`, { name: `API ${i}`, value: fakeKey(String(i)) }]));
+    await fx.owner.ok('hermes.update', { apis: thirty });
+    expect(await fx.owner.fail('hermes.update', { keys: { 'openai-api': fakeKey('openai') } })).toBe('BAD_REQUEST');
+    expect((await fx.owner.ok<HermesState>('hermes.get', {})).apis).toHaveLength(30);
+  });
+});
