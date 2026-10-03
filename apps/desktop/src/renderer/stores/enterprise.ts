@@ -1,8 +1,8 @@
 // Enterprise and the company Hermes as this app sees them (spec 2026-10-02-enterprise-e-hermes-da-empresa
 // §1, §2): the edition of the server on screen (everyone), its license and the company Hermes's state
-// (the owner only), and the company Hermes's page (v0.6.2: the owner and the viewer role) and the company's sites (v0.7.0: every member,
-// those whose channel they see; the welcome's `sites`, then `sites.state`). Seeded by
-// the welcome's `enterprise`, `hermes` and `hermesView` keys, then kept by the `enterprise.state`,
+// (the owner only), the company Hermes's page (v0.6.2: the owner and the viewer role) and the company's
+// sites (v0.7.0: every member, those whose channel they see; the welcome's `sites`, then `sites.state`).
+// Seeded by the welcome's `enterprise`, `hermes` and `hermesView` keys, then kept by the `enterprise.state`,
 // `hermes.state` and `hermes.view` events and by the answers to the app's own requests.
 // A server before 0.6.0 sends none of them: normal; one before 0.6.2 has no page.
 import { useLayoutEffect } from 'react';

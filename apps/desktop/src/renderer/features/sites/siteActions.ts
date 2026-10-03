@@ -18,7 +18,14 @@ export async function deleteSite(id: string): Promise<void> {
   await request('site.delete', { id }, z.object({}));
 }
 
-/** "Cadastrar como sites" (plan decision 3): each channel becomes a site named and addressed after it. Stops at the first refusal. */
-export async function registerChannelsAsSites(channels: readonly Channel[]): Promise<void> {
-  for (const c of channels) await createSite({ name: c.name, domain: c.name, channelId: c.id });
+/**
+ * "Cadastrar como sites" (plan decision 3): each channel becomes a site named and addressed after it.
+ * Stops at the first refusal; `onDone` gets the count registered so far, so the dialog can report it.
+ */
+export async function registerChannelsAsSites(channels: readonly Channel[], onDone?: (done: number) => void): Promise<void> {
+  let done = 0;
+  for (const c of channels) {
+    await createSite({ name: c.name, domain: c.name, channelId: c.id });
+    onDone?.(++done);
+  }
 }

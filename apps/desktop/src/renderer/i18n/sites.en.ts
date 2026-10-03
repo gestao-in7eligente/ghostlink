@@ -21,6 +21,7 @@ export const sites: Record<keyof typeof sitesPt, string> = {
   'sites.save': 'Save',
   'sites.likely': 'Channels named like a site: {n}',
   'sites.registerLikely': 'Add them as sites',
+  'sites.partial': '{done} of {total} added; the rest stopped on an error.',
   'sites.edit': 'Edit site',
   'sites.remove': 'Remove site',
   'sites.removeTitle': 'Remove {name} from the sites?',

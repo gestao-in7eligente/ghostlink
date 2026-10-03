@@ -27,11 +27,14 @@ export function SiteDialog({ site, onClose }: { site?: Site; onClose: () => void
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // "Cadastrar como sites" stopped halfway: how many were registered.
+  const [partial, setPartial] = useState<{ done: number; total: number } | null>(null);
   const problem = siteFormProblem({ name, domain, creating: site === undefined, count: sites.length });
 
   const run = async (job: () => Promise<void>) => {
     setBusy(true);
     setError(null);
+    setPartial(null);
     try {
       await job();
       onClose();
@@ -77,7 +80,7 @@ export function SiteDialog({ site, onClose }: { site?: Site; onClose: () => void
           <span className={s.label}>{t('sites.likely', { n: likely.length })}</span>
           <p className={s.hint}>{likely.map((c) => `# ${c.name}`).join(' · ')}</p>
           <div className={s.row}>
-            <button type="button" className={p.button} disabled={busy || sites.length + likely.length > SITE_LIMITS.maxSites} onClick={() => void run(() => registerChannelsAsSites(likely))}>
+            <button type="button" className={p.button} disabled={busy || sites.length + likely.length > SITE_LIMITS.maxSites} onClick={() => void run(() => registerChannelsAsSites(likely, (done) => setPartial({ done, total: likely.length })))}>
               {t('sites.registerLikely')}
             </button>
           </div>
@@ -105,6 +108,11 @@ export function SiteDialog({ site, onClose }: { site?: Site; onClose: () => void
         {tried && problem !== null && (
           <p className={p.error} role="alert">
             {t(`sites.problem.${problem}`)}
+          </p>
+        )}
+        {error && partial !== null && (
+          <p className={p.error} role="alert">
+            {t('sites.partial', { done: partial.done, total: partial.total })}
           </p>
         )}
         {error && <ErrorText code={error} />}

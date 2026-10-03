@@ -19,6 +19,7 @@ export const sites = {
   'sites.save': 'Salvar',
   'sites.likely': 'Canais com nome de site: {n}',
   'sites.registerLikely': 'Cadastrar como sites',
+  'sites.partial': '{done} de {total} cadastrados; o resto parou por um erro.',
   'sites.edit': 'Editar site',
   'sites.remove': 'Remover site',
   'sites.removeTitle': 'Remover {name} dos sites?',

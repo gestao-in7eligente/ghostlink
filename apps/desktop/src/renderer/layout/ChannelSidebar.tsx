@@ -25,9 +25,9 @@ import { TextChannelRow, type TextRowContext } from './TextChannelRow.js';
 export type SidebarDialog = 'invite' | 'settings' | 'leave' | 'delete';
 
 /**
- * Server header with its menu, then BOTS, SITES (Enterprise, v0.7.0), the text and the voice channels (spec §11.1 item 4). A text channel's
- * right click (or menu key) opens its menu (spec 2026-10-02-menu-do-canal); `channelId` names the channel
- * an invite or the settings opened from it are about.
+ * Server header with its menu, then BOTS, SITES (Enterprise, v0.7.0), the text and the voice channels
+ * (spec §11.1 item 4). A text channel's right click (or menu key) opens its menu (spec
+ * 2026-10-02-menu-do-canal); `channelId` names the channel an invite or the settings opened from it are about.
  */
 export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog, channelId?: string) => void }) {
   const t = useT();
@@ -111,7 +111,7 @@ export function ChannelSidebar({ onOpen }: { onOpen: (dialog: SidebarDialog, cha
 
       <div className={l.channelScroll}>
         <BotsSection />
-        <SitesSection saved={saved} onOpen={onOpen} />
+        <SitesSection key={server.serverId ?? ''} saved={saved} onOpen={onOpen} />
         <ChannelSection
           title={t('layout.textChannels')}
           type="text"
