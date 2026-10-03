@@ -85,7 +85,7 @@ Roteiro da spec §14 para o que os testes automáticos não cobrem: redes reais,
 
 ## 10. v0.6.0 Enterprise
 
-Num servidor na VPS (Enterprise no Hospedar do app não é suportado), com A como dono, B e C como membros, e um Hermes de teste com o plugin GhostLink 1.1. As chaves de IA de teste ficam só no app, nunca nesta lista.
+Num servidor na VPS (Enterprise no Hospedar do app não é suportado), com A como dono, B e C como membros, e um Hermes de teste com o plugin GhostLink 1.1 e `GHOSTLINK_COMPANY=true`. As chaves de IA de teste ficam só no app, nunca nesta lista.
 
 - [ ] A abre **Configurações do servidor → Enterprise** (B e C não veem a aba), copia a **Identidade do servidor** e emite uma licença para ela com `scripts/issue-license.mjs`, no PC do dono. Colada e salva, aparece "Licença salva." e **todo mundo** vê o selo **Enterprise** ao lado do nome do servidor, sem reconectar. Só A vê a empresa e a validade.
 - [ ] A licença de outro servidor, ou com um caractere trocado, dá "Essa licença não vale para este servidor."; uma vencida há mais de 7 dias dá "Essa licença já venceu."

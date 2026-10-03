@@ -78,7 +78,7 @@ Put tests next to the existing ones in `apps/server/test` (and `test/integration
 
 ## Enterprise
 
-`src/enterprise/` (spec 2026-10-02-enterprise-e-hermes-da-empresa-design.md §1), registered after text and bots, before companyHermes and ghostDj (they read the edition in their init):
+`src/enterprise/` (spec 2026-10-02-enterprise-e-hermes-da-empresa-design.md §1), registered after text and bots, before companyHermes and ghostDj (they read the edition in their init). Both new modules run in every server, the desktop Hosting mode included, where Enterprise is not supported and not tested:
 
 - The license is the text `GLE1.<data>.<signature>`: the company, the server's `serverKeyId`, when it was issued and when it expires, signed with Ed25519 by a key of its own (not the release key). The public half is `LICENSE_PUBLIC_KEY` in `packages/shared/src/license.ts`; `scripts/gen-license-key.mjs` and `scripts/issue-license.mjs` run on the owner's PC only and keep the private key outside every git work tree.
 - `enterprise.license.set` (the owner only) checks it when pasted (`LICENSE_INVALID`: unreadable, forged or another server's; `LICENSE_EXPIRED`: past the 7-day grace) and stores it in `enterprise.license`; it is checked again at start and every hour. A failed check is logged and never stops the server.
