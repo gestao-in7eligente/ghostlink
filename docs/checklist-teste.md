@@ -99,3 +99,12 @@ Num servidor na VPS (Enterprise no Hospedar do app não é suportado), com A com
 - [ ] **Quem pode usar:** A libera um cargo que B tem e C não. B fala com o Hermes mencionando-o; C menciona e não recebe resposta; A sempre recebe. Com "Só os escolhidos", ele não responde nos outros canais.
 - [ ] **Memória:** os itens "Sobre a empresa" e "Sobre as pessoas" aparecem; **Apagar item** some da lista e do `memories/MEMORY.md` (ou `USER.md`) do Hermes, com a cópia anterior em `ghostlink/backups`.
 - [ ] **Hermes desconectado:** parando o Hermes de teste, o painel mostra "Hermes desconectado" com a última lista de skills e de memória. Uma mudança feita nesse meio-tempo é aplicada quando ele reconecta; apagar memória pede que ele esteja conectado.
+
+## 11. v0.6.2 A página do Hermes da empresa
+
+No mesmo servidor Enterprise da seção 10, com o Hermes de teste conectado e um relatório recebido:
+
+- [ ] A clica no Hermes da empresa: abaixo do cabeçalho aparecem o selo **Hermes da empresa**, **Situação e modelo**, **Skills — N**, **Onde e quem usa** e **Memória** ("N itens sobre a empresa · M sobre as pessoas"). **Abrir** leva à aba Memória das configurações, e os comandos continuam embaixo.
+- [ ] Em **Quem pode usar → Cargo que vê a página**, A escolhe um cargo que B tem e C não. B vê a página na hora, sem a Memória e sem as configurações; C vê só os comandos.
+- [ ] A troca o modelo ou desliga uma skill: a página de A e a de B mudam sozinhas, e o Hermes não reinicia quando só o cargo muda.
+- [ ] Tirando o cargo de B, a página dele volta na hora a mostrar só os comandos; apagando o cargo, o campo volta para "Nenhum".
