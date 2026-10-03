@@ -56,6 +56,17 @@ export function admitBot(db: Db, botId: string, now: number): BotAdmission {
       return { ok: false, code: deletion.code, countsAsFailure: false, ...(deletion.code === 'SERVER_DELETING' ? { extra: { at: deletion.at } } : {}) };
     }
     if (db.get('SELECT 1 AS x FROM bans WHERE user_id = ?', botId)) return { ok: false, code: 'BANNED', countsAsFailure: true };
+    // The company's own Hermes needs an Enterprise server (spec 2026-10-02-enterprise-e-hermes-da-empresa
+    // §1); the enterprise module keeps `enterprise.edition` up to date.
+    if (
+      db.get(
+        `SELECT 1 AS x FROM company_hermes WHERE bot_id = ?
+         AND NOT EXISTS (SELECT 1 FROM enterprise WHERE id = 1 AND edition = 'enterprise')`,
+        botId,
+      )
+    ) {
+      return { ok: false, code: 'ENTERPRISE_REQUIRED', countsAsFailure: false };
+    }
     const user = db.get<{ nickname: string; removed_at: number | null; rejoin_blocked_until: number | null }>(
       'SELECT nickname, removed_at, rejoin_blocked_until FROM users WHERE id = ? AND is_bot = 1',
       botId,
