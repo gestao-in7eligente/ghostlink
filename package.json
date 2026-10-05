@@ -1,0 +1,43 @@
+{
+  "name": "ghostlink",
+  "version": "0.8.3",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=24.14"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p scripts/tsconfig.json && tsc -p docs-site/tsconfig.json",
+    "test": "cross-env NODE_OPTIONS=--disable-warning=ExperimentalWarning vitest run",
+    "lint": "eslint .",
+    "build": "npm run typecheck && npm run build -w @ghostlink/server && npm run build -w @ghostlink/desktop",
+    "build:desktop": "npm run build -w @ghostlink/desktop",
+    "dev": "npm run dev -w @ghostlink/desktop",
+    "smoke:dev": "npm run smoke:dev -w @ghostlink/desktop",
+    "smoke": "node scripts/smoke.mjs",
+    "test:e2e": "npm run test:e2e -w @ghostlink/desktop",
+    "dist": "npm run dist -w @ghostlink/desktop",
+    "docs:dev": "vitepress dev docs-site",
+    "docs:build": "vitepress build docs-site",
+    "docs:preview": "vitepress preview docs-site"
+  },
+  "devDependencies": {
+    "@electron/fuses": "2.1.3",
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.0",
+    "cross-env": "10.1.0",
+    "eslint": "10.11.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.1",
+    "vite": "7.3.6",
+    "vitepress": "1.6.4",
+    "vitest": "5.0.2",
+    "vue": "3.5.43",
+    "yaml": "2.9.1"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": true,
+    // The example imports the package by name, as a bot would; here that is the source.
+    "paths": { "@ghostlink/discord-compat": ["./src/index.ts"] }
+  },
+  "include": ["src", "test", "examples", "scripts", "vitest.config.ts"]
+}

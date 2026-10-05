@@ -1,0 +1,30 @@
+// Integration namespace: the "Adicionar servidor" chooser and small glue texts.
+// Spread into pt-BR.ts; integration.en.ts must have exactly the same keys.
+export const integration = {
+  'addServer.title': 'Adicionar servidor',
+  'addServer.lead': 'Crie um servidor para o seu grupo ou entre em um que já existe.',
+  'addServer.create.title': 'Criar um servidor',
+  'addServer.create.desc': 'Hospede no seu computador — você será o dono.',
+  'addServer.join.title': 'Entrar em um servidor',
+  'addServer.join.desc': 'Use um convite ou um endereço.',
+  'identity.section.manage': 'Gerenciar identidade e backup',
+
+  'home.title': 'Início',
+  'home.nav': 'Início',
+  'home.welcome': 'Bem-vindo, {name}!',
+  'home.active.title': 'Ativo agora',
+  'home.active.emptyTitle': 'Por enquanto, está tudo quieto...',
+  'home.active.emptyText': 'Quando você hospedar um servidor neste computador, ele aparece aqui.',
+  'home.active.hostedHere': 'Hospedado neste computador',
+  'home.active.running': 'No ar',
+  'home.active.starting': 'Iniciando…',
+  'home.active.stopping': 'Parando…',
+  'home.active.stopped': 'Parado',
+  'home.active.failed': 'Não iniciou',
+  'home.active.members': '{count} de {max} membros',
+  'home.active.address': 'Endereço para convidar: {address}',
+  'home.active.open': 'Abrir',
+  'home.active.start': 'Iniciar',
+  'home.active.manage': 'Gerenciar',
+  'home.panelStatus': 'No início',
+} as const;

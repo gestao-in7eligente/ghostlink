@@ -1,0 +1,17 @@
+{
+  // Declarations only (scripts/build.mjs): esbuild writes the JavaScript.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "stripInternal": true,
+    "rootDir": "src",
+    "outDir": "dist/types",
+    // @ghostlink/shared is bundled into the JavaScript; through the symlink it stays a library
+    // to tsc, so its sources are neither emitted nor under rootDir.
+    "preserveSymlinks": true
+  },
+  "include": ["src"]
+}

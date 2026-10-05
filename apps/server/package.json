@@ -1,0 +1,32 @@
+{
+  "name": "@ghostlink/server",
+  "version": "0.8.3",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "ghostlink-server": "./dist/cli.js"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "node scripts/build.mjs",
+    "dev": "node --disable-warning=ExperimentalWarning --import tsx src/bin.ts"
+  },
+  "dependencies": {
+    "@ghostlink/shared": "*",
+    "@livekit/rtc-node": "1.1.0",
+    "@peculiar/x509": "2.1.0",
+    "livekit-server-sdk": "2.19.1",
+    "reflect-metadata": "0.2.2",
+    "ws": "8.22.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.1",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15"
+  }
+}

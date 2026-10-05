@@ -1,0 +1,2 @@
+-- Reservada.
+SELECT 1;

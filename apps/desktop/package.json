@@ -1,0 +1,52 @@
+{
+  "name": "@ghostlink/desktop",
+  "version": "0.8.3",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "description": "GhostLink desktop app (Electron)",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json",
+    "build": "electron-vite build",
+    "dev": "node ../../scripts/run-electron.mjs electron-vite dev",
+    "start": "node ../../scripts/run-electron.mjs electron .",
+    "smoke:dev": "node ../../scripts/run-electron.mjs --smoke electron .",
+    "test:e2e": "npm run build && vitest run --config test/e2e/vitest.config.ts",
+    "dist": "npm run build && node ../../scripts/fetch-livekit.mjs && electron-builder --config electron-builder.yml --publish never"
+  },
+  "dependencies": {
+    "@peculiar/x509": "2.1.0",
+    "electron-updater": "6.8.10",
+    "hyperdht": "6.34.0",
+    "hyperswarm": "4.17.2",
+    "koffi": "3.3.2",
+    "livekit-server-sdk": "2.19.1",
+    "reflect-metadata": "0.2.2",
+    "uiohook-napi": "1.5.5",
+    "ws": "8.22.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@fontsource/inter": "5.3.0",
+    "@ghostlink/server": "*",
+    "@ghostlink/shared": "*",
+    "@sapphi-red/web-noise-suppressor": "0.4.1",
+    "@tanstack/react-virtual": "3.14.13",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/ws": "8.18.1",
+    "@vitejs/plugin-react": "5.2.0",
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3",
+    "electron-vite": "5.0.0",
+    "gifenc": "1.0.3",
+    "livekit-client": "2.22.3",
+    "lucide-react": "1.48.0",
+    "playwright-core": "1.63.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zustand": "5.0.15"
+  },
+  "author": "GhostLink contributors"
+}

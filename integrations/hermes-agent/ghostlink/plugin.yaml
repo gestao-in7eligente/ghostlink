@@ -1,0 +1,48 @@
+name: ghostlink
+label: GhostLink
+kind: platform
+version: 1.4.0
+description: >
+  GhostLink gateway adapter for Hermes Agent. Joins one GhostLink server as its bot (the connection
+  code the GhostLink app shows when the bot is created) over a WebSocket pinned to the server's TLS
+  key, and relays the text channels the bot can see. Answers when @mentioned or replied to; only the
+  server's owner, allowed roles and allowed users get answers.
+author: GhostLink
+requires_env:
+  - name: GHOSTLINK_BOT
+    description: "Bot connection code from the GhostLink app (ghostlink-bot://host:port?pin=…&token=…)"
+    prompt: "GhostLink connection code"
+    password: true
+optional_env:
+  - name: GHOSTLINK_ALLOWED_ROLES
+    description: "Role names or ids whose members may talk to Hermes (comma-separated)"
+    prompt: "Allowed roles"
+    password: false
+  - name: GHOSTLINK_ALLOWED_USERS
+    description: "GhostLink user ids allowed to talk to Hermes (comma-separated)"
+    prompt: "Allowed user ids"
+    password: false
+  - name: GHOSTLINK_ALLOW_OWNER
+    description: "The server's owner may talk to Hermes (default true)"
+    prompt: "Allow the owner? (true/false)"
+    password: false
+  - name: GHOSTLINK_ALLOW_ALL_USERS
+    description: "Anyone in the server may talk to Hermes (not recommended)"
+    prompt: "Allow all users? (true/false)"
+    password: false
+  - name: GHOSTLINK_REQUIRE_MENTION
+    description: "Answer only when @mentioned or replied to (default true)"
+    prompt: "Require @mention? (true/false)"
+    password: false
+  - name: GHOSTLINK_FREE_RESPONSE_CHANNELS
+    description: "Channels (names or ids) where no mention is needed"
+    prompt: "Free-response channels"
+    password: false
+  - name: GHOSTLINK_ALLOWED_CHANNELS
+    description: "If set, the only channels (names or ids) Hermes listens to"
+    prompt: "Allowed channels"
+    password: false
+  - name: GHOSTLINK_HOME_CHANNEL
+    description: "Channel (name or id) for cron and notification delivery"
+    prompt: "Home channel"
+    password: false

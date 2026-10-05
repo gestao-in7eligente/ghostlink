@@ -1,0 +1,37 @@
+/* The video half of the "Voz e vídeo" settings (spec 2026-10-01-camera §2). Tokens only. */
+.video {
+  display: grid;
+  gap: 16px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.title {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 600;
+}
+/* The preview: the call stage's black, 16:9, the camera filling it like a tile. */
+.preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: 480px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--bg-stage);
+}
+.previewEmpty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.warning {
+  margin: 0;
+  color: var(--warning);
+  font-size: 13px;
+}

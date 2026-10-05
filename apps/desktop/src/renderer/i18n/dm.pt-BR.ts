@@ -1,0 +1,28 @@
+// Direct messages (v0.3 phase 2). Spread into pt-BR.ts; dm.en.ts must have exactly the same keys.
+export const dm = {
+  'dm.open': 'Mensagem',
+  'dm.openWith': 'Enviar mensagem para {name}',
+  'dm.close': 'Fechar conversa com {name}',
+  'dm.unread': '{count} mensagens não lidas',
+  'dm.region': 'Mensagens com {name}',
+  'dm.placeholder': 'Conversar com @{name}',
+  'dm.start': 'Este é o começo da sua conversa com {name}.',
+  'dm.startHint': 'As mensagens vão direto entre os computadores de vocês e são criptografadas de ponta a ponta.',
+  'dm.offline': '{name} está offline. A mensagem chega quando vocês dois estiverem online.',
+  'dm.notFriend': 'Vocês não são mais amigos. A conversa fica só para leitura.',
+  'dm.sent': 'Enviada',
+  'dm.delivered': 'Entregue',
+  'dm.typing': '{name} está digitando…',
+  'dm.loadingOlder': 'Carregando mensagens anteriores…',
+  'dm.deleteTitle': 'Apagar mensagem?',
+  'dm.deleteBody': 'A mensagem some para vocês dois.',
+  'dm.delete': 'Apagar',
+  'dm.deleted': 'Mensagem apagada',
+  'dm.tooLong': 'A mensagem passou de {max} caracteres.',
+  'dm.replyUnknown': 'Uma mensagem anterior',
+  // Files (attachments spec §1, §3).
+  'dm.fileWaiting': 'Chega quando {name} estiver online',
+  'dm.fileLoading': 'Recebendo… {percent}%',
+  'dm.sendFailed': 'Os arquivos não foram enviados.',
+  'dm.discard': 'Descartar',
+} as const;

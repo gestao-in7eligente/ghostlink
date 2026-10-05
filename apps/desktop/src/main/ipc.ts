@@ -1,0 +1,308 @@
+import { ipcMain, type WebFrameMain } from 'electron';
+import { z } from 'zod';
+import { LIMITS, avatarHashSchema, isReleaseVersion } from '@ghostlink/shared';
+import { toAppErrorCode } from '../shared/appErrors.js';
+import { IPC, NOTIFY_MODES, type AppInfo, type ChatNotification, type IpcArgs, type IpcChannel, type IpcResult, type IpcReturn } from '../shared/ipcTypes.js';
+import { ATTACHMENTS_IPC_ARG_SCHEMAS, createAttachmentsIpcHandlers, type AttachmentsIpcDeps } from './attachments/attachmentsIpc.js';
+import type { ClientController } from './controller.js';
+import { BACKUP_IPC_ARG_SCHEMAS, createBackupIpcHandlers, type IdentityBackup } from './backup.js';
+import type { DeepLinks } from './deeplink.js';
+import { DM_IPC_ARG_SCHEMAS, createDmIpcHandlers, type DmIpcDeps } from './dmIpc.js';
+import { DRAW_IPC_ARG_SCHEMAS, createDrawIpcHandlers, type DrawIpcDeps } from './drawOverlayIpc.js';
+import { FRIENDS_IPC_ARG_SCHEMAS, createFriendsIpcHandlers, type FriendsIpcDeps } from './friendsIpc.js';
+import { HOST_IPC_ARG_SCHEMAS, createHostIpcHandlers, type HostIpcDeps } from './hostIpc.js';
+import type { IdentityStore } from './identity.js';
+import { mainLog } from './log.js';
+import type { PushToTalk } from './ptt.js';
+import { PROFILE_IPC_ARG_SCHEMAS, createProfileIpcHandlers, type ProfileIpcDeps } from './profileIpc.js';
+import { RAILWAY_IPC_ARG_SCHEMAS, createRailwayIpcHandlers, type RailwayIpcDeps } from './railwayIpc.js';
+import type { ReleaseNotes } from './releaseNotes.js';
+import { SCREEN_IPC_ARG_SCHEMAS, createScreenIpcHandlers, type ScreenIpcDeps } from './screenIpc.js';
+import { SERVER_UPDATES_IPC_ARG_SCHEMAS, createServerUpdatesIpcHandlers, type ServerUpdatesIpcDeps } from './serverUpdatesIpc.js';
+import { originOf } from './security.js';
+import { LOCALES, type SettingsStore } from './settings.js';
+import type { Updater } from './updater.js';
+
+export interface IpcDeps {
+  /** app://ghostlink, or the dev server origin in development. */
+  appOrigin: string;
+  appInfo(): AppInfo;
+  identity: Pick<IdentityStore, 'status' | 'create' | 'retry' | 'replaceKeepingBackup'>;
+  settings: Pick<SettingsStore, 'get' | 'set'>;
+  controller: Pick<
+    ClientController,
+    'parse' | 'probe' | 'join' | 'list' | 'connectSaved' | 'disconnect' | 'remove' | 'request' | 'checkExit' | 'leaveSaved' | 'deleteSaved' | 'setCall' | 'setNotify' | 'setChannel'
+  >;
+  /** Host mode (spec §9). */
+  host?: HostIpcDeps;
+  /** Identity backup, import and delete (spec §3.4). */
+  backup?: IdentityBackup;
+  /** ghostlink:// links (spec §12). */
+  deepLinks?: Pick<DeepLinks, 'take'>;
+  /** Confirmed external links and the clipboard (Text track). */
+  shell: { openExternal(url: string): Promise<boolean>; copyText(text: string): void };
+  /** Brings the main window to the front (the call's mini window's ⤢, v0.4.4). */
+  showWindow?(): void;
+  notifications: { show(n: ChatNotification): boolean };
+  updates: Pick<Updater, 'state' | 'setAutoCheck' | 'checkNow' | 'restart'>;
+  /** The notes of the new version the updater found (Updates page, v0.2.3). */
+  releaseNotes?: Pick<ReleaseNotes, 'get' | 'follow' | 'forgetFailures'>;
+  /** Global push-to-talk (voice track). */
+  ptt: Pick<PushToTalk, 'configure'>;
+  /** "Criar um servidor" on Railway (v0.2). */
+  railway?: RailwayIpcDeps;
+  /** Friends over P2P (v0.3). */
+  friends?: FriendsIpcDeps;
+  /** Direct messages between friends (v0.3 phase 2). */
+  dm?: DmIpcDeps;
+  /** The profile photo (v0.2.2). */
+  profile?: ProfileIpcDeps;
+  /** Files in server channels (v0.3.3): upload and "Baixar". */
+  attachments?: AttachmentsIpcDeps;
+  /** Screen sharing: the sources and the choice (screen sharing spec §3). */
+  screen?: ScreenIpcDeps;
+  /** The pencil's overlay over the shared monitor (pencil spec §4). */
+  draw?: DrawIpcDeps;
+  /** The Railway servers this app created follow its version (v0.2.2). */
+  serverUpdates?: ServerUpdatesIpcDeps;
+}
+
+/** The handshake belongs to the main process alone: the renderer may never send it (release plan "Seams"). */
+export const FORBIDDEN_REQUEST_TYPES: ReadonlySet<string> = new Set(['hello', 'auth.proof']);
+
+/**
+ * The client requests of spec §5.2 the renderer may send, and nothing else: never
+ * the handshake, a response or an event type, nor anything only main should drive.
+ * `upload.begin` joins with files (v0.2).
+ */
+export const RENDERER_REQUEST_TYPES: ReadonlySet<string> = new Set([
+  // Text track
+  'channel.create', 'channel.update', 'channel.delete', 'channel.reorder', 'channel.read',
+  'msg.history', 'msg.send', 'msg.edit', 'msg.delete', 'msg.react', 'msg.unreact', 'typing',
+  'profile.update', 'role.create', 'role.update', 'role.delete', 'role.reorder',
+  'member.setRoles', 'member.kick', 'member.ban', 'member.unban', 'bans.list',
+  'invite.create', 'invite.list', 'invite.revoke', 'server.update', 'server.transferOwnership', 'server.leave',
+  // The server icon (v0.3.2): setting it goes through profile.setServerIcon, which uploads it.
+  'server.iconClear',
+  // Deleting a server (v0.2.4): the owner's banner restores it; `server.delete` goes through servers.delete.
+  'server.restore',
+  // Attachments (v0.3.3): the space in use, for Server settings → Overview. upload.begin stays in main.
+  'server.storage',
+  // Voice track
+  'voice.join', 'voice.leave', 'voice.selfState', 'voice.moderate',
+  // The pencil on shared screens (v0.2.3)
+  'screen.draw', 'screen.drawAllow',
+  // Bots (v0.4.0; settings v0.4.2): managing them (MANAGE_SERVER) and using their slash commands. A bot's photo goes
+  // through profile.setBotAvatar; commands.set and the interaction answers are the bots' own.
+  'bot.create', 'bot.regenerate', 'bot.delete', 'bot.list', 'bot.get', 'bot.update', 'interaction.invoke',
+  // The Ghost DJ's panel (v0.5.1): its state, the equalizer, the volume and pause/resume/skip/stop;
+  // the owner's YouTube cookies (v0.5.2).
+  'dj.state', 'dj.eq', 'dj.volume', 'dj.control', 'dj.cookies.set', 'dj.cookies.clear',
+  'ping',
+]);
+
+/** A server request type the renderer may send (see RENDERER_REQUEST_TYPES). */
+export const requestTypeSchema = z
+  .string()
+  .max(64)
+  .refine((t) => RENDERER_REQUEST_TYPES.has(t) && !FORBIDDEN_REQUEST_TYPES.has(t));
+
+/** A JSON object no bigger than a server frame (spec §5.1: maxPayload 256 KiB, counted in UTF-8 bytes). */
+const requestPayloadSchema = z
+  .record(z.string(), z.unknown())
+  .refine((d) => {
+    try {
+      return Buffer.byteLength(JSON.stringify(d), 'utf8') <= LIMITS.maxPayloadBytes;
+    } catch {
+      return false;
+    }
+  })
+  .optional();
+
+/** The saved server a request is for: the one on screen or the call's (a request for any other one is refused). */
+const expectedServerId = z.string().min(1).max(64);
+
+// Renderer input is untrusted: strict schemas, bounded sizes. The deeper rules
+// (address syntax, nickname normalization) are enforced again where the data is used.
+const address = z.string().min(1).max(262);
+const serverKeyId = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+const serverId = z.string().min(1).max(64);
+const channelId = z.string().regex(/^[A-Z2-7]{26}$/);
+
+export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>> } = {
+  [IPC.appInfo]: z.tuple([]),
+  [IPC.appOpenExternal]: z.tuple([z.string().min(1).max(2048)]),
+  [IPC.appCopyText]: z.tuple([z.string().max(8192)]),
+  [IPC.appShowWindow]: z.tuple([]),
+  [IPC.serverRequest]: z.union([
+    z.tuple([requestTypeSchema]),
+    z.tuple([requestTypeSchema, requestPayloadSchema]),
+    z.tuple([requestTypeSchema, requestPayloadSchema, expectedServerId]),
+  ]),
+  [IPC.notificationsShow]: z.tuple([
+    z.strictObject({
+      server: z.string().max(256),
+      channel: z.string().max(256),
+      author: z.string().max(256),
+      body: z.string().max(4096),
+      serverIcon: avatarHashSchema.nullable(),
+      channelId: z.string().regex(/^[A-Z2-7]{26}$/),
+    }),
+  ]),
+  [IPC.identityStatus]: z.tuple([]),
+  [IPC.identityCreate]: z.tuple([]),
+  [IPC.identityRetry]: z.tuple([]),
+  [IPC.identityReplaceKeepingBackup]: z.tuple([]),
+  [IPC.settingsGet]: z.tuple([]),
+  [IPC.settingsSet]: z.tuple([
+    z.strictObject({
+      locale: z.enum(LOCALES).optional(),
+      nickname: z.string().max(256).optional(),
+      closeToTray: z.boolean().optional(),
+      desktopNotifications: z.boolean().optional(),
+    }),
+  ]),
+  [IPC.joinParse]: z.tuple([z.string().max(2 * LIMITS.inviteMaxLength)]),
+  [IPC.joinProbe]: z.tuple([address]),
+  [IPC.joinConnect]: z.tuple([
+    z.strictObject({
+      addresses: z.array(address).min(1).max(LIMITS.inviteMaxAddresses),
+      serverKeyId,
+      inviteCode: z.string().min(1).max(64).optional(),
+      password: z.string().min(1).max(256).optional(),
+      setupCode: z.string().min(1).max(64).optional(),
+      nickname: z.string().min(1).max(64),
+      name: z.string().max(256).optional(),
+    }),
+  ]),
+  [IPC.serversList]: z.tuple([]),
+  [IPC.serversConnect]: z.tuple([serverId]),
+  [IPC.serversDisconnect]: z.tuple([]),
+  [IPC.serversRemove]: z.tuple([serverId]),
+  [IPC.serversCheckExit]: z.tuple([serverId]),
+  [IPC.serversLeave]: z.tuple([serverId, z.boolean()]),
+  [IPC.serversDelete]: z.tuple([serverId]),
+  [IPC.serversSetCall]: z.tuple([serverId.nullable()]),
+  [IPC.serversSetNotify]: z.tuple([serverId, z.enum(NOTIFY_MODES)]),
+  [IPC.serversSetChannel]: z.tuple([
+    serverId,
+    channelId,
+    z.strictObject({
+      notify: z.enum(NOTIFY_MODES).nullable().optional(),
+      mutedUntil: z.union([z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), z.null(), z.literal(false)]).optional(),
+      pinned: z.boolean().optional(),
+    }),
+  ]),
+  ...HOST_IPC_ARG_SCHEMAS,
+  ...BACKUP_IPC_ARG_SCHEMAS,
+  ...RAILWAY_IPC_ARG_SCHEMAS,
+  ...FRIENDS_IPC_ARG_SCHEMAS,
+  ...DM_IPC_ARG_SCHEMAS,
+  ...PROFILE_IPC_ARG_SCHEMAS,
+  ...ATTACHMENTS_IPC_ARG_SCHEMAS,
+  ...SCREEN_IPC_ARG_SCHEMAS,
+  ...DRAW_IPC_ARG_SCHEMAS,
+  ...SERVER_UPDATES_IPC_ARG_SCHEMAS,
+  [IPC.deepLinkTake]: z.tuple([]),
+  [IPC.updatesState]: z.tuple([]),
+  [IPC.updatesSetAutoCheck]: z.tuple([z.boolean()]),
+  [IPC.updatesCheckNow]: z.tuple([]),
+  [IPC.updatesNotes]: z.tuple([z.string().max(20).refine(isReleaseVersion)]),
+  [IPC.updatesRestart]: z.tuple([]),
+  // A DOM KeyboardEvent.code such as "KeyV" or "ControlRight"; main maps it to the hook's keycode.
+  [IPC.pttConfigure]: z.tuple([z.strictObject({ enabled: z.boolean(), code: z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,23}$/).nullable() })]),
+};
+
+type Handlers = { [C in IpcChannel]: (...args: IpcArgs<C>) => IpcReturn<C> | Promise<IpcReturn<C>> };
+
+export function createIpcHandlers(deps: IpcDeps): Handlers {
+  const { identity, settings, controller, updates } = deps;
+  return {
+    [IPC.appInfo]: () => deps.appInfo(),
+    [IPC.appOpenExternal]: (url) => deps.shell.openExternal(url),
+    [IPC.appCopyText]: (text) => deps.shell.copyText(text),
+    [IPC.appShowWindow]: () => deps.showWindow?.(),
+    [IPC.serverRequest]: (type, payload, serverId) => controller.request(type, payload ?? {}, serverId),
+    [IPC.notificationsShow]: (n) => deps.notifications.show(n),
+    [IPC.identityStatus]: () => identity.status,
+    [IPC.identityCreate]: () => identity.create(),
+    [IPC.identityRetry]: () => identity.retry(),
+    [IPC.identityReplaceKeepingBackup]: () => identity.replaceKeepingBackup(),
+    [IPC.settingsGet]: () => settings.get(),
+    [IPC.settingsSet]: (patch) => settings.set(patch),
+    [IPC.joinParse]: (input) => controller.parse(input),
+    [IPC.joinProbe]: (addr) => controller.probe(addr),
+    [IPC.joinConnect]: (req) => controller.join(req),
+    [IPC.serversList]: () => controller.list(),
+    [IPC.serversConnect]: (id) => controller.connectSaved(id),
+    [IPC.serversDisconnect]: () => controller.disconnect(),
+    [IPC.serversRemove]: (id) => controller.remove(id),
+    [IPC.serversCheckExit]: (id) => controller.checkExit(id),
+    [IPC.serversLeave]: (id, deleteMyMessages) => controller.leaveSaved(id, deleteMyMessages),
+    [IPC.serversDelete]: (id) => controller.deleteSaved(id),
+    [IPC.serversSetCall]: (id) => controller.setCall(id),
+    [IPC.serversSetNotify]: (id, mode) => controller.setNotify(id, mode),
+    [IPC.serversSetChannel]: (id, channel, patch) => controller.setChannel(id, channel, patch),
+    ...createHostIpcHandlers(deps.host),
+    ...createBackupIpcHandlers(deps.backup),
+    ...createRailwayIpcHandlers(deps.railway),
+    ...createFriendsIpcHandlers(deps.friends),
+    ...createDmIpcHandlers(deps.dm),
+    ...createProfileIpcHandlers(deps.profile),
+    ...createAttachmentsIpcHandlers(deps.attachments),
+    ...createScreenIpcHandlers(deps.screen),
+    ...createDrawIpcHandlers(deps.draw),
+    ...createServerUpdatesIpcHandlers(deps.serverUpdates),
+    [IPC.deepLinkTake]: () => deps.deepLinks?.take() ?? null,
+    [IPC.updatesState]: () => updates.state(),
+    [IPC.updatesSetAutoCheck]: (enabled) => updates.setAutoCheck(enabled),
+    [IPC.updatesCheckNow]: async () => {
+      // A click is the moment notes that failed to load may be asked for again.
+      deps.releaseNotes?.forgetFailures();
+      await updates.checkNow(); // never throws; skipped while a check runs or an update waits
+      const state = updates.state();
+      deps.releaseNotes?.follow(state); // the update already found when the check was skipped
+      return state;
+    },
+    [IPC.updatesNotes]: (version) => deps.releaseNotes?.get(version) ?? { version, status: 'unavailable' },
+    [IPC.updatesRestart]: () => updates.restart(),
+    [IPC.pttConfigure]: (config) => deps.ptt.configure(config),
+  };
+}
+
+/** Only the app's own top-level page may call (spec §12): not iframes, not other origins. */
+export function isTrustedSender(frame: Pick<WebFrameMain, 'url' | 'parent'> | null | undefined, appOrigin: string): boolean {
+  return frame !== null && frame !== undefined && frame.parent === null && originOf(frame.url) === appOrigin;
+}
+
+/**
+ * Sender check → zod → handler. Never throws: failures resolve as `{ ok: false, code }`
+ * with an app error code, so no internal message or stack crosses the IPC boundary.
+ */
+export async function dispatchIpc<C extends IpcChannel>(
+  channel: C,
+  frame: Pick<WebFrameMain, 'url' | 'parent'> | null | undefined,
+  args: unknown[],
+  handlers: Handlers,
+  appOrigin: string,
+): Promise<IpcResult<IpcReturn<C>>> {
+  if (!isTrustedSender(frame, appOrigin)) return { ok: false, code: 'FORBIDDEN' };
+  const parsed = IPC_ARG_SCHEMAS[channel].safeParse(args);
+  if (!parsed.success) return { ok: false, code: 'BAD_REQUEST' };
+  const handler = handlers[channel] as (...a: IpcArgs<C>) => IpcReturn<C> | Promise<IpcReturn<C>>;
+  try {
+    return { ok: true, value: await handler(...parsed.data) };
+  } catch (e) {
+    const code = toAppErrorCode(e);
+    if (code === 'INTERNAL') mainLog.error(`[ipc] ${channel} failed:`, e);
+    return { ok: false, code };
+  }
+}
+
+/** Step 5 of the bootstrap: one ipcMain.handle per channel of the contract. */
+export function registerIpc(deps: IpcDeps): void {
+  const handlers = createIpcHandlers(deps);
+  for (const channel of Object.values(IPC)) {
+    ipcMain.handle(channel, (event, ...args: unknown[]) => dispatchIpc(channel, event.senderFrame, args, handlers, deps.appOrigin));
+  }
+}

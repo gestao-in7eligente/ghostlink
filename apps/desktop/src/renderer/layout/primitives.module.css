@@ -1,0 +1,568 @@
+/* Avatar, dialog, menu and form bits shared by the main screen. */
+
+/* Initials on blurple, like the Home rows; a photo fills the circle. */
+.avatar {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  user-select: none;
+}
+
+.avatarPhoto {
+  background: none;
+}
+
+.avatarImage {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* A server's icon: the rail's rounded square, initials on the raised gray when there is no image. */
+.serverIcon {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 30%;
+  background: var(--bg-input);
+  color: var(--text-strong);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  user-select: none;
+}
+
+.serverIconImage {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+/* A bigger picture (the profile card's) sets --dot-size, --dot-ring-width and --dot-offset. */
+.dot {
+  position: absolute;
+  right: var(--dot-offset, -1px);
+  bottom: var(--dot-offset, -1px);
+  width: var(--dot-size, 12px);
+  height: var(--dot-size, 12px);
+  border-radius: 50%;
+  background: var(--text-ghost);
+  border: var(--dot-ring-width, 2.5px) solid var(--dot-ring, var(--bg-sidebar));
+}
+
+.dotOn {
+  background: var(--success);
+}
+
+/* ---- dialog ---- */
+
+.backdrop {
+  position: fixed;
+  inset: var(--titlebar-h) 0 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: var(--overlay);
+  animation: fade 120ms ease-out;
+}
+
+.dialog {
+  scrollbar-color: var(--bg-hover) transparent;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - var(--titlebar-h) - 48px);
+  width: 100%;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--text-strong);
+  outline: none;
+  animation: pop 140ms ease-out;
+}
+
+.small {
+  max-width: 440px;
+}
+
+.medium {
+  max-width: 560px;
+}
+
+.full {
+  max-width: 1040px;
+  height: calc(100vh - var(--titlebar-h) - 48px);
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-3) var(--space-5);
+}
+
+.dialogTitle {
+  flex: 1;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.dialogBody {
+  scrollbar-width: thin;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--space-5) var(--space-5);
+}
+
+.dialogFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--line);
+  background: var(--bg-sidebar);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.text {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 14px;
+}
+
+/* ---- buttons ---- */
+
+.iconButton {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+}
+
+.iconButton:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-hover);
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.buttonPrimary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.buttonPrimary:hover:not(:disabled) {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+.buttonDanger {
+  border-color: var(--danger-strong);
+  background: var(--danger-strong);
+  color: var(--accent-ink);
+}
+
+.buttonDanger:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+/* ---- menu ---- */
+
+.menu {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-hover) transparent;
+  position: fixed;
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  outline: none;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-soft);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menuItem:hover:not([aria-disabled='true']),
+.menuItem:focus-visible {
+  outline: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.menuItem[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.menuDanger {
+  color: var(--danger-strong);
+}
+
+.menuDanger:hover:not([aria-disabled='true']),
+.menuDanger:focus-visible {
+  background: var(--danger-strong);
+}
+
+/* A submenu's item ("Cargos ›"): it stays highlighted while its submenu is open. */
+.menuSub {
+  display: flex;
+  flex-direction: column;
+}
+
+.menuItemOpen {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.menuChevron {
+  flex-shrink: 0;
+  margin-right: -4px;
+}
+
+.menuLabel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A label with a second line under it ("Config. de notificação" over "Só @menções"). */
+.menuLabelStack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding: 5px 0;
+}
+
+.menuLabelMain,
+.menuHint {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menuHint {
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.menuItem:hover:not([aria-disabled='true']) .menuHint,
+.menuItem:focus-visible .menuHint {
+  color: inherit;
+}
+
+.menuIcon {
+  display: inline-grid;
+  place-items: center;
+}
+
+.menuSeparator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}
+
+.menuHeading {
+  padding: 6px 10px 4px;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.roleDot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.check {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--text-faint);
+  border-radius: 4px;
+  color: var(--accent-ink);
+}
+
+.checkOn {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* A moderator's checkbox ("Silenciar voz no servidor") is red when ticked. */
+.menuDanger .checkOn {
+  border-color: var(--danger-strong);
+  background: var(--danger-strong);
+}
+
+/* On the highlighted item the box turns white, its tick in the item's color, so it stays visible. */
+.menuItem:hover:not([aria-disabled='true']) .check,
+.menuItem:focus-visible .check {
+  border-color: var(--accent-ink);
+}
+
+.menuItem:hover:not([aria-disabled='true']) .checkOn,
+.menuItem:focus-visible .checkOn {
+  background: var(--accent-ink);
+  color: var(--accent);
+}
+
+.menuDanger:hover:not([aria-disabled='true']) .checkOn,
+.menuDanger:focus-visible .checkOn {
+  color: var(--danger-strong);
+}
+
+.radio {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--text-faint);
+  border-radius: 50%;
+}
+
+.radioOn {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 4px, transparent 4.5px);
+}
+
+/* On the highlighted item (the accent color) the mark turns white, so it stays visible. */
+.menuItem:hover .radio,
+.menuItem:focus-visible .radio {
+  border-color: var(--accent-ink);
+}
+
+.menuItem:hover .radioOn,
+.menuItem:focus-visible .radioOn {
+  background: radial-gradient(circle, var(--accent-ink) 0 4px, transparent 4.5px);
+}
+
+/* ---- select: the field looks like the settings' text inputs, the list like a popover ---- */
+
+.select {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.select:focus,
+.selectOpen {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.select:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.selectValue {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selectChevron {
+  flex-shrink: 0;
+  color: var(--text-soft);
+  transition: transform 120ms ease;
+}
+
+.selectOpen .selectChevron {
+  transform: rotate(180deg);
+}
+
+.selectList {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-hover) transparent;
+  position: fixed;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-panel);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.selectOption {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 38px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.selectOptionActive {
+  background: var(--bg-hover);
+}
+
+.selectOptionSelected {
+  background: var(--bg-selected);
+}
+
+.selectOptionText {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.selectOptionLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selectOptionHint {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.selectCheck {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .selectChevron {
+    transition: none;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .dialog {
+    animation: none;
+  }
+}

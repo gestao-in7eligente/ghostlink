@@ -1,0 +1,177 @@
+/* Direct messages: what the server chat (chat.module.css) does not already style. */
+
+/* ---- header ---- */
+
+/* The presence dot is ringed in the surface behind it (primitives' Avatar reads --dot-ring). */
+.header {
+  --dot-ring: var(--bg-chat);
+}
+
+.headerStatus {
+  color: var(--text-faint);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* ---- list ---- */
+
+.list {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding-bottom: 16px;
+}
+
+/* The beginning of the conversation, as on Discord: big avatar, name, a line. */
+.start {
+  padding: 16px 20px 8px;
+}
+
+.startName {
+  margin: 8px 0 4px;
+  color: var(--text-strong);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.startText {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 15px;
+}
+
+.startHint {
+  margin: 4px 0 0;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+/* ✓ sent, ✓✓ delivered, after my own messages. */
+.mark {
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: -2px;
+  color: var(--text-faint);
+}
+
+.markDelivered {
+  color: var(--success);
+}
+
+/* ---- composer extras ---- */
+
+.offline {
+  margin: 0 0 8px;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+
+/* ---- the Home sidebar ---- */
+
+.rows {
+  margin: 0;
+  padding: 0 8px;
+  list-style: none;
+}
+
+.row {
+  /* The avatar's presence dot is ringed in the surface behind it (primitives' --dot-ring). */
+  --dot-ring: var(--bg-sidebar);
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 2px;
+  border-radius: 8px;
+}
+
+.row:hover {
+  --dot-ring: var(--bg-input);
+  background: var(--bg-input);
+}
+
+.rowSelected,
+.rowSelected:hover {
+  --dot-ring: var(--bg-selected);
+  background: var(--bg-selected);
+}
+
+.rowButton {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  height: 42px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-soft);
+  font-size: 16px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover .rowButton,
+.rowSelected .rowButton {
+  color: var(--text-strong);
+}
+
+.rowUnread .rowButton {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+.rowName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  flex: none;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--danger-strong);
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.close {
+  display: none;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 6px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.row:hover .close,
+.row:focus-within .close {
+  display: grid;
+}
+
+.close:hover {
+  color: var(--text-strong);
+}
+
+/* ---- files ---- */
+
+/* A message with files on its way, above the box. */
+.sending {
+  margin-bottom: 8px;
+}

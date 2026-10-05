@@ -1,0 +1,76 @@
+# This repo tracks only what the app needs to build and run: source, configs,
+# migrations, assets, workflows and the lockfile. Everything generated, downloaded,
+# local or secret is ignored below. (Do NOT ignore apps/desktop/build/ — those are
+# the installer's source resources: icons, entitlements, installer.nsh.)
+
+# dependencies
+node_modules/
+.npm/
+
+# build output
+dist/
+out/
+coverage/
+*.lcov
+*.tsbuildinfo
+release/
+# built installer / package artifacts
+*.exe
+*.blockmap
+*.tgz
+*.dmg
+*.AppImage
+latest*.yml
+
+# build caches
+.vite/
+.turbo/
+.cache/
+.parcel-cache/
+.eslintcache
+
+# LiveKit binaries are downloaded at build time (M5)
+apps/desktop/resources/livekit/
+
+# local data and secrets
+*.pem
+.data/
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+*.local
+
+# local agent worktrees
+.claude/
+
+# logs and OS noise
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# temp
+*.tmp
+*.temp
+tmp/
+
+# Python (integrations/hermes-agent)
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/

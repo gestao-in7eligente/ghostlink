@@ -1,0 +1,221 @@
+import { useEffect, useState } from 'react';
+import type { AppErrorCode } from '../shared/appErrors.js';
+import type { IdentityStatus, RendererWelcome } from '../shared/ipcTypes.js';
+import { ErrorLine, Screen } from './components/Screen.js';
+import ui from './components/ui.module.css';
+import { ChannelLinkNotice } from './features/channelMenu/ChannelLinkNotice.js';
+import { forgetDeletedChannel } from './features/channelMenu/useSavedServer.js';
+import { HostIndicator } from './features/host/HostIndicator.js';
+import { HostScreens } from './features/host/HostScreens.js';
+import { useHostStatusSync } from './features/host/useHostStatusSync.js';
+import { joinStartFromLink, useDeepLinkStore } from './features/deeplink/deepLinkStore.js';
+import { useDeepLinkSync } from './features/deeplink/useDeepLinkSync.js';
+import { IdentityScreens } from './features/identity/IdentityScreens.js';
+import { DEFAULT_LOCALE, errorCodeOf, errorMessage, useT } from './i18n/index.js';
+import { useAddServerUi } from './integration/addServerUi.js';
+import { CreateServerScreens } from './integration/CreateServerScreens.js';
+import { openCreateServer } from './integration/createServerUi.js';
+import { HomeLayout } from './integration/HomeLayout.js';
+import { useLayoutWiring } from './integration/useLayoutWiring.js';
+import { Connected } from './screens/Connected.js';
+import { IdentityLocked } from './screens/IdentityLocked.js';
+import { Join } from './screens/Join.js';
+import { Onboarding } from './screens/Onboarding.js';
+import { DM_CONV_ID } from './features/dm/dmModel.js';
+import { useFriendsTabRequest } from './features/friends/friendsTab.js';
+import { useConnectionStore } from './stores/connection.js';
+import { useDmStore } from './stores/dm.js';
+import { useSavedListStore } from './stores/savedList.js';
+import { useSettingsStore } from './stores/settings.js';
+
+/** Leaves the server on screen for the Home screen (a voice call there goes on). */
+function goHome(): void {
+  const { welcome, state } = useConnectionStore.getState();
+  if (welcome === null || state === 'idle') return;
+  void window.ghostlink.servers
+    .disconnect()
+    .catch(() => undefined)
+    .then(() => useConnectionStore.getState().dispatch({ type: 'left' }));
+}
+
+export function App() {
+  const t = useT();
+  const settings = useSettingsStore((s) => s.settings);
+  const connection = useConnectionStore();
+  const [identity, setIdentity] = useState<IdentityStatus | null>(null);
+  const [onboarding, setOnboarding] = useState(false);
+  const [view, setView] = useState<'servers' | 'join'>('servers');
+  const [loadError, setLoadError] = useState<AppErrorCode | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    const api = window.ghostlink;
+    const { dispatch } = useConnectionStore.getState();
+    const offState = api.onConnectionState((event) => {
+      dispatch({ type: 'state', event });
+      // Leave/delete spec §3: main took an erased server out of the saved list.
+      if (event.error === 'SERVER_DELETED') useSavedListStore.getState().changed();
+    });
+    const offEvents = api.onServerEvent((event, serverId) => {
+      dispatch({ type: 'serverEvent', event, serverId });
+      // The server icon (spec 2026-10-01-icone-do-servidor): main stored it in the saved list before this event.
+      if (event.t === 'server.updated' || event.t === 'welcome') useSavedListStore.getState().changed();
+      // A deleted channel's own choices here (pin, notifications, mute) go with it (channel menu).
+      if (event.t === 'channel.deleted') forgetDeletedChannel(serverId, event.d);
+    });
+    let alive = true;
+    Promise.all([api.identity.status(), api.settings.get()]).then(
+      ([status, loaded]) => {
+        if (!alive) return;
+        useSettingsStore.getState().setSettings(loaded);
+        setIdentity(status);
+        setOnboarding(status !== 'ready' || loaded.nickname === '');
+        // The smoke test (main/smoke.ts) waits for this: the page rendered and IPC answered.
+        document.documentElement.dataset.ready = '1';
+      },
+      (e: unknown) => alive && setLoadError(errorCodeOf(e)),
+    );
+    return () => {
+      alive = false;
+      offState();
+      offEvents();
+    };
+  }, [attempt]);
+
+  // A direct-message notification was clicked: its conversation opens on the Home screen. A friend
+  // request's: the Friends page on "Pendentes". From a server the app goes Home; a voice call there
+  // goes on (chamada-continua §1).
+  useEffect(() => {
+    const offChannel = window.ghostlink.onOpenChannel(({ channelId }) => {
+      if (!DM_CONV_ID.test(channelId)) return;
+      useDmStore.getState().select(channelId);
+      goHome();
+    });
+    const offRequests = window.ghostlink.onOpenFriendRequests(() => {
+      useFriendsTabRequest.getState().request('pending');
+      useDmStore.getState().select(null);
+      goHome();
+    });
+    return () => {
+      offChannel();
+      offRequests();
+    };
+  }, []);
+  useHostStatusSync(attempt);
+  useDeepLinkSync(attempt);
+  useLayoutWiring();
+  const deepLink = useDeepLinkStore((s) => s.pending);
+  const joinOpen = useAddServerUi((s) => s.join);
+
+  useEffect(() => {
+    document.documentElement.lang = settings?.locale ?? DEFAULT_LOCALE;
+  }, [settings?.locale]);
+
+  const joined = (welcome: RendererWelcome) => {
+    useConnectionStore.getState().dispatch({ type: 'joined', welcome });
+    setView('servers');
+  };
+  /** The Home screen: nothing on screen any more (a call goes on in the background). */
+  const leave = () => {
+    useConnectionStore.getState().dispatch({ type: 'left' });
+    setView('servers');
+  };
+
+  if (loadError) {
+    return (
+      <Screen title={t('app.loading')}>
+        <ErrorLine text={errorMessage(t, loadError)} />
+        <div className={ui.actions}>
+          <button type="button" className={`${ui.button} ${ui.primary}`} onClick={() => { setLoadError(null); setAttempt((n) => n + 1); }}>
+            {t('common.tryAgain')}
+          </button>
+        </div>
+      </Screen>
+    );
+  }
+  if (identity === null || settings === null) {
+    return (
+      <main className={ui.screen}>
+        <p className={ui.hint}>{t('app.loading')}</p>
+      </main>
+    );
+  }
+  // Import, export and delete (spec §3.4): dialogs over any screen, including onboarding and the locked screen.
+  const identityChanged = (status: IdentityStatus) => {
+    setIdentity(status);
+    if (status === 'none') {
+      useConnectionStore.getState().dispatch({ type: 'left' });
+      setOnboarding(true);
+    } else {
+      setOnboarding(status !== 'ready' || settings.nickname === '');
+    }
+  };
+  const identityDialogs = <IdentityScreens status={identity} onChanged={identityChanged} />;
+  if (identity === 'locked') {
+    return <><IdentityLocked onStatus={identityChanged} />{identityDialogs}</>;
+  }
+  if (onboarding) {
+    const done = (next: 'join' | 'host') => {
+      setIdentity('ready');
+      setOnboarding(false);
+      setView(next === 'join' ? 'join' : 'servers');
+      // "Hospedar um servidor" asks where first: this computer or Railway.
+      if (next === 'host') openCreateServer();
+    };
+    return <><Onboarding identity={identity} onDone={done} />{identityDialogs}</>;
+  }
+  // Host mode (spec §9): its dialogs open over any screen. While hosting, the floating
+  // pill shows outside the main layout; inside it the rail shows HostRailButton instead.
+  const connected = connection.welcome !== null && connection.state !== 'idle';
+  // Home and the main layout show hosting in the rail; only the Join screens need the floating pill.
+  const inLayout = connected || (!deepLink && !joinOpen && view !== 'join');
+  const host = (
+    <>
+      {!inLayout && <HostIndicator />}
+      <HostScreens onJoined={joined} />
+      <CreateServerScreens onJoined={joined} />
+      {identityDialogs}
+      <ChannelLinkNotice />
+    </>
+  );
+  if (deepLink) {
+    // A ghostlink:// link: its invite waits for "Aceitar convite" (spec §12); new links are ignored meanwhile.
+    const clearLink = () => useDeepLinkStore.getState().clear();
+    return (
+      <>
+        <Join
+          key={`${deepLink.serverKeyId}-${deepLink.inviteCode ?? ''}`}
+          start={joinStartFromLink(settings.nickname, deepLink)}
+          onCancel={clearLink}
+          onJoined={(welcome) => {
+            clearLink();
+            joined(welcome);
+          }}
+        />
+        {host}
+      </>
+    );
+  }
+  if (joinOpen) {
+    // "+" → "Entrar em um servidor": the Join screen, even over a connected server.
+    const closeJoin = () => useAddServerUi.getState().closeJoin();
+    return (
+      <>
+        <Join
+          onCancel={closeJoin}
+          onJoined={(welcome) => {
+            closeJoin();
+            joined(welcome);
+          }}
+        />
+        {host}
+      </>
+    );
+  }
+  if (connection.welcome && connection.state !== 'idle') {
+    return <><Connected welcome={connection.welcome} onLeave={leave} />{host}</>;
+  }
+  if (view === 'join') return <><Join onCancel={() => setView('servers')} onJoined={joined} />{host}</>;
+  // The app opens on the Discord-like layout (owner requirement): Home = rail + "Seus servidores" + welcome.
+  return <><HomeLayout nickname={settings.nickname} onJoined={joined} />{host}</>;
+}
