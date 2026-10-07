@@ -34,6 +34,11 @@ export const CLIENT_ERROR_CODES = [
   'FRIEND_SELF', // the person pasted their own code
   'FRIEND_LIMIT', // too many friends or pending requests
   'P2P_UNAVAILABLE', // the P2P engine is not running (no identity, turned off, or it failed to start)
+  // The registration key (v0.9); messages in i18n/license.<locale>.ts.
+  'KEY_INVALID', // not a registration key, or the service does not recognize it
+  'KEY_EXPIRED', // the key's validity has ended
+  'KEY_REVOKED', // the key was revoked
+  'KEY_UNREACHABLE', // the service could not be reached to check the key
 ] as const;
 
 export type ClientErrorCode = (typeof CLIENT_ERROR_CODES)[number];

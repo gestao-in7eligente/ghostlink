@@ -22,7 +22,7 @@ describe('seed and welcome (spec §5.3, §6)', () => {
     // Admin comes red and not hoisted, like the owner's UI reference (admins listed under "Online" with a red badge).
     expect(roles.find((r) => r.name === 'Admin')).toMatchObject({ permissions: PERMISSIONS.ADMINISTRATOR, isDefault: false, color: 0xed4245, hoist: false });
     expect(members).toEqual([expect.objectContaining({ userId: owner.userId, nickname: 'Dono', online: true, roleIds: [] })]);
-    expect(readStates).toEqual([{ channelId: channelId(owner, 'geral'), lastReadMessageId: 0, mentionCount: 0 }]);
+    expect(readStates).toEqual([{ channelId: channelId(owner, 'geral'), lastReadMessageId: 0, mentionCount: 0, unreadCount: 0 }]);
     expect(serverSettings).toEqual({ ownerId: owner.userId, maxMembers: 100, hasPassword: false, uploadLimitMb: 25, storageQuotaMb: 10_240, icon: null });
     expect(owner.welcome.features).toContain('text');
   });
@@ -223,7 +223,7 @@ describe('unread and mentions (spec §7)', () => {
     f.clock.now += 1_000;
     const m2 = await say(f.owner, geral, 'dois');
     const { readState } = await bia.ok<{ readState: ReadState }>('channel.read', { channelId: geral, messageId: m1.id });
-    expect(readState).toEqual({ channelId: geral, lastReadMessageId: m1.id, mentionCount: 0 });
+    expect(readState).toEqual({ channelId: geral, lastReadMessageId: m1.id, mentionCount: 0, unreadCount: 1 });
     // Backwards is ignored; beyond the newest message is clamped.
     expect((await bia.ok<{ readState: ReadState }>('channel.read', { channelId: geral, messageId: 0 })).readState.lastReadMessageId).toBe(m1.id);
     expect((await bia.ok<{ readState: ReadState }>('channel.read', { channelId: geral, messageId: 10 ** 12 })).readState.lastReadMessageId).toBe(m2.id);

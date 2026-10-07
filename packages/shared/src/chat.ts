@@ -118,6 +118,8 @@ export interface ReadState {
   channelId: string;
   lastReadMessageId: number;
   mentionCount: number;
+  /** Unread messages from others since lastReadMessageId (for the sidebar's count badge). */
+  unreadCount: number;
 }
 
 export interface Member {
@@ -379,6 +381,7 @@ export const readStateSchemaClient: z.ZodType<ReadState> = z.object({
   channelId: idClient,
   lastReadMessageId: z.number().int().min(0),
   mentionCount: z.number().int().min(0),
+  unreadCount: z.number().int().min(0).catch(0),
 });
 
 export const memberSchemaClient: z.ZodType<Member> = z.object({

@@ -407,6 +407,21 @@
   text-align: center;
 }
 
+/* Unread count (no mention): a neutral gray pill — red stays reserved for mentions. */
+.unreadBadge {
+  flex-shrink: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--bg-selected);
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
 .voiceSlot {
   padding: 0 8px 4px 36px;
 }

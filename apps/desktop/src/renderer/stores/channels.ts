@@ -4,7 +4,7 @@ import { mentionsUser, type ChannelsState, type ReadMark, type TextAction, type 
 
 export const initialChannels: ChannelsState = { byId: {}, reads: {}, activeId: null, stageId: null, botPageId: null, attentive: false };
 
-const NO_READS: ReadMark = { lastReadMessageId: 0, mentionCount: 0 };
+const NO_READS: ReadMark = { lastReadMessageId: 0, mentionCount: 0, unreadCount: 0 };
 
 /** Channels of one type in sidebar order. */
 export function sortedChannels(byId: Readonly<Record<string, Channel>>, type: ChannelType): Channel[] {
@@ -53,10 +53,13 @@ function countsAsMention(root: TextState, s: ChannelsState, m: Message): boolean
   return m.authorId !== me && m.id > readMark(s, m.channelId).lastReadMessageId && mentionsUser(m, me, myRoleIds(root));
 }
 
-function withMentionDelta(s: ChannelsState, channelId: string, delta: number): ChannelsState {
-  if (delta === 0) return s;
+function withCountsDelta(s: ChannelsState, channelId: string, unreadDelta: number, mentionDelta: number): ChannelsState {
+  if (unreadDelta === 0 && mentionDelta === 0) return s;
   const mark = readMark(s, channelId);
-  return { ...s, reads: { ...s.reads, [channelId]: { ...mark, mentionCount: Math.max(0, mark.mentionCount + delta) } } };
+  return {
+    ...s,
+    reads: { ...s.reads, [channelId]: { ...mark, unreadCount: Math.max(0, mark.unreadCount + unreadDelta), mentionCount: Math.max(0, mark.mentionCount + mentionDelta) } },
+  };
 }
 
 /**
@@ -70,7 +73,7 @@ export function channelsSlice(s: ChannelsState, a: TextAction, root: TextState):
       const byId = Object.fromEntries(snapshot.text.channels.map((c) => [c.id, c]));
       const reads: Record<string, ReadMark> = {};
       for (const r of snapshot.text.readStates) {
-        if (Object.hasOwn(byId, r.channelId)) reads[r.channelId] = { lastReadMessageId: r.lastReadMessageId, mentionCount: r.mentionCount };
+        if (Object.hasOwn(byId, r.channelId)) reads[r.channelId] = { lastReadMessageId: r.lastReadMessageId, mentionCount: r.mentionCount, unreadCount: r.unreadCount };
       }
       // A reconnect to the same server keeps the open channel when it is still visible.
       const sameServer = root.server.serverId === snapshot.serverId;
@@ -104,8 +107,8 @@ export function channelsSlice(s: ChannelsState, a: TextAction, root: TextState):
       const r = a.readState;
       if (!has(s.byId, r.channelId)) return s;
       const mark = readMark(s, r.channelId);
-      const next: ReadMark = { lastReadMessageId: Math.max(mark.lastReadMessageId, r.lastReadMessageId), mentionCount: r.mentionCount };
-      if (next.lastReadMessageId === mark.lastReadMessageId && next.mentionCount === mark.mentionCount) return s;
+      const next: ReadMark = { lastReadMessageId: Math.max(mark.lastReadMessageId, r.lastReadMessageId), mentionCount: r.mentionCount, unreadCount: r.unreadCount };
+      if (next.lastReadMessageId === mark.lastReadMessageId && next.mentionCount === mark.mentionCount && next.unreadCount === mark.unreadCount) return s;
       return { ...s, reads: { ...s.reads, [r.channelId]: next } };
     }
     case 'message.upsert':
@@ -121,8 +124,8 @@ export function channelsSlice(s: ChannelsState, a: TextAction, root: TextState):
     case 'channel.created': {
       const { channel } = e;
       const mark = e.readState
-        ? { lastReadMessageId: e.readState.lastReadMessageId, mentionCount: e.readState.mentionCount }
-        : { lastReadMessageId: channel.lastMessageId, mentionCount: 0 };
+        ? { lastReadMessageId: e.readState.lastReadMessageId, mentionCount: e.readState.mentionCount, unreadCount: e.readState.unreadCount }
+        : { lastReadMessageId: channel.lastMessageId, mentionCount: 0, unreadCount: 0 };
       const byId = { ...s.byId, [channel.id]: channel };
       const activeId = s.activeId ?? (channel.type === 'text' ? channel.id : null);
       return { ...s, byId, reads: { ...s.reads, [channel.id]: mark }, activeId };
@@ -156,11 +159,13 @@ export function channelsSlice(s: ChannelsState, a: TextAction, root: TextState):
       const before = knownMessage(root, e.message.channelId, e.message.id);
       if (!before) return s;
       const delta = Number(countsAsMention(root, s, e.message)) - Number(countsAsMention(root, s, before));
-      return withMentionDelta(s, e.message.channelId, delta);
+      return withCountsDelta(s, e.message.channelId, 0, delta);
     }
     case 'msg.deleted': {
       const before = knownMessage(root, e.channelId, e.id);
-      return before && countsAsMention(root, s, before) ? withMentionDelta(s, e.channelId, -1) : s;
+      if (!before) return s;
+      const wasUnread = before.authorId !== root.server.selfId && before.id > readMark(s, e.channelId).lastReadMessageId;
+      return withCountsDelta(s, e.channelId, wasUnread ? -1 : 0, countsAsMention(root, s, before) ? -1 : 0);
     }
     default:
       return s;
@@ -180,9 +185,10 @@ function onMessage(s: ChannelsState, m: Message, root: TextState): ChannelsState
   if (mine) {
     // Your own message is read by definition (the server stores that too).
     if (m.id > mark.lastReadMessageId) next = { ...mark, lastReadMessageId: m.id };
-  } else if (!watching && isNew && countsAsMention(root, s, m)) {
-    // A mention on screen never counts; the chat sends channel.read for it, which moves the mark.
-    next = { ...mark, mentionCount: mark.mentionCount + 1 };
+  } else if (!watching && isNew) {
+    // Off screen: a new message from someone else is unread, and a mention also bumps the mention count.
+    // (On screen the chat sends channel.read, which moves the mark instead.)
+    next = { ...mark, unreadCount: mark.unreadCount + 1, mentionCount: mark.mentionCount + (countsAsMention(root, s, m) ? 1 : 0) };
   }
   if (byId === s.byId && next === mark) return s;
   return { ...s, byId, reads: next === mark ? s.reads : { ...s.reads, [m.channelId]: next } };

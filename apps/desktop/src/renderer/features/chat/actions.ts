@@ -208,7 +208,7 @@ const readAnswer = z.object({ readState: readStateSchemaClient });
 
 /** Marks a channel read up to `messageId`: at once locally, then with the server's answer. */
 export async function markRead(channelId: string, messageId: number): Promise<void> {
-  dispatchText({ type: 'read', readState: { channelId, lastReadMessageId: messageId, mentionCount: 0 } });
+  dispatchText({ type: 'read', readState: { channelId, lastReadMessageId: messageId, mentionCount: 0, unreadCount: 0 } });
   try {
     const { readState } = await request('channel.read', { channelId, messageId }, readAnswer);
     dispatchText({ type: 'read', readState: readState satisfies ReadState });

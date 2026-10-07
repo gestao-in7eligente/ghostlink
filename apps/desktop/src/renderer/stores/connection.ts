@@ -28,6 +28,15 @@ export type ConnectionAction =
 
 export const initialConnection: ConnectionView = { state: 'idle', serverId: null, error: null, deletingAt: null, welcome: null };
 
+/**
+ * The last snapshot of each server seen this session, in memory only (never the disk): the rail paints
+ * it at once when you switch back, while the real connection refreshes behind it. Cleared when the app closes.
+ */
+const welcomeCache = new Map<string, RendererWelcome>();
+export function cachedWelcome(serverId: string): RendererWelcome | null {
+  return welcomeCache.get(serverId) ?? null;
+}
+
 function isWelcomeFor(d: unknown, serverId: string): d is RendererWelcome {
   return typeof d === 'object' && d !== null && (d as { serverId?: unknown }).serverId === serverId;
 }
@@ -69,5 +78,9 @@ interface ConnectionStore extends ConnectionView {
 
 export const useConnectionStore = create<ConnectionStore>()((set) => ({
   ...initialConnection,
-  dispatch: (action) => set((s) => connectionReducer(s, action)),
+  dispatch: (action) => {
+    // Remember every server's latest snapshot (in memory) so a switch back paints instantly.
+    if (action.type === 'joined') welcomeCache.set(action.welcome.serverId, action.welcome);
+    set((s) => connectionReducer(s, action));
+  },
 }));

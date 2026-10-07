@@ -16,6 +16,7 @@ import { mainLog } from './log.js';
 import type { PushToTalk } from './ptt.js';
 import { PROFILE_IPC_ARG_SCHEMAS, createProfileIpcHandlers, type ProfileIpcDeps } from './profileIpc.js';
 import { RAILWAY_IPC_ARG_SCHEMAS, createRailwayIpcHandlers, type RailwayIpcDeps } from './railwayIpc.js';
+import { LICENSE_IPC_ARG_SCHEMAS, createLicenseIpcHandlers, type LicenseIpcDeps } from './licenseIpc.js';
 import type { ReleaseNotes } from './releaseNotes.js';
 import { SCREEN_IPC_ARG_SCHEMAS, createScreenIpcHandlers, type ScreenIpcDeps } from './screenIpc.js';
 import { SERVER_UPDATES_IPC_ARG_SCHEMAS, createServerUpdatesIpcHandlers, type ServerUpdatesIpcDeps } from './serverUpdatesIpc.js';
@@ -51,6 +52,8 @@ export interface IpcDeps {
   ptt: Pick<PushToTalk, 'configure'>;
   /** "Criar um servidor" on Railway (v0.2). */
   railway?: RailwayIpcDeps;
+  /** The app's license key (v0.9). */
+  license?: LicenseIpcDeps;
   /** Friends over P2P (v0.3). */
   friends?: FriendsIpcDeps;
   /** Direct messages between friends (v0.3 phase 2). */
@@ -196,6 +199,7 @@ export const IPC_ARG_SCHEMAS: { readonly [C in IpcChannel]: z.ZodType<IpcArgs<C>
   ...HOST_IPC_ARG_SCHEMAS,
   ...BACKUP_IPC_ARG_SCHEMAS,
   ...RAILWAY_IPC_ARG_SCHEMAS,
+  ...LICENSE_IPC_ARG_SCHEMAS,
   ...FRIENDS_IPC_ARG_SCHEMAS,
   ...DM_IPC_ARG_SCHEMAS,
   ...PROFILE_IPC_ARG_SCHEMAS,
@@ -246,6 +250,7 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     ...createHostIpcHandlers(deps.host),
     ...createBackupIpcHandlers(deps.backup),
     ...createRailwayIpcHandlers(deps.railway),
+    ...createLicenseIpcHandlers(deps.license),
     ...createFriendsIpcHandlers(deps.friends),
     ...createDmIpcHandlers(deps.dm),
     ...createProfileIpcHandlers(deps.profile),

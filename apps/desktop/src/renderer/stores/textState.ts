@@ -25,6 +25,8 @@ export interface ServerState {
 export interface ReadMark {
   lastReadMessageId: number;
   mentionCount: number;
+  /** Unread messages from others since lastReadMessageId (the sidebar's count badge). */
+  unreadCount: number;
 }
 
 export interface ChannelsState {

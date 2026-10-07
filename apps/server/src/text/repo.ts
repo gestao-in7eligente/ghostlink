@@ -392,10 +392,27 @@ export class TextRepo {
         )
         .map((r) => [r.channel_id, Number(r.n)]),
     );
+    // Unread = messages from others past the read mark, in the channels this person can see.
+    const placeholders = channelIds.map(() => '?').join(',');
+    const unread = new Map(
+      this.db
+        .all<{ channel_id: string; n: number }>(
+          `SELECT m.channel_id, COUNT(*) AS n FROM messages m
+           LEFT JOIN read_states rs ON rs.user_id = ? AND rs.channel_id = m.channel_id
+           WHERE m.channel_id IN (${placeholders}) AND m.deleted_at IS NULL AND m.user_id <> ?
+             AND m.id > COALESCE(rs.last_read_message_id, 0)
+           GROUP BY m.channel_id`,
+          userId,
+          ...channelIds,
+          userId,
+        )
+        .map((r) => [r.channel_id, Number(r.n)]),
+    );
     return channelIds.map((channelId) => ({
       channelId,
       lastReadMessageId: reads.get(channelId) ?? 0,
       mentionCount: counts.get(channelId) ?? 0,
+      unreadCount: unread.get(channelId) ?? 0,
     }));
   }
 }

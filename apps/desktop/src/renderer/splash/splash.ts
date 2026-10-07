@@ -8,6 +8,7 @@ const status = document.getElementById('status') as HTMLParagraphElement;
 const progress = document.getElementById('progress') as HTMLProgressElement;
 const skip = document.getElementById('skip') as HTMLButtonElement;
 
+
 function render(view: SplashView): void {
   document.documentElement.lang = view.lang;
   status.textContent = view.status;

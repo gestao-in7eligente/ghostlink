@@ -13,7 +13,8 @@ extraMetadata:
 directories:
   output: dist
   buildResources: build
-icon: build/icon.svg
+# A pre-rendered PNG (gen-icons.mjs from icon.svg): electron-builder converts PNG→ICO reliably. The SVG stays the source.
+icon: build/icon.png
 files:
   - out/**
   - package.json

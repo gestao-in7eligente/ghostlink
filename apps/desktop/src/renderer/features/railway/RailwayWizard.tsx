@@ -5,7 +5,7 @@ import { RAILWAY_DEFAULT_REGION, RAILWAY_REGIONS, RAILWAY_STEPS, type RailwayReg
 import { errorCodeOf, errorMessage, useT } from '../../i18n/index.js';
 import { ConfirmDialog, Modal, Select, primitives as p } from '../../layout/primitives.js';
 import { useSettingsStore } from '../../stores/settings.js';
-import { normalizeServerName, normalizeToken, planWarning, type StepState } from './railwayModel.js';
+import { normalizeServerName, normalizeToken, planWarning, wizardView, type StepState } from './railwayModel.js';
 import { useRailwayStore, type RailwayRun } from './railwayStore.js';
 import r from './railway.module.css';
 
@@ -32,12 +32,22 @@ export function RailwayWizard({ onClose, onJoined }: { onClose: () => void; onJo
   }, [t]);
 
   const body = () => {
-    if (run) return <Progress run={run} onJoined={onJoined} />;
-    if (loadError) return <p className={p.error}>{loadError}</p>;
-    if (!account) return <p className={p.text}>{t('railway.loading')}</p>;
-    if (pending) return <Pending onJoined={onJoined} />;
-    if (!account.connected) return <Connect />;
-    return <Configure onJoined={onJoined} />;
+    switch (wizardView({ run: run !== null, loadError: loadError !== null, account, pending: pending !== null })) {
+      case 'progress':
+        return <Progress run={run!} onJoined={onJoined} />;
+      // A failed load (most often a saved token Railway no longer accepts) is not a dead end: show the
+      // connect form with the error as a notice, so the user can enter another token.
+      case 'recover':
+        return <Connect notice={loadError!} onConnected={() => setLoadError(null)} />;
+      case 'loading':
+        return <p className={p.text}>{t('railway.loading')}</p>;
+      case 'pending':
+        return <Pending onJoined={onJoined} />;
+      case 'connect':
+        return <Connect />;
+      default:
+        return <Configure onJoined={onJoined} />;
+    }
   };
 
   return (
@@ -47,12 +57,13 @@ export function RailwayWizard({ onClose, onJoined }: { onClose: () => void; onJo
   );
 }
 
-function Connect() {
+function Connect({ notice, onConnected }: { notice?: string; onConnected?: () => void }) {
   const t = useT();
   const inputId = useId();
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tested, setTested] = useState<string | null>(null);
   const valid = normalizeToken(token);
 
   const submit = async (e: FormEvent) => {
@@ -62,15 +73,37 @@ function Connect() {
     setError(null);
     try {
       await useRailwayStore.getState().connect(valid);
+      onConnected?.();
     } catch (err) {
       setError(errorMessage(t, errorCodeOf(err)));
       setBusy(false);
     }
   };
 
+  /** Validates the token with Railway without saving it, so the user can confirm it before connecting. */
+  const test = async () => {
+    if (!valid) return;
+    setBusy(true);
+    setError(null);
+    setTested(null);
+    try {
+      const account = await useRailwayStore.getState().test(valid);
+      setTested(t('railway.connect.testOk', { count: account.workspaces.length }));
+    } catch (err) {
+      setError(errorMessage(t, errorCodeOf(err)));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <form className={r.stack} onSubmit={(e) => void submit(e)}>
-      <p className={p.text}>{t('railway.connect.lead')}</p>
+      {notice && (
+        <p className={p.error} role="alert">
+          {notice}
+        </p>
+      )}
+      <p className={p.text}>{notice ? t('railway.connect.recover') : t('railway.connect.lead')}</p>
       <ol className={r.howto}>
         <li>{t('railway.connect.step1')}</li>
         <li>{t('railway.connect.step2')}</li>
@@ -90,7 +123,11 @@ function Connect() {
           spellCheck={false}
           placeholder={t('railway.connect.placeholder')}
           value={token}
-          onChange={(e) => setToken(e.target.value)}
+          onChange={(e) => {
+            setToken(e.target.value);
+            setError(null);
+            setTested(null);
+          }}
           disabled={busy}
         />
       </label>
@@ -100,7 +137,15 @@ function Connect() {
           {error}
         </p>
       )}
+      {tested && !error && (
+        <p className={p.text} role="status">
+          {tested}
+        </p>
+      )}
       <div className={r.actions}>
+        <button type="button" className={`${p.button} ${r.testButton}`} disabled={!valid || busy} onClick={() => void test()}>
+          {busy ? t('railway.connect.testing') : t('railway.connect.test')}
+        </button>
         <button type="submit" className={`${p.button} ${p.buttonPrimary}`} disabled={!valid || busy}>
           {busy ? t('railway.connect.checking') : t('railway.connect.submit')}
         </button>
@@ -133,7 +178,7 @@ function Configure({ onJoined }: { onJoined: (welcome: RendererWelcome) => void 
         <span className={r.accountDot} aria-hidden="true" />
         <span className={r.accountText}>{t('railway.config.account')}</span>
         <button type="button" className={r.linkButton} onClick={() => void useRailwayStore.getState().disconnect()}>
-          {t('railway.config.disconnect')}
+          {t('railway.config.changeToken')}
         </button>
       </div>
       {account.workspaces.length > 1 && (

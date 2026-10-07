@@ -32,6 +32,22 @@ export function planWarning(plan: RailwayPlan): 'railway.config.planFree' | 'rai
   return null;
 }
 
+export type WizardView = 'progress' | 'recover' | 'loading' | 'pending' | 'connect' | 'configure';
+
+/**
+ * Which screen the wizard shows. A failed load — most often a saved token Railway no longer accepts —
+ * must not dead-end on the error message: it falls back to the connect form (with the error shown as a
+ * notice) so the user can enter another token. A running creation wins over everything.
+ */
+export function wizardView(s: { run: boolean; loadError: boolean; account: { connected: boolean } | null; pending: boolean }): WizardView {
+  if (s.run) return 'progress';
+  if (s.loadError) return 'recover';
+  if (s.account === null) return 'loading';
+  if (s.pending) return 'pending';
+  if (!s.account.connected) return 'connect';
+  return 'configure';
+}
+
 /** A pasted token: surrounding spaces go; one with spaces inside or too long is not a token. */
 export function normalizeToken(input: string): string | null {
   const token = input.trim();

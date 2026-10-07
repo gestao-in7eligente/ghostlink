@@ -93,9 +93,9 @@ describe('reset (welcome)', () => {
 describe('channel events', () => {
   it('channel.created adds the channel with its read state', () => {
     const c = channel(SECRET, 'segredo', 5, { private: true, lastMessageId: 4 });
-    const s = run(start(), ev({ t: 'channel.created', channel: c, readState: { channelId: SECRET, lastReadMessageId: 0, mentionCount: 2 } }));
+    const s = run(start(), ev({ t: 'channel.created', channel: c, readState: { channelId: SECRET, lastReadMessageId: 0, mentionCount: 2, unreadCount: 3 } }));
     expect(s.channels.byId[SECRET]).toEqual(c);
-    expect(readMark(s.channels, SECRET)).toEqual({ lastReadMessageId: 0, mentionCount: 2 });
+    expect(readMark(s.channels, SECRET)).toEqual({ lastReadMessageId: 0, mentionCount: 2, unreadCount: 3 });
     expect(s.channels.activeId).toBe(GERAL);
   });
 
@@ -280,19 +280,19 @@ describe('unread and mentions', () => {
 
   it('my own messages are read at once and never count as mentions', () => {
     const s = run(start(), ev({ t: 'msg.new', message: message(20, { authorId: ME, mentions: { users: [ME], roles: [], everyone: true } }) }));
-    expect(readMark(s.channels, GERAL)).toEqual({ lastReadMessageId: 20, mentionCount: 0 });
+    expect(readMark(s.channels, GERAL)).toEqual({ lastReadMessageId: 20, mentionCount: 0, unreadCount: 0 });
     expect(isUnread(s.channels.byId[GERAL]!, readMark(s.channels, GERAL))).toBe(false);
   });
 
   it('a mention on screen (open, focused, at the bottom) does not count; channel.read moves the mark', () => {
     let s = run(start(), { type: 'attention', attentive: true }, ev({ t: 'msg.new', message: message(20, { mentions: { users: [ME], roles: [], everyone: false } }) }));
     // The mark stays for the UI to send channel.read (so the server learns it), which then moves it.
-    expect(readMark(s.channels, GERAL)).toEqual({ lastReadMessageId: 10, mentionCount: 0 });
+    expect(readMark(s.channels, GERAL)).toEqual({ lastReadMessageId: 10, mentionCount: 0, unreadCount: 0 });
     expect(s.channels.byId[GERAL]!.lastMessageId).toBe(20);
-    s = run(s, { type: 'read', readState: { channelId: GERAL, lastReadMessageId: 20, mentionCount: 0 } });
+    s = run(s, { type: 'read', readState: { channelId: GERAL, lastReadMessageId: 20, mentionCount: 0, unreadCount: 0 } });
     expect(isUnread(s.channels.byId[GERAL]!, readMark(s.channels, GERAL))).toBe(false);
     s = run(s, { type: 'attention', attentive: false }, ev({ t: 'msg.new', message: message(21, { mentions: { users: [ME], roles: [], everyone: false } }) }));
-    expect(readMark(s.channels, GERAL)).toEqual({ lastReadMessageId: 20, mentionCount: 1 });
+    expect(readMark(s.channels, GERAL)).toEqual({ lastReadMessageId: 20, mentionCount: 1, unreadCount: 1 });
   });
 
   it('the voice stage over the chat means the chat is not on screen', () => {
@@ -311,11 +311,11 @@ describe('unread and mentions', () => {
   });
 
   it('a read mark only moves forward; the server answer sets the mention count', () => {
-    let s = run(start(), { type: 'read', readState: { channelId: RANDOM, lastReadMessageId: 7, mentionCount: 0 } });
-    expect(readMark(s.channels, RANDOM)).toEqual({ lastReadMessageId: 7, mentionCount: 0 });
-    s = run(s, { type: 'read', readState: { channelId: RANDOM, lastReadMessageId: 2, mentionCount: 0 } });
+    let s = run(start(), { type: 'read', readState: { channelId: RANDOM, lastReadMessageId: 7, mentionCount: 0, unreadCount: 0 } });
+    expect(readMark(s.channels, RANDOM)).toEqual({ lastReadMessageId: 7, mentionCount: 0, unreadCount: 0 });
+    s = run(s, { type: 'read', readState: { channelId: RANDOM, lastReadMessageId: 2, mentionCount: 0, unreadCount: 0 } });
     expect(readMark(s.channels, RANDOM).lastReadMessageId).toBe(7);
-    const same = run(s, { type: 'read', readState: { channelId: SECRET, lastReadMessageId: 9, mentionCount: 0 } });
+    const same = run(s, { type: 'read', readState: { channelId: SECRET, lastReadMessageId: 9, mentionCount: 0, unreadCount: 0 } });
     expect(same).toBe(s);
   });
 });

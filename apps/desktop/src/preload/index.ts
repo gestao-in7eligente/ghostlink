@@ -115,12 +115,18 @@ export const api: GhostlinkApi = {
   railway: {
     status: () => invoke(IPC.railwayStatus),
     connect: (token) => invoke(IPC.railwayConnect, token),
+    test: (token) => invoke(IPC.railwayTest, token),
     disconnect: () => invoke(IPC.railwayDisconnect),
     create: (req) => invoke(IPC.railwayCreate, req),
     pending: () => invoke(IPC.railwayPending),
     resume: () => invoke(IPC.railwayResume),
     discard: () => invoke(IPC.railwayDiscard),
     onProgress: (cb) => subscribe<RailwayProgress>(IPC_EVENTS.railway, cb),
+  },
+  license: {
+    info: () => invoke(IPC.licenseInfo),
+    activate: (key) => invoke(IPC.licenseActivate, key),
+    clear: () => invoke(IPC.licenseClear),
   },
   friends: {
     state: () => invoke(IPC.friendsState),

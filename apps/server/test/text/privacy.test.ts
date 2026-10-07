@@ -127,7 +127,7 @@ describe('private channels never leak (spec §5.3, §6)', () => {
     const gained = await s.member.event<{ channel: Channel; readState: unknown }>('channel.created');
     expect(gained).toEqual({
       channel: expect.objectContaining({ id: s.staff, lastMessageId: m.id }),
-      readState: { channelId: s.staff, lastReadMessageId: 0, mentionCount: 0 },
+      readState: { channelId: s.staff, lastReadMessageId: 0, mentionCount: 0, unreadCount: 1 },
     });
     expect((await s.member.ok<{ messages: Message[] }>('msg.history', { channelId: s.staff })).messages).toHaveLength(1);
 

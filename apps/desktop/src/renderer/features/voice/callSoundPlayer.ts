@@ -1,7 +1,10 @@
-// Plays the call sounds (callSounds.ts) with Web Audio: each note a sine with a soft octave above,
-// a quick attack and an exponential fade, on an AudioContext of its own that follows the output
-// device chosen in Configurações → Voz (AudioContext.setSinkId).
+// Plays the call sounds (callSounds.ts) on an AudioContext of its own that follows the output device
+// chosen in Configurações → Voz (AudioContext.setSinkId): the owner's own recordings for joining and
+// leaving a call, and a short Web-Audio chime (a sine with a soft octave above, a quick attack and an
+// exponential fade) for the rest — and for join/leave too if a recording cannot be decoded.
 import { CALL_SOUND_TONES, type CallSound } from './callSounds.js';
+import enterCallUrl from './sounds/enter-call.mp3?url';
+import leaveCallUrl from './sounds/leave-call.mp3?url';
 
 /** The sounds' level: comfortably under a voice. */
 const VOLUME = 0.16;
@@ -9,6 +12,31 @@ const VOLUME = 0.16;
 const OCTAVE = 0.12;
 const ATTACK = 0.012;
 const SILENT = 0.0001;
+
+// The owner's own recordings: joining a call, and ending one — whether the person left (`leave`) or the
+// call dropped on its own (`disconnected`), both play the same "disconnect" recording. Everything else is the chime.
+const SAMPLE_URLS: Partial<Record<CallSound, string>> = { join: enterCallUrl, leave: leaveCallUrl, disconnected: leaveCallUrl };
+/** A recording plays at this level (its own loudness, kept under a voice); the chimes stay at VOLUME. */
+const SAMPLE_VOLUME = 0.7;
+/** Decoded once per sound then reused; null means it could not be decoded (fall back to the chime). */
+const sampleCache = new Map<CallSound, AudioBuffer | null>();
+
+/** The decoded recording for `sound`, or null when there is none or it could not be decoded. */
+async function sampleFor(ctx: AudioContext, sound: CallSound): Promise<AudioBuffer | null> {
+  const url = SAMPLE_URLS[sound];
+  if (url === undefined) return null;
+  const cached = sampleCache.get(sound);
+  if (cached !== undefined) return cached;
+  try {
+    const bytes = await (await fetch(url)).arrayBuffer();
+    const buffer = await ctx.decodeAudioData(bytes);
+    sampleCache.set(sound, buffer);
+    return buffer;
+  } catch {
+    sampleCache.set(sound, null);
+    return null;
+  }
+}
 
 /** Chromium has AudioContext.setSinkId; TypeScript's DOM types do not yet. */
 type SinkableContext = AudioContext & { setSinkId?: (sinkId: string) => Promise<void> };
@@ -36,6 +64,21 @@ export async function playCallSound(sound: CallSound, deviceId: string | null): 
     const ctx = context;
     await routeTo(ctx, deviceId);
     if (ctx.state === 'suspended') await ctx.resume();
+    // The owner's own recording, when there is one; it plays through the same context (so the chosen output applies).
+    const sample = await sampleFor(ctx, sound);
+    if (sample) {
+      const src = ctx.createBufferSource();
+      src.buffer = sample;
+      const gain = ctx.createGain();
+      gain.gain.value = SAMPLE_VOLUME;
+      src.connect(gain).connect(ctx.destination);
+      src.onended = () => {
+        src.disconnect();
+        gain.disconnect();
+      };
+      src.start();
+      return;
+    }
     const start = ctx.currentTime + 0.02;
     const out = ctx.createGain();
     out.gain.value = VOLUME;

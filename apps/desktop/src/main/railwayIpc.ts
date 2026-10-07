@@ -6,11 +6,12 @@ import { IPC, type IpcArgs, type IpcReturn, type RailwayIpcChannel } from '../sh
 import { RAILWAY_REGIONS } from '../shared/railwayTypes.js';
 import type { RailwayProvisioner } from './railway/provisioner.js';
 
-export type RailwayIpcDeps = Pick<RailwayProvisioner, 'status' | 'connect' | 'disconnect' | 'create' | 'pending' | 'resume' | 'discard'>;
+export type RailwayIpcDeps = Pick<RailwayProvisioner, 'status' | 'connect' | 'test' | 'disconnect' | 'create' | 'pending' | 'resume' | 'discard'>;
 
 export const RAILWAY_IPC_ARG_SCHEMAS: { readonly [C in RailwayIpcChannel]: z.ZodType<IpcArgs<C>> } = {
   [IPC.railwayStatus]: z.tuple([]),
   [IPC.railwayConnect]: z.tuple([z.string().min(1).max(512)]),
+  [IPC.railwayTest]: z.tuple([z.string().min(1).max(512)]),
   [IPC.railwayDisconnect]: z.tuple([]),
   [IPC.railwayCreate]: z.tuple([
     z.strictObject({
@@ -36,6 +37,7 @@ export function createRailwayIpcHandlers(deps: RailwayIpcDeps | undefined): Rail
   return {
     [IPC.railwayStatus]: () => railway().status(),
     [IPC.railwayConnect]: (token) => railway().connect(token),
+    [IPC.railwayTest]: (token) => railway().test(token),
     [IPC.railwayDisconnect]: () => railway().disconnect(),
     [IPC.railwayCreate]: (req) => railway().create(req),
     [IPC.railwayPending]: () => railway().pending(),

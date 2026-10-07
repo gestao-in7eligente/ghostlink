@@ -29,6 +29,7 @@ export function TextChannelRow({ channel, context, icon, label }: { channel: Cha
   const muted = isChannelMuted(channelPrefsOf(context.saved, channel.id), context.now);
   const unread = !active && !muted && isUnread(channel, mark);
   const mentions = mark.mentionCount;
+  const unreadCount = mark.unreadCount;
   const shown = label ?? channel.name;
   const className = [l.channel, muted ? l.channelMuted : '', active ? l.channelActive : '', unread ? l.channelUnread : ''].filter(Boolean).join(' ');
   const triggers = userMenuTriggers((anchor) => context.openMenu(channel.id, anchor));
@@ -36,7 +37,7 @@ export function TextChannelRow({ channel, context, icon, label }: { channel: Cha
     shown,
     channel.private ? t('layout.privateChannel') : null,
     muted ? t('channelMenu.mutedLabel') : null,
-    unread ? t('layout.unread') : null,
+    unread ? (unreadCount > 0 ? t('layout.unreadCount', { count: unreadCount }) : t('layout.unread')) : null,
     mentions > 0 ? t('layout.mentions', { count: mentions }) : null,
   ]
     .filter(Boolean)
@@ -55,10 +56,17 @@ export function TextChannelRow({ channel, context, icon, label }: { channel: Cha
         {icon ?? <Hash className={l.channelIcon} size={18} aria-hidden="true" />}
         <span className={l.channelName}>{shown}</span>
         {channel.private && <Lock className={l.lock} size={13} aria-hidden="true" />}
-        {mentions > 0 && (
+        {mentions > 0 ? (
           <span className={l.mentionBadge} aria-hidden="true">
             {mentions > 99 ? '99+' : mentions}
           </span>
+        ) : (
+          unread &&
+          unreadCount > 0 && (
+            <span className={l.unreadBadge} aria-hidden="true">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )
         )}
       </button>
     </li>

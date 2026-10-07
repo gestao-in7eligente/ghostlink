@@ -109,8 +109,8 @@ export interface RailwayProvisionerDeps {
   store?: RailwayStore;
   /** Electron's net.fetch in production. */
   fetch: FetchLike;
-  /** railwayImage() for this app version. */
-  image: string;
+  /** The image a new server boots on; a function is resolved at create time (so it can read current license state). */
+  image: string | (() => string);
   /** ClientController.probe: the TOFU probe of spec §3.3. */
   probe(address: string): Promise<ProbeResult>;
   /** ClientController.join. */
@@ -188,6 +188,17 @@ export class RailwayProvisioner {
       this.#tokens.save(token);
       this.#workspaces = Promise.resolve(workspaces);
       this.#log.info(`[railway] connected (${workspaces.length} workspace(s))`);
+      return { connected: true, workspaces: workspaces.map((w) => ({ ...w })) };
+    });
+  }
+
+  /** Validates the token with Railway and returns its account, storing nothing (the wizard's "Testar"). */
+  async test(raw: string): Promise<RailwayAccount> {
+    this.#assertIdle();
+    const token = normalizeToken(raw);
+    if (token === null) throw new AppError('RAILWAY_TOKEN_INVALID', 'not a token');
+    return this.#exclusive(async () => {
+      const workspaces = await fetchWorkspaces(this.#client(token), this.#log);
       return { connected: true, workspaces: workspaces.map((w) => ({ ...w })) };
     });
   }
@@ -381,8 +392,10 @@ export class RailwayProvisioner {
     const { api, run } = ctx;
     const { environmentId, serviceId } = ids(run);
     // The image goes in last (research §9 step 8): whether setting a source deploys by itself is
-    // not verified (§12 #4), and by now the volume, proxy and variables all exist.
-    await api.request(OPS.serviceInstanceUpdate, { serviceId, environmentId, input: { source: { image: this.#deps.image } } }, DATA.serviceInstanceUpdate);
+    // not verified (§12 #4), and by now the volume, proxy and variables all exist. Resolved now, so a
+    // dynamic image reads the current license state (a key holder's server vs a normal one) at create time.
+    const image = typeof this.#deps.image === 'function' ? this.#deps.image() : this.#deps.image;
+    await api.request(OPS.serviceInstanceUpdate, { serviceId, environmentId, input: { source: { image } } }, DATA.serviceInstanceUpdate);
     const latest = await this.#latestDeployment(ctx);
     if (latest && (IN_PROGRESS.has(latest.status) || (latest.status === 'SUCCESS' && latest.id === run.deploymentId))) {
       run.deploymentId = latest.id; // on its way already (or it finished while the app was closed)

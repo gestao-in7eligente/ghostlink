@@ -192,6 +192,22 @@ describe('railway token (connect, status, disconnect)', () => {
 });
 
 describe('railway.create (research §9)', () => {
+  it('resolves a function image at create time, so the key-holding gate picks the server image', async () => {
+    let holdsKey = false;
+    const PUBLIC = 'ghcr.io/x/server:public';
+    const PRIVATE = 'ghcr.io/x/server:private';
+    const p = provisioner({ image: () => (holdsKey ? PRIVATE : PUBLIC) });
+    await p.connect(TOKEN);
+    holdsKey = true; // flips after construction, before create: proves the image is resolved at create time
+    railway.calls.length = 0;
+    expect(await p.create(REQUEST)).toBe(WELCOME);
+    const images = railway.variables('ServiceInstanceUpdate').flatMap((v) => {
+      const input = (v as { input?: { source?: { image?: string } } }).input;
+      return input?.source?.image ? [input.source.image] : [];
+    });
+    expect(images).toEqual([PRIVATE]);
+  });
+
   it('provisions in order, with exactly these variables, and joins as the owner', async () => {
     const p = await connected();
     expect(await p.create(REQUEST)).toBe(WELCOME);

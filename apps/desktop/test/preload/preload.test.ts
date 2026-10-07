@@ -20,7 +20,9 @@ describe('preload bridge', () => {
     expect(Object.keys(electron.exposed)).toEqual(['ghostlink']);
     expect(electron.exposed.ghostlink).toBe(api);
     expect(Object.keys(api).sort()).toEqual([
-      'app', 'attachments', 'deepLink', 'dm', 'draw', 'friends', 'host', 'identity', 'join', 'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onOpenFriendRequests', 'onPtt', 'onServerEvent', 'profile', 'ptt', 'railway', 'screen', 'server', 'serverUpdates', 'servers', 'settings', 'updates',
+      'app', 'attachments', 'deepLink', 'dm', 'draw', 'friends', 'host', 'identity', 'join',
+      'license',
+      'notifications', 'onConnectionState', 'onDeepLink', 'onHostStatus', 'onOpenChannel', 'onOpenFriendRequests', 'onPtt', 'onServerEvent', 'profile', 'ptt', 'railway', 'screen', 'server', 'serverUpdates', 'servers', 'settings', 'updates',
     ]);
     expect(Object.keys(api.host).sort()).toEqual(['copyText', 'firewall', 'fixFirewall', 'invite', 'join', 'logs', 'recoverOwnership', 'restart', 'start', 'status', 'stop']);
     expect(Object.keys(api.app).sort()).toEqual(['copyText', 'info', 'openExternal', 'showWindow']);
@@ -36,7 +38,7 @@ describe('preload bridge', () => {
     expect(Object.keys(api.updates).sort()).toEqual(['checkNow', 'notes', 'onState', 'restart', 'setAutoCheck', 'state']);
     expect(Object.keys(api.screen).sort()).toEqual(['choose', 'sources']);
     expect(Object.keys(api.draw).sort()).toEqual(['overlayClose', 'overlayOpen', 'overlayStroke']);
-    expect(Object.keys(api.railway).sort()).toEqual(['connect', 'create', 'discard', 'disconnect', 'onProgress', 'pending', 'resume', 'status']);
+    expect(Object.keys(api.railway).sort()).toEqual(['connect', 'create', 'discard', 'disconnect', 'onProgress', 'pending', 'resume', 'status', 'test']);
     expect(Object.keys(api.profile).sort()).toEqual([
       'avatar',
       'clearAvatar',
@@ -133,6 +135,7 @@ describe('preload bridge', () => {
     ['draw.overlayClose', () => api.draw.overlayClose(), IPC.drawOverlayClose, []],
     ['railway.status', () => api.railway.status(), IPC.railwayStatus, []],
     ['railway.connect', () => api.railway.connect('tok'), IPC.railwayConnect, ['tok']],
+    ['railway.test', () => api.railway.test('tok'), IPC.railwayTest, ['tok']],
     ['railway.disconnect', () => api.railway.disconnect(), IPC.railwayDisconnect, []],
     ['railway.create', () => api.railway.create({ workspaceId: 'w', name: 'Casa', region: 'us-east4-eqdc4a', nickname: 'Ana' }), IPC.railwayCreate, [{ workspaceId: 'w', name: 'Casa', region: 'us-east4-eqdc4a', nickname: 'Ana' }]],
     ['railway.pending', () => api.railway.pending(), IPC.railwayPending, []],

@@ -6,6 +6,7 @@ import {
   normalizeServerName,
   normalizeToken,
   planWarning,
+  wizardView,
 } from '../../src/renderer/features/railway/railwayModel.js';
 
 describe('Railway progress list', () => {
@@ -50,5 +51,27 @@ describe('Railway form checks', () => {
     expect(normalizeServerName('  Casa  ')).toBe('Casa');
     expect(normalizeServerName('   ')).toBeNull();
     expect(normalizeServerName('a'.repeat(65))).toBeNull();
+  });
+});
+
+describe('which screen the wizard shows', () => {
+  const connected = { connected: true };
+  const base = { run: false, loadError: false, account: connected as { connected: boolean } | null, pending: false };
+
+  it('shows a running creation above everything else', () => {
+    expect(wizardView({ run: true, loadError: true, account: null, pending: true })).toBe('progress');
+  });
+
+  it('falls back to the connect form when the load fails, instead of dead-ending on the error', () => {
+    // The saved token no longer works: the user must still reach the form to enter another one.
+    expect(wizardView({ ...base, loadError: true, account: null })).toBe('recover');
+    expect(wizardView({ ...base, loadError: true })).toBe('recover');
+  });
+
+  it('shows loading, then pending/connect/configure by the account state', () => {
+    expect(wizardView({ ...base, account: null })).toBe('loading');
+    expect(wizardView({ ...base, pending: true })).toBe('pending');
+    expect(wizardView({ ...base, account: { connected: false } })).toBe('connect');
+    expect(wizardView(base)).toBe('configure');
   });
 });

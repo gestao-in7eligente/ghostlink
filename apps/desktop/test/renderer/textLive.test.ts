@@ -147,9 +147,9 @@ describe('live text between two apps (server + main + renderer reducers)', () =>
     expect(note).toEqual({ server: ana.state.server.name, channel: 'geral', author: 'Bia', body: '@Ana olha isso', serverIcon: null, channelId: geral });
 
     // Ana reads the channel: the mention count goes back to 0.
-    const read = await ana.request<{ readState: { channelId: string; lastReadMessageId: number; mentionCount: number } }>('channel.read', { channelId: geral, messageId: last.id });
+    const read = await ana.request<{ readState: { channelId: string; lastReadMessageId: number; mentionCount: number; unreadCount: number } }>('channel.read', { channelId: geral, messageId: last.id });
     ana.state = textReducer(ana.state, { type: 'read', readState: read.readState });
-    expect(readMark(ana.state.channels, geral)).toEqual({ lastReadMessageId: last.id, mentionCount: 0 });
+    expect(readMark(ana.state.channels, geral)).toEqual({ lastReadMessageId: last.id, mentionCount: 0, unreadCount: 0 });
 
     // Ana replies, reacts and edits; Bia sees all of it.
     await ana.request('msg.send', { channelId: geral, content: 'Vi!', clientMsgId: 'a1', replyTo: last.id });

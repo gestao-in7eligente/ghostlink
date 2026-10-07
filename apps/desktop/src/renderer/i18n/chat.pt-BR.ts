@@ -20,6 +20,7 @@ export const chat = {
   'layout.createChannel': 'Criar canal',
   'layout.privateChannel': 'Canal privado',
   'layout.unread': 'Mensagens não lidas',
+  'layout.unreadCount': '{count} não lidas',
   'layout.mentions': '{count} menções',
   'layout.noChannel': 'Nenhum canal de texto disponível.',
   'layout.joinVoice': 'Entrar em {channel}',

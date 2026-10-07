@@ -29,11 +29,16 @@ body {
 .splash {
   box-sizing: border-box;
   height: 100%;
-  padding: 0 var(--space-5) 40px;
+  padding: 0 var(--space-5) 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+
+/* The gold brand-name variant (splash.ts adds `gold` and paints the mark). */
+.splash.gold .name {
+  color: #d4af37;
 }
 
 .logo {

@@ -32,6 +32,8 @@ import { railwayImage } from './railway/image.js';
 import { RailwayProvisioner } from './railway/provisioner.js';
 import { ServerUpdates } from './railway/serverUpdates.js';
 import { RailwayStore } from './railway/store.js';
+import { LicenseKeyStore } from './license/store.js';
+import { LicenseManager } from './license/manager.js';
 import { ReleaseNotes } from './releaseNotes.js';
 import { RailwayTokenStore } from './railway/token.js';
 import { SavedServersStore } from './savedServers.js';
@@ -46,6 +48,7 @@ import { UpdateSplash } from './updateSplash.js';
 import { Updater, createUpdaterBackend, type StartupOutcome } from './updater.js';
 import { CrossGrade, createCrossGradeRunner, createInstallerFetcher } from './updater/crossGrade.js';
 import { ServerChannelStore } from './updater/serverChannel.js';
+import { LicenseChannelStore } from './updater/licenseChannel.js';
 import { createReleaseFileFetcher, verifyCrossGradeInstaller } from './updaterSignature.js';
 import { loadWin32WindowApi } from './win32Window.js';
 import { appUserModelId, applicationMenuTemplate, mainWindowOptions } from './window.js';
@@ -166,13 +169,21 @@ async function start(): Promise<BrowserWindow | null> {
   // open-source app performs the one-time switch to a same-version build a server offers. The normal GitHub path
   // above is left untouched; a malicious server can neither inject nor block updates.
   const serverChannels = ServerChannelStore.load(userData, { saved: (serverKeyId) => servers.findByServerKeyId(serverKeyId) !== undefined });
+  // The channel this app's own registration key forms (the owner), alongside the ones saved servers advertise
+  // (members). Both point at the same company feed; the cross-grade takes whichever was seen last.
+  const licenseChannel = LicenseChannelStore.load(userData);
   const crossGrade = new CrossGrade({
     // The open-source build performs the switch; another edition updates through its own path and stands aside.
     enabled: true,
     currentVersion: app.getVersion(),
     autoCheck: () => updater.state().autoCheck,
     updateInFlight: () => ['checking', 'downloading', 'downloaded'].includes(updater.state().status),
-    channel: () => serverChannels.latest(),
+    channel: () => {
+      const fromKey = licenseChannel.latest();
+      const fromServer = serverChannels.latest();
+      if (fromKey && fromServer) return fromKey.seenAt >= fromServer.seenAt ? fromKey : fromServer;
+      return fromKey ?? fromServer;
+    },
     tempDir: app.getPath('temp'),
     fetchReleaseFile: createReleaseFileFetcher((url, init) => net.fetch(url, init)),
     fetchInstaller: createInstallerFetcher((url, init) => net.fetch(url, init)),
@@ -285,15 +296,33 @@ async function start(): Promise<BrowserWindow | null> {
     warn: (message) => mainLog.warn(message),
   });
   app.on('before-quit', () => void ptt.dispose());
+  // The app's license key (v0.9): validated with the license service, stored encrypted here; never to the renderer.
+  // A valid key hands back the company download code; arm the same one-time cross-grade a server channel drives.
+  // Built before the Railway wiring below, which reads its key state to decide a server's image.
+  const licenseManager = new LicenseManager({
+    store: new LicenseKeyStore(userData, safeStorage),
+    fetch: (url, init) => net.fetch(url, init),
+    onDownloadCode: (code) => {
+      licenseChannel.set(code);
+      void crossGrade.maybeCrossGrade();
+    },
+  });
+  // Re-validate a stored key on launch so a still-public build with a valid key re-arms the switch (no key: a no-op).
+  void licenseManager.info();
   // "Criar um servidor" on Railway (v0.2): the token stays encrypted here; only main talks to Railway.
   const railwayStore = RailwayStore.load(userData); // one copy in memory, shared by both below
   const serverImage = railwayImage({ version: app.getVersion(), packaged: app.isPackaged, env: process.env });
+  // Resolved when a server is created: the public build always uses the public image. The paid build uses its
+  // private image only for a valid-key holder; a member (cross-graded, no key) still gets the public image.
+  const createImage: () => string = () => {
+    return serverImage;
+  };
   const railway = new RailwayProvisioner({
     userDataDir: userData,
     safeStorage,
     store: railwayStore,
     fetch: (url, init) => net.fetch(url, init),
-    image: serverImage,
+    image: createImage,
     probe: (address) => controller.probe(address),
     join: (req) => controller.join(req),
     emit: (progress) => send(IPC_EVENTS.railway, progress),
@@ -394,6 +423,7 @@ async function start(): Promise<BrowserWindow | null> {
     backup: identityBackup(window, watchedIdentity, controller),
     deepLinks: deepLinks ?? undefined,
     railway,
+    license: licenseManager,
     friends,
     dm: friends.dm,
     profile: avatars.profile,

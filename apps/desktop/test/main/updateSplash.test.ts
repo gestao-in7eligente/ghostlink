@@ -113,10 +113,10 @@ describe('splash texts (pt-BR and en, from the saved locale)', () => {
 
 describe('splashWindowOptions', () => {
   it('is a small frameless window of the app color, hidden until painted', () => {
-    expect(SPLASH_SIZE).toEqual({ width: 300, height: 340 });
+    expect(SPLASH_SIZE).toEqual({ width: 300, height: 300 });
     expect(splashWindowOptions({ preload: PRELOAD, packaged: true })).toMatchObject({
       width: 300,
-      height: 340,
+      height: 300,
       frame: false,
       resizable: false,
       show: false,

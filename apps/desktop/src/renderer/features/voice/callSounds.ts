@@ -13,26 +13,29 @@ export interface CallTone {
   to?: number;
 }
 
+const C4 = 261.63;
+const F4 = 349.23;
+const G4 = 392.0;
 const C5 = 523.25;
-const D5 = 587.33;
 const E5 = 659.25;
 const F5 = 698.46;
 const G5 = 783.99;
-const A5 = 880;
 const BB4 = 466.16;
 const EB5 = 622.25;
 const G3 = 196;
 
 /** Each sound's notes: rising when something starts, falling when it ends; at most 400 ms each. */
 export const CALL_SOUND_TONES: Readonly<Record<CallSound, readonly CallTone[]>> = {
-  // Two notes up / down.
+  // Join: two notes up, C4→G4 — the fallback chime; callSoundPlayer plays the owner's own recording when it decodes.
   join: [
-    { freq: D5, at: 0, dur: 0.16 },
-    { freq: A5, at: 0.11, dur: 0.26 },
+    { freq: C4, at: 0, dur: 0.14 },
+    { freq: G4, at: 0.1, dur: 0.22 },
   ],
+  // Leave: F4→C5→F4, up a fifth and back — the fallback chime; the owner's own recording plays when it decodes.
   leave: [
-    { freq: A5, at: 0, dur: 0.16 },
-    { freq: D5, at: 0.11, dur: 0.26 },
+    { freq: F4, at: 0, dur: 0.13 },
+    { freq: C5, at: 0.13, dur: 0.12 },
+    { freq: F4, at: 0.24, dur: 0.15 },
   ],
   // A short tap, down to mute and up to unmute; deafening is the same a whole tone lower.
   mute: [
@@ -62,7 +65,7 @@ export const CALL_SOUND_TONES: Readonly<Record<CallSound, readonly CallTone[]>> 
     { freq: E5, at: 0.09, dur: 0.12 },
     { freq: C5, at: 0.18, dur: 0.2 },
   ],
-  // One longer fall.
+  // One longer fall — the fallback chime; the owner's own recording plays when it decodes (as for leave).
   disconnected: [{ freq: E5, to: G3, at: 0, dur: 0.4 }],
 };
 

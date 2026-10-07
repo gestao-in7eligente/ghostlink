@@ -7,13 +7,26 @@ import ui from './ui.module.css';
 export const GHOST_PATH =
   'M252 742V456A260 260 0 0 1 772 456V742A86.67 86.67 0 0 1 598.67 742A86.67 86.67 0 0 1 425.33 742A86.67 86.67 0 0 1 252 742Z';
 
-/** The app icon as an inline brand mark: white ghost on an accent-colored rounded tile. */
-export function GhostMark({ size = 20 }: { size?: number }) {
+/**
+ * The app icon as an inline brand mark: white ghost on an accent-colored rounded tile.
+ * `gold` draws the black-and-gold mark instead (a gold ghost and rim on a black tile).
+ */
+export function GhostMark({ size = 20, gold = false }: { size?: number; gold?: boolean }) {
   return (
     // The viewBox is cropped to the tile, so the small mark has no transparent margin.
     <svg className={ui.logo} width={size} height={size} viewBox="64 64 896 896" aria-hidden="true" focusable="false">
-      <rect className={ui.logoTile} x="64" y="64" width="896" height="896" rx="200" />
-      <path d={GHOST_PATH} fill="#ffffff" />
+      {gold ? (
+        <>
+          <rect x="64" y="64" width="896" height="896" rx="200" fill="#0b0b0c" />
+          <rect x="84" y="84" width="856" height="856" rx="182" fill="none" stroke="#d4af37" strokeWidth="16" />
+          <path d={GHOST_PATH} fill="#d4af37" />
+        </>
+      ) : (
+        <>
+          <rect className={ui.logoTile} x="64" y="64" width="896" height="896" rx="200" />
+          <path d={GHOST_PATH} fill="#ffffff" />
+        </>
+      )}
       <ellipse cx="406" cy="480" rx="46" ry="64" fill="#1e1f22" />
       <ellipse cx="618" cy="480" rx="46" ry="64" fill="#1e1f22" />
     </svg>

@@ -12,7 +12,7 @@ import t from './TitleBar.module.css';
 export function TitleBar() {
   return (
     <header className={t.bar}>
-      <GhostMark size={16} />
+      <GhostMark size={16} gold={titleBarGold()} />
       <span className={t.title}>{titleBarName()}</span>
     </header>
   );
@@ -21,6 +21,11 @@ export function TitleBar() {
 /** The app's name in the middle of the bar. */
 function titleBarName(): string {
   return APP_NAME;
+}
+
+/** The black-and-gold mark where the build selects it; the accent mark otherwise. */
+function titleBarGold(): boolean {
+  return false;
 }
 
 /** Everything below the title bar: the screens size themselves to this box, not to the window. */

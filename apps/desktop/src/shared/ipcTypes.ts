@@ -274,6 +274,7 @@ export interface GhostlinkApi {
   ptt: { configure(config: PttConfig): Promise<PttStatus> };
   onPtt(cb: (e: PttEvent) => void): () => void;
   railway: RailwayApi;
+  license: LicenseApi;
   friends: FriendsApi;
   dm: DmApi;
   profile: ProfileApi;
@@ -294,6 +295,7 @@ export interface RailwayApi {
   status(): Promise<RailwayAccount>;
   /** Validates the token with Railway, then stores it encrypted (safeStorage). */
   connect(token: string): Promise<RailwayAccount>;
+  test(token: string): Promise<RailwayAccount>;
   /** Forgets the token (servers already created keep running). */
   disconnect(): Promise<RailwayAccount>;
   create(req: RailwayCreateRequest): Promise<RendererWelcome>;
@@ -302,6 +304,28 @@ export interface RailwayApi {
   /** Deletes the unfinished provisioning's Railway project. */
   discard(): Promise<void>;
   onProgress(cb: (p: RailwayProgress) => void): () => void;
+}
+
+/** The app's license state from its registration key (v0.9): the key is kept in main, never here. */
+export interface AppLicenseInfo {
+  /** A valid key is stored: the client's paid edition is unlocked. */
+  active: boolean;
+  company: string | null;
+  /** The server quota the panel set for the key. */
+  maxServers: number;
+  /** Servers already activated on the key. */
+  used: number;
+  /** The key's validity end (ms epoch), or null. */
+  validUntil: number | null;
+}
+
+export interface LicenseApi {
+  /** The current license state (checks the stored key once, lazily). */
+  info(): Promise<AppLicenseInfo>;
+  /** Enters a key: validates it with the license service, keeps it only when valid. */
+  activate(key: string): Promise<AppLicenseInfo>;
+  /** Removes the key: the client goes back to normal. */
+  clear(): Promise<AppLicenseInfo>;
 }
 
 /** Invoke channels: `ghostlink:<namespace>.<method>`. */
@@ -355,11 +379,15 @@ export const IPC = {
   pttConfigure: 'ghostlink:ptt.configure',
   railwayStatus: 'ghostlink:railway.status',
   railwayConnect: 'ghostlink:railway.connect',
+  railwayTest: 'ghostlink:railway.test',
   railwayDisconnect: 'ghostlink:railway.disconnect',
   railwayCreate: 'ghostlink:railway.create',
   railwayPending: 'ghostlink:railway.pending',
   railwayResume: 'ghostlink:railway.resume',
   railwayDiscard: 'ghostlink:railway.discard',
+  licenseInfo: 'ghostlink:license.info',
+  licenseActivate: 'ghostlink:license.activate',
+  licenseClear: 'ghostlink:license.clear',
   friendsState: 'ghostlink:friends.state',
   friendsAdd: 'ghostlink:friends.add',
   friendsAccept: 'ghostlink:friends.accept',
@@ -466,11 +494,15 @@ export interface IpcContract {
   [IPC.pttConfigure]: { args: [config: PttConfig]; result: PttStatus };
   [IPC.railwayStatus]: { args: []; result: RailwayAccount };
   [IPC.railwayConnect]: { args: [token: string]; result: RailwayAccount };
+  [IPC.railwayTest]: { args: [token: string]; result: RailwayAccount };
   [IPC.railwayDisconnect]: { args: []; result: RailwayAccount };
   [IPC.railwayCreate]: { args: [req: RailwayCreateRequest]; result: RendererWelcome };
   [IPC.railwayPending]: { args: []; result: RailwayPending | null };
   [IPC.railwayResume]: { args: []; result: RendererWelcome };
   [IPC.railwayDiscard]: { args: []; result: void };
+  [IPC.licenseInfo]: { args: []; result: AppLicenseInfo };
+  [IPC.licenseActivate]: { args: [key: string]; result: AppLicenseInfo };
+  [IPC.licenseClear]: { args: []; result: AppLicenseInfo };
   [IPC.friendsState]: { args: []; result: FriendsSnapshot };
   [IPC.friendsAdd]: { args: [code: string]; result: FriendsSnapshot };
   [IPC.friendsAccept]: { args: [key: string]; result: FriendsSnapshot };
@@ -526,6 +558,9 @@ export type FriendsIpcChannel = Extract<IpcChannel, `ghostlink:friends.${string}
 
 /** The Railway provisioning channels (v0.2), handled by main/railwayIpc.ts. */
 export type RailwayIpcChannel = Extract<IpcChannel, `ghostlink:railway.${string}`>;
+
+/** The license-key channels (v0.9), handled by main/licenseIpc.ts. */
+export type LicenseIpcChannel = Extract<IpcChannel, `ghostlink:license.${string}`>;
 
 /** The Host mode channels (spec §9), handled by main/hostIpc.ts. */
 export type HostIpcChannel = Extract<IpcChannel, `ghostlink:host.${string}`>;

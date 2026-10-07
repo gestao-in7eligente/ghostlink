@@ -21,6 +21,8 @@ interface RailwayState {
   run: RailwayRun | null;
   load(): Promise<void>;
   connect(token: string): Promise<void>;
+  /** Validates a token with Railway and returns its account, without saving it (the "Testar" button). */
+  test(token: string): Promise<RailwayAccount>;
   disconnect(): Promise<void>;
   create(req: RailwayCreateRequest, onJoined: (welcome: RendererWelcome) => void): Promise<void>;
   /** Continues the pending creation (after a failure, or one left from an earlier session). */
@@ -55,6 +57,7 @@ export const useRailwayStore = create<RailwayState>()((set, get) => {
       set({ account, pending });
     },
     connect: async (token) => set({ account: await window.ghostlink.railway.connect(token) }),
+    test: (token) => window.ghostlink.railway.test(token),
     disconnect: async () => set({ account: await window.ghostlink.railway.disconnect() }),
     create: (req, onJoined) => drive(req.name, initialSteps(), () => window.ghostlink.railway.create(req), onJoined),
     resume: (onJoined) => {

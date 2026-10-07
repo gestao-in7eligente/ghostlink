@@ -77,6 +77,11 @@
   margin-top: var(--space-2);
 }
 
+/* "Testar" sits on the left of the row; the primary action stays on the right. */
+.testButton {
+  margin-right: auto;
+}
+
 .account {
   display: flex;
   align-items: center;

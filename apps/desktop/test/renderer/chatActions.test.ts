@@ -212,7 +212,7 @@ describe('read marks and typing', () => {
     handler = () => ({ readState: { channelId: GERAL, lastReadMessageId: 12, mentionCount: 0 } });
     await markRead(GERAL, 12);
     expect(calls).toEqual([['channel.read', { channelId: GERAL, messageId: 12 }]]);
-    expect(useTextStore.getState().channels.reads[GERAL]).toEqual({ lastReadMessageId: 12, mentionCount: 0 });
+    expect(useTextStore.getState().channels.reads[GERAL]).toEqual({ lastReadMessageId: 12, mentionCount: 0, unreadCount: 0 });
   });
 
   it('sends typing at most once every 3 seconds per channel', () => {

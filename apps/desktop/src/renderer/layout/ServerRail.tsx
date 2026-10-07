@@ -7,13 +7,16 @@ import { exitMenuItem, type ServerExitAction } from '../features/serverDelete/se
 import { ExitServerDialog } from '../features/serverDelete/ServerExitDialogs.js';
 import { callServerId, useVoiceStore } from '../features/voice/state.js';
 import { errorCodeOf, useT } from '../i18n/index.js';
-import { useConnectionStore } from '../stores/connection.js';
+import { cachedWelcome, useConnectionStore } from '../stores/connection.js';
 import { useSavedListStore } from '../stores/savedList.js';
 import { AddServerDialog } from './AddServerDialog.js';
 import l from './layout.module.css';
 import { Menu, MenuHeading, MenuItem, MenuRadio, MenuSeparator, ServerIcon } from './primitives.js';
 import { railEntries, type RailEntry } from './rail.js';
 import { useLayoutSlots } from './slots.js';
+
+/** Grows on every server switch, so a slow connect that lands after a newer switch is dropped. */
+let openSeq = 0;
 
 /**
  * The far-left column (owner's UI reference): home (back to the server list), the
@@ -81,10 +84,18 @@ export function ServerRail({
     const server = servers.find((s) => s.id === id);
     if (server && onOpenServer?.(server)) return;
     onOpenFailed?.(null);
+    const seq = ++openSeq;
+    // Instant switch: paint the server's last snapshot (in memory) while the real connection refreshes it.
+    const cached = cachedWelcome(id);
+    const previous = useConnectionStore.getState().welcome;
+    if (cached) useConnectionStore.getState().dispatch({ type: 'joined', welcome: cached });
     try {
       const welcome = await window.ghostlink.servers.connect(id);
+      if (seq !== openSeq) return; // a newer switch already took over
       useConnectionStore.getState().dispatch({ type: 'joined', welcome });
     } catch (e) {
+      // Drop the cached paint so stale content is never shown as live: back to where we were, or Home.
+      if (seq === openSeq && cached) useConnectionStore.getState().dispatch(previous ? { type: 'joined', welcome: previous } : { type: 'left' });
       // In a server, the connection store shows the failure (state "failed"); the Home screen has its own line.
       if (server) onOpenFailed?.({ code: errorCodeOf(e), server });
     }

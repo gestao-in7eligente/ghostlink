@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { AppInfo, Locale } from '../../shared/ipcTypes.js';
 import { updateProfile } from '../features/chat/actions.js';
+import { LicenseTab } from '../features/license/LicenseTab.js';
 import { ProfilePhoto } from '../features/profile/ProfilePhoto.js';
 import x from '../features/profile/profile.module.css';
 import { errorCodeOf, useT } from '../i18n/index.js';
@@ -29,6 +30,7 @@ export function UserSettings({
   const [active, setActive] = useState(() => (section && extra.some((x) => x.id === section) ? `x:${section}` : 'profile'));
   const tabs: SettingsTab[] = [
     { id: 'profile', label: t('userSettings.profile'), content: () => (offline ? <HomeProfileTab /> : <ProfileTab />) },
+    { id: 'license', label: t('license.tab'), content: () => <LicenseTab /> },
     { id: 'language', label: t('language.label'), content: () => <LanguageTab /> },
     { id: 'window', label: t('tray.settings.title'), content: () => <WindowTab /> },
     { id: 'notifications', label: t('notifications.title'), content: () => <NotificationsTab /> },

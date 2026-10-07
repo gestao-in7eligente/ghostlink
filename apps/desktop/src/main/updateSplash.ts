@@ -36,7 +36,7 @@ export function splashView(locale: Locale, step: StartupStep): SplashView {
   }
 }
 
-export const SPLASH_SIZE = { width: 300, height: 340 } as const;
+export const SPLASH_SIZE = { width: 300, height: 300 } as const;
 
 /** Frameless, fixed size, the window color; sandboxed like the main window, DevTools only in development. */
 export function splashWindowOptions(opts: { preload: string; packaged: boolean; icon?: NativeImage }): BrowserWindowConstructorOptions {

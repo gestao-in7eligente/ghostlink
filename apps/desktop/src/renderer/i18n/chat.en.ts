@@ -21,6 +21,7 @@ export const chat: Record<keyof typeof ptBR, string> = {
   'layout.createChannel': 'Create channel',
   'layout.privateChannel': 'Private channel',
   'layout.unread': 'Unread messages',
+  'layout.unreadCount': '{count} unread',
   'layout.mentions': '{count} mentions',
   'layout.noChannel': 'No text channel available.',
   'layout.joinVoice': 'Join {channel}',

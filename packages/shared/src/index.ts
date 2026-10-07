@@ -13,6 +13,7 @@ export * from './chat.js';
 export * from './roles.js';
 export * from './release.js';
 export * from './updateChannel.js';
+export * from './registration.js';
 export * from './voice.js';
 export * from './avatar.js';
 export * from './screenDraw.js';
