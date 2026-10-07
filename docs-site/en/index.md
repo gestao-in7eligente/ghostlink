@@ -20,6 +20,9 @@ hero:
     - theme: alt
       text: Source on GitHub
       link: https://github.com/gestao-in7eligente/ghostlink
+    - theme: alt
+      text: For businesses
+      link: https://claude.ai/artifact/5Xd5HH3yqyNFQoPfnH4NqH
 
 features:
   - icon:
@@ -54,3 +57,7 @@ features:
 - **Automatic updates** on Windows, checked against the release signature.
 
 **Not yet:** the macOS app. It comes in a future version.
+
+## For businesses
+
+GhostLink has an edition for businesses: an AI assistant inside the server, more cloud servers and tools for teams, all unlocked by a key — no migration. [See the version for businesses →](https://claude.ai/artifact/5Xd5HH3yqyNFQoPfnH4NqH)

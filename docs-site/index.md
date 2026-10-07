@@ -20,6 +20,9 @@ hero:
     - theme: alt
       text: Código no GitHub
       link: https://github.com/gestao-in7eligente/ghostlink
+    - theme: alt
+      text: Para empresas
+      link: https://claude.ai/artifact/5Xd5HH3yqyNFQoPfnH4NqH
 
 features:
   - icon:
@@ -54,3 +57,7 @@ features:
 - **Atualização automática** no Windows, conferida com a assinatura da release.
 
 **Ainda não tem:** o app para macOS. Vem numa próxima versão.
+
+## Para empresas
+
+O GhostLink tem uma edição para empresas: um assistente de IA dentro do servidor, mais servidores na nuvem e ferramentas para times, tudo ativado por uma chave — sem migração. [Conheça a versão para empresas →](https://claude.ai/artifact/5Xd5HH3yqyNFQoPfnH4NqH)
