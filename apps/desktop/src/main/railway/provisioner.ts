@@ -13,6 +13,7 @@ import {
   type RailwayProgress,
   type RailwayStep,
   type RailwayWorkspace,
+  type ServerEdition,
 } from '../../shared/railwayTypes.js';
 import type { SafeStorageLike } from '../identity.js';
 import { mainLog, type Log } from '../log.js';
@@ -109,8 +110,10 @@ export interface RailwayProvisionerDeps {
   store?: RailwayStore;
   /** Electron's net.fetch in production. */
   fetch: FetchLike;
-  /** The image a new server boots on; a function is resolved at create time (so it can read current license state). */
-  image: string | (() => string);
+  /** The image a new server boots on; a function is resolved at create time with the chosen edition (so it can read current license state). */
+  image: string | ((edition: ServerEdition) => string);
+  /** Whether this install can create a private-image server; surfaced in the account so the wizard can offer the choice. */
+  privateServers?: () => boolean;
   /** ClientController.probe: the TOFU probe of spec §3.3. */
   probe(address: string): Promise<ProbeResult>;
   /** ClientController.join. */
@@ -171,9 +174,9 @@ export class RailwayProvisioner {
     const token = this.#tokens.read();
     if (token === null) {
       this.#workspaces = null;
-      return { connected: false, workspaces: [] };
+      return { connected: false, workspaces: [], privateServers: this.#deps.privateServers?.() ?? false };
     }
-    return { connected: true, workspaces: (await this.#cachedWorkspaces(token)).map((w) => ({ ...w })) };
+    return { connected: true, workspaces: (await this.#cachedWorkspaces(token)).map((w) => ({ ...w })), privateServers: this.#deps.privateServers?.() ?? false };
   }
 
   /** Validates the token with Railway, then stores it encrypted; an invalid token stores nothing. */
@@ -188,7 +191,7 @@ export class RailwayProvisioner {
       this.#tokens.save(token);
       this.#workspaces = Promise.resolve(workspaces);
       this.#log.info(`[railway] connected (${workspaces.length} workspace(s))`);
-      return { connected: true, workspaces: workspaces.map((w) => ({ ...w })) };
+      return { connected: true, workspaces: workspaces.map((w) => ({ ...w })), privateServers: this.#deps.privateServers?.() ?? false };
     });
   }
 
@@ -199,7 +202,7 @@ export class RailwayProvisioner {
     if (token === null) throw new AppError('RAILWAY_TOKEN_INVALID', 'not a token');
     return this.#exclusive(async () => {
       const workspaces = await fetchWorkspaces(this.#client(token), this.#log);
-      return { connected: true, workspaces: workspaces.map((w) => ({ ...w })) };
+      return { connected: true, workspaces: workspaces.map((w) => ({ ...w })), privateServers: this.#deps.privateServers?.() ?? false };
     });
   }
 
@@ -209,7 +212,7 @@ export class RailwayProvisioner {
     this.#tokens.clear();
     this.#workspaces = null;
     this.#log.info('[railway] disconnected');
-    return { connected: false, workspaces: [] };
+    return { connected: false, workspaces: [], privateServers: this.#deps.privateServers?.() ?? false };
   }
 
   async create(req: RailwayCreateRequest): Promise<RendererWelcome> {
@@ -219,7 +222,7 @@ export class RailwayProvisioner {
     const name = sanitizeLabel(req.name, NAME_MAX);
     if (name === '') throw new AppError('BAD_REQUEST', 'the server needs a name');
     const token = this.#requireToken();
-    const run: Run = { workspaceId: req.workspaceId, name, region: req.region, nickname: req.nickname, createdAt: this.#now(), completed: null };
+    const run: Run = { workspaceId: req.workspaceId, name, region: req.region, nickname: req.nickname, edition: req.edition, createdAt: this.#now(), completed: null };
     return this.#exclusive(() => this.#run(run, token, false));
   }
 
@@ -392,9 +395,9 @@ export class RailwayProvisioner {
     const { api, run } = ctx;
     const { environmentId, serviceId } = ids(run);
     // The image goes in last (research §9 step 8): whether setting a source deploys by itself is
-    // not verified (§12 #4), and by now the volume, proxy and variables all exist. Resolved now, so a
-    // dynamic image reads the current license state (a key holder's server vs a normal one) at create time.
-    const image = typeof this.#deps.image === 'function' ? this.#deps.image() : this.#deps.image;
+    // not verified (§12 #4), and by now the volume, proxy and variables all exist. Resolved now with the
+    // run's edition, so a dynamic image reads the current license state (and the owner's choice) at create time.
+    const image = typeof this.#deps.image === 'function' ? this.#deps.image(run.edition) : this.#deps.image;
     await api.request(OPS.serviceInstanceUpdate, { serviceId, environmentId, input: { source: { image } } }, DATA.serviceInstanceUpdate);
     const latest = await this.#latestDeployment(ctx);
     if (latest && (IN_PROGRESS.has(latest.status) || (latest.status === 'SUCCESS' && latest.id === run.deploymentId))) {

@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import { Check, Circle, ExternalLink, LoaderCircle, X } from 'lucide-react';
 import type { RendererWelcome } from '../../../shared/ipcTypes.js';
-import { RAILWAY_DEFAULT_REGION, RAILWAY_REGIONS, RAILWAY_STEPS, type RailwayRegion } from '../../../shared/railwayTypes.js';
+import { RAILWAY_DEFAULT_REGION, RAILWAY_REGIONS, RAILWAY_STEPS, type RailwayRegion, type ServerEdition } from '../../../shared/railwayTypes.js';
 import { errorCodeOf, errorMessage, useT } from '../../i18n/index.js';
 import { ConfirmDialog, Modal, Select, primitives as p } from '../../layout/primitives.js';
 import { useSettingsStore } from '../../stores/settings.js';
@@ -156,12 +156,14 @@ function Connect({ notice, onConnected }: { notice?: string; onConnected?: () =>
 
 function Configure({ onJoined }: { onJoined: (welcome: RendererWelcome) => void }) {
   const t = useT();
-  const ids = { workspace: useId(), name: useId(), region: useId() };
+  const ids = { workspace: useId(), name: useId(), region: useId(), edition: useId() };
   const account = useRailwayStore((s) => s.account)!;
   const nickname = useSettingsStore((s) => s.settings?.nickname ?? '');
   const [workspaceId, setWorkspaceId] = useState(account.workspaces[0]?.id ?? '');
   const [name, setName] = useState(() => t('railway.config.defaultName', { name: nickname }));
   const [region, setRegion] = useState<RailwayRegion>(RAILWAY_DEFAULT_REGION);
+  const editionState = useState<ServerEdition>(account.privateServers ? 'private' : 'normal');
+  const edition = editionState[0];
   const workspace = account.workspaces.find((w) => w.id === workspaceId) ?? null;
   const warning = workspace ? planWarning(workspace.plan) : null;
   const validName = normalizeServerName(name);
@@ -169,7 +171,7 @@ function Configure({ onJoined }: { onJoined: (welcome: RendererWelcome) => void 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!validName || !workspace) return;
-    void useRailwayStore.getState().create({ workspaceId: workspace.id, name: validName, region, nickname }, onJoined);
+    void useRailwayStore.getState().create({ workspaceId: workspace.id, name: validName, region, nickname, edition }, onJoined);
   };
 
   return (

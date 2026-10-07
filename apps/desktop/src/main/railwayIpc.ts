@@ -20,6 +20,7 @@ export const RAILWAY_IPC_ARG_SCHEMAS: { readonly [C in RailwayIpcChannel]: z.Zod
       region: z.enum(RAILWAY_REGIONS),
       // The same rule as JoinConnectRequest.nickname in ipc.ts; the server normalizes it.
       nickname: z.string().min(1).max(64),
+      edition: z.enum(['normal', 'private']),
     }),
   ]),
   [IPC.railwayPending]: z.tuple([]),

@@ -11,7 +11,7 @@ type Deps = Parameters<typeof registerIpc>[0];
 const APP = 'app://ghostlink';
 const TOP = { url: 'app://ghostlink/index.html', parent: null };
 const TOKEN = '6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f';
-const REQUEST = { workspaceId: '0b6f5c2e-1d3a-4e5f-9a8b-7c6d5e4f3a2b', name: 'Casa do Zé', region: 'us-east4-eqdc4a', nickname: 'Zé' };
+const REQUEST = { workspaceId: '0b6f5c2e-1d3a-4e5f-9a8b-7c6d5e4f3a2b', name: 'Casa do Zé', region: 'us-east4-eqdc4a', nickname: 'Zé', edition: 'normal' };
 const ACCOUNT = { connected: true, workspaces: [{ id: 'ws-1', name: 'Pessoal', plan: 'HOBBY' }] };
 const WELCOME = { serverId: 's1', address: 'roundhouse.proxy.rlwy.net:15140' };
 

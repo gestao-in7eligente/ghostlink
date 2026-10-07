@@ -75,3 +75,5 @@ export const railway = {
   'errors.RAILWAY_FINGERPRINT_MISMATCH': 'O endereço respondeu com uma chave diferente da que o servidor publicou. Por segurança, o GhostLink não entrou.',
   'errors.RAILWAY_BUSY': 'Já existe uma criação no Railway em andamento.',
 } as const;
+
+/** Keys whose English text is the same on purpose (i18n.test.ts). */

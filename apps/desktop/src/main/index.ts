@@ -8,6 +8,7 @@ import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { APP_NAME, DEFAULT_PORT } from '@ghostlink/shared';
 import { IPC_EVENTS, type Locale, type Platform, type ServerEventMessage } from '../shared/ipcTypes.js';
+import type { ServerEdition } from '../shared/railwayTypes.js';
 import { APP_ORIGIN, registerAppProtocol, registerAppSchemePrivileges, type AppRoutes } from './appProtocol.js';
 import { createAttachments } from './attachments/index.js';
 import { createAvatars } from './avatars/index.js';
@@ -314,7 +315,8 @@ async function start(): Promise<BrowserWindow | null> {
   const serverImage = railwayImage({ version: app.getVersion(), packaged: app.isPackaged, env: process.env });
   // Resolved when a server is created: the public build always uses the public image. The paid build uses its
   // private image only for a valid-key holder; a member (cross-graded, no key) still gets the public image.
-  const createImage: () => string = () => {
+  const createImage: (edition: ServerEdition) => string = (edition) => {
+    void edition; // the choice only changes the image in the paid build
     return serverImage;
   };
   const railway = new RailwayProvisioner({
@@ -323,6 +325,7 @@ async function start(): Promise<BrowserWindow | null> {
     store: railwayStore,
     fetch: (url, init) => net.fetch(url, init),
     image: createImage,
+    privateServers: () => false,
     probe: (address) => controller.probe(address),
     join: (req) => controller.join(req),
     emit: (progress) => send(IPC_EVENTS.railway, progress),

@@ -16,6 +16,8 @@ const pendingSchema = z.object({
   name: z.string().min(1).max(256),
   region: z.enum(RAILWAY_REGIONS),
   nickname: z.string().min(1).max(256),
+  /** The server's image choice; a record written before this field existed loads as 'normal'. */
+  edition: z.enum(['normal', 'private']).default('normal'),
   /** The last step that completed. */
   completed: z.enum(RAILWAY_STEPS),
   projectId: id,

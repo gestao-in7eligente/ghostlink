@@ -16,7 +16,12 @@ export interface RailwayAccount {
   connected: boolean;
   /** The token's workspaces; empty when not connected. */
   workspaces: RailwayWorkspace[];
+  /** Whether this install can create a private-image server — the paid build holding a key; false otherwise, including the open-source build. */
+  privateServers: boolean;
 }
+
+/** A new cloud server's image choice. */
+export type ServerEdition = 'normal' | 'private';
 
 /** Railway's regions (serviceInstanceUpdate.region). Brazil defaults to US East (research §13.7). */
 export const RAILWAY_REGIONS = ['us-east4-eqdc4a', 'us-west2', 'europe-west4-drams3a', 'asia-southeast1-eqsg3a'] as const;
@@ -30,6 +35,8 @@ export interface RailwayCreateRequest {
   region: RailwayRegion;
   /** The owner's nickname on the new server. */
   nickname: string;
+  /** normal = public image; private = the paid private-image server. */
+  edition: ServerEdition;
 }
 
 /**

@@ -18,7 +18,7 @@ const KEY_ID = toBase64Url(new Uint8Array(32).fill(7));
 const OTHER_KEY_ID = toBase64Url(new Uint8Array(32).fill(9));
 const SETUP = '3f9a2b1c-7d4e5f60-a1b2c3d4-e5f60718';
 const ADDRESS = 'roundhouse.proxy.rlwy.net:15140';
-const REQUEST = { workspaceId: 'ws-1', name: 'Casa do Zé', region: 'us-east4-eqdc4a', nickname: 'Zé' } as const;
+const REQUEST = { workspaceId: 'ws-1', name: 'Casa do Zé', region: 'us-east4-eqdc4a', nickname: 'Zé', edition: 'normal' } as const;
 const WELCOME = { serverId: 'saved-1', address: ADDRESS, sessionId: 'sess' } as unknown as RendererWelcome;
 const PROXY = { id: 'tcp-1', domain: 'roundhouse.proxy.rlwy.net', proxyPort: 15140, applicationPort: 7700, syncStatus: 'ACTIVE', deletedAt: null };
 const START_LINES = [
@@ -134,6 +134,7 @@ describe('railway token (connect, status, disconnect)', () => {
     const p = provisioner();
     expect(await p.connect(`  ${TOKEN}\n`)).toEqual({
       connected: true,
+      privateServers: false,
       workspaces: [
         { id: 'ws-1', name: 'Pessoal', plan: 'HOBBY' },
         { id: 'ws-2', name: 'Trial', plan: 'TRIAL' },
@@ -156,7 +157,7 @@ describe('railway token (connect, status, disconnect)', () => {
       .on('ApiTokenContext', gqlError('Cannot query field "apiToken"'))
       .on('Me', data({ me: { workspaces: [{ id: 'ws-9', name: 'Conta', plan: 'FREE' }] } }))
       .on('WorkspaceBilling', gqlError('Not Authorized'));
-    expect(await provisioner().connect(TOKEN)).toEqual({ connected: true, workspaces: [{ id: 'ws-9', name: 'Conta', plan: 'FREE' }] });
+    expect(await provisioner().connect(TOKEN)).toEqual({ connected: true, privateServers: false, workspaces: [{ id: 'ws-9', name: 'Conta', plan: 'FREE' }] });
     expect(railway.ops()).toEqual(['ApiTokenContext', 'Me', 'WorkspaceBilling']);
   });
 
@@ -165,7 +166,7 @@ describe('railway token (connect, status, disconnect)', () => {
     const p = provisioner();
     expect(await codeOf(p.connect(TOKEN))).toBe('RAILWAY_TOKEN_INVALID');
     expect(existsSync(join(dir.path, RAILWAY_TOKEN_FILE))).toBe(false);
-    expect(await p.status()).toEqual({ connected: false, workspaces: [] });
+    expect(await p.status()).toEqual({ connected: false, workspaces: [], privateServers: false });
     // Not even sent to Railway: it cannot be a token.
     railway.calls.length = 0;
     expect(await codeOf(p.connect('two words'))).toBe('RAILWAY_TOKEN_INVALID');
@@ -185,27 +186,33 @@ describe('railway token (connect, status, disconnect)', () => {
     railway.on('ApiTokenContext', { status: 429 });
     expect(await codeOf(p.connect('another-token'))).toBe('RAILWAY_RATE_LIMITED');
     expect(new FakeSafeStorage().decryptString(readFileSync(join(dir.path, RAILWAY_TOKEN_FILE)))).toBe(TOKEN);
-    expect(p.disconnect()).toEqual({ connected: false, workspaces: [] });
+    expect(p.disconnect()).toEqual({ connected: false, workspaces: [], privateServers: false });
     expect(existsSync(join(dir.path, RAILWAY_TOKEN_FILE))).toBe(false);
-    expect(await p.status()).toEqual({ connected: false, workspaces: [] });
+    expect(await p.status()).toEqual({ connected: false, workspaces: [], privateServers: false });
   });
 });
 
 describe('railway.create (research §9)', () => {
-  it('resolves a function image at create time, so the key-holding gate picks the server image', async () => {
-    let holdsKey = false;
+  it('resolves a function image at create time from the chosen edition', async () => {
     const PUBLIC = 'ghcr.io/x/server:public';
     const PRIVATE = 'ghcr.io/x/server:private';
-    const p = provisioner({ image: () => (holdsKey ? PRIVATE : PUBLIC) });
+    const p = provisioner({ image: (edition) => (edition === 'private' ? PRIVATE : PUBLIC) });
     await p.connect(TOKEN);
-    holdsKey = true; // flips after construction, before create: proves the image is resolved at create time
     railway.calls.length = 0;
-    expect(await p.create(REQUEST)).toBe(WELCOME);
+    expect(await p.create({ ...REQUEST, edition: 'private' })).toBe(WELCOME);
     const images = railway.variables('ServiceInstanceUpdate').flatMap((v) => {
       const input = (v as { input?: { source?: { image?: string } } }).input;
       return input?.source?.image ? [input.source.image] : [];
     });
     expect(images).toEqual([PRIVATE]);
+  });
+
+  it('surfaces whether this install can create a private-image server in the account', async () => {
+    expect((await provisioner().status()).privateServers).toBe(false);
+    const p = provisioner({ privateServers: () => true });
+    expect((await p.status()).privateServers).toBe(true);
+    expect(await p.connect(TOKEN)).toMatchObject({ connected: true, privateServers: true });
+    expect(p.disconnect()).toEqual({ connected: false, workspaces: [], privateServers: true });
   });
 
   it('provisions in order, with exactly these variables, and joins as the owner', async () => {
@@ -316,6 +323,7 @@ describe('railway.create (research §9)', () => {
       name: 'Casa do Zé',
       region: 'us-east4-eqdc4a',
       nickname: 'Zé',
+      edition: 'normal',
       completed: 'start',
       projectId: 'proj-1',
       environmentId: 'env-1',
