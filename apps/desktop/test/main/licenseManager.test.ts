@@ -60,25 +60,23 @@ describe('LicenseManager cross-grade arming', () => {
 });
 
 describe('LicenseManager.holdsKey (the create-time gate)', () => {
-  it('is false until a key validates, true after activate, false after clear', async () => {
+  it('is false with no key stored, true once a key is entered, false after clear', async () => {
     const mgr = new LicenseManager({ store: fakeStore(), fetch: ok({ maxServers: 2 }) });
-    expect(mgr.holdsKey()).toBe(false); // nothing checked yet
-    await mgr.activate(validKey());
+    expect(mgr.holdsKey()).toBe(false); // no key entered yet
+    await mgr.activate(validKey()); // activate stores the key
     expect(mgr.holdsKey()).toBe(true);
     mgr.clear();
     expect(mgr.holdsKey()).toBe(false);
   });
 
-  it('becomes true after a stored key validates on info()', async () => {
+  it('counts a stored key immediately, without needing a live re-check', () => {
     const mgr = new LicenseManager({ store: fakeStore('GLE-STORED-KEY'), fetch: ok({ maxServers: 1 }) });
-    expect(mgr.holdsKey()).toBe(false);
-    await mgr.info();
-    expect(mgr.holdsKey()).toBe(true);
+    expect(mgr.holdsKey()).toBe(true); // the key is there; no info() call required
   });
 
-  it('stays false (fail-closed) when the stored key cannot be validated', async () => {
+  it('still counts a stored key when the license service is unreachable (a flaky launch must not drop to normal)', async () => {
     const mgr = new LicenseManager({ store: fakeStore('k'), fetch: vi.fn().mockRejectedValue(new Error('service down')) });
-    expect(await mgr.info()).toMatchObject({ active: false });
-    expect(mgr.holdsKey()).toBe(false);
+    expect(await mgr.info()).toMatchObject({ active: false }); // validation fails this session
+    expect(mgr.holdsKey()).toBe(true); // but the key is still held
   });
 });

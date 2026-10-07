@@ -45,12 +45,19 @@ export class LicenseManager {
   }
 
   /**
-   * Synchronous: whether a valid key is held (validated active this session). The create-time image choice reads
-   * this to decide a server on the private image (key holder) vs a normal one (a member who only cross-graded).
-   * Fail-closed: before the launch check resolves, or while the service is unreachable, it answers false.
+   * Synchronous: whether this install holds a registration key — i.e. the owner entered one here (a key is
+   * stored), as opposed to a member who only cross-graded and never entered a key. The create-time image choice
+   * reads this to pick a private-image server (the key holder) vs a normal one. It does NOT depend on a live
+   * re-check: a flaky key-info call at launch must not silently turn the key holder into "normal". The key's
+   * validity is enforced server-side when a server activates it, so a stored key is enough here. clear() flips
+   * this back to false.
    */
   holdsKey(): boolean {
-    return this.#cache?.active === true;
+    try {
+      return this.#store.read() !== null;
+    } catch {
+      return false;
+    }
   }
 
   /** Enters a key: validates it first, and keeps it only when valid. Answers the new license state. */
