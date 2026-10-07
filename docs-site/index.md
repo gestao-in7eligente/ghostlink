@@ -42,12 +42,15 @@ features:
     linkText: Privacidade e segurança
 ---
 
-## O que tem na versão 0.1
+## O que o GhostLink já faz
 
 - **Texto:** canais, histórico, respostas, edição, reações, menções, mensagens não lidas e markdown.
-- **Voz:** salas de voz com mutar, ensurdecer, indicador de quem fala, volume por pessoa e push-to-talk.
+- **Voz e vídeo:** salas de voz, câmera e compartilhamento de tela (com o som do PC), com mutar, ensurdecer, indicador de quem fala, volume por pessoa e push-to-talk.
+- **Arquivos, imagens e avatares:** envie arquivos e imagens nos canais; foto de perfil, inclusive GIF animado.
+- **Amigos e mensagens diretas:** adicione amigos por código e converse em DMs e grupos ponto a ponto (P2P), fora de qualquer servidor.
+- **Bots** compatíveis com discord.js.
 - **Cargos e moderação:** permissões aplicadas pelo servidor, canais privados, convites com limite de usos e validade, expulsar e banir.
-- **Hospedar:** pelo app no Windows ou numa VPS Linux com um script de instalação.
+- **Hospedar:** pelo app no Windows, numa VPS Linux (script de instalação) ou na nuvem (Railway).
 - **Atualização automática** no Windows, conferida com a assinatura da release.
 
-**Ainda não tem:** câmera, compartilhamento de tela, envio de arquivos e imagens, avatares e o app para macOS. Eles vêm nas próximas versões.
+**Ainda não tem:** o app para macOS. Vem numa próxima versão.

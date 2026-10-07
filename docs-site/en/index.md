@@ -42,12 +42,15 @@ features:
     linkText: Privacy and security
 ---
 
-## In version 0.1
+## What GhostLink already does
 
 - **Text:** channels, history, replies, editing, reactions, mentions, unread messages and markdown.
-- **Voice:** voice rooms with mute, deafen, speaking indicator, per-person volume and push-to-talk.
+- **Voice and video:** voice rooms, camera and screen sharing (with the PC's sound), with mute, deafen, speaking indicator, per-person volume and push-to-talk.
+- **Files, images and avatars:** send files and images in channels; a profile photo, animated GIF included.
+- **Friends and direct messages:** add friends by code and talk in DMs and groups peer to peer (P2P), outside any server.
+- **Bots** compatible with discord.js.
 - **Roles and moderation:** permissions enforced by the server, private channels, invites with use limits and expiry, kick and ban.
-- **Hosting:** from the app on Windows, or on a Linux VPS with an install script.
+- **Hosting:** from the app on Windows, on a Linux VPS (install script) or in the cloud (Railway).
 - **Automatic updates** on Windows, checked against the release signature.
 
-**Not yet:** camera, screen sharing, files and images, avatars and the macOS app. They come in the next versions.
+**Not yet:** the macOS app. It comes in a future version.
