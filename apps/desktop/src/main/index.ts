@@ -326,6 +326,7 @@ async function start(): Promise<BrowserWindow | null> {
     fetch: (url, init) => net.fetch(url, init),
     image: createImage,
     privateServers: () => false,
+    serversAvailable: () => licenseManager.serversAvailable(),
     probe: (address) => controller.probe(address),
     join: (req) => controller.join(req),
     emit: (progress) => send(IPC_EVENTS.railway, progress),

@@ -30,7 +30,9 @@ export const RAILWAY_IPC_ARG_SCHEMAS: { readonly [C in RailwayIpcChannel]: z.Zod
 
 type RailwayHandlers = { [C in RailwayIpcChannel]: (...args: IpcArgs<C>) => IpcReturn<C> | Promise<IpcReturn<C>> };
 
-export function createRailwayIpcHandlers(deps: RailwayIpcDeps | undefined): RailwayHandlers {
+export function createRailwayIpcHandlers(
+  deps: RailwayIpcDeps | undefined,
+): RailwayHandlers {
   const railway = () => {
     if (!deps) throw new Error('Railway is not wired');
     return deps;

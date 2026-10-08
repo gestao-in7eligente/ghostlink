@@ -60,6 +60,23 @@ export class LicenseManager {
     }
   }
 
+  /**
+   * Fresh check before creating a private-image server: does the key still have room (used < maxServers)?
+   * Re-reads the service so the count is current. Fail-open — answers true when there is no key or the service
+   * cannot be reached, because the server enforces the real limit when it activates the key.
+   */
+  async serversAvailable(): Promise<boolean> {
+    const key = this.#store.read();
+    if (!key) return true;
+    try {
+      const info = await this.#check(key);
+      this.#cache = info;
+      return info.used < info.maxServers;
+    } catch {
+      return true;
+    }
+  }
+
   /** Enters a key: validates it first, and keeps it only when valid. Answers the new license state. */
   async activate(rawKey: string): Promise<AppLicenseInfo> {
     const key = normalizeRegistrationKey(rawKey);

@@ -74,3 +74,6 @@ __pycache__/
 .ruff_cache/
 .venv/
 venv/
+
+# Image build contexts assemble a generated seed/ from tracked files; never commit it.
+edition/**/seed/

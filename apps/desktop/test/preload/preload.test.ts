@@ -38,7 +38,17 @@ describe('preload bridge', () => {
     expect(Object.keys(api.updates).sort()).toEqual(['checkNow', 'notes', 'onState', 'restart', 'setAutoCheck', 'state']);
     expect(Object.keys(api.screen).sort()).toEqual(['choose', 'sources']);
     expect(Object.keys(api.draw).sort()).toEqual(['overlayClose', 'overlayOpen', 'overlayStroke']);
-    expect(Object.keys(api.railway).sort()).toEqual(['connect', 'create', 'discard', 'disconnect', 'onProgress', 'pending', 'resume', 'status', 'test']);
+    expect(Object.keys(api.railway).sort()).toEqual([
+      'connect',
+      'create',
+      'discard',
+      'disconnect',
+      'onProgress',
+      'pending',
+      'resume',
+      'status',
+      'test',
+    ]);
     expect(Object.keys(api.profile).sort()).toEqual([
       'avatar',
       'clearAvatar',

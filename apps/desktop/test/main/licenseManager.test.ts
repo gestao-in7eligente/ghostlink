@@ -80,3 +80,20 @@ describe('LicenseManager.holdsKey (the create-time gate)', () => {
     expect(mgr.holdsKey()).toBe(true); // but the key is still held
   });
 });
+
+describe('LicenseManager.serversAvailable (quota at create)', () => {
+  it('is true when the key still has room (used < maxServers)', async () => {
+    const mgr = new LicenseManager({ store: fakeStore('k'), fetch: ok({ maxServers: 3, used: 1 }) });
+    expect(await mgr.serversAvailable()).toBe(true);
+  });
+
+  it('is false when the key is at its limit (used >= maxServers)', async () => {
+    const mgr = new LicenseManager({ store: fakeStore('k'), fetch: ok({ maxServers: 2, used: 2 }) });
+    expect(await mgr.serversAvailable()).toBe(false);
+  });
+
+  it('fails open: true with no key, and true when the service is unreachable', async () => {
+    expect(await new LicenseManager({ store: fakeStore(), fetch: ok({ maxServers: 1, used: 9 }) }).serversAvailable()).toBe(true);
+    expect(await new LicenseManager({ store: fakeStore('k'), fetch: vi.fn().mockRejectedValue(new Error('down')) }).serversAvailable()).toBe(true);
+  });
+});

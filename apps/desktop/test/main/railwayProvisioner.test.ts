@@ -207,6 +207,21 @@ describe('railway.create (research §9)', () => {
     expect(images).toEqual([PRIVATE]);
   });
 
+  it('refuses a private-image server when the key has no free slot (SERVER_LIMIT), provisioning nothing', async () => {
+    const p = provisioner({ serversAvailable: async () => false });
+    await p.connect(TOKEN);
+    railway.calls.length = 0;
+    expect(await codeOf(p.create({ ...REQUEST, edition: 'private' }))).toBe('SERVER_LIMIT');
+    expect(railway.calls).toEqual([]);
+  });
+
+  it('does not apply the quota check to a normal server', async () => {
+    const p = provisioner({ serversAvailable: async () => false });
+    await p.connect(TOKEN);
+    railway.calls.length = 0;
+    expect(await p.create({ ...REQUEST, edition: 'normal' })).toBe(WELCOME);
+  });
+
   it('surfaces whether this install can create a private-image server in the account', async () => {
     expect((await provisioner().status()).privateServers).toBe(false);
     const p = provisioner({ privateServers: () => true });

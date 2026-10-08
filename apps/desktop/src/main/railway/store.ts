@@ -51,6 +51,13 @@ const managedSchema = z.object({
    * answers SERVER_DELETED; a restore clears it. Optional, like outdatedSince.
    */
   deletingAt: z.number().int().nonnegative().optional(),
+  /**
+   * An optional companion service (and its volume) provisioned in the same Railway project next to
+   * some managed servers. Both optional, like outdatedSince: files written before this load fine, and
+   * a server without a companion simply has neither id.
+   */
+  companionServiceId: id.optional(),
+  companionVolumeId: id.optional(),
 });
 
 const fileSchema = z.object({ version: z.literal(1), pending: pendingSchema.nullable(), managed: z.array(managedSchema).max(1_000) });
@@ -117,6 +124,21 @@ export class RailwayStore {
       const { deletingAt: _previous, ...rest } = m;
       return at === null ? rest : managedSchema.parse({ ...rest, deletingAt: at });
     });
+    this.#write({ ...this.#file, managed });
+    return true;
+  }
+
+  /** Merges the ids of a managed server's companion service and/or volume (persist each as it is made); false when not managed. */
+  setCompanion(serverKeyId: string, ids: { serviceId?: string; volumeId?: string }): boolean {
+    const current = this.#file.managed.find((m) => m.serverKeyId === serverKeyId);
+    if (!current) return false;
+    const next = {
+      ...current,
+      ...(ids.serviceId !== undefined ? { companionServiceId: ids.serviceId } : {}),
+      ...(ids.volumeId !== undefined ? { companionVolumeId: ids.volumeId } : {}),
+    };
+    if (next.companionServiceId === current.companionServiceId && next.companionVolumeId === current.companionVolumeId) return true;
+    const managed = this.#file.managed.map((m) => (m.serverKeyId === serverKeyId ? managedSchema.parse(next) : m));
     this.#write({ ...this.#file, managed });
     return true;
   }

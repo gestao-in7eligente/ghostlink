@@ -249,7 +249,9 @@ export function createIpcHandlers(deps: IpcDeps): Handlers {
     [IPC.serversSetChannel]: (id, channel, patch) => controller.setChannel(id, channel, patch),
     ...createHostIpcHandlers(deps.host),
     ...createBackupIpcHandlers(deps.backup),
-    ...createRailwayIpcHandlers(deps.railway),
+    ...createRailwayIpcHandlers(
+      deps.railway,
+    ),
     ...createLicenseIpcHandlers(deps.license),
     ...createFriendsIpcHandlers(deps.friends),
     ...createDmIpcHandlers(deps.dm),

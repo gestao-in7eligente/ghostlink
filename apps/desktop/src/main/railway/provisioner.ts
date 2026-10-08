@@ -114,6 +114,8 @@ export interface RailwayProvisionerDeps {
   image: string | ((edition: ServerEdition) => string);
   /** Whether this install can create a private-image server; surfaced in the account so the wizard can offer the choice. */
   privateServers?: () => boolean;
+  /** Fresh check before a private-image server: does the key still have a free slot? Fail-open (the server enforces the real limit). */
+  serversAvailable?: () => Promise<boolean>;
   /** ClientController.probe: the TOFU probe of spec §3.3. */
   probe(address: string): Promise<ProbeResult>;
   /** ClientController.join. */
@@ -222,6 +224,11 @@ export class RailwayProvisioner {
     const name = sanitizeLabel(req.name, NAME_MAX);
     if (name === '') throw new AppError('BAD_REQUEST', 'the server needs a name');
     const token = this.#requireToken();
+    // A private-image server counts against the key's limit: check before provisioning so the user gets a clear
+    // error instead of a server that cannot activate. Fail-open; the server enforces the real limit on activation.
+    if (req.edition === 'private' && this.#deps.serversAvailable && !(await this.#deps.serversAvailable())) {
+      throw new AppError('SERVER_LIMIT', 'the key has no server slot left');
+    }
     const run: Run = { workspaceId: req.workspaceId, name, region: req.region, nickname: req.nickname, edition: req.edition, createdAt: this.#now(), completed: null };
     return this.#exclusive(() => this.#run(run, token, false));
   }

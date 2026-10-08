@@ -17,4 +17,5 @@ export const license = {
   'errors.KEY_EXPIRED': 'Chave vencida',
   'errors.KEY_REVOKED': 'Chave revogada',
   'errors.KEY_UNREACHABLE': 'Não deu para falar com o serviço de licenças. Tente de novo.',
+  'errors.SERVER_LIMIT': 'Você atingiu o limite de servidores da sua chave. Libere um servidor para criar outro.',
 };

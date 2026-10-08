@@ -29,6 +29,7 @@ export const CLIENT_ERROR_CODES = [
   'RAILWAY_TIMEOUT', // a step did not finish in time (proxy, deploy, server start)
   'RAILWAY_FINGERPRINT_MISMATCH', // the key the address answers with is not the one in the deployment logs
   'RAILWAY_BUSY', // a provisioning is already running
+  'SERVER_LIMIT', // the registration key is already at its server limit (used >= maxServers)
   // Friends over P2P (v0.3); messages in i18n/friends.<locale>.ts.
   'FRIEND_CODE_INVALID', // not a friend code, or its checksum is wrong
   'FRIEND_SELF', // the person pasted their own code

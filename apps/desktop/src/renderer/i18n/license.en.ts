@@ -19,4 +19,5 @@ export const license: Record<keyof typeof licensePt, string> = {
   'errors.KEY_EXPIRED': 'Key expired',
   'errors.KEY_REVOKED': 'Key revoked',
   'errors.KEY_UNREACHABLE': 'Could not reach the license service. Try again.',
+  'errors.SERVER_LIMIT': "You've reached your key's server limit. Release a server to create another.",
 };
