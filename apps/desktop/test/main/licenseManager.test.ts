@@ -87,6 +87,19 @@ describe('LicenseManager.registryCredential (the key-delivered image pull creden
     mgr.clear();
     expect(mgr.registryCredential()).toBeNull();
   });
+
+  it('refresh() re-checks the key, picking up a credential the service only starts serving later (no restart)', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ status: 200, json: () => Promise.resolve({ maxServers: 1 }) }) // first check: no credential yet
+      .mockResolvedValue({ status: 200, json: () => Promise.resolve({ maxServers: 1, registry: { username: 'octocat', token: 'ghp_pull' } }) });
+    const mgr = new LicenseManager({ store: fakeStore('k'), fetch });
+    await mgr.info(); // caches the first result (no credential)
+    expect(mgr.registryCredential()).toBeNull();
+    await mgr.refresh(); // re-checks, ignoring the cache
+    expect(mgr.registryCredential()).toEqual({ username: 'octocat', token: 'ghp_pull' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('LicenseManager.holdsKey (the create-time gate)', () => {

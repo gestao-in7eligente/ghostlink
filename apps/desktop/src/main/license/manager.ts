@@ -109,6 +109,22 @@ export class LicenseManager {
     return this.#registry ? { ...this.#registry } : null;
   }
 
+  /**
+   * Re-checks the key now and refreshes the cached state — including the enabled agents and the pull credential
+   * the service delivers. The provisioner calls this each cycle so an agent or a credential the panel started
+   * serving after the app's first check is picked up on its own, without the owner restarting the app. Silent on
+   * failure: the service may be unreachable this moment; the next cycle tries again and the old state stands.
+   */
+  async refresh(): Promise<void> {
+    const key = this.#store.read();
+    if (!key) return;
+    try {
+      this.#cache = await this.#check(key);
+    } catch {
+      // keep what we have; the next cycle tries again
+    }
+  }
+
   /** Enters a key: validates it first, and keeps it only when valid. Answers the new license state. */
   async activate(rawKey: string): Promise<AppLicenseInfo> {
     const key = normalizeRegistrationKey(rawKey);
