@@ -15,6 +15,18 @@ export type LicenseFetch = (
 
 const INACTIVE: AppLicenseInfo = { active: false, company: null, maxServers: 0, used: 0, validUntil: null };
 
+const REGISTRY_USER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const REGISTRY_TOKEN = /^[\x21-\x7e]{1,512}$/;
+
+/** An image-pull credential the service may hand down with a valid key; null when it did not, or it is malformed. */
+function plainRegistryCredential(value: unknown): { username: string; token: string } | null {
+  if (!value || typeof value !== 'object') return null;
+  const { username, token } = value as { username?: unknown; token?: unknown };
+  if (typeof username !== 'string' || typeof token !== 'string') return null;
+  if (!REGISTRY_USER.test(username) || !REGISTRY_TOKEN.test(token)) return null;
+  return { username, token };
+}
+
 export class LicenseManager {
   readonly #store: LicenseKeyStore;
   readonly #fetch: LicenseFetch;
@@ -23,6 +35,8 @@ export class LicenseManager {
   #cache: AppLicenseInfo | null = null;
   /** The company's enabled-agent keys, as the service's last key-info reported them (data, not literals). */
   #roster: string[] = [];
+  /** An image-pull credential the service handed down with the key (main-only); null until one does. */
+  #registry: { username: string; token: string } | null = null;
 
   constructor(deps: { store: LicenseKeyStore; fetch: LicenseFetch; serviceUrl?: string; onDownloadCode?: (code: string) => void }) {
     this.#store = deps.store;
@@ -87,6 +101,14 @@ export class LicenseManager {
     return [...this.#roster];
   }
 
+  /**
+   * The image-pull credential the service handed down with the key (empty until a check runs, or on an older
+   * service). Main-only; the paid build's provisioner uses it so the owner never pastes one per server.
+   */
+  registryCredential(): { username: string; token: string } | null {
+    return this.#registry ? { ...this.#registry } : null;
+  }
+
   /** Enters a key: validates it first, and keeps it only when valid. Answers the new license state. */
   async activate(rawKey: string): Promise<AppLicenseInfo> {
     const key = normalizeRegistrationKey(rawKey);
@@ -103,6 +125,7 @@ export class LicenseManager {
     this.#store.clear();
     this.#cache = null;
     this.#roster = [];
+    this.#registry = null;
     return INACTIVE;
   }
 
@@ -122,6 +145,9 @@ export class LicenseManager {
       // The company's enabled agents (advisory): kept main-only, read by the provisioner. Names are data from
       // the service, never literals here. An older service sends none → empty (the paid build still has its base agent).
       this.#roster = Array.isArray(body.agents) ? body.agents.filter((a): a is string => typeof a === 'string' && a.length > 0 && a.length <= 32) : [];
+      // The pull credential travels the same way (secret, main-only): the provisioner uses it to fetch the
+      // private agent image, so the owner sets one token on the service instead of pasting it per server.
+      this.#registry = plainRegistryCredential(body.registry);
       return {
         active: true,
         company: typeof body.company === 'string' ? body.company : null,

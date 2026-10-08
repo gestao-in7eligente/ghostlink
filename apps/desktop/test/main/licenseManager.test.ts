@@ -59,6 +59,36 @@ describe('LicenseManager cross-grade arming', () => {
   });
 });
 
+describe('LicenseManager.registryCredential (the key-delivered image pull credential)', () => {
+  const credFor = async (body: unknown) => {
+    const mgr = new LicenseManager({ store: fakeStore('k'), fetch: ok(body) });
+    await mgr.info();
+    return mgr.registryCredential();
+  };
+
+  it('captures the credential a valid key returns, keeping it out of the license info', async () => {
+    const registry = { username: 'octocat', token: 'ghp_pull' };
+    const mgr = new LicenseManager({ store: fakeStore('k'), fetch: ok({ maxServers: 1, registry }) });
+    const info = await mgr.info();
+    expect(mgr.registryCredential()).toEqual(registry);
+    expect(info).not.toHaveProperty('registry');
+  });
+
+  it('is null when the service sends none, or a malformed one', async () => {
+    expect(await credFor({ maxServers: 1 })).toBeNull();
+    expect(await credFor({ maxServers: 1, registry: { username: 'octocat' } })).toBeNull(); // no token
+    expect(await credFor({ maxServers: 1, registry: { username: 'bad user', token: 'ghp_pull' } })).toBeNull(); // space in login
+  });
+
+  it('clears on clear()', async () => {
+    const mgr = new LicenseManager({ store: fakeStore('k'), fetch: ok({ maxServers: 1, registry: { username: 'octocat', token: 'ghp_pull' } }) });
+    await mgr.info();
+    expect(mgr.registryCredential()).not.toBeNull();
+    mgr.clear();
+    expect(mgr.registryCredential()).toBeNull();
+  });
+});
+
 describe('LicenseManager.holdsKey (the create-time gate)', () => {
   it('is false with no key stored, true once a key is entered, false after clear', async () => {
     const mgr = new LicenseManager({ store: fakeStore(), fetch: ok({ maxServers: 2 }) });
