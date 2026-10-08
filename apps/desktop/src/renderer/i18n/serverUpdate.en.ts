@@ -8,6 +8,7 @@ export const serverUpdate: Record<keyof typeof serverUpdatePt, string> = {
   'serverUpdate.failed': 'This server runs {version}. The update to {target} did not finish; GhostLink tries again shortly.',
   'serverUpdate.railwayDisconnected': 'This server runs {version}. To update it to {target}, connect Railway again in Create a server → In the cloud (Railway).',
   'serverUpdate.manual': 'This server runs {version}. Update it to {target}',
+  'serverUpdate.addingAgent': 'Adding {agent} to this server. Everyone connected reconnects automatically.',
   'serverUpdate.howTo': 'see how',
   'serverUpdate.updateNow': 'Update now',
   'serverUpdate.confirm.title': 'Update the server now?',

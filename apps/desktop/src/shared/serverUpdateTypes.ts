@@ -10,9 +10,10 @@
  *   empties, or 24 h after it was first seen behind;
  * - `updating`: the new image is being deployed;
  * - `failed`: the last update did not finish; the next check tries again;
- * - `railwayDisconnected`: older, but there is no Railway token (or Railway refused it).
+ * - `railwayDisconnected`: older, but there is no Railway token (or Railway refused it);
+ * - `addingAgent`: a company agent (`agent`) is being provisioned onto the server (independent of its version).
  */
-export type ServerUpdateState = 'unknown' | 'current' | 'waiting' | 'updating' | 'failed' | 'railwayDisconnected';
+export type ServerUpdateState = 'unknown' | 'current' | 'waiting' | 'updating' | 'failed' | 'railwayDisconnected' | 'addingAgent';
 
 export interface ManagedServerUpdate {
   serverKeyId: string;
@@ -21,6 +22,8 @@ export interface ManagedServerUpdate {
   /** The app's version: the only one the app ever updates the server to. */
   target: string;
   state: ServerUpdateState;
+  /** With state `addingAgent`, the key of the agent being provisioned (e.g. "aurora"); absent otherwise. */
+  agent?: string;
 }
 
 /** window.ghostlink.serverUpdates. */

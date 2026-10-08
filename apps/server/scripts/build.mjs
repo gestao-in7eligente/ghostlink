@@ -53,6 +53,7 @@ cpSync(fileURLToPath(new URL('../src/db/migrations/', import.meta.url)), fileURL
   recursive: true,
 });
 
+
 // The rtc-node native packages npm installed here (this machine's platform, plus any other present).
 const fromRtcNode = createRequire(createRequire(import.meta.url).resolve('@livekit/rtc-node'));
 const scope = dirname(dirname(fromRtcNode.resolve('@livekit/rtc-ffi-bindings/package.json')));

@@ -361,12 +361,12 @@ export class ServerUpdates {
     return this.#deps.store.managed.find((m) => m.serverKeyId === serverKeyId);
   }
 
-  /** Keeps the state and tells the page when it changed. */
-  #set(server: ManagedServer, state: ServerUpdateState, version: string | null): ServerUpdateState {
-    const next: ManagedServerUpdate = { serverKeyId: server.serverKeyId, version, target: this.#deps.appVersion, state };
+  /** Keeps the state and tells the page when it changed. `agent` rides along only with state `addingAgent`. */
+  #set(server: ManagedServer, state: ServerUpdateState, version: string | null, agent?: string): ServerUpdateState {
+    const next: ManagedServerUpdate = { serverKeyId: server.serverKeyId, version, target: this.#deps.appVersion, state, ...(agent !== undefined ? { agent } : {}) };
     const previous = this.#states.get(server.serverKeyId);
     this.#states.set(server.serverKeyId, next);
-    if (previous?.state !== state || previous.version !== version) this.#deps.emit({ ...next });
+    if (previous?.state !== state || previous.version !== version || previous.agent !== agent) this.#deps.emit({ ...next });
     return state;
   }
 }

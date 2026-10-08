@@ -40,6 +40,29 @@ describe('ownerUpdateNotice (spec 2026-10-01 §5)', () => {
     expect(ownerUpdateNotice({ ...owner, managed: managed('current', '0.2.2') })).toBeNull();
   });
 
+  it('adding a company agent shows on any version, even a server already current, and names the agent', () => {
+    const adding = (agent: string, version = '0.2.2'): ManagedServerUpdate => ({ serverKeyId: KEY_ID, version, target: '0.2.2', state: 'addingAgent', agent });
+    expect(ownerUpdateNotice({ ...owner, serverVersion: '0.2.2', managed: adding('aurora') })).toEqual({
+      kind: 'managed',
+      version: '0.2.2',
+      target: '0.2.2',
+      state: 'addingAgent',
+      agent: 'aurora',
+    });
+    // It comes before the release-version check, so even a dev server version does not suppress it.
+    expect(ownerUpdateNotice({ ...owner, serverVersion: '0.2.0-dev', managed: adding('aurora', '0.2.0-dev') })).toMatchObject({ state: 'addingAgent', agent: 'aurora' });
+  });
+
+  it('the adding-agent band is distinct per agent and carries the agent name in both languages', () => {
+    const adding = (agent: string): ManagedServerUpdate => ({ serverKeyId: KEY_ID, version: '0.2.2', target: '0.2.2', state: 'addingAgent', agent });
+    const a = ownerUpdateNotice({ ...owner, serverVersion: '0.2.2', managed: adding('aurora') })!;
+    const b = ownerUpdateNotice({ ...owner, serverVersion: '0.2.2', managed: adding('nimbus') })!;
+    expect(noticeKey(KEY_ID, a)).not.toBe(noticeKey(KEY_ID, b));
+    for (const locale of ['pt-BR', 'en'] as const) {
+      expect(translate(locale, 'serverUpdate.addingAgent', { agent: 'Aurora' }), locale).toContain('Aurora');
+    }
+  });
+
   it('waits for the app version and for main’s answer, and ignores what is not a release', () => {
     expect(ownerUpdateNotice({ ...owner, appVersion: null })).toBeNull();
     expect(ownerUpdateNotice({ ...owner, managed: undefined })).toBeNull();

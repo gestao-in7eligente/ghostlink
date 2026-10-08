@@ -8,6 +8,7 @@ export const serverUpdate = {
   'serverUpdate.railwayDisconnected':
     'Este servidor está na {version}. Para atualizá-lo para a {target}, conecte o Railway de novo em Criar um servidor → Na nuvem (Railway).',
   'serverUpdate.manual': 'Este servidor está na {version}. Atualize para a {target}',
+  'serverUpdate.addingAgent': 'Adicionando o {agent} a este servidor. Quem estiver conectado reconecta sozinho.',
   'serverUpdate.howTo': 'veja como',
   'serverUpdate.updateNow': 'Atualizar agora',
   'serverUpdate.confirm.title': 'Atualizar o servidor agora?',

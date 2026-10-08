@@ -74,11 +74,19 @@ export function ServerUpdateNotice({ serverKeyId }: { serverKeyId: string }) {
 }
 
 function NoticeIcon({ notice }: { notice: OwnerUpdateNotice }) {
-  if (notice.kind === 'managed' && notice.state === 'updating') return <LoaderCircle className={`${n.icon} ${n.spin}`} size={16} aria-hidden="true" />;
+  if (notice.kind === 'managed' && (notice.state === 'updating' || notice.state === 'addingAgent')) {
+    return <LoaderCircle className={`${n.icon} ${n.spin}`} size={16} aria-hidden="true" />;
+  }
   if (notice.kind === 'managed' && (notice.state === 'failed' || notice.state === 'railwayDisconnected')) {
     return <TriangleAlert className={n.icon} size={16} aria-hidden="true" />;
   }
   return <CircleArrowUp className={n.icon} size={16} aria-hidden="true" />;
+}
+
+/** The agent key comes from the licence roster (data); show it with a leading capital, e.g. "aurora" → "Aurora". */
+function agentLabel(agent: string | undefined): string {
+  if (!agent) return '';
+  return agent.charAt(0).toUpperCase() + agent.slice(1);
 }
 
 function NoticeText({ notice }: { notice: OwnerUpdateNotice }) {
@@ -94,5 +102,7 @@ function NoticeText({ notice }: { notice: OwnerUpdateNotice }) {
       return <>{t('serverUpdate.failed', vars)}</>;
     case 'railwayDisconnected':
       return <>{t('serverUpdate.railwayDisconnected', vars)}</>;
+    case 'addingAgent':
+      return <>{t('serverUpdate.addingAgent', { agent: agentLabel(notice.agent) })}</>;
   }
 }

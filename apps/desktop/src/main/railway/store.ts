@@ -58,6 +58,12 @@ const managedSchema = z.object({
    */
   companionServiceId: id.optional(),
   companionVolumeId: id.optional(),
+  /**
+   * Companion services provisioned for this server, keyed by agent (v0.9 roster). The legacy
+   * companionServiceId/companionVolumeId above are the first agent's slot, kept for records written before this;
+   * new writes go here. Optional, so older files load.
+   */
+  companions: z.record(z.string().min(1).max(64), z.object({ serviceId: id, volumeId: id.optional() })).optional(),
 });
 
 const fileSchema = z.object({ version: z.literal(1), pending: pendingSchema.nullable(), managed: z.array(managedSchema).max(1_000) });
@@ -128,17 +134,18 @@ export class RailwayStore {
     return true;
   }
 
-  /** Merges the ids of a managed server's companion service and/or volume (persist each as it is made); false when not managed. */
-  setCompanion(serverKeyId: string, ids: { serviceId?: string; volumeId?: string }): boolean {
+  /** Merges one agent's companion service/volume ids for a managed server (persist each as it is made); false when not managed. */
+  setCompanion(serverKeyId: string, agent: string, ids: { serviceId?: string; volumeId?: string }): boolean {
     const current = this.#file.managed.find((m) => m.serverKeyId === serverKeyId);
     if (!current) return false;
-    const next = {
-      ...current,
-      ...(ids.serviceId !== undefined ? { companionServiceId: ids.serviceId } : {}),
-      ...(ids.volumeId !== undefined ? { companionVolumeId: ids.volumeId } : {}),
-    };
-    if (next.companionServiceId === current.companionServiceId && next.companionVolumeId === current.companionVolumeId) return true;
-    const managed = this.#file.managed.map((m) => (m.serverKeyId === serverKeyId ? managedSchema.parse(next) : m));
+    const prev = current.companions?.[agent];
+    const serviceId = ids.serviceId ?? prev?.serviceId;
+    if (serviceId === undefined) return true; // a volume cannot be recorded before the service it belongs to
+    const volumeId = ids.volumeId ?? prev?.volumeId;
+    const entry = volumeId !== undefined ? { serviceId, volumeId } : { serviceId };
+    if (prev && prev.serviceId === entry.serviceId && prev.volumeId === entry.volumeId) return true;
+    const companions = { ...(current.companions ?? {}), [agent]: entry };
+    const managed = this.#file.managed.map((m) => (m.serverKeyId === serverKeyId ? managedSchema.parse({ ...m, companions }) : m));
     this.#write({ ...this.#file, managed });
     return true;
   }

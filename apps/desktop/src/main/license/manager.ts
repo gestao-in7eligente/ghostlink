@@ -21,6 +21,8 @@ export class LicenseManager {
   readonly #url: string;
   readonly #onDownloadCode: (code: string) => void;
   #cache: AppLicenseInfo | null = null;
+  /** The company's enabled-agent keys, as the service's last key-info reported them (data, not literals). */
+  #roster: string[] = [];
 
   constructor(deps: { store: LicenseKeyStore; fetch: LicenseFetch; serviceUrl?: string; onDownloadCode?: (code: string) => void }) {
     this.#store = deps.store;
@@ -77,6 +79,14 @@ export class LicenseManager {
     }
   }
 
+  /**
+   * The company's enabled agents from the last key-info check (empty until one runs, or on an older service).
+   * Main-only; the paid build's provisioner reads it to decide which agents to put on a managed server.
+   */
+  agents(): string[] {
+    return [...this.#roster];
+  }
+
   /** Enters a key: validates it first, and keeps it only when valid. Answers the new license state. */
   async activate(rawKey: string): Promise<AppLicenseInfo> {
     const key = normalizeRegistrationKey(rawKey);
@@ -92,6 +102,7 @@ export class LicenseManager {
   clear(): AppLicenseInfo {
     this.#store.clear();
     this.#cache = null;
+    this.#roster = [];
     return INACTIVE;
   }
 
@@ -108,6 +119,9 @@ export class LicenseManager {
       // The company download code arms the update channel so the app switches to the paid edition. It is a
       // secret: it never goes into AppLicenseInfo (which the renderer reads), only to the main-side callback.
       if (isDownloadCode(body.downloadCode)) this.#onDownloadCode(body.downloadCode);
+      // The company's enabled agents (advisory): kept main-only, read by the provisioner. Names are data from
+      // the service, never literals here. An older service sends none → empty (the paid build still has its base agent).
+      this.#roster = Array.isArray(body.agents) ? body.agents.filter((a): a is string => typeof a === 'string' && a.length > 0 && a.length <= 32) : [];
       return {
         active: true,
         company: typeof body.company === 'string' ? body.company : null,
