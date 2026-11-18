@@ -7,7 +7,7 @@ description: Instale o GhostLink, crie sua identidade e entre num servidor.
 
 ## 1. Instale o app
 
-[Baixe o instalador para Windows](./download) e abra. Na primeira vez, o SmartScreen pode avisar: clique em **Mais informações → Executar assim mesmo**.
+[Baixe o instalador para Windows ou o AppImage para Linux](./download) e abra. No Windows, na primeira vez, o SmartScreen pode avisar: clique em **Mais informações → Executar assim mesmo**.
 
 ## 2. Sua identidade
 

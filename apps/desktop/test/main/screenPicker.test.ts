@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SCREEN_CHOICE_TTL_MS } from '../../src/shared/screenTypes.js';
-import { ScreenPicker, type CapturerSource, type DisplayMediaRequest, type DisplayMediaStreams } from '../../src/main/screenPicker.js';
+import { PORTAL_SOURCE_ID, ScreenPicker, usesPortalCapture, type CapturerSource, type DisplayMediaRequest, type DisplayMediaStreams } from '../../src/main/screenPicker.js';
 
 const APP = 'app://ghostlink';
 /** BrowserWindow.getMediaSourceId() of GhostLink's own window, as measured: the "1" marks this process. */
@@ -151,5 +151,49 @@ describe('ScreenPicker.handleRequest (spec §3)', () => {
     await expect(picker.handleRequest(REQUEST, callback)).resolves.toBeUndefined();
     expect(callback).toHaveBeenCalledTimes(1);
     expect(callback).toHaveBeenCalledWith({});
+  });
+});
+
+describe('Wayland portal capture', () => {
+  // As measured on Electron 44 / KDE: one stream, the id carries a ":s" suffix, the name is empty.
+  const PORTAL: CapturerSource[] = [{ id: 'window:1:0:s', name: '', thumbnail: image('cA'), appIcon: null }];
+
+  function portalSetup() {
+    const getSources = vi.fn(async () => PORTAL);
+    const picker = new ScreenPicker({ getSources, now: () => 50_000, appOrigin: APP, ownMediaSourceIds: () => [OWN], portalCapture: true });
+    return { picker, getSources };
+  }
+
+  it('offers one placeholder and does not open the portal dialog just to list', async () => {
+    const { picker, getSources } = portalSetup();
+    const list = await picker.listSources();
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id: PORTAL_SOURCE_ID, kind: 'screen', thumbnail: null });
+    expect(getSources).not.toHaveBeenCalled();
+  });
+
+  it('opens the portal once, on the capture request, and hands over the stream it returns', async () => {
+    const { picker, getSources } = portalSetup();
+    picker.choose({ sourceId: PORTAL_SOURCE_ID, audio: true });
+    expect(await answer(picker)).toEqual({ video: { id: 'window:1:0:s', name: expect.any(String) }, audio: 'loopback' });
+    expect(getSources).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses when the portal dialog was cancelled, and for any other choice', async () => {
+    const empty = new ScreenPicker({ getSources: async () => [], now: () => 50_000, appOrigin: APP, ownMediaSourceIds: () => [], portalCapture: true });
+    empty.choose({ sourceId: PORTAL_SOURCE_ID, audio: false });
+    expect(await answer(empty)).toEqual({});
+    const { picker, getSources } = portalSetup();
+    picker.choose({ sourceId: 'window:5:0', audio: false });
+    expect(await answer(picker)).toEqual({});
+    expect(getSources).not.toHaveBeenCalled();
+  });
+
+  it('is used on Wayland sessions only', () => {
+    expect(usesPortalCapture('linux', { XDG_SESSION_TYPE: 'wayland' })).toBe(true);
+    expect(usesPortalCapture('linux', { WAYLAND_DISPLAY: 'wayland-1' })).toBe(true);
+    expect(usesPortalCapture('linux', { XDG_SESSION_TYPE: 'x11' })).toBe(false);
+    expect(usesPortalCapture('linux', { XDG_SESSION_TYPE: 'wayland', ELECTRON_OZONE_PLATFORM_HINT: 'x11' })).toBe(false);
+    expect(usesPortalCapture('win32', { XDG_SESSION_TYPE: 'wayland' })).toBe(false);
   });
 });

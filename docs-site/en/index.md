@@ -12,7 +12,7 @@ hero:
     alt: GhostLink
   actions:
     - theme: brand
-      text: Download for Windows
+      text: Download for Windows and Linux
       link: /en/download
     - theme: alt
       text: Getting started
@@ -53,8 +53,8 @@ features:
 - **Friends and direct messages:** add friends by code and talk in DMs and groups peer to peer (P2P), outside any server.
 - **Bots** compatible with discord.js.
 - **Roles and moderation:** permissions enforced by the server, private channels, invites with use limits and expiry, kick and ban.
-- **Hosting:** from the app on Windows, on a Linux VPS (install script) or in the cloud (Railway).
-- **Automatic updates** on Windows, checked against the release signature.
+- **Hosting:** from the app on Windows and Linux, on a Linux VPS (install script) or in the cloud (Railway).
+- **Automatic updates** on Windows and the Linux AppImage, checked against the release signature.
 
 **Not yet:** the macOS app. It comes in a future version.
 

@@ -110,6 +110,54 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  linux:
+    name: Linux AppImage
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.x
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            npm ci && exit 0
+            echo "::warning::npm ci failed (attempt ${attempt} of 3), retrying in 20 s"
+            sleep 20
+          done
+          exit 1
+      - name: Fetch LiveKit
+        run: node scripts/fetch-livekit.mjs --target linux-x64
+      - name: Build the AppImage
+        run: npm run dist
+      # Headless runner: the smoke test needs a display for Electron.
+      - name: Smoke test the packaged app
+        run: sudo apt-get install -y xvfb >/dev/null && xvfb-run -a npm run smoke
+      - name: Collect the update files
+        run: |
+          mkdir release
+          for file in "GhostLink-${VERSION}-linux-x86_64.AppImage" "GhostLink-${VERSION}-linux-x86_64.AppImage.blockmap" "GhostLink-${VERSION}-linux-x64.tar.gz" latest-linux.yml; do
+            cp "apps/desktop/dist/${file}" release/
+          done
+          grep -Fx "version: ${VERSION}" release/latest-linux.yml
+      - name: Upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-linux
+          path: release/
+          if-no-files-found: error
+          retention-days: 3
+
   server:
     name: Server package
     needs: version
@@ -210,7 +258,7 @@ jobs:
 
   sign:
     name: Sign
-    needs: [version, windows, server, compat]
+    needs: [version, windows, linux, server, compat]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Required reviewer + v* tags only: the release key is released to this job after approval.

@@ -66,7 +66,8 @@ describe('packagedApp', () => {
   });
 
   it('refuses platforms GhostLink does not ship a desktop build for', () => {
-    expect(() => packagedApp({ distDir: 'dist', platform: 'linux', arch: 'x64' })).toThrow(/Windows and macOS only/);
+    expect(packagedApp({ distDir: 'dist', platform: 'linux', arch: 'x64' }).executable).toMatch(/linux-unpacked.ghostlink$/);
+    expect(() => packagedApp({ distDir: 'dist', platform: 'freebsd', arch: 'x64' })).toThrow(/Windows, macOS and Linux only/);
   });
 });
 

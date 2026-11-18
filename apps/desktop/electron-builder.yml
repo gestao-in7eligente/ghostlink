@@ -10,6 +10,7 @@ copyright: Copyright © 2026 GhostLink contributors
 extraMetadata:
   name: ghostlink
   productName: GhostLink
+  desktopName: ghostlink.desktop
 directories:
   output: dist
   buildResources: build
@@ -73,3 +74,18 @@ mac:
     NSCameraUsageDescription: GhostLink uses the camera for video calls.
 dmg:
   artifactName: ${productName}-${version}-mac-${arch}.${ext}
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: tar.gz
+      arch: [x64]
+  category: Network;Chat
+  # Window association (Wayland app_id / WM_CLASS) with the generated .desktop entry.
+  syncDesktopName: true
+  artifactName: ${productName}-${version}-linux-${arch}.${ext}
+  synopsis: Chat de texto e voz com servidor próprio
+  maintainer: GhostLink contributors
+  # Registers x-scheme-handler/ghostlink in the generated .desktop file (deep links).
+  mimeTypes:
+    - x-scheme-handler/ghostlink

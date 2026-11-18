@@ -6,32 +6,35 @@ import {
   RELEASES_PAGE_URL,
   isReleaseVersion,
   releaseDownloadUrl,
+  linuxAppImageName,
   windowsInstallerName,
 } from '../../../../packages/shared/src/release.js';
 
 /** Where every button falls back to when the API cannot be used. */
 export const LATEST_RELEASE_PAGE_URL = `${RELEASES_PAGE_URL}/latest`;
 
-export interface WindowsDownload {
+export interface Download {
   version: string;
-  /** Always `https://github.com/<repo>/releases/download/v<version>/GhostLink-Setup-<version>.exe`. */
+  /** Always `https://github.com/<repo>/releases/download/v<version>/<installer name>`. */
   url: string;
   /** Bytes, or null when the API did not give a believable size. */
   size: number | null;
 }
+export type WindowsDownload = Download;
+export type DownloadOs = 'windows' | 'linux';
 
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-/** The Windows installer of a `releases/latest` answer, or null if anything about it is off. */
-export function pickWindowsDownload(release: unknown): WindowsDownload | null {
+/** The installer of a `releases/latest` answer for one OS, or null if anything about it is off. */
+export function pickDownload(release: unknown, os: DownloadOs): Download | null {
   if (!isRecord(release) || release.draft === true || release.prerelease === true) return null;
   const tag = release.tag_name;
   if (typeof tag !== 'string' || !tag.startsWith('v')) return null;
   const version = tag.slice(1);
   if (!isReleaseVersion(version)) return null;
-  const name = windowsInstallerName(version);
+  const name = os === 'linux' ? linuxAppImageName(version) : windowsInstallerName(version);
   const assets = Array.isArray(release.assets) ? (release.assets as unknown[]) : [];
   const asset = assets.find((a): a is Record<string, unknown> => isRecord(a) && a.name === name);
   if (!asset) return null;
@@ -42,8 +45,11 @@ export function pickWindowsDownload(release: unknown): WindowsDownload | null {
   return { version, url, size };
 }
 
+export const pickWindowsDownload = (release: unknown): Download | null => pickDownload(release, 'windows');
+export const pickLinuxDownload = (release: unknown): Download | null => pickDownload(release, 'linux');
+
 /** Asks the GitHub API for the latest release. Resolves null on any failure (offline, rate limit, no release yet). */
-export async function fetchLatestWindowsDownload(fetchImpl: Fetch = fetch, timeoutMs = 8000): Promise<WindowsDownload | null> {
+export async function fetchLatestDownload(os: DownloadOs, fetchImpl: Fetch = fetch, timeoutMs = 8000): Promise<Download | null> {
   try {
     const res = await fetchImpl(LATEST_RELEASE_API_URL, {
       headers: { accept: 'application/vnd.github+json' },
@@ -53,20 +59,32 @@ export async function fetchLatestWindowsDownload(fetchImpl: Fetch = fetch, timeo
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return null;
-    return pickWindowsDownload(await res.json());
+    return pickDownload(await res.json(), os);
   } catch {
     return null;
   }
 }
+
+export const fetchLatestWindowsDownload = (fetchImpl: Fetch = fetch, timeoutMs = 8000): Promise<Download | null> =>
+  fetchLatestDownload('windows', fetchImpl, timeoutMs);
+export const fetchLatestLinuxDownload = (fetchImpl: Fetch = fetch, timeoutMs = 8000): Promise<Download | null> =>
+  fetchLatestDownload('linux', fetchImpl, timeoutMs);
 
 export interface VisitorPlatform {
   userAgent: string;
   userAgentData?: { platform?: string } | undefined;
 }
 
-/** v0.1 ships a Windows installer only; other visitors are told so. */
+/** Windows and Linux have installers; visitors on anything else (macOS, phones) are told so. */
 export function isWindowsVisitor(nav: VisitorPlatform): boolean {
   const platform = nav.userAgentData?.platform;
   if (typeof platform === 'string' && platform !== '') return platform === 'Windows';
   return /\bWindows NT\b/.test(nav.userAgent);
+}
+
+export function isLinuxVisitor(nav: VisitorPlatform): boolean {
+  const platform = nav.userAgentData?.platform;
+  // Android reports "Android" here and "Linux" in its user agent: it is not a desktop Linux.
+  if (typeof platform === 'string' && platform !== '') return platform === 'Linux';
+  return /\bLinux\b/.test(nav.userAgent) && !/\bAndroid\b/.test(nav.userAgent);
 }

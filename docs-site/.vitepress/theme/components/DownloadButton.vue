@@ -1,28 +1,28 @@
 <script setup lang="ts">
-// The Windows download button (spec §16). By default it asks the GitHub API for the latest
+// The download button for one OS (spec §16). By default it asks the GitHub API for the latest
 // release when the page opens; with `lazy` (the /j/ invite page) it only asks once the visitor
 // clicks it. Whatever goes wrong, the link falls back to the latest release page.
 import { useData } from 'vitepress';
 import { computed, onMounted, ref, useId } from 'vue';
-import type { VisitorPlatform, WindowsDownload } from '../lib/download.js';
-import { LATEST_RELEASE_PAGE_URL, fetchLatestWindowsDownload, isWindowsVisitor } from '../lib/download.js';
+import type { Download, DownloadOs, VisitorPlatform } from '../lib/download.js';
+import { LATEST_RELEASE_PAGE_URL, fetchLatestDownload, isLinuxVisitor, isWindowsVisitor } from '../lib/download.js';
 import { fill, stringsFor } from '../lib/strings.js';
 
-const props = withDefaults(defineProps<{ lazy?: boolean; lang?: string }>(), { lazy: false, lang: undefined });
+const props = withDefaults(defineProps<{ lazy?: boolean; lang?: string; os?: DownloadOs }>(), { lazy: false, lang: undefined, os: 'windows' });
 
 const { lang: pageLang } = useData();
 const locale = computed(() => props.lang ?? pageLang.value);
 const t = computed(() => stringsFor(locale.value).download);
 
 const state = ref<'idle' | 'loading' | 'ready' | 'failed'>('idle');
-const download = ref<WindowsDownload | null>(null);
+const download = ref<Download | null>(null);
 const otherOs = ref(false);
 const detailId = useId();
 const href = computed(() => download.value?.url ?? LATEST_RELEASE_PAGE_URL);
 
 const detail = computed(() => {
   if (state.value === 'loading') return t.value.checking;
-  const parts = [t.value.requirements];
+  const parts = [props.os === 'linux' ? t.value.requirementsLinux : t.value.requirements];
   const d = download.value;
   if (d) {
     parts.unshift(fill(t.value.version, { version: d.version }));
@@ -36,12 +36,13 @@ const detail = computed(() => {
 
 async function lookUp(): Promise<void> {
   state.value = 'loading';
-  download.value = await fetchLatestWindowsDownload();
+  download.value = await fetchLatestDownload(props.os);
   state.value = download.value ? 'ready' : 'failed';
 }
 
 onMounted(() => {
-  otherOs.value = !isWindowsVisitor(navigator as unknown as VisitorPlatform);
+  const nav = navigator as unknown as VisitorPlatform;
+  otherOs.value = !isWindowsVisitor(nav) && !isLinuxVisitor(nav);
   if (!props.lazy) void lookUp();
 });
 
@@ -69,11 +70,11 @@ async function onClick(event: MouseEvent): Promise<void> {
         <path d="m7 10 5 5 5-5" />
         <path d="M5 21h14" />
       </svg>
-      <span>{{ t.button }}</span>
+      <span>{{ os === 'linux' ? t.buttonLinux : t.button }}</span>
     </a>
     <p :id="detailId" class="gl-download__detail" aria-live="polite">{{ detail }}</p>
     <p v-if="state === 'failed'" class="gl-download__note">{{ t.failed }}</p>
-    <p v-if="otherOs" class="gl-download__note">{{ t.notWindows }}</p>
+    <p v-if="otherOs && os === 'windows'" class="gl-download__note">{{ t.notWindows }}</p>
   </div>
 </template>
 

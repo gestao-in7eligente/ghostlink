@@ -15,6 +15,7 @@ const config = parse(read('electron-builder.yml')) as Dict & {
   win: Dict;
   nsis: Dict;
   mac: Dict & { extendInfo: Dict };
+  linux: Dict;
   dmg: Dict;
 };
 const pkg = JSON.parse(read('package.json')) as {
@@ -31,7 +32,7 @@ describe('apps/desktop/electron-builder.yml', () => {
     expect(config.productName).toBe(APP_NAME);
     // Packaged package.json: productName names the userData folder, name the install folder.
     // Without this they would derive from "@ghostlink/desktop".
-    expect(config.extraMetadata).toEqual({ name: 'ghostlink', productName: APP_NAME });
+    expect(config.extraMetadata).toEqual({ name: 'ghostlink', productName: APP_NAME, desktopName: 'ghostlink.desktop' });
   });
 
   it('packages only the build output, in an integrity-checked asar, without rebuilding or uploading', () => {
@@ -79,6 +80,16 @@ describe('apps/desktop/electron-builder.yml', () => {
       artifactName: '${productName}-Setup-${version}.${ext}',
       include: 'build/installer.nsh',
     });
+  });
+
+  it('builds an x64 AppImage and tarball that register the ghostlink:// handler and match their window to the .desktop file', () => {
+    expect(config.linux.target).toEqual([
+      { target: 'AppImage', arch: ['x64'] },
+      { target: 'tar.gz', arch: ['x64'] },
+    ]);
+    expect(config.linux.mimeTypes).toEqual(['x-scheme-handler/ghostlink']);
+    expect(config.linux.syncDesktopName).toBe(true);
+    expect(config.linux.artifactName).toBe('${productName}-${version}-linux-${arch}.${ext}');
   });
 
   it('builds ad-hoc signed, hardened DMGs for both Mac architectures, without zip', () => {

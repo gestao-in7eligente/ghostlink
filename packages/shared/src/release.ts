@@ -62,6 +62,11 @@ export function windowsInstallerName(version: string): string {
   return `GhostLink-Setup-${checkVersion(version)}.exe`;
 }
 
+/** The Linux AppImage electron-builder produces (`linux.target`); the file name carries `x86_64`, not `x64`. */
+export function linuxAppImageName(version: string): string {
+  return `GhostLink-${checkVersion(version)}-linux-x86_64.AppImage`;
+}
+
 /** The VPS package release.yml produces. */
 export function serverPackageName(version: string): string {
   return `ghostlink-server-${checkVersion(version)}.tgz`;

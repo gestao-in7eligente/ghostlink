@@ -7,7 +7,7 @@ description: Install GhostLink, create your identity and join a server.
 
 ## 1. Install the app
 
-[Download the Windows installer](./download) and open it. The first time, SmartScreen may warn you: click **More info → Run anyway**.
+[Download the Windows installer or the Linux AppImage](./download) and open it. On Windows, the first time, SmartScreen may warn you: click **More info → Run anyway**.
 
 ## 2. Your identity
 

@@ -75,7 +75,7 @@ describe('release.yml trigger and supply chain (spec §15)', () => {
     expect(job('sign').permissions).toEqual({ contents: 'read', 'id-token': 'write' });
     expect(job('publish').permissions).toEqual({ contents: 'write' });
     expect(job('image').permissions).toEqual({ contents: 'read', packages: 'write', 'id-token': 'write' });
-    expect(Object.keys(workflow.jobs).sort()).toEqual(['compat', 'image', 'publish', 'server', 'sign', 'version', 'windows']);
+    expect(Object.keys(workflow.jobs).sort()).toEqual(['compat', 'image', 'linux', 'publish', 'server', 'sign', 'version', 'windows']);
   });
 
   it('never leaves a token in .git/config and never caches dependencies', () => {
@@ -123,8 +123,8 @@ describe('release.yml builds', () => {
   it('checks the tag against the package versions first, and everything depends on it', () => {
     expect(runOf(job('version'))).toContain('node scripts/release-version.mjs "$TAG" >> "$GITHUB_OUTPUT"');
     expect(job('version').outputs).toEqual({ version: '${{ steps.version.outputs.version }}' });
-    for (const name of ['windows', 'server', 'compat']) expect(job(name).needs).toBe('version');
-    expect(job('sign').needs).toEqual(['version', 'windows', 'server', 'compat']);
+    for (const name of ['windows', 'linux', 'server', 'compat']) expect(job(name).needs).toBe('version');
+    expect(job('sign').needs).toEqual(['version', 'windows', 'linux', 'server', 'compat']);
     expect(job('image').needs).toEqual(['version', 'sign']);
     expect(job('publish').needs).toEqual(['version', 'sign', 'image']);
   });
@@ -141,6 +141,18 @@ describe('release.yml builds', () => {
     expect(run).toContain('"GhostLink-Setup-${VERSION}.exe" "GhostLink-Setup-${VERSION}.exe.blockmap" latest.yml');
     const upload = windows.steps.find((s) => s.uses?.startsWith('actions/upload-artifact@'))!;
     expect(upload.with).toMatchObject({ name: 'release-windows', path: 'release/', 'if-no-files-found': 'error' });
+  });
+
+  it('builds the Linux AppImage with LiveKit, smoke tests it under Xvfb and keeps the update files', () => {
+    const linux = job('linux');
+    expect(linux['runs-on']).toBe('ubuntu-latest');
+    const run = runOf(linux);
+    const order = ['node scripts/fetch-livekit.mjs --target linux-x64', 'npm run dist', 'xvfb-run -a npm run smoke', 'cp "apps/desktop/dist/'].map((c) => run.indexOf(c));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(run).toContain('latest-linux.yml');
+    const upload = linux.steps.find((s) => s.uses?.startsWith('actions/upload-artifact@'))!;
+    expect(upload.with).toMatchObject({ name: 'release-linux', path: 'release/', 'if-no-files-found': 'error' });
   });
 
   it('packages the server CLI reproducibly on Linux and runs the packaged CLI', () => {

@@ -45,7 +45,12 @@ export function packagedApp({ distDir, platform, arch }) {
     const contents = join(distDir, arch === 'arm64' ? 'mac-arm64' : 'mac', `${PRODUCT_NAME}.app`, 'Contents');
     return { executable: join(contents, 'MacOS', PRODUCT_NAME), asar: join(contents, 'Resources', 'app.asar') };
   }
-  throw new Error(`GhostLink is packaged for Windows and macOS only; there is no desktop build for "${platform}".`);
+  if (platform === 'linux') {
+    // electron-builder names the Linux binary after package.json "name" (extraMetadata), not productName.
+    const root = join(distDir, 'linux-unpacked');
+    return { executable: join(root, 'ghostlink'), asar: join(root, 'resources', 'app.asar') };
+  }
+  throw new Error(`GhostLink is packaged for Windows, macOS and Linux only; there is no desktop build for "${platform}".`);
 }
 
 /**

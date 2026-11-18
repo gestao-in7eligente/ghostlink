@@ -47,6 +47,23 @@ export interface ScreenPickerDeps {
   appOrigin: string;
   /** GhostLink's own windows (BrowserWindow.getMediaSourceId(): the main window, the notification cards), left out of the list. */
   ownMediaSourceIds(): readonly string[];
+  /** usesPortalCapture(): the portal, not our list, shows the screens. */
+  portalCapture?: boolean;
+}
+
+/**
+ * Wayland has no enumerable screens: Chromium asks the xdg-desktop-portal, whose own dialog lets
+ * the person pick, and desktopCapturer.getSources then answers with that single stream (id
+ * "window:1:0:s", empty name; measured on Electron 44 / KDE). So the picker offers one placeholder
+ * source, and the capture request is what opens the portal dialog (one dialog per share).
+ */
+export const PORTAL_SOURCE_ID = 'screen:0:0';
+export const PORTAL_SOURCE_NAME = 'Screen or window (system dialog)';
+
+/** True when Chromium will capture through the portal: Wayland session, not forced onto X11. */
+export function usesPortalCapture(platform: string, env: Record<string, string | undefined>): boolean {
+  if (platform !== 'linux' || env.ELECTRON_OZONE_PLATFORM_HINT === 'x11') return false;
+  return env.XDG_SESSION_TYPE === 'wayland' || (env.WAYLAND_DISPLAY ?? '') !== '';
 }
 
 /** A choice and when it was made. */
@@ -61,6 +78,8 @@ export class ScreenPicker {
 
   /** For the picker: screens first, then windows, each in desktopCapturer's order. */
   async listSources(): Promise<ScreenSource[]> {
+    // Asking desktopCapturer here would open the portal dialog before the person set quality and sound.
+    if (this.deps.portalCapture) return [{ id: PORTAL_SOURCE_ID, name: PORTAL_SOURCE_NAME, kind: 'screen', thumbnail: null, icon: null }];
     const sources = this.capturable(await this.deps.getSources(LIST_OPTIONS)).map(({ source, kind }) => ({
       id: source.id,
       name: source.name,
@@ -107,12 +126,22 @@ export class ScreenPicker {
     if (!choice || this.deps.now() - choice.at > SCREEN_CHOICE_TTL_MS) return {};
     const kind = sourceKind(choice.sourceId);
     if (!kind) return {};
+    if (this.deps.portalCapture) return this.portalAnswer(request, choice);
     // A window closed since the choice is refused here (AbortError) instead of failing to start
     // later (NotReadableError). Without thumbnails, which are the slow part.
     const listed = this.capturable(await this.deps.getSources({ types: [kind], thumbnailSize: { width: 0, height: 0 } }));
     const source = listed.find((s) => s.source.id === choice.sourceId)?.source;
     if (!source) return {};
     const video = { id: source.id, name: source.name };
+    return choice.audio && request.audioRequested ? { video, audio: 'loopback' } : { video };
+  }
+
+  /** Opens the portal dialog; its single stream is the person's choice. Nothing chosen there: refused. */
+  private async portalAnswer(request: DisplayMediaRequest, choice: HeldChoice): Promise<DisplayMediaStreams> {
+    if (choice.sourceId !== PORTAL_SOURCE_ID) return {};
+    const [source] = await this.deps.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
+    if (!source) return {};
+    const video = { id: source.id, name: source.name || PORTAL_SOURCE_NAME };
     return choice.audio && request.audioRequested ? { video, audio: 'loopback' } : { video };
   }
 

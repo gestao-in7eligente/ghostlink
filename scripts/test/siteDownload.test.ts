@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   LATEST_RELEASE_PAGE_URL,
   fetchLatestWindowsDownload,
+  isLinuxVisitor,
   isWindowsVisitor,
+  pickLinuxDownload,
   pickWindowsDownload,
 } from '../../docs-site/.vitepress/theme/lib/download.js';
 
@@ -123,5 +125,38 @@ describe('isWindowsVisitor', () => {
     expect(isWindowsVisitor({ userAgent: 'Mozilla/5.0 (X11; Linux x86_64)' })).toBe(false);
     expect(isWindowsVisitor({ userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8)' })).toBe(false);
     expect(isWindowsVisitor({ userAgent: 'Mozilla/5.0 (Macintosh)', userAgentData: { platform: 'macOS' } })).toBe(false);
+  });
+});
+
+describe('Linux download', () => {
+  const linux = (over: Record<string, unknown> = {}) =>
+    release({
+      assets: [
+        { name: 'GhostLink-0.1.0-linux-x86_64.AppImage', size: 150_000_000, browser_download_url: `${DL}/v0.1.0/GhostLink-0.1.0-linux-x86_64.AppImage` },
+      ],
+      ...over,
+    });
+
+  it('finds the AppImage of the latest release and never mistakes it for the Windows installer', () => {
+    expect(pickLinuxDownload(linux())).toEqual({
+      version: '0.1.0',
+      url: `${DL}/v0.1.0/GhostLink-0.1.0-linux-x86_64.AppImage`,
+      size: 150_000_000,
+    });
+    expect(pickWindowsDownload(linux())).toBeNull();
+    expect(pickLinuxDownload(release())).toBeNull();
+  });
+
+  it('only links to this repository, for that tag', () => {
+    const assets = [{ name: 'GhostLink-0.1.0-linux-x86_64.AppImage', size: 1, browser_download_url: 'https://evil.example/a.AppImage' }];
+    expect(pickLinuxDownload(linux({ assets }))).toBeNull();
+  });
+
+  it('recognises desktop Linux visitors, not Android', () => {
+    expect(isLinuxVisitor({ userAgent: 'x', userAgentData: { platform: 'Linux' } })).toBe(true);
+    expect(isLinuxVisitor({ userAgent: 'x', userAgentData: { platform: 'Android' } })).toBe(false);
+    expect(isLinuxVisitor({ userAgent: 'Mozilla/5.0 (X11; Linux x86_64) Firefox/130' })).toBe(true);
+    expect(isLinuxVisitor({ userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/130' })).toBe(false);
+    expect(isLinuxVisitor({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' })).toBe(false);
   });
 });

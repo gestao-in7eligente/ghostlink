@@ -1,0 +1,48 @@
+# Maintainer: GhostLink contributors
+pkgname=ghostlink-bin
+_name=GhostLink
+pkgver=0.8.17
+pkgrel=1
+pkgdesc='Free, open-source text and voice chat where you host your own server'
+arch=('x86_64')
+url='https://github.com/gestao-in7eligente/ghostlink'
+license=('GPL-3.0-or-later')
+# Electron bundles its own runtime; these are what it loads from the system.
+depends=('gtk3' 'nss' 'alsa-lib' 'libxss' 'libxtst' 'libnotify' 'xdg-utils' 'libsecret')
+optdepends=('kwallet: encrypted identity storage on KDE'
+            'gnome-keyring: encrypted identity storage on GNOME'
+            'pipewire: voice chat and screen sharing'
+            'xdg-desktop-portal: screen sharing on Wayland')
+provides=('ghostlink')
+conflicts=('ghostlink')
+options=('!strip' '!debug')
+source=("${_name}-${pkgver}-linux-x64.tar.gz::${url}/releases/download/v${pkgver}/${_name}-${pkgver}-linux-x64.tar.gz"
+        "checksums-sha256-${pkgver}.txt::${url}/releases/download/v${pkgver}/checksums-sha256.txt"
+        "ghostlink-${pkgver}.png::https://raw.githubusercontent.com/gestao-in7eligente/ghostlink/v${pkgver}/apps/desktop/build/icon.png")
+# Replace SKIP with the hash listed in checksums-sha256.txt (updpkgsums does it).
+sha256sums=('SKIP' 'SKIP' 'SKIP')
+
+package() {
+  install -d "${pkgdir}/opt/${pkgname}" "${pkgdir}/usr/bin"
+  cp -r "${srcdir}/${_name}-${pkgver}-linux-x64/." "${pkgdir}/opt/${pkgname}/" 2>/dev/null \
+    || cp -r "${srcdir}/." "${pkgdir}/opt/${pkgname}/"
+  rm -f "${pkgdir}/opt/${pkgname}/"{*.tar.gz,checksums-sha256-*.txt,ghostlink-*.png}
+  install -Dm644 "${srcdir}/ghostlink-${pkgver}.png" "${pkgdir}/usr/share/icons/hicolor/512x512/apps/ghostlink.png"
+  chmod 755 "${pkgdir}/opt/${pkgname}/ghostlink"
+  # chrome-sandbox needs setuid root, which user namespaces make unnecessary on Arch.
+  rm -f "${pkgdir}/opt/${pkgname}/chrome-sandbox"
+  ln -s "/opt/${pkgname}/ghostlink" "${pkgdir}/usr/bin/ghostlink"
+
+  install -Dm644 /dev/stdin "${pkgdir}/usr/share/applications/ghostlink.desktop" <<DESKTOP
+[Desktop Entry]
+Name=GhostLink
+Comment=${pkgdesc}
+Exec=/usr/bin/ghostlink %U
+Terminal=false
+Type=Application
+Icon=ghostlink
+Categories=Network;Chat;
+MimeType=x-scheme-handler/ghostlink;
+StartupWMClass=GhostLink
+DESKTOP
+}

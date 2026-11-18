@@ -39,7 +39,7 @@ import { ReleaseNotes } from './releaseNotes.js';
 import { RailwayTokenStore } from './railway/token.js';
 import { SavedServersStore } from './savedServers.js';
 import { ServerDeletions } from './serverDeletions.js';
-import { ScreenPicker } from './screenPicker.js';
+import { ScreenPicker, usesPortalCapture } from './screenPicker.js';
 import { installSecurity, originOf } from './security.js';
 import { SettingsStore } from './settings.js';
 import { runSmoke } from './smoke.js';
@@ -357,6 +357,7 @@ async function start(): Promise<BrowserWindow | null> {
   // capture request gets exactly the chosen one. Never the system picker (no useSystemPicker).
   const screenPicker = new ScreenPicker({
     getSources: (opts) => desktopCapturer.getSources(opts),
+    portalCapture: usesPortalCapture(process.platform, process.env),
     now: () => Date.now(),
     appOrigin,
     ownMediaSourceIds: () => [window.isDestroyed() ? null : window.getMediaSourceId(), toasts.mediaSourceId(), callWindow.mediaSourceId()].filter((id) => id !== null),

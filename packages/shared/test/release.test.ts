@@ -16,6 +16,7 @@ import {
   releasePublicKeyBytes,
   releaseTagUrl,
   serverPackageName,
+  linuxAppImageName,
   windowsInstallerName,
 } from '../src/release.js';
 
@@ -99,6 +100,7 @@ describe('release file names and URLs', () => {
     expect(RELEASE_CHECKSUMS_MAX_BYTES).toBeLessThanOrEqual(1024 * 1024);
   });
 
+    expect(linuxAppImageName('0.1.0')).toBe('GhostLink-0.1.0-linux-x86_64.AppImage');
   it('names the artifacts after electron-builder and the server package', () => {
     expect(windowsInstallerName('0.1.0')).toBe('GhostLink-Setup-0.1.0.exe');
     expect(serverPackageName('0.1.0')).toBe('ghostlink-server-0.1.0.tgz');

@@ -1,16 +1,18 @@
 // Texts of the site's Vue components. Pages themselves are written per language in Markdown.
 
 const pt = {
-  beta: 'GhostLink está em beta: a versão 0.1 é só para Windows.',
+  beta: 'GhostLink está em beta: há versões para Windows e Linux (AppImage).',
   download: {
     button: 'Baixar para Windows',
+    buttonLinux: 'Baixar para Linux (AppImage)',
     requirements: 'Windows 10 ou 11, 64 bits',
+    requirementsLinux: 'Linux x86_64 · AppImage',
     checking: 'Procurando a versão mais recente…',
     version: 'Versão {version}',
     size: '{size} MB',
     failed: 'Não deu para consultar a versão mais recente agora. O botão abre a página da última release, onde fica o instalador.',
     notWindows:
-      'A versão 0.1 só tem instalador para Windows. A versão para macOS vem depois; o servidor roda em Linux (veja Hospedar numa VPS).',
+      'Há instaladores para Windows e Linux. A versão para macOS vem depois; o servidor também roda em Linux (veja Hospedar numa VPS).',
   },
   invite: {
     reading: 'Abrindo o convite…',
@@ -43,16 +45,18 @@ type Strings = typeof pt;
 type Shape<T> = { [K in keyof T]: T[K] extends string ? string : Shape<T[K]> };
 
 const en: Shape<Strings> = {
-  beta: 'GhostLink is in beta: version 0.1 is Windows-only.',
+  beta: 'GhostLink is in beta: there are builds for Windows and Linux (AppImage).',
   download: {
     button: 'Download for Windows',
+    buttonLinux: 'Download for Linux (AppImage)',
     requirements: 'Windows 10 or 11, 64-bit',
+    requirementsLinux: 'Linux x86_64 · AppImage',
     checking: 'Looking up the latest version…',
     version: 'Version {version}',
     size: '{size} MB',
     failed: 'Could not look up the latest version right now. The button opens the latest release page, where the installer is.',
     notWindows:
-      'Version 0.1 only has a Windows installer. The macOS app comes later; the server runs on Linux (see Host on a VPS).',
+      'There are installers for Windows and Linux. The macOS app comes later; the server also runs on Linux (see Host on a VPS).',
   },
   invite: {
     reading: 'Opening the invite…',
